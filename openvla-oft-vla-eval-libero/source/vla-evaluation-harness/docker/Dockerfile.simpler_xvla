@@ -1,0 +1,42 @@
+# SimplerEnv + X-VLA ManiSkill2 patches:
+#   1. Absolute EE control mode (use_delta=False) + euler rotation
+#   2. Sink camera aligned with Bridge dataset (for eggplant task)
+#   3. kwargs.setdefault to preserve user control_mode override
+
+ARG BASE_IMAGE=ghcr.io/allenai/vla-evaluation-harness/simpler:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["conda", "run", "-n", "simpler", "/bin/bash", "-c"]
+
+# 1. Add absolute EE controller + euler interpretation to WidowX config
+COPY docker/xvla_absolute_ee.patch /tmp/xvla_absolute_ee.patch
+RUN cd /app/ManiSkill2_real2sim \
+    && patch -p1 < /tmp/xvla_absolute_ee.patch \
+    && rm /tmp/xvla_absolute_ee.patch
+
+# 2. Align sink camera + robot init with Bridge dataset (eggplant task).
+#    X-VLA was trained on BridgeData which uses a specific camera viewpoint.
+COPY docker/xvla_sink_camera.py /tmp/
+RUN cd /app/ManiSkill2_real2sim && python3 /tmp/xvla_sink_camera.py && rm /tmp/xvla_sink_camera.py
+
+# 3. Add absolute EE controller to Google Robot config (same pattern as WidowX).
+#    X-VLA Google Robot eval requires base_pose (use_delta=False) with planner.
+COPY docker/xvla_google_robot_patch.py /tmp/
+RUN cd /app/ManiSkill2_real2sim && python3 /tmp/xvla_google_robot_patch.py && rm /tmp/xvla_google_robot_patch.py
+
+# 4. Change prepackaged defaults to base_pose controller (matches X-VLA fork).
+RUN cd /app/ManiSkill2_real2sim && \
+    sed -i 's/arm_pd_ee_delta_pose_align_interpolate_by_planner_gripper_pd_joint_target_delta_pos_interpolate_by_planner/arm_pd_ee_base_pose_align_interpolate_by_planner_gripper_pd_joint_target_delta_pos_interpolate_by_planner/g' \
+        mani_skill2_real2sim/envs/custom_scenes/move_near_in_scene.py \
+        mani_skill2_real2sim/envs/custom_scenes/open_drawer_in_scene.py \
+        mani_skill2_real2sim/envs/custom_scenes/grasp_single_in_scene.py && \
+    echo "Patched prepackaged defaults to base_pose"
+
+# 5. Fix prepackaged_config to preserve user-overridden kwargs (e.g. control_mode).
+RUN cd /app/ManiSkill2_real2sim && \
+    sed -i 's/kwargs\.update(self\._setup_prepackaged_env_init_config())/prepackaged = self._setup_prepackaged_env_init_config()\n            for _k, _v in prepackaged.items():\n                kwargs.setdefault(_k, _v)/' \
+        mani_skill2_real2sim/envs/custom_scenes/move_near_in_scene.py \
+        mani_skill2_real2sim/envs/custom_scenes/put_on_in_scene.py \
+        mani_skill2_real2sim/envs/custom_scenes/open_drawer_in_scene.py \
+        mani_skill2_real2sim/envs/custom_scenes/grasp_single_in_scene.py && \
+    echo "Patched prepackaged kwargs merge"

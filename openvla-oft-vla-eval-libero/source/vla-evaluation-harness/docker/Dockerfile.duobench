@@ -1,0 +1,85 @@
+ARG BASE_IMAGE=ghcr.io/allenai/vla-evaluation-harness/base:latest
+FROM ${BASE_IMAGE}
+
+# Adapted from robot-control-stack/docker/Dockerfile; sim eval only needs
+# RCS core + DuoBench, not the real-robot hardware extensions.
+
+# RCS compiles against the MuJoCo/urdfdom/pin stack below.
+ARG RCS_REF=v0.7.1
+ARG DUOBENCH_REF=v0.1.0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# ── System build deps the shared base doesn't already provide ──────
+# RCS links Poco; cmake/ninja/urdfdom/glfw come from pip/conda below.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpoco-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Conda env with Python 3.11 (rcs + duobench requirement) ────────
+# urdfdom pinned to 4.x: rcs's compiled C++ extension links against
+# liburdfdom_sensor.so.4.0, and newer sonames break that ABI.
+RUN conda create -n duobench python=3.11 pip -y && \
+    conda install -n duobench -c conda-forge -y \
+        "urdfdom=4.0" urdfdom_headers glfw "tinyxml2=10" && \
+    conda clean -afy
+SHELL ["conda", "run", "-n", "duobench", "/bin/bash", "-c"]
+
+# RCS dlopen()s conda libs; `conda run` does not set LD_LIBRARY_PATH like activation.
+ENV LD_LIBRARY_PATH=/opt/conda/envs/duobench/lib:${LD_LIBRARY_PATH}
+
+# ── Build / runtime deps ───────────────────────────────────────────
+# RCS installs with --no-build-isolation, so build deps must be present here.
+# mujoco 3.2.6 + pin 3.7.0 are the versions RCS upstream tests against.
+# cmeel-urdfdom<5 keeps the pip-side urdfdom on the same soname-4 ABI.
+RUN uv pip install --no-cache-dir \
+        "pip>=25.1" \
+        build wheel \
+        "setuptools>=45" \
+        "scikit-build-core>=0.3.3" \
+        pybind11 \
+        cmake \
+        ninja \
+        "mujoco==3.2.6" \
+        "cmeel-urdfdom<5" \
+        "pin==3.7.0"
+
+# ── Clone + install Robot Control Stack (core only — no hardware ext) ──
+# The build uses the deps installed above via --no-build-isolation.
+RUN mkdir -p /opt/rcs && cd /opt/rcs \
+    && git init -q \
+    && git remote add origin https://github.com/RobotControlStack/robot-control-stack.git \
+    && git fetch -q --depth 1 origin "${RCS_REF}" \
+    && git checkout -q FETCH_HEAD \
+    && uv pip install --no-cache-dir --no-build-isolation --editable . \
+    && rm -rf /opt/rcs/.git
+
+# ── Clone + install DuoBench ───────────────────────────────────────
+RUN mkdir -p /opt/duobench && cd /opt/duobench \
+    && git init -q \
+    && git remote add origin https://github.com/RobotControlStack/duobench.git \
+    && git fetch -q --depth 1 origin "${DUOBENCH_REF}" \
+    && git checkout -q FETCH_HEAD \
+    && uv pip install --no-cache-dir --editable . \
+    && rm -rf /opt/duobench/.git
+
+# ── Headless GL defaults (MuJoCo backend selection at sim init) ────
+# benchmark.py also sets these at import time as a belt-and-braces, but
+# baking them into the image means the right backend is picked even if the
+# runtime doesn't forward the host environment.
+ENV MUJOCO_GL=egl \
+    PYOPENGL_PLATFORM=egl
+
+WORKDIR /workspace
+COPY pyproject.toml README.md ./
+COPY src/ src/
+ARG HARNESS_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${HARNESS_VERSION}
+RUN uv pip install --no-cache-dir -e .
+COPY configs/ configs/
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "duobench", "vla-eval"]
+CMD ["run", "--config", "/workspace/configs/benchmarks/duobench/smoke_test.yaml"]

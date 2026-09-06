@@ -1,0 +1,40 @@
+ARG BASE_IMAGE=ghcr.io/allenai/vla-evaluation-harness/base:latest
+FROM ${BASE_IMAGE}
+
+# ── Conda environment ──────────────────────────────────────────────
+RUN conda create -n kinetix python=3.11 pip -y && conda clean -afy
+SHELL ["conda", "run", "-n", "kinetix", "/bin/bash", "-c"]
+
+# ── Kinetix ───────────────────────────────────────────────────────
+ARG KINETIX_REF=v3.0.0
+RUN mkdir -p /opt/kinetix \
+    && cd /opt/kinetix \
+    && git init -q \
+    && git remote add origin https://github.com/FLAIROx/Kinetix.git \
+    && git fetch -q --depth 1 origin "${KINETIX_REF}" \
+    && git checkout -q FETCH_HEAD \
+    && uv pip install --no-cache-dir -e . numpy Pillow
+
+# ── JAX with CUDA support (after kinetix to override its JAX pin) ─
+RUN uv pip install --no-cache-dir --upgrade "jax[cuda12]"
+
+# ── RTC level files ───────────────────────────────────────────────
+ARG RTC_KINETIX_REF=9296f31d62d5bfeb5779dcb2f9bcf71ca37f448b
+RUN mkdir -p /app/rtc \
+    && cd /app/rtc \
+    && git init -q \
+    && git remote add origin https://github.com/Physical-Intelligence/real-time-chunking-kinetix.git \
+    && git fetch -q --depth 1 origin "${RTC_KINETIX_REF}" \
+    && git checkout -q FETCH_HEAD \
+    && rm -rf /app/rtc/.git
+
+WORKDIR /workspace
+COPY pyproject.toml README.md ./
+COPY src/ src/
+ARG HARNESS_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${HARNESS_VERSION}
+RUN uv pip install --no-cache-dir -e .
+COPY configs/ configs/
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "kinetix", "vla-eval"]
+CMD ["run", "--config", "/workspace/configs/kinetix_eval.yaml"]

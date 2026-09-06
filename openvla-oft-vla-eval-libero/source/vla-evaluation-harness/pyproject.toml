@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vla-eval"
+dynamic = ["version"]
+description = "Evaluation harness for Vision-Language-Action models"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "anyio>=4.0.0",
+    "imageio[ffmpeg]",      # Streaming mp4 writer for benchmarks/video.py
+    "jsonargparse[signatures]>=4.36",  # class-signature-driven argparse + yaml
+    "lazyregistry>=0.4.0",  # Python 3.8 support
+    "msgpack>=1.0.0",
+    "numpy>=1.24",
+    "omegaconf",
+    "pillow>=9.4.0",        # PIL.Image.ExifTags introduced in 9.4.0
+    "pyyaml>=6.0",          # Security fixes (CVE-2020-14343) + Python 3.11
+    "rich>=13.0",
+    "tqdm",
+    "typing_extensions>=4.0; python_version < '3.11'",  # NotRequired backport for results/collector.py
+    "websockets>=13.0",  # 13.0 adds websockets.asyncio.server, the implementation serve.py imports
+]
+
+[dependency-groups]
+dev = ["jsonschema>=4.0", "pytest>=8.0", "ruff>=0.9", "ty>=0.0.18"]
+# Runtime deps for leaderboard/scripts (refine, extract…).
+# Tooling (pytest, jsonschema) comes from `dev`, so CI can sync
+# `--dev --group leaderboard --no-install-project` to get a lean env
+# for leaderboard tests without pulling vla_eval's runtime.
+leaderboard = [
+    "beautifulsoup4>=4.12",
+    "markdownify>=0.14",
+    "typer>=0.12",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/vla_eval/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vla_eval"]
+
+[project.scripts]
+vla-eval = "vla_eval.cli.main:main"
+
+[tool.pytest.ini_options]
+# Explicit so discovery doesn't creep into anywhere else a stray
+# test_*.py lands (e.g. .cache, experiments, site).
+testpaths = ["tests", "leaderboard/tests"]
+
+[tool.uv]
+# Pin resolution to a known-good date so `uv sync` from a fresh clone
+# won't pick up a newly-published (and potentially compromised) dep
+# version without explicit intent. Bump when intentionally upgrading.
+exclude-newer = "2026-07-07"
+
+[tool.ruff]
+line-length = 119
+
+# Ruff 0.16 expanded the default selection from 59 to 413 rules, and started
+# formatting code blocks in Markdown. Pin both to what this repo was written
+# against; CI installs the latest ruff.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+exclude = ["*.md"]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.rules]
+unresolved-import = "ignore"

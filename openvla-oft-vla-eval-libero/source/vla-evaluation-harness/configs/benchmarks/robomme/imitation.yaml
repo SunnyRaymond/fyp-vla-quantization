@@ -1,0 +1,27 @@
+# RoboMME Imitation suite (4 tasks × 50 episodes)
+server:
+  url: "ws://localhost:8000"
+
+# Lavapipe by default: the native NVIDIA path hangs on some hosts (issue #112).
+# On a known-good host, pass --render gpu for a ~5-10x faster simulator.
+render: cpu
+
+docker:
+  image: ghcr.io/allenai/vla-evaluation-harness/robomme:latest
+  env:
+    - "NVIDIA_DRIVER_CAPABILITIES=all"
+  # If --render gpu cannot enumerate the NVIDIA driver, mount the host ICDs
+  # (shadows the image's lavapipe ICD, so keep it off the cpu default):
+  #   volumes:
+  #     - "/usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro"
+
+output_dir: "./results"
+
+benchmarks:
+  - benchmark: "vla_eval.benchmarks.robomme.benchmark:RoboMMEBenchmark"
+    subname: imitation
+    episodes_per_task: 50
+    params:
+      tasks: [MoveCube, InsertPeg, PatternLock, RouteStick]
+      action_space: joint_angle
+      max_steps: 1300

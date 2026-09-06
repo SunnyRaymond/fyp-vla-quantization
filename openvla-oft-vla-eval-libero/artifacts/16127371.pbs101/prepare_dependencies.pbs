@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -N oft_libero_deps
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero
+SRC="$ROOT/vla-evaluation-harness"
+BOOTSTRAP="$ROOT/venvs/bootstrap"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+
+mkdir -p "$ROOT/cache/uv" "$ROOT/venvs" "$ARTIFACTS"
+cp "$PBS_O_WORKDIR/prepare_dependencies.pbs" "$ARTIFACTS/"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+export PATH="$BOOTSTRAP/bin:/usr/bin:/bin:$PATH"
+export UV_CACHE_DIR="$ROOT/cache/uv"
+export UV_PROJECT_ENVIRONMENT="$ROOT/venvs/vla-eval"
+export PYTHONUNBUFFERED=1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+
+cd "$SRC"
+"$BOOTSTRAP/bin/uv" sync --locked --python "$BOOTSTRAP/bin/python"
+"$BOOTSTRAP/bin/uv" run src/vla_eval/model_servers/oft.py --help >/dev/null
+touch "$ARTIFACTS/SUCCESS"
