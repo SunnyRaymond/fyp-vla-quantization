@@ -19,6 +19,10 @@
 
 第三方 repo 以实际源码快照保存，上游地址和 commit 见 `UPSTREAM_SOURCES.json`；它们的独立 Git history 不在此备份内。保留各源码中的 license。
 
+部分第三方文件沿用上游 `.gitattributes` 的 Git LFS 配置。恢复时先安装 Git LFS，再运行 `git lfs install`、`git clone`；若已 clone，可在 repo 中运行 `git lfs pull` 获取实际文件。
+
+第三方 Transformers 测试工具中的硬编码 token 已替换为 `HF_TEST_TOKEN` 环境变量；需要相关远程测试时自行在本地设置。
+
 这不是完整磁盘备份。恢复实验时，需按照对应目录文档重新下载模型、依赖和 images，并在本地重新配置 credentials。
 
 ## 后续更新
