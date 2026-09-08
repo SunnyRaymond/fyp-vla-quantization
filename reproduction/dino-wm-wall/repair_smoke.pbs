@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N dino_wall_verify
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+WORK=${TMPDIR:-/tmp}/dino-wall-verify-$PBS_JOBID
+mkdir -p "$WORK" "$ROOT/artifacts/$PBS_JOBID"
+exec > >(tee -a "$ROOT/artifacts/$PBS_JOBID/job.log") 2>&1
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+"$WORK/runtime/venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+d=Path('/scratch/users/ntu/yguo017/dino-wm-wall/artifacts/16170793.pbs101')
+cases=json.loads((d/'cases.json').read_text())
+metrics=json.loads((d/'logs.json').read_text().splitlines()[-1])
+timing=json.loads((d/'planning_times.jsonl').read_text().splitlines()[-1])
+summary={'complete':True,'n_evals':len(cases),'successes':sum(c['success'] for c in cases),
+ 'success_rate':sum(c['success'] for c in cases)/len(cases),'max_mpc_rounds':1,'max_env_steps':25,
+ 'official_metrics':metrics,'cem_seconds':timing['seconds'],
+ 'observed_cem_peak_gpu_allocated_gib':timing['peak_allocated_gib'],
+ 'note':'GPU planning finished; summary serialization failed. Reconstructed from saved cases/logs without repeating evaluation. Original GPU PBS exit status was 1.'}
+(d/'summary.json').write_text(json.dumps(summary,indent=2))
+(d/'SUCCESS').touch()
+PY
+"$WORK/runtime/venv/bin/python" "$ROOT/control/verify_results.py" "$ROOT/artifacts/16170793.pbs101" --expected 2
+touch "$ROOT/SMOKE_VERIFIED"
