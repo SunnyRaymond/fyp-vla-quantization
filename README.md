@@ -6,13 +6,13 @@
 
 - [WM / WAM 量化专题阅读库](literature%20review/wm-wam-quantization-reading-guide/README.md)：LeCun 相关 baseline、代表开源工作、量化 prior art 与 benchmark。
 
-- `reading-guide/`：主阅读路线。
-- `vla-quantization-literature-review-alternative/`：VLA quantization 文献整理。
-- `dan-alistarh-quantization-reading-guide/`：quantization 专题。
-- `sim-eval-vla-reading-guide/`：simulation evaluation 阅读材料。
-- `vla-ideas-reading-guide/`：研究方向与参考材料。
-- `bitvla-code-audit-2026-09-05/`、`qvla-code-audit-2026-09-05/`：paper/code audits。
-- `openvla-oft-vla-eval-libero/`：OpenVLA-OFT / LIBERO evaluation 工作。
+- `literature review/reading-guide/`：主阅读路线。
+- `literature review/vla-quantization-literature-review-alternative/`：VLA quantization 文献整理。
+- `literature review/dan-alistarh-quantization-reading-guide/`：quantization 专题。
+- `literature review/sim-eval-vla-reading-guide/`：simulation evaluation 阅读材料。
+- `literature review/vla-ideas-reading-guide/`：研究方向与参考材料。
+- `reproduction/bitvla-code-audit-2026-09-05/`、`reproduction/qvla-code-audit-2026-09-05/`：paper/code audits。
+- `reproduction/gptq-reproduction/`、`reproduction/openvla-oft-vla-eval-libero/`：quantization 与 VLA reproduction/evaluation 工作。
 - `ASPIRE2A_README.md`、`nscc-access/`：集群使用说明与脚本。
 
 ## 备份范围

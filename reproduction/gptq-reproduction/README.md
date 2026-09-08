@@ -44,6 +44,4 @@
 ## 当前作业
 
 - CPU preparation：`16165215.pbs101`，2026-09-08 提交。
-- 本任务已通过 app 设置为 GPT-5.6 Luna xhigh 接续监控。
-- 已建立每 10 分钟检查的 thread heartbeat：`gptq`；此前 subagent 已停止，避免重复提交。只在有意义的阶段变化、失败或完成时通知；完成后暂停。
-- 提交正式 GPU 作业前核对 smoke 结果。定时监控使用本地 Codex app；PBS 已提交作业自行运行。
+- 监控使用 GPT-5.6 Luna xhigh subagent；提交正式 GPU 作业前核对 smoke 结果。

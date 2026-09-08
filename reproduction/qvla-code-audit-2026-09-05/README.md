@@ -6,7 +6,7 @@
 
 ## 1. 版本、范围与证据等级
 
-- 论文：[arXiv:2602.03782v1](https://arxiv.org/html/2602.03782v1)，2026-02-03；核查时 arXiv 仅列 v1。已有 [本地 PDF](../vla-quantization-literature-review-alternative/papers/07-qvla/paper-arxiv-v1.pdf)，本次公式定位使用在线 HTML 的 section / equation，不以 PDF 页码作为依据。
+- 论文：[arXiv:2602.03782v1](https://arxiv.org/html/2602.03782v1)，2026-02-03；核查时 arXiv 仅列 v1。已有 [本地 PDF](../../literature review/vla-quantization-literature-review-alternative/papers/07-qvla/paper-arxiv-v1.pdf)，本次公式定位使用在线 HTML 的 section / equation，不以 PDF 页码作为依据。
 - 仓库：[AutoLab-SAI-SJTU/QVLA](https://github.com/AutoLab-SAI-SJTU/QVLA)，锁定 commit `26cc4821a3be4c003d09d3c7997b38db2a347982`；其 commit 日期为 2026-02-04。本次完整 clone 得到 main，无其他 remote branch 或 tag。
 - 代码：完整阅读 `openvla/qvla/` 四个 Python 文件，并确认 `openvla-oft/qvla/`、`UniVLA/qvla/` 四文件与之逐字节相同；检查调用链与全仓库相关实现线索。
 - 验证：[check_claims.py](check_claims.py) 直接调用未经修改的公开函数，PyTorch 2.10.0+cpu；输出见 [check-results.json](check-results.json)。没有运行 OpenVLA checkpoint、LIBERO rollout、RTX 4090 latency 或 VRAM benchmark，没有使用 NSCC GPU。

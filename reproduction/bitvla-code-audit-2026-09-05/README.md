@@ -9,7 +9,7 @@
 - 官方 GitHub：[ustcwhy/BitVLA](https://github.com/ustcwhy/BitVLA)，本次 shallow clone 的 HEAD：`8afac0260b3748b14657a69ec58e3d9f0d6da3a7`，commit 日期 2026-03-02。未审计完整 Git 历史。
 - 主核查论文：[arXiv 2506.07530v2](https://arxiv.org/html/2506.07530v2)，2026-03-01；核对了 [v1](https://arxiv.org/html/2506.07530v1) 的方法/摘要，以免混用版本。
 - v1 没有大规模 robotics pre-training；v2 增加这一阶段及新的 efficiency 结果。README 将旧版 94.8 和新版 96.0 的 LIBERO average 分开列示；两者不能当作同一 checkpoint。
-- 已有 [本地论文 PDF](../vla-quantization-literature-review-alternative/papers/03-bitvla/paper-arxiv-v2.pdf)。本次 section/equation 定位来自在线 HTML，不使用未经本轮 PDF 校验的页码。
+- 已有 [本地论文 PDF](../../literature review/vla-quantization-literature-review-alternative/papers/03-bitvla/paper-arxiv-v2.pdf)。本次 section/equation 定位来自在线 HTML，不使用未经本轮 PDF 校验的页码。
 - 检查了 BitNet/SigLIP quantizer、模型装配、BitVLA action wrapper、OFT fine-tuning loss/optimizer、evaluation loader 和 README；在相关模型及训练目录搜索 distillation，在全仓库搜索 BitBLAS / packing 调用。
 - [check_claims.py](check_claims.py) 使用 AST 抽取并执行原始 quantizer/class 定义，没有改写函数逻辑，也没有导入完整 Transformers fork。结果：[check-results.json](check-results.json)。这是 CPU synthetic check，不能代替整模型加载或 LIBERO evaluation。
 - 没有下载 6 GB checkpoint、安装训练环境、使用 NSCC GPU、运行训练/机器人或测量硬件 latency/VRAM。上游 checkout 未修改。

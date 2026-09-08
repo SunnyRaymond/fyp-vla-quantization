@@ -44,7 +44,7 @@
 
 ## 目录
 
-- Local: `D:\Downloads\Final Year Project\openvla-oft-vla-eval-libero`
+- Local: `D:\Downloads\Final Year Project\reproduction\openvla-oft-vla-eval-libero`
 - Remote: `/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero`
 - Remote job artifacts: `/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/artifacts/<PBS_JOB_ID>`
 - Local downloaded artifacts: `artifacts/<PBS_JOB_ID>`
