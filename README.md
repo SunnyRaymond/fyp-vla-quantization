@@ -4,6 +4,8 @@
 
 ## 内容入口
 
+- [WM / WAM 量化专题阅读库](literature%20review/wm-wam-quantization-reading-guide/README.md)：LeCun 相关 baseline、代表开源工作、量化 prior art 与 benchmark。
+
 - `reading-guide/`：主阅读路线。
 - `vla-quantization-literature-review-alternative/`：VLA quantization 文献整理。
 - `dan-alistarh-quantization-reading-guide/`：quantization 专题。

@@ -7,6 +7,10 @@
 
 ## 先从哪里开始
 
+### 2026-09-08：WM / WAM 量化专题
+
+[独立阅读库](../wm-wam-quantization-reading-guide/README.md)：24 份本地 PDF 与中文导读，覆盖 LeWorldModel / DINO-WM / V-JEPA、直接 quantization prior art、开源 WAM 和 benchmark 地图；不加入本主库 core count。
+
 如果下次组会就在一周内，先完成：
 
 ### 师兄 2026-09-05 report：新增 #23 / #24
