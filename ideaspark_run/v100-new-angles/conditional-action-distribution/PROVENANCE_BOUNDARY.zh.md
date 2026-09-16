@@ -1,0 +1,7 @@
+# 已有证据的补充说明
+
+独立RUNNER_AUDIT指出GPU runner没有自行重查extended identity的parent链。root用已有小型产物交叉核对：CPU64777 download.json.identity_sha256与GPU64778 summary.input_manifest.base_identity_sha256完全一致。CPU64777的下载脚本在扩展前显式核验原identity SHA `be4a49ebe588a49a29bd26ed98b8a01a648a247e66d45e12a935ac7d8d0c4e64`，该job已完成并保存脚本快照。因此parent继承链证据来自CPU准备加root产物绑定，不能称作GPU runner独立验证。
+
+GPU raw loader仅检查state为finite float32一维，未重复shape8断言。CPU准备脚本对state8有明确检查，完整sample hash在GPU及CPU重算中绑定。因此当前固定输入有state8证据，但runner对未来未知manifest仍有防护缺口。保留此限制，不重跑已完成实验。
+
+以上只是明确已有证据来自哪一阶段，不改变科学结果、阈值或sample数。

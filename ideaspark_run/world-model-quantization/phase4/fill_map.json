@@ -1,0 +1,117 @@
+{
+  "method_name": "RankCal (Counterfactual Influence Quantization)",
+  "abstract_draft": "Quantizing an action-conditioned latent world model is difficult because small numerical errors can change which imagined action sequence a planner ranks first, and those ranking changes compound through closed-loop replanning. The bottleneck is not captured by tensor reconstruction alone: An Empirical Study of World Model Quantization (arxiv:2602.02110v1) reports that post-training quantization effects vary by bit-width, granularity, module, and planning horizon, with planning-objective and task-success mismatch. RankCal proposes a site-only counterfactual influence profile: with the planner, candidate pool, rollout convention, and all other sites fixed in FP16, quantize one site at a time and measure its effect on candidate ordering over action-conditioned latent rollouts. It then assigns weight/activation bit pairs by minimizing this influence under a measured `PeakBytes` budget and fixed bit histogram. The falsification prediction is that, at matched memory and nominal bit-width, RankCal improves candidate-order agreement and closed-loop task success over uniform-bit and local-reconstruction allocation, especially at longer horizons; permuting the influence-to-site mapping should remove the benefit. A positive result would turn decision-level sensitivity into a deployable mixed-precision PTQ signal, while a null or permutation-insensitive result would reject the proposed mechanism. The proposal targets imagined action-sequence latent-dynamics planning and does not claim a method for joint video/action denoising in World Action Models.",
+  "motivation.problem_framing": "Phase 1 identifies a structural bottleneck: PTQ effects in world-model planning vary with bit-width, granularity, module, and horizon, so the planning objective can remain apparently healthy while task success falls. In this setting, the planner scores imagined action sequences through an action-conditioned latent dynamics model; a local perturbation matters because it can reorder candidates, alter the selected action, and change later latent states under receding-horizon closed-loop execution. A tensor-MSE heuristic measures the wrong object when the downstream decision is an ordering, not a reconstruction target.\n\n`arxiv:2602.02110v1` provides the closest empirical anchor with systematic weight-only and joint W/A sweeps, but the proposed branch asks for a site-level counterfactual estimand that holds planner inputs and all other sites fixed. `arxiv:2608.24855v1` changes the planning procedure through latent trajectory generation and rollout reranking, and `arxiv:2603.12231v3` changes latent geometry through temporal straightening; neither turns quantization sensitivity into an allocator for the frozen planner. `arxiv:2607.28405v1` is a related but separate WAM PTQ direction centered on iterative joint video/action denoising, not imagined action-sequence latent-dynamics planning.",
+  "motivation.why_now": "Recent work makes the gap operationally testable without changing the planner: the full-text-backed `arxiv:2608.24855v1` studies latent trajectory generation and rollout reranking, the connector-verified but abstract-only `arxiv:2607.28405v1` exposes deployment-mismatched WAM PTQ concerns, and the full-text-backed `arxiv:2602.02110v1` supplies the closest systematic world-model quantization sweep. Public visual continuous-control tooling and local inference make a site-only counterfactual probe practical, while explicit horizon-wise planning and backend-level byte accounting turn the question into a bounded decision-level audit; actual mixed W/A backend support and measured `PeakBytes` remain implementation conditions rather than assumptions.",
+  "motivation.why_prior_stopped[0].what_they_did": "`arxiv:2602.02110v1` systematically swept weight-only and joint W/A PTQ across methods, granularity, modules, and planning horizons, and reported mismatch between planning objectives and task success.",
+  "motivation.why_prior_stopped[0].what_they_did_not_do": "It did not define a frozen-model, site-only counterfactual candidate-order influence estimand and use that profile to solve a measured `PeakBytes`-constrained mixed W/A allocation.",
+  "motivation.why_prior_stopped[0].structural_reason_they_stopped": "Its measurement axes and aggregate outcomes did not include a one-site intervention that connects candidate-order discordance in imagined rollouts to the bit allocator.",
+  "motivation.why_prior_stopped[1].what_they_did": "`arxiv:2608.24855v1` replaced repeated CEM search with rectified-flow latent trajectory generation, inverse-dynamics decoding, and frozen-LeWM rollout reranking.",
+  "motivation.why_prior_stopped[1].what_they_did_not_do": "It did not alter PTQ calibration or bit allocation for a frozen latent planner using site-specific ranking influence from multi-step quantized rollouts.",
+  "motivation.why_prior_stopped[1].structural_reason_they_stopped": "Its contribution redesigns how plans are generated rather than measuring and allocating numerical precision according to decision-level sensitivity.",
+  "motivation.why_prior_stopped[2].what_they_did": "`arxiv:2603.12231v3` used a curvature regularizer to straighten local latent trajectories and improve the conditioning of latent distance and planning objectives.",
+  "motivation.why_prior_stopped[2].what_they_did_not_do": "It did not estimate site-only counterfactual ranking influence under quantized action-conditioned rollouts or use that estimate for mixed-precision PTQ.",
+  "motivation.why_prior_stopped[2].structural_reason_they_stopped": "It changes representation geometry during training, whereas RankCal needs a post-training intervention and allocation mechanism for a fixed planner and latent dynamics model.",
+  "motivation.why_prior_stopped[3].what_they_did": "The connector-verified but abstract-only `arxiv:2607.28405v1` proposed coordinate-compatible activation evidence, joint video-action saliency, and fixed-intervention auditing for World Action Model PTQ.",
+  "motivation.why_prior_stopped[3].what_they_did_not_do": "It did not target imagined action-sequence latent-dynamics planner rankings or derive weight/activation bits from a site-only rollout-ranking influence profile.",
+  "motivation.why_prior_stopped[3].structural_reason_they_stopped": "Its branch follows iterative joint video/action denoising and WAM coupling, so its intervention target is different from closed-loop consequences of imagined action-sequence planning.",
+  "motivation.what_changes_when_gap_closes": "Closing the gap would make mixed-precision PTQ a decision-preservation tool for imagined action-sequence planners, exposing when two allocations with similar nominal bit-width have different candidate-order and closed-loop consequences. It would give the broad sweep in `arxiv:2602.02110v1` a site-level diagnostic interpretation and a deployable allocator interface, while remaining orthogonal to the planner redesign in `arxiv:2608.24855v1` and separate from `arxiv:2607.28405v1`'s WAM joint video/action denoising branch.",
+  "core_claim": "At matched measured `PeakBytes` and nominal bit-width, allocating protection according to site-only rollout-ranking influence preserves candidate order and closed-loop task success in an action-conditioned latent world-model planner better than local reconstruction error, especially at longer horizons.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "At matched measured `PeakBytes` and nominal bit-width, the site-only rollout-ranking influence profile predicts which quantizable sites must be protected to preserve candidate order better than local tensor reconstruction error.",
+      "supports_which_aspect": "Closes the planning-objective/task-success mismatch caused by module- and horizon-dependent PTQ effects."
+    },
+    {
+      "id": "c2",
+      "statement": "An assignment optimized from that profile can preserve longer-horizon closed-loop action consequences even when its tensor-MSE allocation is worse.",
+      "supports_which_aspect": "Closes the gap between local reconstruction quality and downstream success after an altered action propagates through latent dynamics."
+    },
+    {
+      "id": "c3",
+      "statement": "If the influence-to-site mapping is permuted while the bit histogram, memory, planner schedule, and tie rules are fixed, the downstream advantage should disappear.",
+      "supports_which_aspect": "Distinguishes the proposed decision-level signal from generic benefits of mixed precision or simply assigning more bits."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "E1",
+      "linked_step_id": "S1",
+      "latex": "z_{t+1}=F_{\\theta}(z_t,a_t),\\quad \\tau(a_{0:H-1})=(z_0,a_0,z_1,\\ldots,a_{H-1},z_H)",
+      "description": "Roll out each candidate action sequence through the frozen action-conditioned latent dynamics.",
+      "description_zh": "在冻结的 action-conditioned latent dynamics 中，对每条候选 action sequence 进行 imagined rollout。"
+    },
+    {
+      "id": "E2",
+      "linked_step_id": "S2",
+      "latex": "A_g(b)=\\frac{1}{|\\mathcal{P}|}\\sum_{(i,j)\\in\\mathcal{P}}\\mathbf{1}\\left[\\operatorname{sgn}(s_i-s_j)=\\operatorname{sgn}(s_i^{(g,b)}-s_j^{(g,b)})\\right],\\quad I_g(b)=1-A_g(b)",
+      "description": "Measure pairwise candidate-order agreement after quantizing only site g with bit pair b, then convert disagreement into influence.",
+      "description_zh": "只量化 site g 为 bit pair b，比较候选 action sequence 的两两排序一致性，并把不一致度转成 influence。"
+    },
+    {
+      "id": "E3",
+      "linked_step_id": "S3",
+      "latex": "\\mathbf{b}^{\\star}=\\arg\\min_{\\mathbf{b}}\\sum_{g\\in\\mathcal{G}}I_g(b_g)\\quad\\text{s.t.}\\quad\\operatorname{PeakBytes}(\\mathbf{b})\\le B,\\;\\operatorname{Hist}(\\mathbf{b})=\\mathbf{h}",
+      "description": "Choose the mixed W/A assignment with the smallest aggregate ranking influence under a measured peak-memory budget and fixed bit histogram.",
+      "description_zh": "在 measured `PeakBytes` 预算和固定 bit histogram 约束下，选择 aggregate ranking influence 最小的 mixed W/A assignment。"
+    }
+  ],
+  "method_flow.high_level_pipeline": "RankCal takes a frozen FP16 action-conditioned latent world model, planner inputs, candidate action sequences, and quantization site/bit-pair options. It holds the planner and rollout convention fixed, quantizes one site at a time, and measures how each intervention changes the ordering of imagined action sequences over latent dynamics. The resulting site-by-bit influence profile is converted into a mixed W/A assignment by minimizing influence under measured `PeakBytes` and a fixed nominal bit histogram. The output is a quantized checkpoint for the unchanged receding-horizon planner, whose candidate ordering and closed-loop action consequences remain the objects of evaluation; joint video/action denoising in WAMs is outside this branch.",
+  "method_flow.steps": [
+    {
+      "step_id": "S1",
+      "title": "Freeze the imagined-rollout probe",
+      "what_changes": "Fix the FP16 planner inputs, candidate action-sequence pool, receding-horizon convention, tie rule, and latent rollout evaluator; expose one quantizable weight/activation site at a time while all other sites remain FP16.",
+      "why_this_step": "This isolates a site-level perturbation in the action-conditioned latent-dynamics branch and prevents planner redesign or WAM denoising changes from being mistaken for quantization effects.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "FP16 action-conditioned latent world model, planner inputs, candidate pool, and quantization site/bit-pair candidates.",
+      "output": "A reproducible frozen probe that returns FP16 and one-site-quantized rollout scores for the same candidate sequences."
+    },
+    {
+      "step_id": "S2",
+      "title": "Estimate rollout-ranking influence",
+      "what_changes": "For each site and bit pair, compare the FP16 and one-site-quantized candidate ordering over imagined latent rollouts, retaining horizon-specific influence values I_g(b).",
+      "why_this_step": "The ranking estimand closes the gap between tensor reconstruction error and the planner's decision-level sensitivity, including the downstream consequence of an altered selected action.",
+      "linked_component": "theory",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Frozen probe outputs from the frozen-probe step.",
+      "output": "A site-by-bit influence profile I_g(b) indexed by rollout horizon and quantizable site."
+    },
+    {
+      "step_id": "S3",
+      "title": "Allocate bits under measured memory",
+      "what_changes": "Choose each site's weight/activation bit pair by minimizing aggregate influence subject to measured `PeakBytes` and the fixed nominal bit histogram.",
+      "why_this_step": "This converts the diagnostic profile into a deployable mixed W/A PTQ assignment without changing the latent planner or replacing measured memory with a nominal byte assumption.",
+      "linked_component": "both",
+      "linked_falsification": "metric_specification",
+      "input": "Site-by-bit influence profile, candidate bit pairs, backend-specific byte accounting, target bit histogram, and memory budget B.",
+      "output": "A mixed W/A assignment `b*` and a quantized checkpoint candidate."
+    },
+    {
+      "step_id": "S4",
+      "title": "Preserve closed-loop action consequences",
+      "what_changes": "Apply the assignment to the frozen planner and run its normal imagined action-sequence and receding-horizon loop, recording candidate-order agreement, first-action agreement, and closed-loop task success under the prescribed horizon conditions. Within this existing all-sites evaluation, treat representative high/low-influence site pairs as a tactical interaction diagnostic: compare measured joint candidate-order discordance with the corresponding single-site values under the same candidate pool, bit histogram, measured `PeakBytes`, memory target, planner schedule, receding-horizon convention, and tie rule; if an exact feasible match cannot be constructed, record the diagnostic as unavailable, and use any discrepancy only to bound the site-wise allocation interpretation without defining a new estimand or claiming joint optimality.",
+      "why_this_step": "The object to preserve is the selected action and its later consequences, so the evaluation stays in latent-dynamics planning rather than switching to joint video/action denoising. The pair diagnostic tests the interaction boundary inside the same all-sites evaluation without changing the site-only estimand or falsification prediction.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Quantized checkpoint candidate and the unchanged planner and evaluation convention from the frozen-probe step.",
+      "output": "Closed-loop rollout outcomes and decision-level diagnostics for assessing whether RankCal's allocation signal is load-bearing."
+    }
+  ],
+  "method_flow.design_reasoning_echo": "RankCal chooses the decision-level object because the failure of interest is an ordering change that propagates through receding-horizon action selection, not an isolated tensor distortion. Holding the planner, candidate pool, rollout convention, tie rule, and all non-target sites in FP16 makes the one-site intervention interpretable; aggregating its ranking influence into a memory-constrained assignment connects a diagnostic to deployment. The design therefore keeps the backbone and planner fixed, tests the allocation signal against local-reconstruction allocation, and stays separate from LeFlow's planner redesign and QuantWAMs' joint video/action denoising.",
+  "feasibility_validation.data.verdict": "feasible",
+  "feasibility_validation.data.rationale": "The pilot can use a public FP16 DreamerV3- or TD-MPC2-style checkpoint with a DeepMind Control Suite visual task, so no private dataset is required and an unavailable DINO-WM artifact has a public substitute.",
+  "feasibility_validation.theoretical.verdict": "feasible",
+  "feasibility_validation.theoretical.rationale": "The influence estimand and constrained allocator require deterministic rank comparisons and byte accounting, not a new theorem or inaccessible theoretical prerequisite.",
+  "feasibility_validation.engineering.verdict": "tight",
+  "feasibility_validation.engineering.rationale": "The binding implementation cost is obtaining an actual backend that supports the selected mixed W/A site assignments and measuring end-to-end `PeakBytes` rather than inferring it from nominal bit-width.",
+  "feasibility_validation.falsification.verdict": "feasible",
+  "feasibility_validation.falsification.rationale": "The pre-specified closed-loop comparison and influence-to-site permutation can run with public visual-control tooling and local inference while preserving the candidate pool, memory accounting, and bit histogram.",
+  "feasibility_validation.overall": "unverified",
+  "reviewer_concerns_and_responses[0].response": "The Phase 3.2 verdict_rationale treats `arxiv:2602.02110v1` as the strongest but non-blocking threat: it requires explicit differentiation, not a claim of exact-mechanism novelty. That defense is anchored in `differentiation_from_lit`, `core_claim`, and `method_flow.steps`, which delimit RankCal to site-only candidate-order influence, measured `PeakBytes`-constrained mixed W/A assignment, and imagined action-sequence latent-dynamics planning, while keeping WAM joint video/action denoising separate.",
+  "reviewer_concerns_and_responses[1].response": "A scoop-check of the named value-aware and value-gradient-weighted model-learning family must establish whether any prior combines the same frozen-model, site-only counterfactual candidate-order estimand with a `PeakBytes`-constrained W/A allocator for imagined action-sequence latent dynamics; if it does, RankCal's claim must be narrowed to the remaining implementation or measurement delta.",
+  "reviewer_concerns_and_responses[2].response": "The candidate does not treat the influence profile as axiomatic ground-truth importance: `core_claim` is a conditional, measurable prediction, and `method_flow.steps` define the site-only intervention and constrained assignment that make it diagnostically testable. The existing all-sites evaluation now records a matched representative pair interaction diagnostic under the same candidate pool, histogram, measured `PeakBytes`, planner schedule, receding horizon, and tie rule; any discrepancy only bounds the site-wise allocation interpretation and does not define a new estimand or claim joint optimality. The existing `falsification_prediction` and mapping-permutation diagnostic remain unchanged.",
+  "domain_landscape.position_note": "The candidate uses `reframe_as_solvable_object` (7 of 57 papers, mid_frequency) in a landscape more concentrated on `architectural_operator_substitution` (20) and `heterogeneous_decomposition` (17), with `controlled_diagnostic_design` (13) as the nearest diagnostic context."
+}

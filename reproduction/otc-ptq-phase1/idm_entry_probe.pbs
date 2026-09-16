@@ -1,0 +1,70 @@
+#!/bin/bash
+#PBS -N otc_idm_probe
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+test -r "${PBS_NODEFILE:-/nonexistent}" || exit 64
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+# Only small scheduler queries precede the allocation guard.
+qstat -f "$PBS_JOBID" > /tmp/otc-allocation-"$PBS_JOBID".txt
+grep -Eq 'job_state = R' /tmp/otc-allocation-"$PBS_JOBID".txt || exit 64
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+ROOT=/scratch/users/ntu/yguo017/otc-ptq-phase1
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+cp /tmp/otc-allocation-"$PBS_JOBID".txt "$ARTIFACTS/allocation.txt"
+cp "$ROOT/idm_entry_probe.pbs" "$ROOT/manifest.json" "$ROOT/source_identity.json" "$ROOT/identity_gate.py" "$ARTIFACTS/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+date
+hostname
+run_python() {
+  apptainer exec --cleanenv --nv \
+    --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+    --env "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,OTC_ALLOCATION_HOST=$HOST" \
+    --env "PYTHONPATH=$BASE/libero-compat:$BASE/libero:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero" \
+    --env "LIBERO_CONFIG_PATH=$BASE/libero-config,ARTIFACTS=$ARTIFACTS" \
+    --env "DIFFSYNTH_MODEL_BASE_PATH=$BASE/model-cache" \
+    --env DIFFSYNTH_DOWNLOAD_SOURCE=huggingface,DIFFSYNTH_SKIP_DOWNLOAD=true,HF_HUB_OFFLINE=1 \
+    --env "HF_HOME=$BASE/cache/huggingface" \
+    --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+    --env OMP_NUM_THREADS=8,OPENBLAS_NUM_THREADS=8,LP_NUM_THREADS=8 \
+    --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1,TOKENIZERS_PARALLELISM=false \
+    "$SIF" "$BASE/venv/bin/python" "$@"
+}
+run_python "$ARTIFACTS/identity_gate.py"
+run_python - <<'PY'
+import os, torch
+mask = os.environ['CUDA_VISIBLE_DEVICES']
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count() == 1
+props = torch.cuda.get_device_properties(0)
+assert str(props.uuid).removeprefix('GPU-').lower() == mask.removeprefix('GPU-').lower()
+print('allocated GPU:', props.name, props.total_memory, str(props.uuid), flush=True)
+PY
+test -f "$BASE/checkpoints/libero_optional_idm_2cam224.clean.VERIFIED"
+cd "$BASE/FastWAM"
+run_python experiments/libero/eval_libero_single.py \
+  task=libero_optional_idm_2cam224_1e-4 \
+  ckpt="$BASE/checkpoints/libero_optional_idm_2cam224.clean.pt" \
+  EVALUATION.dataset_stats_path="$BASE/checkpoints/libero_optional_idm_2cam224_dataset_stats.json" \
+  EVALUATION.task_suite_name=libero_goal EVALUATION.task_id=0 EVALUATION.num_trials=1 \
+  EVALUATION.sigma_shift=1.0 +EVALUATION.action_infer_mode=idm \
+  EVALUATION.compile_action_infer=false EVALUATION.output_dir="$ARTIFACTS/evaluation" gpu_id=0
+touch "$ARTIFACTS/SUCCESS"
+date

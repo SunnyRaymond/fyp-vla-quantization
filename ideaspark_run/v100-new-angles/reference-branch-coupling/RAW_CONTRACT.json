@@ -1,0 +1,48 @@
+{
+  "schema": "reference-branch-coupling-raw-v1",
+  "file": "raw.npz",
+  "axes": {
+    "state": 6,
+    "arm": 5,
+    "noop": 2,
+    "patch": 196,
+    "visual": 384,
+    "concat": 404
+  },
+  "arm_order": ["FP32", "encoder_W4_RTN", "encoder_W4_SR0", "encoder_W4_SR1", "encoder_W4_SR2"],
+  "arrays": {
+    "pred_visual": {"dtype": "float32", "shape": [6, 5, 196, 384], "meaning": "one propagated current feature per arm"},
+    "goal_visual": {"dtype": "float32", "shape": [6, 5, 196, 384], "meaning": "encoded recorded-next/goal feature per arm"},
+    "current_visual": {"dtype": "float32", "shape": [6, 5, 196, 384], "meaning": "encoded current feature per arm"},
+    "fp_noop_pred": {"dtype": "float32", "shape": [6, 2, 196, 384], "noop_order": ["FP_copy", "after_restore"]},
+    "fp_noop_goal": {"dtype": "float32", "shape": [6, 2, 196, 384], "noop_order": ["FP_copy", "after_restore"]},
+    "fp_noop_current": {"dtype": "float32", "shape": [6, 2, 196, 384], "noop_order": ["FP_copy", "after_restore"]},
+    "predictor_input": {"dtype": "float32", "shape": [6, 5, 196, 404], "meaning": "actual model.encode output supplied to predictor"},
+    "valid_indices": {"dtype": "int64", "shape": [6], "values": [124, 125, 126, 127, 128, 129]},
+    "trajectory_ids": {"dtype": "int64", "shape": [6], "values": [1035, 1534, 1158, 203, 1837, 1095]},
+    "arm_names": {"dtype": "<U64", "shape": [5], "values": ["FP32", "encoder_W4_RTN", "encoder_W4_SR0", "encoder_W4_SR1", "encoder_W4_SR2"]},
+    "completed": {"dtype": "bool", "shape": [6, 5]},
+    "schema": {"dtype": "<U64", "shape": [], "value": "reference-branch-coupling-raw-v1"}
+  },
+  "quant_snapshot": {
+    "file": "quant_snapshot.pt",
+      "keying": "top-level modules dictionary keyed by complete encoder Linear module path, sorted lexicographically",
+    "per_module": {
+      "fp": "CPU float32 tensor with original weight shape",
+      "scale": "CPU float32 per-output-row vector [out_features]",
+      "codes": "CPU int8 tensor [4, *weight_shape], order RTN, SR0, SR1, SR2",
+      "readback_sha256": "four actual RTN/SR0/SR1/SR2 writeback hashes in the same order",
+      "restore_sha256": "actual restored FP32 weight hash, stored separately from readback_sha256"
+    }
+  },
+  "quantization": {
+    "target": "12 encoder blocks, exactly 48 Linear.weight tensors",
+    "bits": 4,
+    "qmin": -7,
+    "qmax": 7,
+    "scale": "CPU torch.float32 max_abs_per_output_row / float32(7), zero row scale 1",
+    "sr": "floor(v)+1[U < v-floor(v)], clipped to [-7,7], CPU torch.float32",
+    "seeds": [2701, 2702, 2703],
+    "traversal": "full module name lexicographic order; one torch.rand(weight.shape, float32) per module per draw"
+  }
+}

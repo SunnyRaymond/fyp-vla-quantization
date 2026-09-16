@@ -12,7 +12,7 @@ import paramiko
 
 
 ACCESS_DIR = Path(__file__).resolve().parent
-CREDENTIAL_PATH = ACCESS_DIR / "nscc-credentials.env"
+CREDENTIAL_PATH = Path(__file__).resolve().parents[1] / "credentials.env"
 ASPIRE2A_HOST = "aspire2antu.nscc.sg"
 JUMP_KNOWN_HOSTS = Path.home() / ".ssh" / "known_hosts_ntu_jump"
 NSCC_KNOWN_HOSTS = Path.home() / ".ssh" / "known_hosts_nscc_aspire2a"

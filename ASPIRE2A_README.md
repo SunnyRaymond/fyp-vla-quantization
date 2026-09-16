@@ -7,7 +7,7 @@ This folder contains a tested Windows launcher for connecting to **NSCC ASPIRE2A
 ## One-click connection
 
 1. Connect the computer to the **NTU network** (or an NTU remote-access service that can reach the Jump Host).
-2. Make sure [`nscc-access/nscc-credentials.env`](nscc-access/nscc-credentials.env) contains the current NTU and NSCC credentials.
+2. Make sure the root [`credentials.env`](credentials.env) contains the current NTU and NSCC credentials.
 3. Double-click [`Connect-ASPIRE2A.cmd`](Connect-ASPIRE2A.cmd).
 4. Wait for the ASPIRE2A prompt. Type `exit` when finished.
 
@@ -18,11 +18,11 @@ The launcher:
 - verifies the saved host keys for both machines; and
 - opens an interactive ASPIRE2A shell without displaying the passwords.
 
-The credential file is intentionally excluded by [`nscc-access/.gitignore`](nscc-access/.gitignore). It still contains plaintext secrets: do not commit, email, sync, or share it. If a password has appeared in chat or another exposed place, rotate it.
+The credential file is intentionally excluded by the root [`.gitignore`](.gitignore). It still contains plaintext secrets: do not commit, email, sync, or share it. If a password has appeared in chat or another exposed place, rotate it.
 
 ## Connect with VS Code Remote - SSH
 
-The Windows SSH config contains an `ASPIRE2A` host that routes through `NTU-JumpHost`. The one-click launcher reads both passwords automatically from `nscc-access/nscc-credentials.env`; they are not copied into the SSH config.
+The Windows SSH config contains an `ASPIRE2A` host that routes through `NTU-JumpHost`. The one-click launcher reads both passwords automatically from the root `credentials.env`; they are not copied into the SSH config.
 
 The easiest option is to double-click [`Open-ASPIRE2A-in-VSCode.cmd`](Open-ASPIRE2A-in-VSCode.cmd). It opens the remote home directory `/home/users/ntu/yguo017` in a new VS Code window.
 

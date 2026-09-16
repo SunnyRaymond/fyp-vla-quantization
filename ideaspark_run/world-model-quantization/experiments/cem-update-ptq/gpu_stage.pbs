@@ -1,0 +1,38 @@
+#!/bin/bash
+#PBS -N cem_update_stage
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+case "$(hostname -s)" in *login*) exit 91;; esac
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+BASE="$ROOT/cem_update_v1"
+CONTROL="$BASE/control"
+python3 "$CONTROL/allocation_guard.py"
+test -f "$BASE/runtime_ready.json"
+test -n "${STAGE:-}"
+case "$STAGE" in prepare_pools|benchmark|search) ;; *) exit 92;; esac
+OUT="$BASE/artifacts/$PBS_JOBID"
+mkdir "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+python3 "$CONTROL/allocation_guard.py" > "$OUT/allocation.json"
+cp "$CONTROL"/*.py "$OUT/"
+cp "$CONTROL/manifest.json" "$OUT/manifest.json"
+cp "$CONTROL/PROTOCOL.zh.md" "$OUT/PROTOCOL.zh.md"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+export TORCH_HOME="$BASE/runtime_bundle/runtime/torch" MPLBACKEND=Agg WANDB_MODE=disabled
+export PYTHONPATH="$ROOT/source"
+PY="$BASE/runtime_bundle/runtime/venv/bin/python"
+if [ "$STAGE" = prepare_pools ]; then
+  timeout --signal=TERM --kill-after=15s 12m "$PY" "$OUT/prepare_pools.py" --root "$ROOT" --base "$BASE" --output "$OUT"
+elif [ "$STAGE" = benchmark ]; then
+  timeout --signal=TERM --kill-after=15s 12m "$PY" "$OUT/joint_search.py" --root "$ROOT" --cal "$BASE/pools/newcal.pkl" --dev "$BASE/pools/newdev.pkl" --initial "$ROOT/rankcal_screen/artifacts/16176985.pbs101/probes/ScoreError.json" --output "$OUT" --benchmark-only --max-seconds 600
+else
+  test -n "${MAX_SECONDS:-}"
+  timeout --signal=TERM --kill-after=15s "${MAX_SECONDS}s" "$PY" "$OUT/joint_search.py" --root "$ROOT" --cal "$BASE/pools/newcal.pkl" --dev "$BASE/pools/newdev.pkl" --initial "$ROOT/rankcal_screen/artifacts/16176985.pbs101/probes/ScoreError.json" --output "$OUT" --rounds 2 --max-seconds "$((MAX_SECONDS - 30))"
+fi

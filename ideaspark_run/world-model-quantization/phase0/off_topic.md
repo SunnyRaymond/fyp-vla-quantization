@@ -1,0 +1,154 @@
+# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)
+
+These were retrieved by a connector but the host judged them outside the research direction (cross-domain "memory-augmented" false positives, surveys, unrelated fields). They are archived here for transparency but do NOT feed Phase 1 or the deep-read pool.
+
+- **Neuromotor adaptation trajectories in response to core stability training versus aerobic training fo** (`semanticscholar:ef92cfea6d29a2e819e22b682b4c1c502f679bbb`)
+  - clinical rehabilitation trajectories and treatment assignment are outside world-model control and quantization
+- **Motor Cortex Latent Dynamics Encode Spatial and Temporal Arm Movement Parameters Independently** (`semanticscholar:b2c070552715dea96ce1e162dc3d7c5097aa46ea`)
+  - neuroscience of motor-cortex population activity is not a machine-learning world model or quantization study
+- **Trajectories of adolescent media use and their psychosocial correlates: A latent class growth and au** (`semanticscholar:f36b22ef298534a2f0f923e1026242a373fd28c6`)
+  - adolescent media-use and psychosocial trajectories are unrelated to embodied world models
+- **Time-Dependent PDE-Constrained Optimization via Weak-Form Latent Dynamics** (`semanticscholar:742e9bc2bde07d678ff58e1ca039255c54f9a7af`)
+  - weak-form latent dynamics for PDE optimization concerns scientific-computing surrogates, not embodied control
+- **Latent Dynamics Graph Convolutional Networks for model order reduction of parameterized time-depende** (`semanticscholar:17b27209d3a43c7efb17ab9e0b05c14394dfd694`)
+  - graph neural model reduction for parameterized PDEs is an unrelated physical-simulation domain
+- **A Factorized Low-Rank RNN Framework for Uncovering Independent Neural Latent Dynamics and Connectivi** (`semanticscholar:bc119cb0f1b0d98f758450b6e3c9931bf348b935`)
+  - factorized neural population dynamics and connectivity are neuroscience applications unrelated to embodied world models
+- **Toward precision rehabilitation: a latent profile analysis of social support as a buffer against fat** (`semanticscholar:b009ad6c02aa736292286a30f1d6a9001cb67567`)
+  - breast-cancer rehabilitation analysis is unrelated to machine-learning control
+- **A Dynamics-Informed Non-Causal Deep Learning Framework for High-Precision SOP Positioning Using Low-** (`semanticscholar:e5b49636b8e456106263d119d583f7c66681f81b`)
+  - satellite-orbit positioning from low-quality signals is outside embodied world-model planning
+- **Reasoning as Energy Minimization over Structured Latent Trajectories** (`semanticscholar:78728ad124d81eb0863eb266940ed7dc6980f6d1`)
+  - structured latent reasoning for language models is not world-model control or numerical quantization in the target setting
+- **Latent neural population dynamics underlying breathing, opioid-induced respiratory depression and ga** (`semanticscholar:28b368f9575259e750489f10ae8d6be18add41a5`)
+  - neural dynamics of breathing and opioid response are biological measurements, not embodied AI world models
+- **Speeding Up MACE: Low-Precision Tricks for Equivarient Force Fields** (`semanticscholar:e86c793057b51e3c25e79b8693aaa991318e712a`)
+  - low-precision molecular force fields target molecular dynamics rather than action-conditioned control world models
+- **Decoding Risky Decision-Making from Nonlinear Neural Latent Dynamics** (`semanticscholar:20741ba4a9a95564325c3ddef346c5d5aa4a388e`)
+  - neuroeconomic decision decoding from intracranial recordings is outside the target research direction
+- **Analyzing Molecular Dynamics Trajectories Thermodynamically through Artificial Intelligence.** (`semanticscholar:d00252df8465a93ba68dda823d8adb8e36418560`)
+  - molecular-dynamics trajectory analysis is a different scientific domain from embodied control
+- **Trajectory Forecasting through Low-Rank Adaptation of Discrete Latent Codes** (`semanticscholar:dc879de77a1ab06e5aa99d03370bc6106a36356b`)
+  - discrete latent trajectory forecasting for surveillance video is not embodied world-model control
+- **Low-Harmonic Feedrate Planning Algorithm Using Trajectory Pattern Method for High-Speed and High-Pre** (`semanticscholar:a23b9df5113cb374e0ae5496ff4a5caee8b8a313`)
+  - feedrate and vibration planning for industrial machinery is unrelated to learned world models
+- **Single-Pixel Imaging of Spatio-Temporal Flows Using Differentiable Latent Dynamics** (`semanticscholar:2ecdc10d7ab9991de4baa5bb1d0c98d005ee08a8`)
+  - single-pixel imaging and fluid-flow reconstruction are outside embodied world-model planning
+- **Sparse Canonical Correlation Analysis for Multiple Measurements With Latent Trajectories** (`semanticscholar:87e42a1fcc564a8e0f7bf7a4d1469756413c3208`)
+  - sparse canonical-correlation analysis of microbiome measurements is unrelated to the target domain
+- **L-SPINE: A Low-Precision SIMD Spiking Neural Compute Engine for Resource-efficient Edge Inference** (`semanticscholar:d7d2579f6804245f35300bbd960884b5654fa55a`)
+  - low-precision spiking-neural hardware targets edge SNN inference, not latent world models
+- **Accelerating computational fluid dynamics simulation of post-combustion carbon capture modeling with** (`openalex:W4406130628`)
+  - MeshGraphNets for carbon-capture CFD are an unrelated fluid-simulation application
+- **Reimagining Model Efficiency in Generative AI Through Unified and Differentiable Quantization Approa** (`openalex:W4413364992`)
+  - pure survey of generative-model quantization without a world-model control focus
+- **AI-driven multi-omics integration in precision oncology: bridging the data deluge to clinical decisi** (`openalex:W4416442660`)
+  - multi-omics precision oncology is unrelated to embodied control
+- **Tiny Language Models for Automation and Control: Overview, Potential Applications, and Future Resear** (`openalex:W4407809258`)
+  - pure survey of tiny language models and compression, not action-conditioned world models
+- **Fusion of Vision Transformer and Convolutional Neural Network for Explainable and Efficient Histopat** (`openalex:W4414846720`)
+  - histopathology image classification for healthcare is unrelated to the target direction
+- **DeiTFake: Deepfake detection model using DeiT multi-stage training** (`openalex:W4416454630`)
+  - deepfake detection is an unrelated vision-classification application
+- **Current Bioinformatics Tools in Precision Oncology** (`openalex:W4412121370`)
+  - bioinformatics tools for precision oncology are unrelated to embodied world models
+- **Joint Task Offloading, DNN Pruning, and Computing Resource Allocation for Fault Detection With Dynam** (`openalex:W4406354533`)
+  - industrial-IoT task offloading, pruning, and network allocation are outside the target domain
+- **A tiny inertial transformer for human activity recognition via multimodal knowledge distillation and** (`openalex:W4416740529`)
+  - tiny transformer human-activity recognition is not a world-model control problem
+- **Dynamics-preserving compression for modal flow analysis** (`openalex:W4406081607`)
+  - dynamics-preserving compression of turbomachinery-flow data is an unrelated fluid domain
+- **Quantization as a Foundation for Deployable High Performance Diffusion Models within the Landscape o** (`openalex:W4413638508`)
+  - pure survey of diffusion-model quantization rather than action-conditioned world-model quantization
+- **NeuralDEM for real time simulations of industrial particular flows** (`openalex:W4416334100`)
+  - NeuralDEM is a particulate-flow surrogate for industrial simulation, not embodied control
+- **Integrating spoken instructions into flight trajectory prediction to optimize automation in air traf** (`openalex:W4404130238`)
+  - spoken-instruction flight-trajectory prediction is outside the target world-model setting
+- **Unsupervised Learning in Precision Medicine: Unlocking Personalized Healthcare through AI** (`openalex:W4403492837`)
+  - precision-medicine unsupervised learning is unrelated to embodied world models
+- **Artificial intelligence in geoenergy: bridging petroleum engineering and future-oriented application** (`openalex:W4407307124`)
+  - geoenergy AI review concerns petroleum engineering rather than learned control
+- **The future of transcranial ultrasound as a precision brain interface** (`openalex:W4403863354`)
+  - transcranial ultrasound brain interfaces are unrelated to machine-learning control
+- **KurTail : Kurtosis-based LLM Quantization** (`openalex:W4416034250`)
+  - LLM weight, activation, and KV-cache quantization is a different model family and deployment objective
+- **Qronos: Correcting the Past by Shaping the Future... in Post-Training Quantization** (`openalex:W4417299867`)
+  - Qronos is evaluated on autoregressive LLMs and targets language-model PTQ rather than control world models
+- **Latent-Y: A Lab-Validated Autonomous Agent for De Novo Drug Design** (`arxiv:2603.29727v2`)
+  - autonomous antibody design and drug discovery are unrelated to embodied world models
+- **HAMP-LIC: Hessian-Aware Mixed-Precision Post-Training Quantization for Learned Image Compression** (`arxiv:2608.12239v1`)
+  - mixed-precision PTQ for learned image compression is a cross-domain quantization match, not control
+- **Spend Your Rollouts Where It Counts: Rollout Allocation for Group-Based RL Post-Training** (`arxiv:2605.26606v1`)
+  - adaptive rollout allocation for LLM post-training is unrelated to control-world-model rollouts
+- **Simultaneous Latent Budget Trees for Stratified Classification** (`arxiv:2606.13295v2`)
+  - latent-budget classification trees for biomedical analysis are unrelated to embodied modeling
+- **FlashAR: Efficient Post-Training Acceleration for Autoregressive Image Generation** (`arxiv:2605.09430v2`)
+  - autoregressive image-generation acceleration is outside action-conditioned control world models
+- **QaRL: Rollout-Aligned Quantization-Aware RL for Fast and Stable Training under Training--Inference M** (`arxiv:2604.07853v1`)
+  - quantized rollouts for LLM reinforcement-learning training are a different model family and objective
+- **Tyler: Typed Latent Reasoning for Language Models -- When to Think, What to Compute, and How Much to** (`arxiv:2606.16360v1`)
+  - typed latent reasoning allocates computation in language models, not control world models
+- **From Rollouts to Recipes: Self-Contained Post-Training for LLMs** (`arxiv:2609.01422v1`)
+  - self-routed post-training for LLM reasoning is unrelated to embodied world models
+- **Sum-of-Squares Stability Verification on Manifolds with Applications in Spacecraft Attitude Control** (`arxiv:2604.13727v1`)
+  - spacecraft-manifold stability verification is a different control domain without learned world-model quantization
+- **SCULPT: Training Edge Vision Models for Post-Training Quantization Readiness** (`arxiv:2609.01743v1`)
+  - PTQ readiness for edge vision models is a cross-domain quantization match without world-model control
+- **Dynamic Controlled Variables Based Dynamic Self-Optimizing Control** (`arxiv:2605.06469v1`)
+  - dynamic process self-optimizing control is not a learned embodied world-model study
+- **Accelerating RL Post-Training Rollouts via System-Integrated Speculative Decoding** (`arxiv:2604.26779v1`)
+  - speculative decoding for LLM post-training rollouts is unrelated to control-world-model inference
+- **Cross-Epoch Adaptive Rollout Optimization for RL Post-Training** (`arxiv:2606.05606v1`)
+  - adaptive rollout allocation for LLM post-training is outside embodied world-model control
+- **FP4 Explore, BF16 Train: Diffusion Reinforcement Learning via Efficient Rollout Scaling** (`arxiv:2604.06916v1`)
+  - FP4 rollout scaling for text-to-image diffusion reinforcement learning is not a control world model
+- **Simulating frequency splittings and loss in Fabry-Pérot cavities** (`arxiv:2604.13649v2`)
+  - optical-cavity simulation is unrelated to learned control world models
+- **Quo Vadis, World Modeling?** (`arxiv:2608.02713v1`)
+  - conceptual survey and taxonomy of broad world proxies is not a specific target mechanism study
+- **Post-Training Ternarization of Qwen3-4B Capability, Effective Bit Budget, Storage Compression, and D** (`arxiv:2609.01962v1`)
+  - post-training ternarization of Qwen3 is LLM quantization rather than world-model control
+- **What We Talk About When We Talk About LLM Planning: Evidence for Two Distinct Planning Abilities** (`arxiv:2607.11197v1`)
+  - latent planning competencies in language models are outside embodied world-model control
+- **EchoRL: Reinforcement Learning via Rollout Echoing** (`arxiv:2605.31228v1`)
+  - rollout echoing for LLM reinforcement learning is unrelated to imagined physical dynamics
+- **Optimizing What Policies Learn From: Recoverability-aware Rollout Intervention Learning** (`arxiv:2608.05080v1`)
+  - recoverability-aware rollout intervention is an LLM post-training method, not physical world-model control
+- **SafeRun: Enabling Determinism in LLM Planning for Running** (`arxiv:2606.09027v1`)
+  - deterministic LLM planning for running is unrelated to learned physical world models
+- **RolloutPipe: Overlapping Pipelined Rollout and Training in Disaggregated On-Policy LLM Reinforcement** (`arxiv:2606.26997v2`)
+  - pipelined rollouts for on-policy LLM reinforcement learning are a different application
+- **Stochastic Differential Dynamic Programming for Trajectory Optimization under Partial Observability** (`arxiv:2605.07529v2`)
+  - stochastic trajectory optimization for spacecraft is outside the target learned world-model setting
+- **DAQ: Delta-Aware Quantization for Post-Training LLM Weight Compression** (`arxiv:2603.22324v1`)
+  - delta-aware PTQ is evaluated on LLM post-training weights, not physical world models
+- **SEPTQ: A Simple and Effective Post-Training Quantization Paradigm for Large Language Models** (`arxiv:2604.10091v1`)
+  - SEPTQ is an LLM PTQ method and does not study embodied world-model computations
+- **Invariant Reasoning Directions in Latent Trajectories of Language Models** (`arxiv:2606.29164v1`)
+  - latent trajectory interventions in language models are unrelated to physical dynamics
+- **Dynamic Rollout Editing for Reducing Overthinking in RL-Trained Reasoning Models** (`arxiv:2606.17890v1`)
+  - rollout editing for LLM reasoning is unrelated to physical world-model rollouts
+- **REAL-Q: E2E LLM Quantization via Dynamic Gradient Descent** (`arxiv:2609.00049v1`)
+  - REAL-Q targets end-to-end LLM PTQ and has no embodied world-model component
+- **Latent Planning Emerges with Scale** (`arxiv:2604.12493v1`)
+  - latent planning in Qwen language models is outside physical control
+- **Risk-Sensitive Learning in Population Games under Extreme Events: Bifurcations and Chaotic Dynamics** (`arxiv:2606.29967v1`)
+  - population-game bifurcation dynamics are not learned embodied world models
+- **Edge-Cloud Collaborative Computing on Distributed Intelligence and Model Optimization: A Survey** (`openalex:W4415028496`)
+  - pure survey of edge-cloud optimization is a cross-domain deployment match
+- **Survey and perspective on verification, validation, and uncertainty quantification of digital twins ** (`openalex:W4406501618`)
+  - digital-twin validation for precision medicine is an unrelated healthcare domain and a survey
+- **A Review of Large Language Models: Fundamental Architectures, Key Technological Evolutions, Interdis** (`openalex:W4405706082`)
+  - pure survey of LLM architectures and compression is outside physical world-model control
+- **A review of embodied intelligence systems: a three-layer framework integrating multimodal perception** (`openalex:W4415947022`)
+  - pure survey of embodied intelligence systems is not a specific world-model quantization study
+- **A Review of Large Language Models for Energy Systems: Applications, Challenges, and Future Prospects** (`openalex:W4414270483`)
+  - pure survey of LLMs for energy systems is unrelated to embodied world models
+- **Adaptation of Agentic AI: A Survey of Post-Training, Memory, and Skills** (`openalex:W4417529989`)
+  - survey of LLM agent adaptation, memory, and skills is outside the target control setting
+- **Advances in UAV Path Planning: A Comprehensive Review of Methods, Challenges, and Future Directions** (`openalex:W4410438635`)
+  - pure survey of UAV path planning is not learned latent-world-model quantization
+- **Towards Generalist Robot Learning from Internet Video: A Survey** (`openalex:W4396600885`)
+  - pure survey of robot learning from internet video is outside the specific mechanism and lacks quantization focus
+- **Traffic Signal Control via Reinforcement Learning: A Review on Applications and Innovations** (`openalex:W4410121475`)
+  - pure survey of traffic-signal reinforcement learning is an unrelated control application

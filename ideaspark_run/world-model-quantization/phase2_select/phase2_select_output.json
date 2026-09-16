@@ -1,0 +1,43 @@
+{
+  "selected_gaps": [
+    {
+      "gap": "For the setting studied by arxiv:2602.02110v1, and more generally for action-conditioned latent world models, no retrieved leaf establishes whether a low-bit perturbation preserves the ranking of candidate action sequences as the imagined-rollout horizon and visited latent states change — stakes: practitioners can deploy a model that looks acceptable on local or short-horizon metrics but selects systematically worse actions, wasting the single-GPU pilot and blocking reliable closed-loop control; intellectually, PTQ conclusions do not transfer from visual-goal planning to model-based control.",
+      "chosen_pattern_id": "architectural_operator_substitution",
+      "anchor_alternates": [
+        "reframe_as_solvable_object",
+        "assumption_audit_and_pivot"
+      ],
+      "companion_pattern": "heterogeneous_decomposition",
+      "companion_rationale": "The operator substitution yields an action-conditioned rollout-ranking influence profile as the intermediate object O; heterogeneous_decomposition then partitions O by visited-state, horizon, and candidate-margin regimes and applies tailored weight/activation bit treatments to produce the runnable low-bit method.",
+      "selection_rationale": "This is the most load-bearing method gap because the full-text-backed arxiv:2602.02110v1 shows module- and horizon-dependent PTQ effects without establishing candidate-order preservation; DreamerV3/TD-MPC2 remain inferred pilot anchors only, not a new backbone. The chosen operator substitution replaces the local PTQ fidelity proxy with a decision-relevant rollout surrogate, while the companion partitions its influence profile rather than re-proposing layer-local reconstruction, generic activation sensitivity, or a module-only bit sweep."
+    }
+  ],
+  "coherence_thread_type": "n_a",
+  "deliverable_coverage": "method — anchor gap → architectural_operator_substitution replaces the local PTQ proxy with a runnable rollout-conditioned quantization rule, and heterogeneous_decomposition tailors its weight/activation precision.",
+  "user_direction_disposition": {
+    "verdict": "n_a"
+  },
+  "composition_note": "",
+  "pattern_saturation": {
+    "architectural_operator_substitution": {
+      "share": 0.35,
+      "saturation_band": "mid_frequency",
+      "selection_note": ""
+    },
+    "heterogeneous_decomposition": {
+      "share": 0.3,
+      "saturation_band": "mid_frequency",
+      "selection_note": ""
+    }
+  },
+  "deferred_gaps": [
+    {
+      "gap": "No retrieved leaf establishes whether a precision choice that works in DINO-WM's visual-goal setup remains valid when the same finite-precision perturbation is propagated through action-conditioned DreamerV3/TD-MPC2-style latent dynamics and receding-horizon control — stakes: practitioners cannot choose a precision budget without retuning every backbone/task, while intellectually a reported bit-width recommendation has no cross-system validity and blocks principled deployment guidance.",
+      "reason": "fails removal test — anchor stands without it; cross-backbone validity is a transfer-evaluation question, not a second mechanism leg"
+    },
+    {
+      "gap": "At the anchor frontier, no retrieved paper tests whether layer-local reconstruction error and calibration-distribution fidelity are sufficient proxies for multi-step planner fidelity, rather than inherited assumptions of the PTQ lineage — stakes: practitioners may optimize a cheap proxy that preserves tensors while changing actions and spend deployment/debugging compute, while intellectually an unexamined proxy assumption can invalidate comparisons and prevent a principled account of low-bit rollout reliability.",
+      "reason": "fails removal test — anchor stands without it; proxy sufficiency is a confound check inside the anchor's falsification, not a separate machinery leg"
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $accessDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$credentialPath = Join-Path $accessDirectory 'nscc-credentials.env'
+$projectRoot = Split-Path -Parent $accessDirectory
+$credentialPath = Join-Path $projectRoot 'credentials.env'
 $transcriptPath = Join-Path $accessDirectory 'nscc-login-transcript.txt'
 
 $fields = @{}
@@ -64,4 +65,3 @@ finally {
     Write-Host "Session ended. Transcript: $transcriptPath"
     Read-Host 'Press Enter to close'
 }
-

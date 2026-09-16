@@ -1,0 +1,55 @@
+{
+  "experiment": "OTC-PTQ phase1 feasibility and consequence diagnostic",
+  "version": 1,
+  "source_revision": "7faa71108368fbb3b6885649f112af607427a2d4",
+  "checkpoint": "/scratch/users/ntu/yguo017/fastwam-smoke/checkpoints/libero_optional_idm_2cam224.clean.pt",
+  "checkpoint_hf_lfs_oid": "26b4efffded221b9a303ca8f2cddb9999c8b7524e2751c855c74a986242ce8b4",
+  "checkpoint_integrity": "reuse prior compute-node verification; check identity metadata before loading",
+  "mode": "idm",
+  "sigma_shift": 1.0,
+  "compile_action_infer": false,
+  "suite": "libero_goal",
+  "tasks": [
+    0,
+    1
+  ],
+  "task_selection": "first two suite tasks selected before OTC outcomes; fixed, no result-based selection",
+  "calibration_episodes": [
+    0,
+    1
+  ],
+  "independent_check_episodes": [
+    2,
+    3
+  ],
+  "states_per_episode_target": 4,
+  "sites": "8 deterministic Linears, 4 video and 4 action across depth, exact registry recorded before scoring",
+  "reference_dtype": "match pinned official smoke config; record actual runtime dtype, do not mislabel BF16 as FP16",
+  "quantizer": {
+    "mode": "fake_quant",
+    "axis": "weight_only",
+    "bits": 4,
+    "signed_range": [
+      -7,
+      7
+    ],
+    "scale": "maxabs per output channel / 7",
+    "rounding": "torch round ties to even",
+    "zero_point": 0,
+    "scope": "one site across all denoising calls; all others reference precision"
+  },
+  "budget_top_sites": 2,
+  "normalization": "CAL-only pooled scalar executed-action population variance; mean per-pixel next-observation population std; epsilon_a=epsilon_o=0.001; lambda_a=lambda_o=1",
+  "renderer": "OSMesa CPU",
+  "success_scope": "go/no-go for later joint-quantized closed-loop tests; no task-success gain, real-kernel speed or memory claim",
+  "initial_gpu_allocation_cap_hours": 2,
+  "parallel_policy": "probe first; disjoint task/episode outputs only after replay verification, measured budget",
+  "checkpoint_stat": {
+    "size": 12041735545,
+    "mtime": 1788940227
+  },
+  "stats_stat": {
+    "size": 40939,
+    "mtime": 1788936653
+  }
+}

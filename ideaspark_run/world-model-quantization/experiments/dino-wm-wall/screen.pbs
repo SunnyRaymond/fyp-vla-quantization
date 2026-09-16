@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N rankcal_screen
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:45:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+CONTROL="$ROOT/rankcal_screen/control"
+OUT="$ROOT/rankcal_screen/artifacts/$PBS_JOBID"
+WORK=${TMPDIR:-/tmp}/rankcal-screen-$PBS_JOBID
+test -n "${STAGE_SPEC:-}"
+test -f "$CONTROL/$STAGE_SPEC"
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+date -Is
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg WANDB_MODE=disabled
+export PYTHONPATH="$ROOT/source"
+cp "$CONTROL"/*.py "$OUT/"
+cp "$CONTROL/$STAGE_SPEC" "$OUT/stage_spec.json"
+nvidia-smi > "$OUT/nvidia-smi-start.txt"
+timeout --signal=TERM --kill-after=15s "${STAGE_TIMEOUT:-42m}" "$WORK/runtime/venv/bin/python" "$CONTROL/run_stage.py" --root "$ROOT" --output "$OUT" --spec "$OUT/stage_spec.json"
+date -Is

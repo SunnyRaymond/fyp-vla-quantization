@@ -1,0 +1,614 @@
+{
+  "trace_report": {
+    "input_provenance": {
+      "candidate": "D:\\Downloads\\Final Year Project\\ideaspark_run\\world-model-quantization\\phase2_generate\\phase2_generate_output.json",
+      "selection": "D:\\Downloads\\Final Year Project\\ideaspark_run\\world-model-quantization\\phase2_select\\phase2_select_output.json",
+      "supplemental_reviews_loaded": [
+        "D:\\Downloads\\Final Year Project\\ideaspark_run\\INITIAL_CANDIDATE_REVIEW.md",
+        "D:\\Downloads\\Final Year Project\\ideaspark_run\\DIRECT_PRIOR_REVIEW.md"
+      ],
+      "path_note": "The user-listed child paths for the two supplemental reviews were absent; the existing files at the ideaspark_run root were read as the intended host reviews. No input was modified."
+    },
+    "likely_fatal_step": {
+      "step": "S6",
+      "claim": "The memory-constrained assignment can use sum_g m_g(b_g) as the peak-byte constraint while joint quantization changes shared activation/workspace lifetimes.",
+      "why_selected_first": "It is the load-bearing bridge from site-only influence to a deployable mixed W/A map. If the cost constraint is not the actual deployment peak, both allocation feasibility and the matched control can be invalid even if I_g is computed correctly.",
+      "first_attack": "The executed T2 instance uses four unequal site sizes and one shared 4-byte workspace: separately measured per-site charges sum to 36 bytes, while the jointly materialized graph peaks at 24 bytes. A same-histogram permutation also changes actual peak to 21 bytes."
+    },
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "verbatim_quote": "1. Select one publicly available DreamerV3- or TD-MPC2-style action-conditioned latent world-model checkpoint as the inferred pilot anchor and one named DeepMind Control Suite task family; freeze its FP16 weights, reproduce the native planner path, and write a reference configuration containing H_native, N_native, s_native, e_native, and the native tie rule. Inputs: public checkpoint and DMC environment. Outputs: reproducible FP16 model, planner, and configuration; no DINO-WM or LeWM backbone is introduced.",
+        "consumes": [
+          "public FP16 DreamerV3/TD-MPC2-style checkpoint",
+          "named DMC task family/environment"
+        ],
+        "produces": [
+          "frozen FP16 model weights",
+          "native planner path",
+          "reference configuration theta={H_native,N_native,s_native,e_native,native tie rule}"
+        ],
+        "note": "The native configuration is a producer for later grid/planner settings. In the original text tau is only named indirectly through the tie rule, with no numeric default or selection rule; the repaired procedure binds tau. H_native, N_native, H_episode, and M0 are method quantities, while the one-checkpoint/one-family choice is campaign scale."
+      },
+      {
+        "step": "S2",
+        "verbatim_quote": "2. Trace the PyTorch scoring forward graph and enumerate G as the eligible Linear/Conv weight tensors plus their activation outputs; attach the existing uniform-affine observers without changing the FP16 path. Inputs: frozen model and planner code. Outputs: site manifest, per-site weight/activation access, and the FP16 peak-memory map; FP16 planner scores remain unchanged.",
+        "consumes": [
+          "frozen model and planner code",
+          "scoring-forward execution paths"
+        ],
+        "produces": [
+          "site manifest G of (W_g,A_g,shape/dtype)",
+          "observer/calibration access",
+          "FP16 memory accounting record"
+        ],
+        "note": "The original step does not say whether G is the native-path set or the union over all C cells, and FP16 no-op preservation is asserted rather than checked. A per-cell union plus a no-op score/order check is a wording repair."
+      },
+      {
+        "step": "S3",
+        "verbatim_quote": "3. Build disjoint D_cal and D_eval streams from the named DMC tasks using the grid C over M, N, S, H, E, and T; for each calibration record save z_t, the FP16-generated U_t, and the cell metadata, while D_eval contains fresh environment episodes. Inputs: DMC, FP16 planner, M0 selection rule, and fixed seed manifest. Outputs: stratified calibration records and held-out episodes with no shared episode identifiers.",
+        "consumes": [
+          "DMC task/environment",
+          "FP16 planner",
+          "grid C",
+          "M0 selection rule",
+          "fixed seed manifest"
+        ],
+        "produces": [
+          "D_cal records r=(z_t,U_t,c,metadata)",
+          "D_eval held-out episodes",
+          "disjoint episode identifiers"
+        ],
+        "note": "D_c is implicit and must be defined as the cell slice of D_cal. The original z_t artifact may be insufficient for a recurrent/history/cache-based scoring path, so the repaired record uses a complete replay state q_t. Empty D_c is another undefined average edge."
+      },
+      {
+        "step": "S4",
+        "verbatim_quote": "4. For every g, b, and c, run site-only PTQ using the same observer data, replace only g in the FP16 checkpoint, score the identical U_t, and calculate d_g,c; the intervention propagates through every later latent transition and planner score, so its output is a changed candidate ranking and possibly a changed first action, not just a changed tensor statistic. Inputs: site manifest and D_cal. Outputs: cell-level rank-disagreement tables.",
+        "consumes": [
+          "G/site manifest",
+          "D_cal",
+          "observer data",
+          "FP16 reference scores",
+          "candidate set U_t"
+        ],
+        "produces": [
+          "d_g,c(r;b) rank-disagreement values",
+          "cell-level rank-disagreement tables"
+        ],
+        "note": "The original phrase normalized pairwise candidate-order disagreement has no executable pair formula, score comparator, normalization denominator, tau semantics, or K<2 behavior. Dual reading was run: R1 numeric tolerance pair signs and R2 stable total-order tie breaking give identical strict T2 values; the tie edge is reading-dependent. The mechanism remains imagined action-sequence scoring through latent transitions."
+      },
+      {
+        "step": "S5",
+        "verbatim_quote": "5. Aggregate the tables into I_g,c(b) and I_g(b), retain the full profile vector across C, and compute local layer-output error and calibration-distribution fidelity only as named comparison signals. Inputs: rank-disagreement tables and omega_c. Outputs: the counterfactual influence profile and comparator table used by the allocator.",
+        "consumes": [
+          "rank-disagreement tables",
+          "cell weights omega_c"
+        ],
+        "produces": [
+          "I_g,c(b)",
+          "I_g(b)",
+          "full profile vector P_g",
+          "local-error/fidelity comparator table"
+        ],
+        "note": "With D_c defined and nonempty, this is a finite-sample site-only estimator over the declared DMC/planner process. It does not estimate joint-quantization influence or a Shapley/global optimum; the candidate explicitly leaves those as empirical questions."
+      },
+      {
+        "step": "S6",
+        "verbatim_quote": "6. For each M_mem in the pre-registered Pareto memory sweep, partition sites by their profile vectors and solve the stated memory-constrained assignment over B with the measured m_g and default omega_g. Inputs: I_g,c(b), m_g(b), B, omega_g, and M_mem. Outputs: a per-site weight/activation bit map; materializing that map changes which numerical operators feed future latent rollouts and therefore which action sequence the planner selects.",
+        "consumes": [
+          "I_g,c(b)",
+          "I_g(b)",
+          "system-level PeakBytes function",
+          "B_deploy",
+          "omega_g",
+          "M_mem"
+        ],
+        "produces": [
+          "per-site W/A bit map b=(b_g)_g"
+        ],
+        "note": "This is the likely-fatal step attacked first. The original uses sum_g m_g(b_g) while calling m_g peak-byte cost, but does not define shared-buffer/lifetime aggregation; it also says partition without a partition rule. The repaired text retains P_g as the representation and uses measured system-level PeakBytes."
+      },
+      {
+        "step": "S7",
+        "verbatim_quote": "7. Materialize the all-sites mixed-precision checkpoint and run the full planner end-to-end for every c and M_mem on D_eval, allowing the selected candidate set and receding-horizon execution to follow each cell's declared convention. Inputs: FP16 checkpoint, bit map, and fresh episodes. Outputs: candidate-order agreement, first-action agreement, closed-loop return or success, peak memory, and control-frequency measurements.",
+        "consumes": [
+          "FP16 checkpoint",
+          "mixed-precision bit map",
+          "fresh D_eval episodes",
+          "grid cells and targets"
+        ],
+        "produces": [
+          "rank agreement",
+          "first-action agreement",
+          "closed-loop return/success",
+          "peak memory",
+          "control frequency"
+        ],
+        "note": "This is the step that carries the mechanism beyond a tensor proxy: it materializes all-site quantization and runs receding-horizon control on fresh episodes. It is an evaluation protocol, not evidence that success will improve."
+      },
+      {
+        "step": "S8",
+        "verbatim_quote": "8. Run matched negative controls by randomizing the mapping from I_g to bit pairs and by using the local-reconstruction allocator while preserving the same bit histogram, M_mem, candidate/update grid, receding-horizon convention, tie rule, and evaluation episodes. Inputs: the same D_eval episodes and matched resource budget. Outputs: downstream control metrics that test whether the profile, rather than resource amount alone, determines the benefit.",
+        "consumes": [
+          "same D_eval episodes",
+          "RankCal map",
+          "local-reconstruction map",
+          "bit histogram",
+          "memory and planner controls"
+        ],
+        "produces": [
+          "matched downstream control metrics"
+        ],
+        "note": "The original preserves bit histogram and target but does not require exact realized bytes; differing tensor shapes make histogram preservation insufficient. The repaired control samples only exact PeakBytes matches and records unavailable when none exists."
+      },
+      {
+        "step": "S9",
+        "verbatim_quote": "9. Report the full memory-versus-control-fidelity Pareto curves and the result of the randomized mapping; choose a deployment map only by the requested M_mem target and retain all grid cells in the paper's claim, rather than selecting a favorable horizon, calibration size, planner schedule, execution convention, or tie rule after observing outcomes. Inputs: all evaluation and control tables. Outputs: an auditable method specification and falsifiable claim.",
+        "consumes": [
+          "all evaluation/control tables"
+        ],
+        "produces": [
+          "memory-versus-control-fidelity Pareto curves",
+          "randomized-control result",
+          "auditable method specification",
+          "falsifiable claim"
+        ],
+        "note": "The no-favorable-cell selection rule is explicit. The full six-axis product is a campaign-scale quantity, not a measured runtime; the locked 12 GPU-day statement remains an estimate."
+      }
+    ],
+    "unbound_parameters": [
+      {
+        "name": "tau",
+        "original_status": "Named only through 'ties resolved by tau'; no numeric default or selection rule.",
+        "finding": "Unbound/ambiguous method parameter; it changes pairwise decisions and therefore d_g,c.",
+        "repair": "Bind tau=0 by default for exact equality with stable candidate-index tie resolution; preregister any nonzero tolerance."
+      },
+      {
+        "name": "M0",
+        "original_status": "Named with a fitting-envelope rule, but 'largest per-cell trajectory count' is ambiguous when capacities differ by cell.",
+        "finding": "Selection aggregation is under-specified, not an unbound number.",
+        "repair": "Use the minimum of per-base-cell maxima so one scalar M0 fits all declared cells."
+      },
+      {
+        "name": "K_r",
+        "original_status": "Derived from U_t, not a tunable parameter.",
+        "finding": "No parameter finding; its zero-pair edge was separately tested.",
+        "repair": "Define d=0 and record zero-pair count for K_r<2."
+      },
+      {
+        "name": "omega_c / omega_g / M_mem",
+        "original_status": "Named with defaults or a preregistered/swept selection rule.",
+        "finding": "No unbound-parameter finding.",
+        "repair": null
+      }
+    ],
+    "dual_readings": [
+      {
+        "term": "ties resolved by tau",
+        "readings": [
+          "R1: tau is a numeric score-difference tolerance; within tau is a tie.",
+          "R2: tau names a tie policy/priority and exact equal scores are ordered by stable candidate index."
+        ],
+        "execution": {
+          "mode": "executed",
+          "script": "from fractions import Fraction as F\nfrom itertools import combinations\n\ndef pairwise_tol(a,b,tau):\n    pairs=list(combinations(range(len(a)),2)); bad=0\n    for i,j in pairs:\n        sa=0 if abs(a[i]-a[j])<=tau else (1 if a[i]>a[j] else -1)\n        sb=0 if abs(b[i]-b[j])<=tau else (1 if b[i]>b[j] else -1)\n        bad += sa != sb\n    return F(bad,len(pairs)) if pairs else None\n\ndef pairwise_stable(a,b):\n    oa=sorted(range(len(a)), key=lambda i:(-a[i],i)); ob=sorted(range(len(b)), key=lambda i:(-b[i],i))\n    pos_a={x:i for i,x in enumerate(oa)}; pos_b={x:i for i,x in enumerate(ob)}\n    pairs=list(combinations(range(len(a)),2)); bad=0\n    for i,j in pairs:\n        bad += (pos_a[i] < pos_a[j]) != (pos_b[i] < pos_b[j])\n    return F(bad,len(pairs)) if pairs else None\n\nbase=[F(3),F(2),F(1)]; q1=[F(6,5),F(2),F(1)]; q2=[F(3,2),F(3),F(2)]; joint=[F(6,5),F(5,2),F(12,5)]\nprint('reading_R1=tolerance_tau_0_pair_sign', [pairwise_tol(base,q, F(0)) for q in (q1,q2,joint)])\nprint('reading_R2=exact_tie_stable_candidate_index', [pairwise_stable(base,q) for q in (q1,q2,joint)])\ntie_base=[F(1),F(1),F(1)]; tie_q=[F(1),F(1),F(1)]\nprint('tie_case_R1=', pairwise_tol(tie_base,tie_q,F(0)), 'tie_case_R2=', pairwise_stable(tie_base,tie_q))\nprint('all_strict_T2_and_T5_outputs_equal_under_R1_R2=True')",
+          "output": "reading_R1=tolerance_tau_0_pair_sign [Fraction(1, 3), Fraction(2, 3), Fraction(2, 3)]\nreading_R2=exact_tie_stable_candidate_index [Fraction(1, 3), Fraction(2, 3), Fraction(2, 3)]\ntie_case_R1= 0 tie_case_R2= 0\nall_strict_T2_and_T5_outputs_equal_under_R1_R2=True"
+        },
+        "result": "On the strict T2 record, d values are [1/3,2/3,2/3] under both readings; T5 outputs are therefore unchanged. The tie wording itself is reading_dependent and is repaired by choosing R1 with an explicit stable-index tie rule. The interaction, PeakBytes, and histogram findings are reading_robust."
+      }
+    ],
+    "dry_run": {
+      "instance": "One concrete two-step imagined latent action-sequence scoring record with U_t={(a0,a0),(a1,a0),(a1,a1)}, three candidate scores, four composite sites g1..g4, all-other-FP16 single-site interventions, a g1+g2 joint intervention, one toy cell with omega_c=1, and a four-site memory layout with resident FP16 bytes {12,8,8,4}, W4A4 bytes {3,2,2,1}, and one shared 4-byte workspace. The score vectors are synthetic outputs of the declared imagined rollout and test procedure algebra only; they are not DMC or closed-loop measurements.",
+      "execution": {
+        "mode": "executed",
+        "script": "from fractions import Fraction\nfrom itertools import combinations, product\n\nF = Fraction\n\ndef order(scores):\n    return tuple(sorted(range(len(scores)), key=lambda i: (-scores[i], i)))\n\ndef discordance(base, quant, tau=F(0)):\n    pairs = list(combinations(range(len(base)), 2))\n    mismatches = []\n    for i, j in pairs:\n        db = base[i] - base[j]\n        dq = quant[i] - quant[j]\n        sb = 0 if abs(db) <= tau else (1 if db > 0 else -1)\n        sq = 0 if abs(dq) <= tau else (1 if dq > 0 else -1)\n        mismatches.append(int(sb != sq))\n    return F(sum(mismatches), len(pairs)), mismatches\n\ndef fstr(x):\n    return str(x) if x.denominator != 1 else str(x.numerator)\n\ndef peak(low_sites, fp_bytes, low_bytes, shared):\n    return sum(low_bytes[g] if g in low_sites else fp_bytes[g] for g in fp_bytes) + shared\n\n# One calibration record from a two-step imagined latent action-sequence rollout.\ncandidates = ((\"a0\", \"a0\"), (\"a1\", \"a0\"), (\"a1\", \"a1\"))\nbase = [F(3), F(2), F(1)]\nsite_scores = {\n    \"g1\": [F(6, 5), F(2), F(1)],\n    \"g2\": [F(3, 2), F(3), F(2)],\n    \"g3\": [F(2), F(1), F(3)],\n    \"g4\": base[:],\n}\njoint_g1g2 = [F(6, 5), F(5, 2), F(12, 5)]\nrank_assignment_scores = site_scores[\"g1\"]\nnaive_assignment_scores = [F(1), F(16, 5), F(5, 2)]\n\nprint(\"record=horizon:2,candidates=3,latent_scoring_path=imagined_action_sequences\")\nprint(\"tau=0,tie_rule=stable_candidate_index\")\nprint(\"baseline_scores=\", [fstr(x) for x in base], \"order=\", order(base), \"top_first_action=\", candidates[order(base)[0]][0])\nfor g, scores in site_scores.items():\n    d, mismatches = discordance(base, scores)\n    print(\"single\", g, \"scores=\", [fstr(x) for x in scores], \"order=\", order(scores), \"pair_mismatches=\", mismatches, \"d=\", fstr(d))\nd_joint, joint_mismatches = discordance(base, joint_g1g2)\nprint(\"joint_g1_g2 scores=\", [fstr(x) for x in joint_g1g2], \"order=\", order(joint_g1g2), \"pair_mismatches=\", joint_mismatches, \"d=\", fstr(d_joint))\nd1 = discordance(base, site_scores[\"g1\"])[0]\nd2 = discordance(base, site_scores[\"g2\"])[0]\nprint(\"interaction_check=d_joint-(d_g1+d_g2)=\", fstr(d_joint - d1 - d2), \"d_joint=\", fstr(d_joint), \"sum_single=\", fstr(d1+d2))\n\n# Full declared six-axis grid, with small concrete parameters.\ngrid = {\n    \"H\": sorted({4 // 2, 4, min(2 * 4, 6)}),\n    \"N\": sorted({max(1, 4 // 2), 4, 2 * 4}),\n    \"M\": sorted({max(1, 4 // 4), max(1, 4 // 2), 4}),\n    \"S\": (\"native\", \"random_shooting\", \"CEM\"),\n    \"E\": (\"native\", \"one_step\"),\n    \"T\": (\"stable_index\", \"seeded_random\"),\n}\nraw_cells = list(product(*(grid[k] for k in (\"H\", \"N\", \"M\", \"S\", \"E\", \"T\"))))\nprint(\"grid_axes=\", {k: list(v) for k, v in grid.items()})\nprint(\"grid_cells_raw=\", len(raw_cells), \"grid_cells_after_dedup=\", len(set(raw_cells)), \"full_grid_omega_c=\", fstr(F(1, len(set(raw_cells)))))\nprint(\"trace_cell_count=1,trace_cell_omega_c=1\")\n\n# Four sites with unequal resident weights and one shared peak workspace.\nfp_bytes = {\"g1\": 12, \"g2\": 8, \"g3\": 8, \"g4\": 4}\nlow_bytes = {g: v // 4 for g, v in fp_bytes.items()}\nshared_workspace = 4\nsite_peak = {\"FP16\": {g: fp_bytes[g] + shared_workspace for g in fp_bytes},\n             \"W4A4\": {g: low_bytes[g] + shared_workspace for g in fp_bytes}}\nrank_low = {\"g1\", \"g4\"}\nnaive_low = {\"g2\", \"g3\"}\nbad_perm_low = {\"g1\", \"g2\"}\nprint(\"bytes_fp=\", fp_bytes, \"bytes_w4a4=\", low_bytes, \"shared_workspace=\", shared_workspace)\nrank_sum = sum(site_peak[\"W4A4\"][g] if g in rank_low else site_peak[\"FP16\"][g] for g in fp_bytes)\nnaive_sum = sum(site_peak[\"W4A4\"][g] if g in naive_low else site_peak[\"FP16\"][g] for g in fp_bytes)\nrank_peak = peak(rank_low, fp_bytes, low_bytes, shared_workspace)\nnaive_peak = peak(naive_low, fp_bytes, low_bytes, shared_workspace)\nprint(\"rank_assignment_low=\", sorted(rank_low), \"sum_individual_m=\", rank_sum, \"actual_peak=\", rank_peak)\nprint(\"naive_assignment_low=\", sorted(naive_low), \"sum_individual_m=\", naive_sum, \"actual_peak=\", naive_peak)\nprint(\"bad_permutation_low=\", sorted(bad_perm_low), \"same_bit_histogram=True\", \"actual_peak=\", peak(bad_perm_low, fp_bytes, low_bytes, shared_workspace), \"same_as_rank_peak=\", peak(bad_perm_low, fp_bytes, low_bytes, shared_workspace) == rank_peak)\nprint(\"matched_nontrivial_permutation=\", sorted(naive_low), \"same_bit_histogram=True\", \"same_peak=\", naive_peak == rank_peak)\nprint(\"minimum_all_low_peak=\", peak(set(fp_bytes), fp_bytes, low_bytes, shared_workspace))\n\nlocal_error = {\"g1\": F(20, 100), \"g2\": F(5, 100), \"g3\": F(8, 100), \"g4\": F(30, 100)}\ninfluence = {g: discordance(base, site_scores[g])[0] for g in site_scores}\nrank_raw = sum(influence[g] for g in rank_low)\nnaive_raw = sum(influence[g] for g in naive_low)\nprint(\"influence_profile=\", {g: fstr(influence[g]) for g in influence}, \"omega_g=\", fstr(F(1, 4)))\nprint(\"local_reconstruction_error=\", {g: fstr(local_error[g]) for g in local_error}, \"naive_low_sites=smallest_error=\", sorted(naive_low))\nprint(\"weighted_allocator_objective_rankcal=\", fstr(rank_raw / 4), \"raw_sum=\", fstr(rank_raw), \"weighted_allocator_objective_naive_map=\", fstr(naive_raw / 4), \"raw_sum=\", fstr(naive_raw), \"M_mem=24\")\nd_rank, _ = discordance(base, rank_assignment_scores)\nd_naive, _ = discordance(base, naive_assignment_scores)\nprint(\"rankcal_downstream_order=\", order(rank_assignment_scores), \"d=\", fstr(d_rank), \"rank_agreement=\", fstr(1-d_rank), \"first_action=\", candidates[order(rank_assignment_scores)[0]][0])\nprint(\"naive_downstream_order=\", order(naive_assignment_scores), \"d=\", fstr(d_naive), \"rank_agreement=\", fstr(1-d_naive), \"first_action=\", candidates[order(naive_assignment_scores)[0]][0])\nprint(\"t5_divergence_d_naive_minus_rankcal=\", fstr(d_naive-d_rank), \"kind=instance_contingent\")\nprint(\"declared_gpu_days=12,measurement_status=unmeasured_estimate\")",
+        "output": "record=horizon:2,candidates=3,latent_scoring_path=imagined_action_sequences\ntau=0,tie_rule=stable_candidate_index\nbaseline_scores= ['3', '2', '1'] order= (0, 1, 2) top_first_action= a0\nsingle g1 scores= ['6/5', '2', '1'] order= (1, 0, 2) pair_mismatches= [1, 0, 0] d= 1/3\nsingle g2 scores= ['3/2', '3', '2'] order= (1, 2, 0) pair_mismatches= [1, 1, 0] d= 2/3\nsingle g3 scores= ['2', '1', '3'] order= (2, 0, 1) pair_mismatches= [0, 1, 1] d= 2/3\nsingle g4 scores= ['3', '2', '1'] order= (0, 1, 2) pair_mismatches= [0, 0, 0] d= 0\njoint_g1_g2 scores= ['6/5', '5/2', '12/5'] order= (1, 2, 0) pair_mismatches= [1, 1, 0] d= 2/3\ninteraction_check=d_joint-(d_g1+d_g2)= -1/3 d_joint= 2/3 sum_single= 1\ngrid_axes= {'H': [2, 4, 6], 'N': [2, 4, 8], 'M': [1, 2, 4], 'S': ['native', 'random_shooting', 'CEM'], 'E': ['native', 'one_step'], 'T': ['stable_index', 'seeded_random']}\ngrid_cells_raw= 324 grid_cells_after_dedup= 324 full_grid_omega_c= 1/324\ntrace_cell_count=1,trace_cell_omega_c=1\nbytes_fp= {'g1': 12, 'g2': 8, 'g3': 8, 'g4': 4} bytes_w4a4= {'g1': 3, 'g2': 2, 'g3': 2, 'g4': 1} shared_workspace= 4\nrank_assignment_low= ['g1', 'g4'] sum_individual_m= 36 actual_peak= 24\nnaive_assignment_low= ['g2', 'g3'] sum_individual_m= 36 actual_peak= 24\nbad_permutation_low= ['g1', 'g2'] same_bit_histogram=True actual_peak= 21 same_as_rank_peak= False\nmatched_nontrivial_permutation= ['g2', 'g3'] same_bit_histogram=True same_peak= True\nminimum_all_low_peak= 12\ninfluence_profile= {'g1': '1/3', 'g2': '2/3', 'g3': '2/3', 'g4': '0'} omega_g= 1/4\nlocal_reconstruction_error= {'g1': '1/5', 'g2': '1/20', 'g3': '2/25', 'g4': '3/10'} naive_low_sites=smallest_error= ['g2', 'g3']\nweighted_allocator_objective_rankcal= 1/12 raw_sum= 1/3 weighted_allocator_objective_naive_map= 1/3 raw_sum= 4/3 M_mem=24\nrankcal_downstream_order= (1, 0, 2) d= 1/3 rank_agreement= 2/3 first_action= a1\nnaive_downstream_order= (1, 2, 0) d= 2/3 rank_agreement= 1/3 first_action= a1\nt5_divergence_d_naive_minus_rankcal= 1/3 kind=instance_contingent\ndeclared_gpu_days=12,measurement_status=unmeasured_estimate"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "Candidate pair count",
+          "value": "3",
+          "arithmetic": "binom(3,2)=3."
+        },
+        {
+          "quantity": "FP16 candidate order",
+          "value": "(0,1,2), top first action a0",
+          "arithmetic": "scores [3,2,1]."
+        },
+        {
+          "quantity": "Single-site g1 discordance",
+          "value": "1/3",
+          "arithmetic": "one mismatch [1,0,0] / 3 pairs from [3,2,1] to [6/5,2,1]."
+        },
+        {
+          "quantity": "Single-site g2 discordance",
+          "value": "2/3",
+          "arithmetic": "two mismatches [1,1,0] / 3 pairs from [3,2,1] to [3/2,3,2]."
+        },
+        {
+          "quantity": "Single-site g3 discordance",
+          "value": "2/3",
+          "arithmetic": "two mismatches [0,1,1] / 3 pairs from [3,2,1] to [2,1,3]."
+        },
+        {
+          "quantity": "Single-site g4 discordance",
+          "value": "0",
+          "arithmetic": "zero mismatches because g4 scores equal FP16."
+        },
+        {
+          "quantity": "Joint g1+g2 discordance",
+          "value": "2/3",
+          "arithmetic": "two mismatches [1,1,0] from [3,2,1] to [6/5,5/2,12/5]."
+        },
+        {
+          "quantity": "Single-site additivity gap",
+          "value": "-1/3",
+          "arithmetic": "d_joint-(d_g1+d_g2)=2/3-(1/3+2/3)=-1/3; the single-site sum is 1 while the joint result is 2/3."
+        },
+        {
+          "quantity": "Toy influence profile",
+          "value": "I={g1:1/3,g2:2/3,g3:2/3,g4:0}",
+          "arithmetic": "One cell has omega_c=1, so I_g=I_g,c; omega_g=1/4 makes RankCal raw objective 1/3 and weighted objective 1/12 for low sites {g1,g4}."
+        },
+        {
+          "quantity": "Full six-axis cell count in executed small grid",
+          "value": "324 unique cells",
+          "arithmetic": "3 H values x 3 N values x 3 M values x 3 S values x 2 E values x 2 T values = 324; dedup leaves 324."
+        },
+        {
+          "quantity": "Additive versus materialized memory",
+          "value": "36 versus 24 bytes",
+          "arithmetic": "RankCal low {g1,g4}: (3+8+8+1)+4=24; separate m_g charges (3+4)+(8+4)+(8+4)+(1+4)=36."
+        },
+        {
+          "quantity": "Histogram-only bad permutation",
+          "value": "21 versus RankCal 24 bytes",
+          "arithmetic": "Same two W4A4/two FP16 histogram, low {g1,g2}: (3+2+8+4)+4=21; therefore bytes are not preserved."
+        },
+        {
+          "quantity": "Matched nontrivial permutation in toy",
+          "value": "24 bytes",
+          "arithmetic": "low {g2,g3}: (12+2+2+4)+4=24, same as RankCal; this shows exact matching can exist but is a constrained subset."
+        },
+        {
+          "quantity": "T5 downstream comparison",
+          "value": "RankCal d=1/3, local-error naive d=2/3",
+          "arithmetic": "Pairwise agreement is 2/3 versus 1/3; both actual PeakBytes are 24 and the naive uses the two smallest local errors."
+        },
+        {
+          "quantity": "Minimum all-low toy peak",
+          "value": "12 bytes",
+          "arithmetic": "3+2+2+1+4=12; the M_mem=11 edge is outside a feasible Pareto sweep."
+        },
+        {
+          "quantity": "Declared compute scale",
+          "value": "12 GPU-days, unmeasured",
+          "arithmetic": "Copied from the locked compute_budget claim; no GPU run was performed."
+        }
+      ],
+      "anomalies": [
+        {
+          "anomaly": "The joint g1+g2 intervention gives d_joint=2/3 while d_g1+d_g2=1, with interaction gap -1/3; additive single-site scores do not identify joint ranking behavior.",
+          "kind": "instance_contingent",
+          "why": "The concrete score table supplies one cancellation interaction; it demonstrates the declared P4 risk but cannot establish that every real model has this interaction."
+        },
+        {
+          "anomaly": "Separately measured m_g charges total 36 bytes while the materialized graph peak is 24 bytes because the 4-byte workspace is shared.",
+          "kind": "instance_contingent",
+          "why": "The number depends on this valid shared-buffer layout, but it exposes that the original text supplied no aggregation convention making sum_g m_g equal to system peak."
+        },
+        {
+          "anomaly": "A permutation with the same bit histogram, low sites {g1,g2}, has actual peak 21 bytes versus 24 bytes for RankCal low sites {g1,g4}.",
+          "kind": "instance_contingent",
+          "why": "Unequal tensor sizes make histogram preservation insufficient; exact matching is possible only for a constrained subset, as the {g2,g3} example shows."
+        }
+      ]
+    },
+    "degenerate_trace_execution": {
+      "mode": "executed",
+      "script": "from fractions import Fraction as F\nfrom itertools import combinations\n\ndef normalized_discordance(base, quant, tau=F(0)):\n    n = len(base)\n    pair_count = n * (n - 1) // 2\n    if pair_count == 0:\n        return None, pair_count\n    mismatches = 0\n    for i, j in combinations(range(n), 2):\n        db, dq = base[i] - base[j], quant[i] - quant[j]\n        sb = 0 if abs(db) <= tau else (1 if db > 0 else -1)\n        sq = 0 if abs(dq) <= tau else (1 if dq > 0 else -1)\n        mismatches += int(sb != sq)\n    return F(mismatches, pair_count), pair_count\n\ndef grid(H_native, H_episode, N_native, M0):\n    H = sorted({H_native // 2, H_native, min(2 * H_native, H_episode)})\n    N = sorted({max(1, N_native // 2), N_native, 2 * N_native})\n    M = sorted({max(1, M0 // 4), max(1, M0 // 2), M0})\n    return H, N, M\n\nprint('empty_G=omega_g=1/|G|=1/0 -> ZeroDivisionError if default is evaluated')\nprint('empty_Dc=mean(sum=0,count=0) -> ZeroDivisionError')\nfor k in (0, 1, 2):\n    d, pairs = normalized_discordance([F(i) for i in range(k)], [F(i) for i in range(k)])\n    print('candidate_count=', k, 'pair_count=', pairs, 'd=', d)\nprint('all_identical_scores=', normalized_discordance([F(1)] * 3, [F(1)] * 3))\nprint('ties_tau_0=', normalized_discordance([F(1), F(1), F(1)], [F(1), F(1), F(101, 100)], F(0)))\nprint('ties_tau_1/10=', normalized_discordance([F(1), F(1), F(1)], [F(1), F(1), F(101, 100)], F(1, 10)))\nprint('minimum_valid_grid_input_H_native=1,H_episode=1,N_native=1,M0=1 ->', grid(1, 1, 1, 1))\nprint('infeasible_budget_example=11,minimum_toy_peak=12 -> no feasible assignment')",
+      "output": "empty_G=omega_g=1/|G|=1/0 -> ZeroDivisionError if default is evaluated\nempty_Dc=mean(sum=0,count=0) -> ZeroDivisionError\ncandidate_count= 0 pair_count= 0 d= None\ncandidate_count= 1 pair_count= 0 d= None\ncandidate_count= 2 pair_count= 1 d= 0\nall_identical_scores= (Fraction(0, 1), 3)\nties_tau_0= (Fraction(2, 3), 3)\nties_tau_1/10= (Fraction(0, 1), 3)\nminimum_valid_grid_input_H_native=1,H_episode=1,N_native=1,M0=1 -> ([0, 1], [1, 2], [1])\ninfeasible_budget_example=11,minimum_toy_peak=12 -> no feasible assignment"
+    },
+    "backend_boundary_check": {
+      "mode": "executed_cpu_only",
+      "script": "import torch\nfrom torch.ao.quantization import FakeQuantize, MovingAverageMinMaxObserver\nobs = MovingAverageMinMaxObserver.with_args(quant_min=0, quant_max=15, dtype=torch.quint8, qscheme=torch.per_tensor_affine)\nfq = FakeQuantize(observer=obs)\ny = fq(torch.tensor([-1.0, 0.0, 0.25, 1.0]))\nprint('torch_version=', torch.__version__)\nprint('cuda_available=', torch.cuda.is_available())\nprint('backend=', torch.backends.quantized.engine)\nprint('ao_fake_quant_4bit_range_runs_on_cpu=', tuple(float(v) for v in y))\nprint('has_torch_qint4=', hasattr(torch, 'qint4'))\nprint('has_torch_int4=', hasattr(torch, 'int4'))",
+      "output": "torch_version= 2.10.0+cpu\ncuda_available= False\nbackend= onednn\nao_fake_quant_4bit_range_runs_on_cpu= (-0.9333333969116211, 0.0, 0.2666666805744171, 0.9333333969116211)\nhas_torch_qint4= False\nhas_torch_int4= True",
+      "interpretation": "The local environment demonstrated a torch.ao FakeQuantize 4-bit numeric range on CPU, with torch 2.10.0+cpu and no CUDA. It did not test an A100, a W4A4 weight/activation GEMM, or deployment kernel availability."
+    },
+    "mechanism_identity_check": {
+      "verdict": "scope_consistent",
+      "evidence": [
+        "S4 intervenes in one site of a frozen action-conditioned latent model, scores the same candidate action sequences through imagined latent transitions, and measures candidate-order/first-action changes.",
+        "S7 materializes the all-site map and evaluates receding-horizon closed-loop return/success.",
+        "No joint future/video-action denoising loss, video-action gradient cross-term, action-token denoising schedule, or generic saliency scalar is part of the operative procedure."
+      ],
+      "conclusion": "The concrete mechanism remains imagined action-sequence planning / latent dynamics with closed-loop action consequences. The WAM joint video/action denoising family and generic downstream saliency bit allocation are comparison boundaries, not what this trace executes."
+    },
+    "degenerate_probes": [
+      {
+        "probe": "Empty eligible-site set G=empty",
+        "behavior": "Executed edge modeling gives omega_g=1/|G|=1/0, which raises ZeroDivisionError if the default is evaluated.",
+        "finding": "Missing domain precondition |G|>=1; reading_robust."
+      },
+      {
+        "probe": "Empty calibration slice D_c=empty",
+        "behavior": "Executed mean model gives sum/count=0/0, so I_g,c is undefined.",
+        "finding": "Missing nonempty-cell guard; reading_robust."
+      },
+      {
+        "probe": "Candidate pool K_r=0",
+        "behavior": "Executed pair count is 0 and normalized d is None/undefined.",
+        "finding": "Missing K_r<2 convention; reading_robust."
+      },
+      {
+        "probe": "Single candidate K_r=1",
+        "behavior": "Executed pair count is 0 and normalized d is None/undefined.",
+        "finding": "Missing K_r<2 convention; reading_robust."
+      },
+      {
+        "probe": "All-identical candidate scores",
+        "behavior": "With three equal FP16 and quantized scores, executed pair count is 3 and d=0; no arithmetic failure. Local CPU torch.ao FakeQuantize on a constant tensor also returned the constant values with scale 0.06666667014360428.",
+        "finding": null
+      },
+      {
+        "probe": "Ties at the threshold",
+        "behavior": "Executed tolerance reading gives d=2/3 at tau=0 for a 0.01 score perturbation but d=0 at tau=0.1; the stable-index reading agrees on strict T2 values.",
+        "finding": "Tie semantics and tau default are underspecified; reading_dependent: numeric tolerance versus tie-policy interpretation."
+      },
+      {
+        "probe": "Minimum positive native settings H_native=1,H_episode=1,N_native=1,M0=1",
+        "behavior": "Original H formula executes as H=[0,1], N=[1,2], M=[1]; H=0 is not an imagined action horizon.",
+        "finding": "The first H grid entry needs max(1,...); reading_robust."
+      },
+      {
+        "probe": "Budget below the minimum feasible toy assignment, M_mem=11 versus all-low peak 12",
+        "behavior": "No assignment satisfies the constraint; the original procedure gives no output/skip rule.",
+        "finding": "No-feasible-assignment handling is underspecified for an externally supplied target; reading_robust."
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "A site-only intervention with all other sites FP16 and the candidate pool U_t held fixed isolates a site-level candidate-ranking perturbation.",
+        "established_by": "S4",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "I_g,c(b) and I_g(b) are dimensionless normalized site-only influence quantities for the declared DMC/planner process, not a Shapley value or global optimum.",
+        "established_by": "S4-S5",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The finite accumulator computes the stated finite-sample mean exactly as the mathematical estimator.",
+        "established_by": "S5",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "D_c is nonempty",
+          "ordinary numerical rounding is accepted as implementation error rather than exact-real arithmetic"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The site-only profile transfers and is sufficiently compositional for joint memory-constrained allocation to help.",
+        "established_by": "S6-S7",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The memory-constrained assignment is a heterogeneous mixed W/A deployment map under the actual memory budget.",
+        "established_by": "S6",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "B_deploy contains an actually runnable backend-supported implementation for every selected bit pair",
+          "PeakBytes is measured on the materialized graph with shared lifetimes, copies, scales, and workspace accounted"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Quantization effects reach later imagined latent transitions and receding-horizon closed-loop consequences rather than only tensor reconstruction.",
+        "established_by": "S4 and S7",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "D_cal is a stated FP16-planner-visitation process and the estimand is not an unbiased average over all reachable states/tasks/backbones.",
+        "established_by": "S3 and the PREMISES observation-model statement",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The FP16 planner scores remain unchanged after observer attachment.",
+        "established_by": "S2",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "Observer attachment is numerically and operationally no-op on the reference path; the proposed pre/post score and order check passes"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "D_cal and D_eval are disjoint matched data streams.",
+        "established_by": "S3",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "Episode identifiers and seed/state manifests uniquely identify and prevent overlap of the actual environment trajectories"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The randomized mapping makes any downstream advantage come from I_g rather than bit count or local tensor error.",
+        "established_by": "S8",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "A nonidentity control assignment exists with exact bit-pair histogram and exact PeakBytes",
+          "planner state, seeds, candidate/update schedule, and evaluation episodes are matched",
+          "no unmeasured implementation difference changes latency or control frequency"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "RankCal should outperform local-reconstruction allocation in longer-horizon cells, and a worse tensor-MSE map can have higher closed-loop success.",
+        "established_by": "S6-S8",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The operative mechanism is latent action-sequence planning with imagined latent dynamics and closed-loop action consequences, not joint WAM video/action denoising or generic downstream saliency allocation.",
+        "established_by": "S4 and S7",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The how_closed narrative constructs a fixed-model counterfactual ranking profile and maps it to a heterogeneous W/A assignment.",
+        "established_by": "S4-S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "(i) false-premise",
+      "naive_version": "Run uniform-affine PTQ using only local layer-output reconstruction error and, with two W4A4 slots available, assign W4A4 to the two smallest local-error sites while keeping the other two sites FP16; do not use rollout-ranking influence.",
+      "naive_fairness": "The naive uses the same four sites, D_cal-derived information, candidate set, two-low/two-FP16 histogram, M_mem=24 upper budget, exact toy PeakBytes=24, planner/evaluation inputs, and no extra learned component; it is simpler because it uses one local-error scalar per site and no imagined ranking intervention.",
+      "instance_behavior": {
+        "naive": "low={g2,g3}; local errors {g1:1/5,g2:1/20,g3:2/25,g4:3/10}; actual PeakBytes=24; joint scores [1,16/5,5/2]; order=(1,2,0); d=2/3; pairwise agreement=1/3; first action=a1.",
+        "mechanism": "low={g1,g4}; influence {g1:1/3,g2:2/3,g3:2/3,g4:0}; actual PeakBytes=24; scores [6/5,2,1]; order=(1,0,2); d=1/3; pairwise agreement=2/3; first action=a1.",
+        "divergence": "d_naive-d_RankCal=2/3-1/3=1/3; pairwise-agreement gap=1/3; both differ from FP16's top first action a0, so first-action agreement is tied on this instance.",
+        "kind": "instance_contingent"
+      },
+      "verdict": "confronts_obstacle",
+      "reasoning": "The independently constructed local-error naive fails on this instance in the candidate's declared way: it preserves less candidate-order agreement (1/3 versus 2/3) under the same 24-byte budget. The result is only an instance-contingent positive depth check, not evidence that RankCal will win on real DMC or that local reconstruction is universally false."
+    }
+  },
+  "verdict": "patched",
+  "unrepaired": [
+    {
+      "finding": "Joint quantization is not identified by single-site I_g: the executed toy has d_g1=1/3, d_g2=2/3, d_joint=2/3, but d_g1+d_g2=1 (interaction=-1/3).",
+      "severity": "note",
+      "why_not_repaired": "The candidate's P4 explicitly marks compositionality as untested and the final all-sites evaluation tests it; the candidate does not claim joint optimality. The toy is a falsification limitation, not a procedural contradiction or a redesign requirement.",
+      "verbatim_step_quote": "6. For each M_mem in the pre-registered Pareto memory sweep, partition sites by their profile vectors and solve the stated memory-constrained assignment over B with the measured m_g and default omega_g. Inputs: I_g,c(b), m_g(b), B, omega_g, and M_mem. Outputs: a per-site weight/activation bit map; materializing that map changes which numerical operators feed future latent rollouts and therefore which action sequence the planner selects.",
+      "executed_evidence": "Stdlib trace used all-other-FP16 single-site score tables: FP16 [3,2,1]; g1 [6/5,2,1] gives one of three pair mismatches, d_g1=1/3; g2 [3/2,3,2] gives two, d_g2=2/3. With only g1 and g2 quantized jointly, scores [6/5,5/2,12/5] give two mismatches, d_joint=2/3. Arithmetic: 2/3-(1/3+2/3)=-1/3. This proves only a possible interaction counterexample, not a universal effect.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The torch.ao/fake-quant path does not establish actual W4A4 weight-and-activation kernel availability on A100.",
+      "severity": "note",
+      "why_not_repaired": "This is an implementation/deployment boundary owned by the later implementability audit. The candidate calls torch.ao a numerical PTQ operator, so the gate records the distinction and does not claim an A100 kernel from a CPU smoke test.",
+      "verbatim_step_quote": "use the existing uniform-affine PyTorch torch.ao.quantization path as the numerical weight/activation PTQ operator.",
+      "executed_evidence": "Executed local CPU check: import torch; instantiate torch.ao.quantization.FakeQuantize with quant_min=0, quant_max=15; run it on four values. Output: torch_version=2.10.0+cpu; cuda_available=False; backend=onednn; ao_fake_quant_4bit_range_runs_on_cpu=(-0.9333333969116211,0.0,0.2666666805744171,0.9333333969116211); has_torch_qint4=False; has_torch_int4=True. This demonstrates only numeric CPU fake quantization, not A100 W4A4 execution.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The six-axis campaign is 324 cells for the executed small settings, while the locked 12 GPU-day line is an unmeasured estimate.",
+      "severity": "note",
+      "why_not_repaired": "The compute_budget and falsification_prediction fields are locked and forbidden repair targets in this gate. The trace can count the product but cannot turn an estimate into a measurement or alter the audit-owned campaign claim.",
+      "verbatim_step_quote": "GPU: estimated 12 GPU-days on one NSCC ASPIRE2A A100-SXM4-40GB for the one-task pilot, site-only probes, full nuisance grid, matched controls, and held-out closed-loop evaluation; an optional second DMC task family would add an estimated 6 GPU-days.",
+      "executed_evidence": "Stdlib enumeration used H=[2,4,6], N=[2,4,8], M=[1,2,4], |S|=3, |E|=2, |T|=2: 3*3*3*3*2*2=324; dedup count=324. The same stdout ends with declared_gpu_days=12,measurement_status=unmeasured_estimate. No GPU experiment was run.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The supplied VAML/VaGraM/value-aware lineage means a generic 'decision-aware error' principle is not a novelty result; the concrete quantization distinction still needs the later prior-art audit.",
+      "severity": "note",
+      "why_not_repaired": "Novelty and differentiation fields are explicitly out of scope for this coherence gate. The supplied review distinguishes value-aware/model-learning objectives from this candidate's post-training site-only W/A PTQ intervention and candidate-order estimand, but that distinction is not a novelty certification.",
+      "verbatim_step_quote": "The central object is the rollout-ranking influence profile I_g,c(b)=average_r in D_c of d_g,c(r;b) and I_g(b)=sum_c omega_c I_g,c(b), a dimensionless counterfactual estimand of how much site g changes planner ordering over the observed rollout regime;",
+      "executed_evidence": "No CPU arithmetic can decide literature lineage. The supplied DIRECT_PRIOR_REVIEW lists Value-Aware Loss Function for Model-based Reinforcement Learning (2017), Model-Advantage and Value-Aware Models (2021), and Value Gradient weighted Model-Based Reinforcement Learning/VaGraM (2022) as older value-aware model-learning families. Their described objects are value/gradient-aware model objectives; this candidate's concrete trace object is a frozen-model, all-other-FP16 site intervention with normalized candidate-order discordance and mixed W/A allocation. This is an evidence boundary, not an executed novelty verdict.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "applied_revisions": [
+    {
+      "scope": "coherence",
+      "op": "replace",
+      "field": "core_mechanism",
+      "value": "Freeze a public DreamerV3- or TD-MPC2-style action-conditioned latent world model at FP16 (an inferred pilot anchor, not a prior claim or a new backbone), add no foundation-model pretraining, and use the existing uniform-affine PyTorch torch.ao.quantization path as the numerical weight/activation PTQ operator; this numerical path is an emulation boundary and is not evidence that an A100 has a deployable W4A4 kernel. Let G be the deterministic union, over every declared grid cell, of every eligible Linear or Conv weight tensor W_g and its activation output A_g reached by the planner's scoring forward path; optimizer state and planner-only code are not quantized, each g has a measured per-site storage record m_g(b), and require |G| >= 1. From named DeepMind Control Suite (DMC) visual continuous-control tasks, collect disjoint self-built calibration and evaluation streams, with each record r storing the complete planner replay state q_t (including z_t and any recurrent/history/cache/normalization/RNG state needed to replay the scoring path), a planner-generated candidate set U_t, and its horizon, update schedule, receding-horizon convention, and tie rule. Use the pre-registered grid H={max(1,floor(H_native/2)), H_native, min(2H_native,H_episode)}, N={max(1,floor(N_native/2)), N_native, 2N_native}, M={max(1,floor(M0/4)), max(1,floor(M0/2)), M0}, S={s_native, random shooting, CEM}, E={e_native, one-step}, and T={stable-index, seeded-random}, removing duplicate cells; define M0 as the minimum, over the non-M base cells, of the largest positive per-cell trajectory count fitting the fixed A100 pilot envelope, and let grid-cell weights omega_c default to 1/|C| unless deployment frequencies are preregistered. Let B={(FP16,FP16), W8A8, W8A4, W4A8, W4A4} be the analysis bit-pair set, and let B_deploy be the subset with a measured backend-supported weight/activation implementation; fake-quant-only pairs may be profiled numerically but cannot enter deployment Pareto curves or the lowest supported deployment target. For each g and b in B, quantize only g with the same observer/calibration data, keep every other site FP16, rerun the identical candidate set under cell c, and define d_g,c(r;b) as the normalized pairwise candidate-order disagreement from FP16 using the explicit tie rule below. The central object is the rollout-ranking influence profile I_g,c(b)=average_r in D_c of d_g,c(r;b) and I_g(b)=sum_c omega_c I_g,c(b), a dimensionless counterfactual estimand of how much site g changes planner ordering over the observed rollout regime; finite accumulators compute the stated finite-sample estimator, subject to ordinary numerical rounding, rather than approximating an unchosen Shapley value. The heterogeneous companion retains each full profile vector P_g=(I_g,c(b)) across cells as its heterogeneity representation (no unbound clustering rule) and chooses b_g by minimizing sum_g omega_g I_g(b_g) subject to the system-level PeakBytes(b_1,...,b_|G|) <= M_mem, where PeakBytes is measured on the materialized end-to-end graph and includes resident weights, activation lifetimes and shared tensors, scales/zero-points, weight copies, and backend workspace; m_g(b) remains a diagnostic per-site record, not a quantity to sum as though sites were disjoint. The resulting all-sites assignment is evaluated end-to-end on disjoint episodes for every feasible grid cell and memory target, reporting rank agreement, first-action agreement, closed-loop return or success, peak memory, and control frequency; the influence profile is therefore an empirical allocation signal rather than a claim of global optimality. A matched intervention keeps candidate pools, start states, bit histogram, exact measured PeakBytes, memory target, planner schedule, receding horizon convention, and tie rule fixed while sampling only non-identity assignments with the same bit-pair histogram and exact measured PeakBytes; if no such assignment exists, the negative control is recorded as unavailable. This control tests attribution under matched conditions but does not prove causality or guarantee a downstream gain. The evidence boundary is explicit: arxiv:2602.02110v1 is connector-verified host_recall with fulltext H/html_arxiv, arxiv:2608.24855v1 is arxiv-retrieved with fulltext T3/html_arxiv, and arxiv:2607.28405v1 is connector-verified host_recall but has no fulltext cache entry in this run and is used only as an abstract-only adjacent comparison; none is introduced as the backbone.",
+      "outcome": "applied",
+      "delta_summary": "Repairs T1/T4 cost and attribution findings by making PeakBytes system-level, qualifying fake-quant versus deployable support, retaining the profile without an undefined partition rule, and downgrading the randomized control from causal proof to a matched diagnostic."
+    },
+    {
+      "scope": "coherence",
+      "op": "replace",
+      "field": "core_mechanism_steps",
+      "value": "1. Select one publicly available DreamerV3- or TD-MPC2-style action-conditioned latent world-model checkpoint as the inferred pilot anchor and one named DeepMind Control Suite task family; freeze its FP16 weights, reproduce the native planner path, and write a reference configuration containing H_native, N_native, s_native, e_native, and the native tie rule. Bind tau=0 by default (exact score equality) with stable candidate-index resolution for ties; any nonzero tolerance must be preregistered before D_cal. Inputs: public checkpoint and DMC environment. Outputs: reproducible FP16 model, planner, and configuration; no DINO-WM or LeWM backbone is introduced.\n2. Trace the PyTorch scoring forward graph over every declared grid cell and enumerate G as the deterministic union of the eligible Linear/Conv weight tensors W_g plus activation outputs A_g; require |G| >= 1. Attach the existing uniform-affine observers without changing the FP16 path, and reject the manifest if the observer attachment changes any FP16 planner score or candidate order. Inputs: frozen model, planner code, and declared grid. Outputs: site manifest, per-site weight/activation access, and the FP16 memory accounting record; FP16 planner scores remain unchanged only after this no-op check passes.\n3. Build disjoint D_cal and D_eval streams from the named DMC tasks using the grid C over M, N, S, H, E, and T; define D_c={r in D_cal: cell(r)=c}. For each calibration record save the complete planner replay state q_t=(z_t plus any recurrent/history/cache/normalization/RNG state needed for replay), the FP16-generated U_t, and cell metadata, while D_eval contains fresh environment episodes with no shared episode identifiers. Require each evaluated D_c to be nonempty; otherwise mark the cell unavailable rather than forming a zero-denominator mean. Inputs: DMC, FP16 planner, M0 selection rule, and fixed seed manifest. Outputs: stratified calibration records and held-out episodes.\n4. For every g, b, and c, run site-only PTQ using the same observer data, replace only g in the FP16 checkpoint, and score the identical U_t through the declared imagined latent rollout. Let K_r=|U_t|; for K_r >= 2 set d_g,c(r;b)=[sum_{i<j} 1{ord_tau(s_g,b(u_i),s_g,b(u_j)) != ord_tau(s_FP16(u_i),s_FP16(u_j))}]/binom(K_r,2), where ord_tau treats scores within tau as a tie and resolves it by candidate index; for K_r < 2 set d_g,c(r;b)=0 and record the zero-pair count. The intervention propagates through every later latent transition and planner score, so its output is a changed candidate ranking and possibly a changed first action, not just a changed tensor statistic. Inputs: site manifest and D_cal. Outputs: cell-level rank-disagreement tables.\n5. Aggregate the tables into I_g,c(b) and I_g(b), retain the full profile vector across C, and compute local layer-output error and calibration-distribution fidelity only as named comparison signals. Inputs: rank-disagreement tables and omega_c. Outputs: the finite-sample counterfactual influence profile and comparator table used by the allocator.\n6. For each feasible M_mem in the pre-registered Pareto memory sweep, retain the full profile vector as the heterogeneity representation and solve the stated memory-constrained assignment over B_deploy with the measured system-level PeakBytes(b_1,...,b_|G|) <= M_mem; if no assignment is feasible, mark that cell/target infeasible and report no downstream metric rather than silently substituting another map. Inputs: I_g,c(b), PeakBytes, B_deploy, omega_g, and M_mem. Outputs: a per-site weight/activation bit map; materializing that map changes which numerical operators feed future latent rollouts and therefore which action sequence the planner selects.\n7. Materialize the all-sites mixed-precision checkpoint and run the full planner end-to-end for every feasible c and M_mem on D_eval, allowing the selected candidate set and receding-horizon execution to follow each cell's declared convention. Inputs: FP16 checkpoint, bit map, and fresh episodes. Outputs: candidate-order agreement, first-action agreement, closed-loop return or success, peak memory, and control-frequency measurements.\n8. Run matched negative controls by sampling non-identity assignments with the same bit-pair histogram and exact measured PeakBytes as the RankCal assignment, and by using the local-reconstruction allocator while preserving the same M_mem, candidate/update grid, receding-horizon convention, tie rule, planner seeds, and evaluation episodes. If no non-identity assignment satisfies both matches, record the control as unavailable; interpret an observed difference as a matched diagnostic, not a proof that I_g is the sole causal factor. Inputs: the same D_eval episodes and matched resource budget. Outputs: downstream control metrics that test whether the profile, rather than resource amount alone, determines the benefit.\n9. Report the full memory-versus-control-fidelity Pareto curves and the result of the randomized mapping; choose a deployment map only by the requested feasible M_mem target and retain all feasible grid cells in the paper's claim, rather than selecting a favorable horizon, calibration size, planner schedule, execution convention, or tie rule after observing outcomes. Inputs: all evaluation and control tables. Outputs: an auditable method specification and falsifiable claim.",
+      "outcome": "applied",
+      "delta_summary": "Repairs T1/T3 findings by binding tau and M0, defining the pairwise estimator and K<2 behavior, recording complete planner state and D_c, checking FP16 no-op behavior, clamping H, handling empty/infeasible cells, and enforcing exact histogram-plus-PeakBytes controls."
+    }
+  ],
+  "final_candidate": {
+    "title": "RankCal: Counterfactual Influence Quantization for Action-Conditioned Latent World-Model Planning",
+    "hook": "At matched memory and nominal bit-width, candidate-order agreement should improve more by protecting sites with high rollout-ranking influence than by protecting sites with the largest local reconstruction error, especially in the longer-horizon cells of the evaluation grid. This predicts that a deliberately worse tensor-MSE allocation can yield higher closed-loop success, exposing a decision-level failure mode that the full-text DINO-WM sweep did not measure.",
+    "hook_shape_rationale": "I choose (a) because the primary metric is downstream candidate-order agreement and closed-loop success, and the surprising direction is that influence-guided precision can outperform local-MSE precision even when its tensor reconstruction is worse; the full-text DINO-WM record reports module, granularity, and horizon effects but not this causal ranking comparison. Shape (b) was viable as motivation, but I reject it because merely renaming local PTQ fidelity as a tacit assumption would not construct the computable influence profile or predict a downstream direction.",
+    "gap_closure": [
+      {
+        "gap": "For the setting studied by arxiv:2602.02110v1, and more generally for action-conditioned latent world models, no retrieved leaf establishes whether a low-bit perturbation preserves the ranking of candidate action sequences as the imagined-rollout horizon and visited latent states change — stakes: practitioners can deploy a model that looks acceptable on local or short-horizon metrics but selects systematically worse actions, wasting the single-GPU pilot and blocking reliable closed-loop control; intellectually, PTQ conclusions do not transfer from visual-goal planning to model-based control.",
+        "main_pattern": "reframe_as_solvable_object",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "companion_pattern": "heterogeneous_decomposition",
+        "how_closed": "Closed by reframing multi-step ranking preservation as a fixed-model counterfactual influence score over identical planner candidates, then partitioning sites by the resulting profile and solving a memory-constrained heterogeneous weight/activation bit assignment; corpus support is thin in world-model quantization, with the closest C00 exemplars coming from fixed-model attribution and uncertainty measurement."
+      }
+    ],
+    "core_mechanism": "Freeze a public DreamerV3- or TD-MPC2-style action-conditioned latent world model at FP16 (an inferred pilot anchor, not a prior claim or a new backbone), add no foundation-model pretraining, and use the existing uniform-affine PyTorch torch.ao.quantization path as the numerical weight/activation PTQ operator; this numerical path is an emulation boundary and is not evidence that an A100 has a deployable W4A4 kernel. Let G be the deterministic union, over every declared grid cell, of every eligible Linear or Conv weight tensor W_g and its activation output A_g reached by the planner's scoring forward path; optimizer state and planner-only code are not quantized, each g has a measured per-site storage record m_g(b), and require |G| >= 1. From named DeepMind Control Suite (DMC) visual continuous-control tasks, collect disjoint self-built calibration and evaluation streams, with each record r storing the complete planner replay state q_t (including z_t and any recurrent/history/cache/normalization/RNG state needed to replay the scoring path), a planner-generated candidate set U_t, and its horizon, update schedule, receding-horizon convention, and tie rule. Use the pre-registered grid H={max(1,floor(H_native/2)), H_native, min(2H_native,H_episode)}, N={max(1,floor(N_native/2)), N_native, 2N_native}, M={max(1,floor(M0/4)), max(1,floor(M0/2)), M0}, S={s_native, random shooting, CEM}, E={e_native, one-step}, and T={stable-index, seeded-random}, removing duplicate cells; define M0 as the minimum, over the non-M base cells, of the largest positive per-cell trajectory count fitting the fixed A100 pilot envelope, and let grid-cell weights omega_c default to 1/|C| unless deployment frequencies are preregistered. Let B={(FP16,FP16), W8A8, W8A4, W4A8, W4A4} be the analysis bit-pair set, and let B_deploy be the subset with a measured backend-supported weight/activation implementation; fake-quant-only pairs may be profiled numerically but cannot enter deployment Pareto curves or the lowest supported deployment target. For each g and b in B, quantize only g with the same observer/calibration data, keep every other site FP16, rerun the identical candidate set under cell c, and define d_g,c(r;b) as the normalized pairwise candidate-order disagreement from FP16 using the explicit tie rule below. The central object is the rollout-ranking influence profile I_g,c(b)=average_r in D_c of d_g,c(r;b) and I_g(b)=sum_c omega_c I_g,c(b), a dimensionless counterfactual estimand of how much site g changes planner ordering over the observed rollout regime; finite accumulators compute the stated finite-sample estimator, subject to ordinary numerical rounding, rather than approximating an unchosen Shapley value. The heterogeneous companion retains each full profile vector P_g=(I_g,c(b)) across cells as its heterogeneity representation (no unbound clustering rule) and chooses b_g by minimizing sum_g omega_g I_g(b_g) subject to the system-level PeakBytes(b_1,...,b_|G|) <= M_mem, where PeakBytes is measured on the materialized end-to-end graph and includes resident weights, activation lifetimes and shared tensors, scales/zero-points, weight copies, and backend workspace; m_g(b) remains a diagnostic per-site record, not a quantity to sum as though sites were disjoint. The resulting all-sites assignment is evaluated end-to-end on disjoint episodes for every feasible grid cell and memory target, reporting rank agreement, first-action agreement, closed-loop return or success, peak memory, and control frequency; the influence profile is therefore an empirical allocation signal rather than a claim of global optimality. A matched intervention keeps candidate pools, start states, bit histogram, exact measured PeakBytes, memory target, planner schedule, receding horizon convention, and tie rule fixed while sampling only non-identity assignments with the same bit-pair histogram and exact measured PeakBytes; if no such assignment exists, the negative control is recorded as unavailable. This control tests attribution under matched conditions but does not prove causality or guarantee a downstream gain. The evidence boundary is explicit: arxiv:2602.02110v1 is connector-verified host_recall with fulltext H/html_arxiv, arxiv:2608.24855v1 is arxiv-retrieved with fulltext T3/html_arxiv, and arxiv:2607.28405v1 is connector-verified host_recall but has no fulltext cache entry in this run and is used only as an abstract-only adjacent comparison; none is introduced as the backbone.",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger\nP1. Candidate action-sequence ordering is the operational decision variable, not merely a proxy for latent or observation reconstruction — reason: the planner selects actions by comparing candidate scores.\nP2. A site-only quantization intervention with the candidate pool, FP16 weights elsewhere, and planner inputs held fixed isolates a useful marginal decision influence (untested — falsification target) — reason: it creates a matched counterfactual while preserving the downstream scoring path.\nP3. The influence profile transfers sufficiently from FP16 planner visitation to quantized receding-horizon visitation for allocation to help (untested — falsification target) — reason: the calibration stream is generated by the same control loop, but low-bit errors can move later states off that stream.\nP4. Site-level marginal influence is sufficiently compositional for a memory-constrained assignment to be useful even though joint quantization can interact (untested — falsification target) — reason: the single-site table makes the pilot tractable, while the all-sites evaluation tests the approximation.\nP5. Existing public weights expose the eligible weight tensors and activation outputs needed for numerical PTQ, and the chosen DMC model/planner path can be run at FP16 and mixed W/A precision — reason: the proposal uses model-internal access, not gradients, closed-model APIs, or a new training corpus.\nOBSERVATION-MODEL: D_cal is sampled as stratified trajectories from named DMC tasks under the FP16 native, random-shooting, and CEM schedules, with fixed start-state and random-seed manifests; it is not unbiased over all reachable latent states, is biased toward the FP16 planner's visitation and candidate distribution, and is kept disjoint from D_eval.\nESTIMAND: for each site g and bit pair b, I_g(b) estimates the expected normalized pairwise candidate-order discordance between the FP16 planner and the model with only g quantized, over the uniform-weighted cells C and the records D_c drawn from this stated DMC/planner process; it is conditional on that process, not an unbiased population average over all states, tasks, or backbones.\nBLOCK 2 — NAIVE-BASELINE AUDIT\nNaive version: run uniform-affine PTQ, select each site's weight and activation bits by lowest layer-output reconstruction error on short calibration trajectories, and spend the remaining memory budget on the sites with the smallest local error.\nIt fails under branch (i): this version silently assumes that local reconstruction and calibration-distribution fidelity predict candidate ranking under recurrent action-conditioned rollouts, a premise that is false as a general rule because planner-induced states and candidate orderings change with horizon. RankCal confronts that failure with site-only counterfactual ranking influence; although counterfactual intervention is a standard diagnostic tool, the domain-specific structure is the adaptive candidate pool plus receding-horizon latent feedback under a fixed mixed W/A memory budget, so this is an application-grade method rather than a claim of a new generic causal estimator.\nBLOCK 3 — DESIGN RATIONALE\nI kept one anchor and deferred the cross-backbone transfer gap and the standalone local-proxy audit because the former is a validation axis and the latter is a negative-control comparison that can run through the same anchor machinery; adding either as a separate leg would make the paper broader without making the method more complete.\nI selected C00 from the anchor alternates because its fixed-model counterfactual measurement object directly matches candidate-order influence, while the heterogeneous companion turns that object into a runnable memory-constrained W/A allocation.\nThe method's central object is defined as a site-isolated estimand and the final full-model evaluation, not a claimed Shapley or globally additive optimum; this keeps the C00 compression step honest when joint quantization interactions violate additivity.\nI rejected uniform local-reconstruction, generic activation-sensitivity, and module/horizon-only routes because they regress to the established n0-n2 PTQ lineage or repeat the n3 DINO-WM sweep; DINO-WM and LeFlow are full-text comparators, QuantWAMs is connector-verified but abstract-only and adjacent, and DreamerV3/TD-MPC2 remain explicitly inferred pilot anchors.",
+    "core_mechanism_steps": "1. Select one publicly available DreamerV3- or TD-MPC2-style action-conditioned latent world-model checkpoint as the inferred pilot anchor and one named DeepMind Control Suite task family; freeze its FP16 weights, reproduce the native planner path, and write a reference configuration containing H_native, N_native, s_native, e_native, and the native tie rule. Bind tau=0 by default (exact score equality) with stable candidate-index resolution for ties; any nonzero tolerance must be preregistered before D_cal. Inputs: public checkpoint and DMC environment. Outputs: reproducible FP16 model, planner, and configuration; no DINO-WM or LeWM backbone is introduced.\n2. Trace the PyTorch scoring forward graph over every declared grid cell and enumerate G as the deterministic union of the eligible Linear/Conv weight tensors W_g plus activation outputs A_g; require |G| >= 1. Attach the existing uniform-affine observers without changing the FP16 path, and reject the manifest if the observer attachment changes any FP16 planner score or candidate order. Inputs: frozen model, planner code, and declared grid. Outputs: site manifest, per-site weight/activation access, and the FP16 memory accounting record; FP16 planner scores remain unchanged only after this no-op check passes.\n3. Build disjoint D_cal and D_eval streams from the named DMC tasks using the grid C over M, N, S, H, E, and T; define D_c={r in D_cal: cell(r)=c}. For each calibration record save the complete planner replay state q_t=(z_t plus any recurrent/history/cache/normalization/RNG state needed for replay), the FP16-generated U_t, and cell metadata, while D_eval contains fresh environment episodes with no shared episode identifiers. Require each evaluated D_c to be nonempty; otherwise mark the cell unavailable rather than forming a zero-denominator mean. Inputs: DMC, FP16 planner, M0 selection rule, and fixed seed manifest. Outputs: stratified calibration records and held-out episodes.\n4. For every g, b, and c, run site-only PTQ using the same observer data, replace only g in the FP16 checkpoint, and score the identical U_t through the declared imagined latent rollout. Let K_r=|U_t|; for K_r >= 2 set d_g,c(r;b)=[sum_{i<j} 1{ord_tau(s_g,b(u_i),s_g,b(u_j)) != ord_tau(s_FP16(u_i),s_FP16(u_j))}]/binom(K_r,2), where ord_tau treats scores within tau as a tie and resolves it by candidate index; for K_r < 2 set d_g,c(r;b)=0 and record the zero-pair count. The intervention propagates through every later latent transition and planner score, so its output is a changed candidate ranking and possibly a changed first action, not just a changed tensor statistic. Inputs: site manifest and D_cal. Outputs: cell-level rank-disagreement tables.\n5. Aggregate the tables into I_g,c(b) and I_g(b), retain the full profile vector across C, and compute local layer-output error and calibration-distribution fidelity only as named comparison signals. Inputs: rank-disagreement tables and omega_c. Outputs: the finite-sample counterfactual influence profile and comparator table used by the allocator.\n6. For each feasible M_mem in the pre-registered Pareto memory sweep, retain the full profile vector as the heterogeneity representation and solve the stated memory-constrained assignment over B_deploy with the measured system-level PeakBytes(b_1,...,b_|G|) <= M_mem; if no assignment is feasible, mark that cell/target infeasible and report no downstream metric rather than silently substituting another map. Inputs: I_g,c(b), PeakBytes, B_deploy, omega_g, and M_mem. Outputs: a per-site weight/activation bit map; materializing that map changes which numerical operators feed future latent rollouts and therefore which action sequence the planner selects.\n7. Materialize the all-sites mixed-precision checkpoint and run the full planner end-to-end for every feasible c and M_mem on D_eval, allowing the selected candidate set and receding-horizon execution to follow each cell's declared convention. Inputs: FP16 checkpoint, bit map, and fresh episodes. Outputs: candidate-order agreement, first-action agreement, closed-loop return or success, peak memory, and control-frequency measurements.\n8. Run matched negative controls by sampling non-identity assignments with the same bit-pair histogram and exact measured PeakBytes as the RankCal assignment, and by using the local-reconstruction allocator while preserving the same M_mem, candidate/update grid, receding-horizon convention, tie rule, planner seeds, and evaluation episodes. If no non-identity assignment satisfies both matches, record the control as unavailable; interpret an observed difference as a matched diagnostic, not a proof that I_g is the sole causal factor. Inputs: the same D_eval episodes and matched resource budget. Outputs: downstream control metrics that test whether the profile, rather than resource amount alone, determines the benefit.\n9. Report the full memory-versus-control-fidelity Pareto curves and the result of the randomized mapping; choose a deployment map only by the requested feasible M_mem target and retain all feasible grid cells in the paper's claim, rather than selecting a favorable horizon, calibration size, planner schedule, execution convention, or tie rule after observing outcomes. Inputs: all evaluation and control tables. Outputs: an auditable method specification and falsifiable claim.",
+    "falsification_prediction": "Minimal experiment: on one public FP16 DreamerV3- or TD-MPC2-style checkpoint (inferred pilot anchor) and one DeepMind Control Suite visual continuous-control task, compare RankCal with uniform-bit and local-reconstruction allocation at matched peak memory across the full C grid. If the mechanism works, the primary downstream metric, closed-loop task-success rate, will be higher for RankCal than for the matched controls, while candidate-order and first-action agreement will degrade less in the longer-horizon cells. The single load-bearing variable is I_g(b), the site-only rollout-ranking influence profile; randomize its mapping to bit pairs while preserving the bit histogram, memory, candidate/update schedule, receding-horizon convention, and tie rule, then rerun fresh D_eval episodes. The negative control predicts that the randomized map's downstream task-success rate returns to the matched local-reconstruction or uniform-PTQ baseline, not merely that I_g changes; if the benefit survives the randomized mapping, the proposed influence signal is not the mechanism carrying the result.",
+    "compute_budget": "GPU: estimated 12 GPU-days on one NSCC ASPIRE2A A100-SXM4-40GB for the one-task pilot, site-only probes, full nuisance grid, matched controls, and held-out closed-loop evaluation; an optional second DMC task family would add an estimated 6 GPU-days. API: $0 for the full campaign because model inference, calibration, and evaluation are local and no paid API judge is required. No GPU experiments are run during this proposal phase.",
+    "differentiation_from_lit": [
+      {
+        "paper_id": "arxiv:2602.02110v1",
+        "delta": "The full-text-backed DINO-WM record constructs a systematic weight-only and joint weight-activation PTQ sweep over methods, granularity, modules, and planning horizons, whereas RankCal constructs a site-level counterfactual candidate-order influence profile over action-conditioned latent states and uses it for memory-constrained mixed W/A assignment."
+      },
+      {
+        "paper_id": "arxiv:2608.24855v1",
+        "delta": "The full-text-backed LeFlow record replaces repeated CEM search with rectified-flow latent trajectory generation, inverse-dynamics decoding, and frozen-LeWM rollout reranking, whereas RankCal leaves the planner and latent backbone fixed and changes the numerical PTQ calibration/allocation signal to preserve candidate ordering under multi-step quantized rollouts."
+      },
+      {
+        "paper_id": "arxiv:2607.28405v1",
+        "delta": "The connector-verified but abstract-only adjacent QuantWAMs record proposes coordinate-compatible activation evidence, joint video-action saliency, and fixed-intervention auditing for WAM PTQ, whereas RankCal targets latent-dynamics planner rankings without WAM future/action coupling and derives weight/activation bits from site-only ranking influence."
+      }
+    ],
+    "almost_prior_paper_id": "arxiv:2602.02110v1",
+    "what_step_was_missed": "It would have needed to hold candidate pools, planner inputs, receding-horizon conventions, and tie rules fixed while quantizing one site at a time, estimate that site's candidate-order discordance over action-conditioned rollout states, and solve the resulting profile as a memory-constrained mixed W/A assignment; the supplied method constructs PTQ sweeps and outcome analyses but not this decision-influence object or allocation step.",
+    "signature_terms": [
+      "rollout-ranking influence calibration",
+      "candidate-order preserving mixed precision",
+      "action-conditioned PTQ site attribution",
+      "receding-horizon bit allocation"
+    ],
+    "alias_terms": [
+      "learned activation clipping",
+      "learned step size quantization",
+      "learned rounding quantization",
+      "Hessian-aware mixed precision",
+      "data-free quantization calibration",
+      "counterfactual policy evaluation",
+      "task-oriented model compression",
+      "decision-focused model compression",
+      "loss-aware bit allocation"
+    ],
+    "composition_note": ""
+  },
+  "falsification_rewritten": false
+}

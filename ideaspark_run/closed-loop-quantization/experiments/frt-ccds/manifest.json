@@ -1,0 +1,390 @@
+{
+  "schema": "frt-ccds-manifest-v1",
+  "protocol_id": "frt-ccds-v1",
+  "date": "2026-09-12",
+  "status": "pre_registered_conditional_pilot",
+  "research_scope": {
+    "candidate": "Frozen-Residual Transport PTQ (FRT)",
+    "anchor": "DINO-WM Wall official epoch65",
+    "novelty_certified": false,
+    "native_low_bit_claim": false,
+    "wam_vla_transfer": false,
+    "test_split": false,
+    "stage_c": false
+  },
+  "cluster": {
+    "name": "CCDS-TC1",
+    "scheduler": "SLURM",
+    "partition": "UGGPU-TC1",
+    "qos": "normal",
+    "gpu_count": 1,
+    "gpu_model_required": "V100",
+    "cpu": 20,
+    "memory_gb": 64,
+    "max_jobs": 2,
+    "max_walltime_hours": 6,
+    "allocation_guard": "../cem-update-ptq-ccds/allocation_guard.py",
+    "host_rule": "actual TC1N## host and scontrol NodeList agreement; no fabricated SLURM_JOB_ID"
+  },
+  "source_identity": {
+    "directory": "outputs/wall_single",
+    "checkpoint": "official Wall epoch65",
+    "recorded_epoch": 65,
+    "checkpoint_file_basename": "model_latest.pth",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "dinov2_commit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+    "dinov2_source_commit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+    "torch": "2.2.0+cu121",
+    "dtype": "float32",
+    "decoder": null,
+    "reference": "FP32 weights and FP32 activations",
+    "execution": "emulation_only",
+    "encoder": "FP32",
+    "policy_readout": "FP32",
+    "environment": "FP32",
+    "native_memory_claim": false,
+    "native_latency_claim": false
+  },
+  "runtime_identity": {
+    "directory": "outputs/wall_single",
+    "recorded_epoch": 65,
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "dinov2_source_commit": "7764ea0f912e53c92e82eb78a2a1631e92725fc8",
+    "dtype": "float32",
+    "decoder": null,
+    "execution": "emulation_only",
+    "native_memory_claim": false
+  },
+  "quantizer": {
+    "target_blocks": [
+      "predictor.transformer.layers.0",
+      "predictor.transformer.layers.1",
+      "predictor.transformer.layers.2",
+      "predictor.transformer.layers.3",
+      "predictor.transformer.layers.4",
+      "predictor.transformer.layers.5"
+    ],
+    "target_scope": "predictor_only",
+    "bits": 4,
+    "q_min": -7,
+    "q_max": 7,
+    "scheme": "symmetric_per_output_channel_weight_only",
+    "q0": {
+      "rounding": "RTN_ties_to_even",
+      "scale": "max_abs_weight_div_7",
+      "zero_channel_scale": 1.0,
+      "zero_channel_integer": 0
+    },
+    "fit_parameterization": {
+      "scale": "positive_scale_with_fixed_floor",
+      "rounding": "AdaRound_style_soft_h_in_0_1",
+      "hard_threshold": 0.5,
+      "clamp_order": "floor_plus_h_then_clamp_then_integer_cast",
+      "alpha_serialized": false,
+      "extra_state": false,
+      "mixed_precision": false,
+      "observer": false,
+      "error_feedback": false
+    },
+    "logical_budget": "all six predictor target blocks W4; no native packed-byte claim; all non-target weights remain FP32"
+  },
+  "target_groups": [
+    "predictor.transformer.layers.0",
+    "predictor.transformer.layers.1",
+    "predictor.transformer.layers.2",
+    "predictor.transformer.layers.3",
+    "predictor.transformer.layers.4",
+    "predictor.transformer.layers.5"
+  ],
+  "splits": {
+    "historical_reserved_minimum": [0, 49],
+    "safety_reserved": [50, 59],
+    "frt_reserved": [60, 71],
+    "cal": {
+      "split_id": "frt_cal",
+      "episode_ids": [
+        "frt_cal:000",
+        "frt_cal:001",
+        "frt_cal:002",
+        "frt_cal:003",
+        "frt_cal:004",
+        "frt_cal:005"
+      ],
+      "local_indices": [0, 1, 2, 3, 4, 5],
+      "dataset_indices": [60, 61, 62, 63, 64, 65],
+      "environment_namespace": 800000,
+      "cem_namespace": 810000,
+      "seed_rule": "namespace + local_index"
+    },
+    "dev": {
+      "split_id": "frt_dev",
+      "episode_ids": [
+        "frt_dev:000",
+        "frt_dev:001",
+        "frt_dev:002",
+        "frt_dev:003",
+        "frt_dev:004",
+        "frt_dev:005"
+      ],
+      "local_indices": [0, 1, 2, 3, 4, 5],
+      "dataset_indices": [66, 67, 68, 69, 70, 71],
+      "environment_namespace": 900000,
+      "cem_namespace": 910000,
+      "seed_rule": "namespace + local_index"
+    },
+    "target_policy": "fresh target fingerprints and disjoint initial states; no historical target payloads or arrays reused",
+    "independent_unit": "episode_initial_state; all records within an episode are nested"
+  },
+  "fit": {
+    "methods": ["clean", "random_same_norm", "frt"],
+    "seeds": [1201, 1202, 1203],
+    "method_seed_order": [
+      "clean:1201",
+      "clean:1202",
+      "clean:1203",
+      "random_same_norm:1201",
+      "random_same_norm:1202",
+      "random_same_norm:1203",
+      "frt:1201",
+      "frt:1202",
+      "frt:1203"
+    ],
+    "optimizer_policy": {
+      "name": "Adam",
+      "betas": [0.9, 0.999],
+      "eps": 1e-08,
+      "weight_decay": 0.0,
+      "lr": 0.01,
+      "learning_rate_freeze": "A timing/stability selection before B; identical scale/rounding rates for all methods and seeds",
+      "no_dev_tuning": true
+    },
+    "fit_updates": null,
+    "fit_update_policy": {
+      "candidate_values": [256, 512, 1000],
+      "freeze_stage": "after_stage_a_timing_and_stability_check_before_stage_b",
+      "no_runtime_override": true,
+      "root_review_required": true
+    },
+    "batch_policy": "seeded_minibatch_schedule_declared_in_A_and_frozen_before_B; identical schedule for all methods within each seed",
+    "batch_size_policy": {
+      "candidate_values": [1, 2, 4],
+      "freeze_stage": "after_stage_a_timing_and_stability_check_before_stage_b",
+      "no_method_specific_value": true
+    },
+    "shuffle": "deterministic_seeded_permutation_declared_in_A; same schedule hash across methods within seed",
+    "gradient_accumulation": "runner_declared_in_A; identical across methods; exposure_count recorded",
+    "initialization": "runner_declared_in_A; same Q0 scales and same fraction/logit alpha initialization for all methods and seeds",
+    "soft_schedule": {
+      "policy": "runner_declared_in_A_and_frozen_before_B; soft schedule must run through final update",
+      "hardening": "materialize_h>=0.5 only after final soft update",
+      "final_hardening_step": "equals_frozen_fit_updates",
+      "early_stop": false,
+      "binary_required_at_final": true
+    },
+    "materialization": {
+      "discard_alpha": true,
+      "reload_checkpoint": true,
+      "exact_weight_assertion": true,
+      "all_target_groups_hard_w4": true
+    }
+  },
+  "loss": {
+    "clean_term": "weighted_mean_squared_error_in_latent_units",
+    "transport_term": "weighted_mean_squared_error_of_finite_difference_transport",
+    "clean_method": "L_clean_only; lambda_T is not tuned and no transport term is supplied",
+    "random_method": "L_clean + lambda_T * L_transport(delta_random)",
+    "frt_method": "L_clean + lambda_T * L_transport(delta_q0)",
+    "lambda_T": 1.0,
+    "lambda_rule": {
+      "source": "provisional A placeholder; B must replace with calibration_freeze.lambda_T before fitting",
+      "lambda_raw": "max(mean_L_clean_Q0,1e-12)/max(mean_L_transport_Q0,1e-12)",
+      "clip": [0.25, 4.0],
+      "shared_by": ["random_same_norm", "frt"],
+      "dev_tuning": false,
+      "clamp_is": "scope_warning_not_scientific_no_go",
+      "placeholder_is_not_frozen": true
+    },
+    "wz": {
+      "source": "CAL FP next-slot outputs only",
+      "estimator": "population_variance",
+      "std_floor": 0.001,
+      "formula": "active Wz_j=1/max(sqrt(max(var_j,0)),0.001); action Wz=0",
+      "frozen_before_fit": true,
+      "dev_reestimate": false,
+      "physical_readout": false
+    }
+  },
+  "random_control": {
+    "space": "active observation/proprio coordinates in Wz-whitened space",
+    "distribution": "standard_normal",
+    "seed_base": 940000,
+    "seed_rule": "one CPU torch.Generator per split; CAL seed=940000 and DEV seed=940001; one shared bank per split",
+    "norm_target": "per_record ||Wz*delta_q0||_2",
+    "action_coordinates": "exact_zero",
+    "zero_q0_norm": "invalid_inconclusive; do not substitute a different norm"
+  },
+  "random_seed": 940000,
+  "dev_banks": {
+    "q0_bank": "one fresh Q0 residual bank collected before fitting and shared by every evaluator",
+    "random_bank": "one deterministic same-norm bank derived from the shared q0 bank and shared by every evaluator",
+    "fresh_qtheta_banks": [
+      "fresh:clean:1201",
+      "fresh:clean:1202",
+      "fresh:clean:1203",
+      "fresh:random_same_norm:1201",
+      "fresh:random_same_norm:1202",
+      "fresh:random_same_norm:1203",
+      "fresh:frt:1201",
+      "fresh:frt:1202",
+      "fresh:frt:1203"
+    ],
+    "bank_order": [
+      "q0",
+      "random_same_norm",
+      "fresh:clean:1201",
+      "fresh:clean:1202",
+      "fresh:clean:1203",
+      "fresh:random_same_norm:1201",
+      "fresh:random_same_norm:1202",
+      "fresh:random_same_norm:1203",
+      "fresh:frt:1201",
+      "fresh:frt:1202",
+      "fresh:frt:1203"
+    ],
+    "evaluator_order": [
+      "fp32",
+      "q0_rtn",
+      "clean:1201",
+      "clean:1202",
+      "clean:1203",
+      "random_same_norm:1201",
+      "random_same_norm:1202",
+      "random_same_norm:1203",
+      "frt:1201",
+      "frt:1202",
+      "frt:1203"
+    ],
+    "required_matrix": "every evaluator scores every bank; no own-bank-only scoring",
+    "fresh_bank_policy": "collect once after fit without refitting; union all nine fresh banks for the primary fresh_union view"
+  },
+  "gates": {
+    "clean_tolerance": {
+      "comparison": "frt_vs_clean",
+      "rule": "frt_clean <= 1.10*clean_clean + 1e-12",
+      "per_seed_episode_requirement": 4,
+      "seed_requirement": "at_least_2_of_3",
+      "macro_requirement": true,
+      "relative_ambiguity": 1e-06
+    },
+    "transport_improvement": {
+      "views": ["q0", "fresh_union"],
+      "comparators": ["clean", "random_same_norm"],
+      "rule": "frt_transport <= 0.95*comparator_transport + 1e-12",
+      "per_seed_episode_requirement": 4,
+      "seed_requirement": "at_least_2_of_3",
+      "macro_requirement": true,
+      "relative_ambiguity": 1e-06
+    },
+    "complete_b_required": true,
+    "interpretation": {
+      "complete_signal": "conditional_signal",
+      "complete_gate_failure": "mechanism_no_go",
+      "invalid_interface_or_common_bank": "engineering_fail",
+      "missing_or_underoptimized_or_budget": "resource_incomplete_or_underoptimized",
+      "no_statistical_significance_claim": true
+    }
+  },
+  "artifact_contract": {
+    "stage_a_json": "stage_a_summary.json",
+    "stage_a_npz": "bank_stage_a.npz",
+    "stage_b_json": "stage_b_summary.json",
+    "stage_b_npz": "bank_dev.npz",
+    "stage_b_common_matrix": "common_bank.npz (runner-emitted before B verification)",
+    "verification_a_json": "verification_a.json",
+    "verification_b_json": "verification_b.json",
+    "verification_all_json": "verification.json",
+    "verification_summary_max_bytes": 65536,
+    "raw_arrays_stay_on_compute": true
+  },
+  "stage_a_arrays": {
+    "required": [
+      "history",
+      "x_history",
+      "action",
+      "next_action",
+      "fp_current",
+      "q0_current",
+      "q0_transport",
+      "delta",
+      "fp_transport",
+      "random_delta",
+      "random_transport",
+      "wz",
+      "action_mask",
+      "active_mask",
+      "metadata_json"
+    ],
+    "shape_contract": {
+      "history": "[N,T,P,D]",
+      "x_history": "[N,T,P,D]",
+      "slot_arrays": "[N,1,P,D]",
+      "wz": "[D] or explicit [P,D] with action mask"
+    },
+    "new_slot_index": "T-1",
+    "action_mask_contract": "when emitted, explicit action mask is audited; a [D] Wz without mask is reported as an engineering evidence limitation"
+  },
+  "stage_b_arrays": {
+    "required": [
+      "bank_dev.npz: history,x_history,action,next_action,fp_current,q0_current,delta,fp_transport,random_delta,random_transport,wz,metadata_json",
+      "common_bank.npz: bank_ids,evaluator_ids,bank_deltas,active_mask,action_mask,wz,clean_error,transport_error,clean_mse,transport_mse"
+    ],
+    "shape_contract": {
+      "bank_deltas": "[B,N,1,P,D] or equivalent bank-indexed rows",
+      "clean_error": "[E,N,1,P,D]",
+      "transport_error": "[E,B,N,1,P,D]",
+      "clean_mse": "[E,N]",
+      "transport_mse": "[E,B,N]"
+    },
+    "bank_count": 11,
+    "evaluator_count": 11,
+    "fresh_union": "bank indices 2..10"
+  },
+  "budget": {
+    "total_gpu_hours_cap": 6.0,
+    "stage_a_gpu_hours_cap": 1.5,
+    "stage_b_gpu_hours_cap": 4.5,
+    "includes": [
+      "model_load",
+      "CAL_collection",
+      "three_methods_times_three_fit_seeds",
+      "DEV_common_banks",
+      "raw_IO",
+      "failed_attempts_and_retries"
+    ],
+    "timing_refinement_required": true,
+    "budget_exhaustion": "resource_incomplete_or_underoptimized; never scientific no_go",
+    "gpu_fallback": "none; do not switch to A100 or exceed cap"
+  },
+  "runner_interface": {
+    "runner_cli_manifest": "--manifest path/to/manifest.json",
+    "runtime_identity_keys": [
+      "directory",
+      "checkpoint_file",
+      "recorded_epoch",
+      "checkpoint_size_bytes",
+      "source_commit",
+      "dinov2_source_commit",
+      "dtype",
+      "decoder",
+      "execution",
+      "native_memory_claim",
+      "torch",
+      "gpu"
+    ],
+    "stage_a_outputs_before_fit": true,
+    "stage_b_outputs_after_all_hardening": true,
+    "physical_endpoint": "A interface capability audit only; no DEV rollout/success/action comparison and no TEST",
+    "no_model_import_in_verifier": true,
+    "no_credentials_in_artifacts": true
+  }
+}

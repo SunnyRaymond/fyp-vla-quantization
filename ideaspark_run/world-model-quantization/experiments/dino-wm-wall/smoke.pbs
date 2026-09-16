@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N rankcal_smoke
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:25:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+CONTROL="$ROOT/rankcal_smoke/control"
+OUT="$ROOT/rankcal_smoke/artifacts/$PBS_JOBID"
+WORK=${TMPDIR:-/tmp}/rankcal-smoke-$PBS_JOBID
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+date -Is
+test -f "$ROOT/ASSETS_READY"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg WANDB_MODE=disabled
+export PYTHONPATH="$ROOT/source"
+cp "$CONTROL"/*.py "$OUT/"
+cp "$ROOT/checkpoints/outputs/wall_single/hydra.yaml" "$OUT/checkpoint_config.yaml"
+nvidia-smi > "$OUT/nvidia-smi-start.txt"
+nvidia-smi --query-gpu=timestamp,index,uuid,utilization.gpu,memory.used,memory.total --format=csv -l 1 > "$OUT/device_samples.csv" &
+MONITOR_PID=$!
+trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT
+timeout --signal=TERM --kill-after=15s 22m "$WORK/runtime/venv/bin/python" "$CONTROL/run_smoke_suite.py" --root "$ROOT" --output "$OUT"
+date -Is

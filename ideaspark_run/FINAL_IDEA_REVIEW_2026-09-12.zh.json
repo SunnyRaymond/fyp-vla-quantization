@@ -1,0 +1,373 @@
+{
+  "review_date": "2026-09-12",
+  "review_type": "independent_final_pre_pilot_review",
+  "review_scope": "Fresh-context review of the revised FRT and TR-PVQ candidates plus historical STRC. No model, experiment, cluster job or heavy I/O was run. Candidate directories were not modified.",
+  "workflow": {
+    "skills": [
+      "ponytail",
+      "idea-spark critique rubric",
+      "idea-spark implementability_audit rubric",
+      "idea-spark anti-pattern guard"
+    ],
+    "simplification": "Coherence, critique and implementability were combined as permitted for this ResearchStudio-Idea review; this is not a canonical pipeline DONE claim.",
+    "evidence_boundary": "Local audits and saved primary-source records were read. No new empirical support is claimed. Existing DINO W4/W8 evidence is fake/numerical unless a native backend is separately measured."
+  },
+  "inputs": [
+    "ideaspark_run/EXISTING_IDEAS_REVIEW_2026-09-12.zh.md",
+    "ideaspark_run/PRIOR_SCOUT_2026-09-12.zh.md",
+    "ideaspark_run/FEASIBILITY_AUDIT_2026-09-12.zh.md",
+    "ideaspark_run/closed-loop-quantization/IDEA.zh.md",
+    "ideaspark_run/closed-loop-quantization/STATUS.zh.md",
+    "ideaspark_run/closed-loop-quantization/TENTATIVE_MECHANISM.zh.md",
+    "ideaspark_run/closed-loop-quantization/phase2_generate/frozen_residual_transport_ptq.json",
+    "ideaspark_run/vq-action-geometry/STATUS.zh.md",
+    "ideaspark_run/vq-action-geometry/REVISION_RESPONSE.zh.md",
+    "ideaspark_run/vq-action-geometry/phase1/phase1_output.json",
+    "ideaspark_run/vq-action-geometry/phase2_select/phase2_select_output.json",
+    "ideaspark_run/closed-loop-quantization/phase0/DIRECT_PRIOR_SUPPLEMENT.zh.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/semanticscholar_e02f8a54b3bbea9fb31b1e084eefd263e26df523.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/arxiv_2607.28405v1.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/arxiv_2605.15705v1.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/semanticscholar_c45e8f717cdf07690560c5eb96dbac4305236755.md"
+  ],
+  "candidate_reviews": [
+    {
+      "candidate_id": "closed-loop-quantization/strc-trfc",
+      "name": "Signed Temporal Residual Calibration / Temporal Residual Feedback Calibration (historical)",
+      "artifact_status": "rejected_attempt; retained only as history and not used to inherit novelty",
+      "verdict": "abandon",
+      "novelty_certified": false,
+      "rationale": "K_r is association rather than causal transfer, squared lag covariance loses sign, A(q) and A_pi(q) use different treatment paths, and gamma=1 can telescope transition increments to ordinary terminal drift. A single-site score relabeled as temporal, fake logical bytes, or an observer cannot repair the estimand.",
+      "blocking_findings": [
+        "K_r(ell)=E[e_(t+ell) r_t^T] confounds initial state, phase, action magnitude, shared randomness and policy feedback.",
+        "sum_l ||K_r(l)||^2 cannot support signed cancellation language.",
+        "Natural q-versus-FP drift and FP-path shuffled residual injection are not matched interventions.",
+        "Transition-increment e with gamma=1 reduces to terminal displacement.",
+        "Conditional swaps must not be interpreted as novelty if interaction is zero or scores are additive single-site rankings."
+      ],
+      "near_neighbor_status": {
+        "DA-PTQ": "virtual Jacobian, trajectory motion surrogate and mixed precision already cover broad drift-aware allocation",
+        "QuantWAMs": "reachable-state/Fisher calibration and schedule repair already cover structural closed-loop WAM calibration",
+        "Feedback_World_Model": "online transition-residual observer covers deployment feedback",
+        "RPIQ": "retrieved abstract warns of residual accumulation, Gauss-Seidel closed-loop quantization and compensation; exact overlap unresolved",
+        "status": "load-bearing mismatch; do not advance or call it a local revise"
+      },
+      "salvage_boundary": "FRT is a new candidate. It must be independently judged against QDrop/noisy-input, directional sensitivity and stale-residual controls.",
+      "no_go_conditions": [
+        "Any use of squared K_r as signed-cancellation evidence",
+        "Mismatched phase intervention remains load-bearing",
+        "Physical/transition residual semantics remain undefined or gamma=1 is ordinary terminal drift",
+        "The claimed mechanism is only single-site/additive score ranking or deployment observer/error feedback"
+      ]
+    },
+    {
+      "candidate_id": "closed-loop-quantization/frozen-residual-transport-ptq",
+      "name": "Frozen-Residual Transport PTQ (FRT)",
+      "artifact_status": "conditional candidate in IDEA.zh.md and phase2_generate/frozen_residual_transport_ptq.json; reviewed as new mechanism after STRC abandonment",
+      "verdict": "revise",
+      "pilot_priority": "first",
+      "novelty_certified": false,
+      "novelty_status": "conditional domain-specific pilot hypothesis; generic sensitivity novelty is not claimed",
+      "rationale": "FRT is coherent enough for a bounded pilot: a fixed Q0 W4 map produces a paired residual delta, delta is inserted only into the next predicted latent slot, and a quantized one-step finite-difference transport is matched to FP while bits and deployment state stay fixed. The central difference remains conditional because this is a local directional-response objective adjacent to QDrop, PD-Quant, Sobolev/JVP/GAD and direct two-step matching.",
+      "mechanism_audit": {
+        "load_bearing_definition": [
+          "delta_Q0=stopgrad(F_Q0(X,a)-F_FP(X,a)) from the same history/action/RNG pair",
+          "delta_Q0 is placed in the newly predicted latent slot; older history slots and cache fields stay unchanged",
+          "T_theta=F_theta(x+delta_Q0,a')-F_theta(x,a') is matched to T_FP with the same x, delta_Q0 and a'",
+          "L_FRT is clean latent reconstruction plus lambda_T transport mismatch under frozen latent scale W_z",
+          "Physical xy is an independent held-out environment closed-loop endpoint, not a latent-to-xy linear readout"
+        ],
+        "coherence_status": "coherent finite-difference transport hypothesis, subject to hard-W4 and full-history interface gates",
+        "strengths": [
+          "Removes STRC's K/sign/phase/causal problems and does not add observer or online correction.",
+          "Q0-derived direction is quantization-specific in construction and is tested against a same-norm random direction.",
+          "Fixed W4 map and no bit allocator make the deployment boundary auditable.",
+          "Fresh Q0 and one-time fresh Q_theta residual checks give a direct anti-self-reconstruction test."
+        ],
+        "generic_sensitivity_risk": {
+          "finding": "The transport contrast can be a named version of directional/Jacobian sensitivity matching.",
+          "covered_by": [
+            "QDrop/input-noise reconstruction",
+            "PD-Quant prediction-difference objective",
+            "Sobolev derivative matching",
+            "GAD-like sensitivity alignment",
+            "direct two-step unrolled matching"
+          ],
+          "required_test": "The primary pilot control is random same-norm delta with exactly the same finite-difference target structure, optimizer, W4 parameter freedom, CAL/DEV budget and endpoint. An explicit JVP or multi-direction finite-difference control is a useful diagnostic, not a mandatory full-pilot gate. If the Q0 direction is equivalent on fresh DEV and held-out closed-loop endpoint, abandon FRT novelty and the candidate."
+        },
+        "frozen_direction_risk": {
+          "finding": "Fitting Q_theta can change the deployed residual direction away from frozen delta_Q0.",
+          "required_test": "On DEV, collect one fresh Q_theta residual without refitting and report norm, cosine/alignment and transport ranking against delta_Q0. If the direction is stale and fresh-Q0 transport does not transfer, classify as Q0-proximal overfit and abandon."
+        }
+      },
+      "hard_w4_math_gate": {
+        "required_definition": [
+          "Write exact signed W4 q_min/q_max and per-output-channel scale axis for Q0 and Q_theta.",
+          "Freeze scale convention, zero/tie rounding, clamp order and treatment of exact integer boundaries.",
+          "Use soft h(alpha) only during CAL; hard-freeze h(alpha) to {0,1}, discard alpha and re-evaluate the materialized checkpoint on DEV/TEST.",
+          "State whether scale, codebook/metadata and packing overhead count toward actual-byte ceiling; logical bytes must be kept separate from packed bytes."
+        ],
+        "current_equation": "q_int,g=clip(floor(w_g/s_g)+h(alpha_g),q_min,q_max), h(alpha_g) in [0,1] during CAL and h(alpha_g) in {0,1} after hardening; w_hat_g=s_g*q_int,g.",
+        "failure": "STE/soft values, unspecified W4 range or logical-byte arithmetic cannot support a hard-W4 deployment claim."
+      },
+      "history_slot_gate": {
+        "required_definition": [
+          "Exact full-history schema and slot ordering",
+          "Real shift/concat operation and newly predicted slot shape",
+          "Normalization, cache/history fields, action/chunk alignment and RNG replay",
+          "Proof that x+delta is a legal runner input and that T_FP/T_theta use the same current state and next action"
+        ],
+        "failure": "Broadcasting delta across history, dropping cache fields or using an off-manifold input makes the score an interface artifact; stop the candidate."
+      },
+      "single_site_subsumption_audit": {
+        "status": "lower risk than STRC; interaction is not load-bearing",
+        "finding": "No additive site score or bit allocator is proposed, but AdaRound-style scalar/rounding fitting can still look like local PTQ with a transport label.",
+        "required_test": "At matched W4 bytes compare clean-only, direct two-step, QDrop/noise, random-delta and FRT fits using the same target map and endpoint. Joint-versus-independent fitting may be reported descriptively, but near-zero interaction alone is not a FRT no-go."
+      },
+      "near_neighbor_audit": [
+        {
+          "paper_id": "arxiv:2203.05740",
+          "name": "QDrop",
+          "primary_source": "https://arxiv.org/abs/2203.05740",
+          "mechanism": "Randomly drops activation quantization during PTQ reconstruction to improve robustness/flatness.",
+          "required_difference": "FRT must beat the exact matched random/noisy-input control through fresh Q0 direction and downstream endpoint; otherwise it is QDrop-like robustness fitting.",
+          "status": "direct adjacent baseline"
+        },
+        {
+          "paper_id": "arxiv:2004.10568",
+          "name": "AdaRound",
+          "primary_source": "https://arxiv.org/abs/2004.10568",
+          "mechanism": "Data/task-aware layer-local rounding optimization with soft relaxation and hard materialization.",
+          "required_difference": "AdaRound supplies a possible hard-rounding implementation; only Q0 residual transport can differentiate the objective.",
+          "status": "rounding prior, not FRT novelty"
+        },
+        {
+          "paper_id": "arxiv:2212.07048",
+          "name": "PD-Quant",
+          "primary_source": "https://arxiv.org/abs/2212.07048",
+          "mechanism": "Global FP/Q prediction difference with regularization and activation-distribution correction.",
+          "required_difference": "FRT must show a transport-of-x+delta gain beyond clean/global prediction difference and must validate on fresh residuals.",
+          "status": "direct objective neighbor"
+        },
+        {
+          "paper_id": "arxiv:1706.04859",
+          "name": "Sobolev Training",
+          "primary_source": "https://arxiv.org/abs/1706.04859",
+          "mechanism": "Derivative matching to preserve local function behavior in training/distillation/compression settings.",
+          "required_difference": "No first sensitivity/Jacobian claim; JVP/multi-direction is optional diagnostic and Q0-specific direction is the only conditional narrowing.",
+          "status": "principle-level collision"
+        },
+        {
+          "paper_id": "arxiv:2606.01651",
+          "name": "GAD",
+          "primary_source": "https://arxiv.org/abs/2606.01651",
+          "mechanism": "JVP-based initial-noise sensitivity alignment in a distillation/training setting.",
+          "required_difference": "The same-structure random same-norm delta control must separate Q0-induced direction from generic sensitivity alignment.",
+          "status": "direct sensitivity warning"
+        },
+        {
+          "paper_id": "arxiv:2604.11572",
+          "name": "DA-PTQ",
+          "primary_source": "https://arxiv.org/abs/2604.11572",
+          "mechanism": "Virtual Jacobian, trajectory-level motion surrogate, cross-space compensation and mixed precision.",
+          "required_difference": "FRT remains fixed-bit, no compensation and uses finite-difference transport of Q0 residuals; generic Jacobian/motion allocation is covered.",
+          "status": "bounded closed-loop neighbor"
+        },
+        {
+          "paper_id": "arxiv:2607.28405v1",
+          "name": "QuantWAMs",
+          "primary_source": "https://arxiv.org/abs/2607.28405",
+          "mechanism": "Shared-basis/Fisher/reachable-state calibration and denoising schedule repair for WAMs.",
+          "required_difference": "FRT uses no Fisher allocator, schedule repair or shared-basis claim; DINO-WM pilot has no denoising schedule.",
+          "status": "different but relevant"
+        },
+        {
+          "paper_id": "arxiv:2605.15705v1",
+          "name": "Feedback World Model",
+          "primary_source": "https://arxiv.org/abs/2605.15705v1",
+          "mechanism": "Online transition-residual observer and action-aware latent feedback.",
+          "required_difference": "FRT remains offline calibration with no observer, online correction or deployment-time FP reference.",
+          "status": "different observer family"
+        },
+        {
+          "paper_id": "openalex:W7119233972",
+          "name": "RPIQ",
+          "primary_source": "https://openalex.org/W7119233972",
+          "mechanism": "Retrieved abstract reports residual accumulation, Gauss-Seidel closed-loop/single-instance quantization and residual-projected compensation; full objective was not verified here.",
+          "required_difference": "FRT must not implement residual compensation or error-feedback arithmetic; broad residual/closed-loop novelty remains unresolved until full method is checked.",
+          "status": "unresolved collision warning"
+        }
+      ],
+      "implementation_verdict": {
+        "verdict": "revise",
+        "required_gates": [
+          "Light interface gate before GPU time",
+          "Materialized hard-W4 rerun",
+          "Fresh Q0 and fresh Q_theta residual transfer checks",
+          "Matched random same-norm transport baseline",
+          "Held-out environment closed-loop physical xy endpoint with disjoint episode/initial-state split"
+        ],
+        "no_go_conditions": [
+          "Full-history contract or one-step map cannot be restored",
+          "Hard W4 range/rounding/packing definition is missing",
+          "Random same-norm control matches FRT on fresh DEV and downstream endpoint",
+          "FRT only improves CAL, or final Q_theta residual is badly misaligned with frozen Q0 without a scoped explanation",
+          "The effect is explained by clean-MSE/parameter freedom or an online observer/error-feedback path"
+        ]
+      },
+      "feasibility_4xa100": {
+        "evidence": "Existing audit reports DINO-WM Wall CEM about 4.06 GiB and a probe around 12,820 MB sampled device memory; this supports an inference-only bounded screen, not unmeasured backward or native runtime.",
+        "a100_40gb": "Plausible for the first screen, runtime unmeasured.",
+        "a100_80gb": "Headroom only; not a fallback to exceed the planning cap.",
+        "planning_cap": "<=12 A100 GPU-hours including baselines/startup/failure is a planning stop, not a measurement or statistical guarantee.",
+        "allocation": "All model loading, heavy I/O and computation require real PBS_JOBID, non-login hostname and confirmed GPU allocation; no login-node fallback."
+      }
+    },
+    {
+      "candidate_id": "vq-action-geometry/tr-pvq",
+      "name": "Trajectory-Relational Product VQ (TR-PVQ)",
+      "artifact_status": "STATUS.zh.md plus REVISION_RESPONSE.zh.md and Phase 1/selection artifacts; no completed canonical phase2_generate artifact",
+      "verdict": "revise",
+      "pilot_priority": "second",
+      "novelty_certified": false,
+      "novelty_status": "conditional controlled domain adaptation; no general relational-VQ novelty claim",
+      "rationale": "The revision correctly makes the relation depend on quantized-model imagined trajectories, adds a goal/absolute anchor, removes Gram diagonal from the main relation loss, fixes an actual-byte ceiling and removes rate allocation/schedule/accelerator claims. However, pairwise relational objectives already have RKD and CR-QAT collision families, while VPTQ/AQLM/RSAVQ/MotionVQ/DA-PTQ/QuantWAMs/Feedback World Model cover adjacent quantization, geometry, motion and feedback mechanisms. The candidate is a pilot hypothesis, not an authenticated new principle.",
+      "mechanism_audit": {
+        "current_objective": "L_TR=L_abs+lambda_rel L_off, where trajectories are rerun by each quantized model, goal anchor is frozen in source output coordinates, and L_off uses off-diagonal pairwise Gram terms.",
+        "strengths": [
+          "No longer a fixed-input Gram that is independent of codebook/index.",
+          "Absolute/planner score anchor addresses harmful rotation/translation and diagonal-as-goal-score issues.",
+          "Actual-byte ceiling, fixed group map and no rate allocator reduce confounding with RSAVQ/MotionVQ.",
+          "The proposed codebook-only bounded first update is cheaper than unrestricted vector search."
+        ],
+        "blocking_findings": [
+          {
+            "finding": "Relational pairwise fitting is not novel in the abstract.",
+            "required_repair": "Treat RKD and CR-QAT as direct collision families and narrow the claim to fixed-byte DINO-WM weight VQ only after a source-complete comparison."
+          },
+          {
+            "finding": "The relation term may be a post-hoc report if it does not change codebook/index choices.",
+            "required_repair": "Show L_TR changes codebook/index map and beats L_abs/local-MSE/VPTQ-like at matched actual bytes; otherwise classify as ablation/negative result."
+          },
+          {
+            "finding": "Fixed group map, pooling, horizon, normalization and CEM objective can silently define the result.",
+            "required_repair": "Freeze and publish these before TEST; keep action neighborhood, first action and return/success as held-out endpoints."
+          },
+          {
+            "finding": "Packed VPTQ/AQLM layout is not native DINO-WM evidence.",
+            "required_repair": "Report logical bits, actual codebook/index/scale/metadata bytes, packed loader, Peak VRAM and synchronized throughput separately."
+          }
+        ]
+      },
+      "near_neighbor_audit": [
+        {
+          "paper_id": "cvpr:2019:RKD",
+          "name": "Relational Knowledge Distillation",
+          "primary_source": "https://openaccess.thecvf.com/content_CVPR_2019/html/Park_Relational_Knowledge_Distillation_CVPR_2019_paper.html",
+          "mechanism": "Transfers pairwise distance and angle relations among examples.",
+          "required_difference": "TR-PVQ must show that quantized DINO-WM imagined-trajectory relations select a better fixed-byte weight codebook, rather than restating relational representation matching.",
+          "status": "direct relational collision"
+        },
+        {
+          "paper_id": "arxiv:2603.05964",
+          "name": "CR-QAT",
+          "primary_source": "https://arxiv.org/abs/2603.05964",
+          "mechanism": "Retrieved record reports text-anchored pairwise similarity combined with QAT for open-vocabulary object detection.",
+          "required_difference": "TR-PVQ must distinguish fixed-byte weight VQ on WM imagined trajectories from text-anchored pairwise similarity/QAT; no broad pairwise-quantization novelty claim.",
+          "status": "direct adjacent collision; source-complete method comparison required"
+        },
+        {
+          "paper_id": "arxiv:2409.17066",
+          "name": "VPTQ",
+          "primary_source": "https://arxiv.org/abs/2409.17066",
+          "mechanism": "Second-order/channel-independent vector PTQ with codebook/index and residual/outlier storage.",
+          "required_difference": "Only a quantized-model-dependent imagined-trajectory relation objective can separate TR-PVQ; packed lookup is inherited.",
+          "status": "core VQ baseline"
+        },
+        {
+          "paper_id": "arxiv:2401.06118",
+          "name": "AQLM",
+          "primary_source": "https://arxiv.org/abs/2401.06118",
+          "mechanism": "Additive multi-codebook block quantization with calibration outputs and practical kernels.",
+          "required_difference": "TR-PVQ must show relation-driven codebook selection beyond calibration-output fitting and separately measure its packed path.",
+          "status": "core VQ/storage baseline"
+        },
+        {
+          "paper_id": "arxiv:2510.01240",
+          "name": "RSAVQ",
+          "primary_source": "https://arxiv.org/abs/2510.01240",
+          "mechanism": "FIM/Riemannian error-direction guidance and channel sensitivity allocation.",
+          "required_difference": "TR-PVQ must keep fixed bytes/groups and avoid Fisher/natural-gradient/rate allocation claims.",
+          "status": "geometry/allocation neighbor"
+        },
+        {
+          "paper_id": "arxiv:2607.24148",
+          "name": "MotionVQ/VQVLA",
+          "primary_source": "https://arxiv.org/abs/2607.24148",
+          "mechanism": "Motion-aware dynamic precision, centroid reuse and custom accelerator path.",
+          "required_difference": "TR-PVQ must remain static relation-driven weight VQ without dynamic schedule or accelerator claim.",
+          "status": "motion/hardware neighbor"
+        },
+        {
+          "paper_id": "arxiv:2604.11572",
+          "name": "DA-PTQ",
+          "primary_source": "https://arxiv.org/abs/2604.11572",
+          "mechanism": "Virtual Jacobian, trajectory motion surrogate and mixed precision.",
+          "required_difference": "Relation codebook fitting must not be relabeled Jacobian/motion allocation.",
+          "status": "trajectory/Jacobian neighbor"
+        },
+        {
+          "paper_id": "arxiv:2607.28405v1",
+          "name": "QuantWAMs",
+          "primary_source": "https://arxiv.org/abs/2607.28405",
+          "mechanism": "Joint video-action Fisher/reachable-state calibration and schedule repair.",
+          "required_difference": "TR-PVQ must compress weights using relation fitting, not schedule/Fisher auditing.",
+          "status": "WAM structural neighbor"
+        },
+        {
+          "paper_id": "arxiv:2605.15705v1",
+          "name": "Feedback World Model",
+          "primary_source": "https://arxiv.org/abs/2605.15705v1",
+          "mechanism": "Online transition-residual observer and action-aware latent feedback.",
+          "required_difference": "TR-PVQ must not introduce online observer or residual correction.",
+          "status": "feedback neighbor"
+        }
+      ],
+      "implementation_verdict": {
+        "verdict": "revise",
+        "required_gates": [
+          "Freeze source output coordinate, goal anchor, pooling, horizon, action probes and CEM objective.",
+          "Use the same actual-byte ceiling and report overhead/slack for every variant.",
+          "Compare FP32, VPTQ-like/local-MSE, L_abs, L_TR, scalar, independent-codebook, shuffled-pair and same-byte random/index controls.",
+          "Show held-out off-diagonal relation, planner first action, action neighborhood and return/success together."
+        ],
+        "no_go_conditions": [
+          "Relation is fixed-input or does not change codebook/index choices",
+          "L_TR map equals L_abs/local-MSE/VPTQ-like and relation is only a post-hoc report",
+          "Pair-label shuffle or scalar/independent-codebook matches the relation gain",
+          "RKD/CR-QAT or another exact relational/task-aware VQ source subsumes the objective",
+          "Native compression/latency is claimed from logical bits, fake quantization or inherited layout"
+        ]
+      },
+      "feasibility_4xa100": {
+        "evidence": "Existing DINO-WM Wall audit supports a single-card inference screen but not the candidate-specific imagined-trajectory/codebook search or native kernel.",
+        "a100_40gb": "Plausible for a tiny codebook identity/held-out relation gate; full search runtime unmeasured.",
+        "a100_80gb": "Headroom only and must be reported separately.",
+        "planning_cap": "Approximately 8-16 allocated A100-hours is a planning estimate, not measured runtime; stop at the declared cap.",
+        "allocation": "Model loading, codebook search, hashing, I/O and timing require real PBS allocation with PBS_JOBID, non-login hostname and GPU checks."
+      }
+    }
+  ],
+  "cross_branch_decision": {
+    "non_vq": "abandon STRC; revise FRT as a new mechanism and prioritize its bounded pilot",
+    "vq": "revise TR-PVQ only as a conditional fixed-byte WM hypothesis; no general relational-VQ novelty claim",
+    "priority": "FRT first because its mechanism and stop rule are narrower and its first screen does not require a new codebook/kernel path.",
+    "release_gate": "Do not advance either candidate until its stated matched controls and no-go checks pass; do not keep an idea solely to deliver two."
+  },
+  "feasibility_summary": {
+    "dino_anchor": "Existing DINO-WM Wall CEM is about 4.06 GiB with a calibration probe around 12,820 MB sampled device memory; this supports inference-only planning evidence only.",
+    "4xa100": "Four A100s are a concurrency ceiling, not proof that full-model replicas, backward passes, long rollouts or exhaustive maps fit.",
+    "native_boundary": "Logical/fake W4 or VQ results do not imply packed checkpoint bytes, Peak VRAM, synchronized throughput or latency without an actual backend and same-workload FP/BF16 reference.",
+    "cluster_boundary": "All future heavy I/O, model loading and compute must run under a real PBS allocation on a non-login hostname with nonempty PBS_JOBID and confirmed GPU allocation; login node remains lightweight control only."
+  }
+}

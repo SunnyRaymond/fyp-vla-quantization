@@ -1,0 +1,93 @@
+{
+  "schema": "frt-ccds-jobs-v1",
+  "jobs": [
+    {
+      "job_id": "64685",
+      "stage": "cpu-resource-inventory",
+      "gpu_count": 0,
+      "status": "COMPLETED",
+      "summary": "artifacts/resources_64685.json"
+    },
+    {
+      "job_id": "64687",
+      "stage": "A-preliminary-core-probe",
+      "gpu_count": 1,
+      "status": "COMPLETED",
+      "elapsed_seconds": 23,
+      "summary": "artifacts/64687/core_probe.json"
+    },
+    {
+      "job_id": "64688",
+      "stage": "A-full-engineering-validation",
+      "gpu_count": 1,
+      "status": "COMPLETED",
+      "elapsed_seconds": 41,
+      "summary": "artifacts/64688/summary.json",
+      "independent_verification": "passed in CPU job64689"
+    },
+    {
+      "job_id": "64689",
+      "stage": "A-independent-CPU-verification",
+      "gpu_count": 0,
+      "status": "COMPLETED",
+      "elapsed_seconds": 1,
+      "summary": "artifacts/64689/verification_a.json"
+    },
+    {
+      "job_id": "64690",
+      "stage": "B-preflight-then-formal",
+      "gpu_count": 1,
+      "status": "FAILED",
+      "walltime_limit_seconds": 3600,
+      "elapsed_seconds": 12,
+      "reason": "preflight startup stable runtime identity incorrectly included cuda_visible_devices; no fit ran"
+    },
+    {
+      "job_id": "64691",
+      "stage": "B-engineering-preflight",
+      "gpu_count": 1,
+      "status": "FAILED",
+      "elapsed_seconds": 129,
+      "reason": "strict FP clean null saw batch1 vs batch12 rounding difference; all2stepfitsandmatrix complete, officialfit neverstarted"
+    },
+    {
+      "job_id": "64693",
+      "stage": "CPU-preflight-diagnostic",
+      "gpu_count": 0,
+      "summary": "artifacts/64691/fp_diagnostic.json",
+      "status": "COMPLETED",
+      "elapsed_seconds": 4
+    },
+    {
+      "job_id": "64694",
+      "stage": "B-preflight-then-formal",
+      "gpu_count": 1,
+      "status": "COMPLETED",
+      "walltime_limit_seconds": 3600,
+      "engineering_fix": "shared FP clean target evaluated using same batch12 as all evaluators",
+      "elapsed_seconds": 1174,
+      "summary": "artifacts/64694/summary.json",
+      "engineering_pass": true
+    },
+    {
+      "job_id": "64696",
+      "stage": "B-independent-CPU-verification",
+      "gpu_count": 0,
+      "status": "COMPLETED",
+      "dependency": "afterok:64694",
+      "summary": "artifacts/64696/verification_b.json",
+      "elapsed_seconds": 14,
+      "engineering_pass": true,
+      "mechanism_gate_pass": false,
+      "result": "mechanism_no_go"
+    }
+  ],
+  "gpu_allocation_total_seconds": 1379,
+  "gpu_allocation_total_hours": 0.38305555555555554,
+  "status": "A_and_B_completed",
+  "mechanism_result": "current_recipe_no_go",
+  "automation": {
+    "id": "frt-b-v100",
+    "status": "PAUSED"
+  }
+}

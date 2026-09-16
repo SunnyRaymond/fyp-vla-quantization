@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-CREDENTIAL_PATH = Path(__file__).with_name("nscc-credentials.env")
+CREDENTIAL_PATH = Path(__file__).resolve().parents[1] / "credentials.env"
 KNOWN_HOSTS_PATH = Path(r"C:\Users\Raymond\.ssh\known_hosts_nscc_aspire2a")
 
 

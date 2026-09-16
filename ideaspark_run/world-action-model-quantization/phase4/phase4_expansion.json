@@ -1,0 +1,2135 @@
+{
+  "title": "Causal Consequence Calibration for Quantized World Action Models",
+  "title_zh": "量化 World Action Models 的因果后果校准",
+  "method_name": "One-Transition Consequence PTQ (OTC-PTQ)",
+  "hook": "At a matched high-precision-unit budget, the candidate predicts that the rank correlation between local PTQ discrepancy and paired one-step closed-loop consequence will drop specifically on contact-transition states, while consequence-ranked protection will reduce contact-sensitive task failures relative to local-score ranking. The surprising result is the regime split, not a claim that local numerical error is useless everywhere. C_r is not task loss, the physical consequence of executing the full action chunk or a replan horizon, a marginal effect in the jointly low-bit deployment, or a bytes/latency objective; any reduction in held-out task failures is only an empirical predictive test of transfer from this one-control-transition proxy.",
+  "abstract_draft": "Post-training quantization (PTQ) of a coupled future-video/action world action model (WAM) needs a site-selection signal that reflects action-mediated contact consequences, not merely local numerical discrepancy. The bottleneck is that a local score can be poorly aligned with state-specific transitions: QuantWAMs (arxiv:2607.28405v1) already covers joint video/action sensitivity and closed-loop protection scheduling, while QuantWM (arxiv:2602.02110v1) covers weight/activation sensitivity and long-horizon latent planning, but neither supplies the bounded single-site operator proposed here. One-Transition Consequence PTQ (OTC-PTQ) perturbs one weight/activation site while all other target sites remain FP16, compares paired full action chunks, executes only the first action, and combines the next-observation discrepancy into C_r. The contribution is this one-control-transition proxy for ranking protection sites under a matched high-precision-unit budget; C_r is not task loss, a full-horizon or replan marginal, a jointly-low-bit marginal, or a bytes/latency objective. The falsification prediction is a contact-transition-specific divergence from local-score ranking, transfer to fewer contact-sensitive held-out failures and lower next-observation deviation, and disappearance of the advantage after permuting C_r. A negative result rejects the transfer claim; a positive result supports only this bounded predictive use.",
+  "motivation": {
+    "problem_framing": "For a coupled future-video/action WAM, calibration is not only about reproducing local tensors: a numerical intervention can change the predicted action chunk and, after the first action is executed, the next simulator observation. The concrete bottleneck is selecting which weight/activation sites should remain high precision when a local PTQ discrepancy does not consistently identify contact-transition consequences. The candidate therefore treats the full action chunk as an intermediate object and the one resulting control transition as the measurable boundary.\n\nQuantWAMs (arxiv:2607.28405v1) already covers joint video/action sensitivity and closed-loop protection scheduling, and QuantWM (arxiv:2602.02110v1) covers weight/activation sensitivity with long-horizon latent planning. Earlier task-consequence work—VAML, Model Advantage / Value-Aware Model Learning, and Deep Task-Based Quantization—establishes that downstream consequence can guide targeting; SQIL establishes mission-critical-state protection through saliency-weighted QAT and action distillation. The gap is consequently narrower: OTC-PTQ asks whether a single numerical W/A intervention, with every other target site at FP16, can provide a reproducible one-control-transition proxy without claiming any of those broader principles as new.",
+    "why_now": "The current Phase 0 frontier makes the boundary testable: QuantWAMs (arxiv:2607.28405v1) makes coupled video/action sensitivity and closed-loop protection explicit, QuantWM (arxiv:2602.02110v1) supplies a distinct latent rollout/planning sensitivity branch, and Fast-WAM (semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f) provides the named idm feasibility path without supplying a numerical PTQ consequence signal. Together with the stated RoboTwin 2.0/LIBERO manipulation split and Fast-WAM-only staged validation budget, this supports a small one-transition diagnostic now, provided the exact Optional IDM checkpoint identity is fixed in the pre-run manifest.",
+    "why_prior_stopped": [
+      {
+        "paper_id": "arxiv:2607.28405v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "QuantWAMs measures joint video/action empirical-Fisher cross terms across block and denoising-step granularity and repairs fixed-count closed-loop protection schedules.",
+        "what_they_did_not_do": "It does not define the candidate's single-site W/A FP16-background intervention with paired full-action-chunk and next-observation C_r from one executed control transition.",
+        "structural_reason_they_stopped": "Its object is joint sensitivity and schedule repair, so it does not supply this one-site simulator counterfactual and one-transition numerical proxy."
+      },
+      {
+        "paper_id": "arxiv:2602.02110v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "QuantWM studies weight/activation PTQ sensitivity and long-horizon error in a DINO-WM latent planning setting.",
+        "what_they_did_not_do": "It does not instantiate a manipulation WAM coupled future-video/action denoiser with a single-site FP16-background intervention and C_r from full-chunk/next-observation discrepancy.",
+        "structural_reason_they_stopped": "Its latent rollout/planning estimand is different, leaving the coupled action-mediated transition measurement unspecified."
+      },
+      {
+        "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+        "venue_year": "arXiv 2026-03",
+        "what_they_did": "Fast-WAM isolates video co-training from explicit future imagination and provides the named idm feasibility path for this branch.",
+        "what_they_did_not_do": "It does not provide a numerical PTQ consequence signal for one-site W/A protection allocation.",
+        "structural_reason_they_stopped": "The missing mechanism is a paired simulator counterfactual that links a perturbed action chunk to the next observation after only the first action is executed."
+      }
+    ],
+    "what_changes_when_gap_closes": "If the gap closes, the field gains a bounded diagnostic for identifying when local PTQ discrepancy stops predicting one-control-transition consequence on contact states, complementing QuantWAMs' closed-loop protection branch and QuantWM's latent-planning sensitivity branch. It also becomes possible to test whether a C_r-ranked schedule transfers to held-out contact-sensitive failures and next-observation deviation under the same precision budget, with permutation separating the consequence association from the quantizer and site-count controls. This would not establish task-loss identity, a full-horizon/replan marginal, joint-low-bit optimality, or a bytes/latency objective."
+  },
+  "core_claim": "In a coupled future-video/action WAM, ranking single-site W/A PTQ interventions by C_r—the paired full-action-chunk and next-observation discrepancy after only the first action is executed—will predict contact-transition sensitivity better than local discrepancy at a matched protection budget, without making C_r a task-loss or full-horizon marginal.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "With all other target sites at FP16, a single numerical W/A intervention yields a paired one-control-transition C_r built from full-action-chunk discrepancy and next-observation pixel L1.",
+      "supports_which_aspect": "Defines the bounded action-mediated consequence proxy that replaces an unqualified local-score target."
+    },
+    {
+      "id": "c2",
+      "statement": "The rank correlation between local discrepancy and C_r will diverge specifically on contact-transition states rather than uniformly across the calibration registry.",
+      "supports_which_aspect": "Tests the state-conditional structure of the quantization bottleneck."
+    },
+    {
+      "id": "c3",
+      "statement": "A C_r-ranked protection schedule will reduce contact-sensitive held-out task failures and next-observation deviation relative to matched local-score ranking, while permuting C_r across sites will remove that advantage.",
+      "supports_which_aspect": "Tests transfer from the one-control-transition proxy to downstream behavior without equating the proxy with task loss."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "E1",
+      "linked_step_id": "S2",
+      "latex": "\\mathcal{Z}^{(r)}_j=\\begin{cases}Q_{b_{\\mathrm{lo}}}(\\mathcal{Z}_r),&j=r\\\\\\mathcal{Z}^{\\mathrm{FP16}}_j,&j\\ne r\\end{cases}",
+      "description": "Apply the low-bit operator only at numerical site r and keep every other target site at FP16.",
+      "description_zh": "只在 numerical site r 应用 low-bit operator，其余目标 site 保持 FP16。"
+    },
+    {
+      "id": "E2",
+      "linked_step_id": "S3",
+      "latex": "d_a(j,r)=\\frac{\\operatorname{MSE}(\\mathbf a_{jr},\\mathbf a_{j0})}{\\max(\\sigma_a^2,\\epsilon_a^2)},\\quad d_o(j,r)=\\frac{\\operatorname{mean}_{\\mathrm{pixel}}\\left|\\mathbf o_{(j+1)r}-\\mathbf o_{(j+1)0}\\right|}{\\max(\\sigma_o,\\epsilon_o)},\\quad C_r=\\operatorname{mean}_{j\\in D_{\\mathrm{cal}}}\\left(\\lambda_a d_a(j,r)+\\lambda_o d_o(j,r)\\right)",
+      "description": "Define d_a as the full-action-chunk MSE divided by max(sigma_a^2, epsilon_a^2), and d_o as the mean per-pixel absolute next-observation difference divided by max(sigma_o, epsilon_o). Use epsilon_a=epsilon_o=1e-3 in normalized units, lambda_a=lambda_o=1 by default with the preregistered sensitivity sweeps, and aggregate C_r as the episode mean with bootstrap intervals over complete episodes.",
+      "description_zh": "d_a 是完整 action chunk 的 MSE 除以 max(sigma_a^2, epsilon_a^2)，d_o 是 next observation 的 per-pixel 绝对差除以 max(sigma_o, epsilon_o)。在 normalized units 中使用 epsilon_a=epsilon_o=1e-3，默认 lambda_a=lambda_o=1 并执行预注册 sensitivity sweeps；C_r 按 episode mean 聚合，并在完整 episode 上计算 bootstrap intervals。"
+    },
+    {
+      "id": "E3",
+      "linked_step_id": "S4",
+      "latex": "\\mathcal{P}_{C_r}(B_{\\mathrm{site}})=\\operatorname{TopB}_{\\mathrm{site}}(\\{(r,C_r):r\\in\\mathcal{R}\\})",
+      "description": "Select the top B_site numerical sites by C_r; the site count is not a bytes or latency target.",
+      "description_zh": "按 C_r 选择前 B_site 个 numerical site；site count 不等同于 bytes 或 latency 目标。"
+    },
+    {
+      "id": "E4",
+      "linked_step_id": "S5",
+      "latex": "\\Delta\\rho=\\rho_{\\mathrm{noncontact}}-\\rho_{\\mathrm{contact}},\\quad \\rho_s=\\operatorname{Spearman}(\\{L_r\\}_s,\\{C_r\\}_s)",
+      "description": "Compare local-score versus C_r rank correlation by state subset, with the predicted divergence concentrated on contact-transition states.",
+      "description_zh": "按 state subset 比较 local score 与 C_r 的 rank correlation，预期差异集中在 contact-transition states。"
+    }
+  ],
+  "method_flow": {
+    "high_level_pipeline": "First freeze an exact pre-run manifest and make controller, RNG, history, and cache restoration executable for replayable calibration states. For each state, quantize one W/A site while every other target site remains FP16, generate paired full action chunks, execute only the first action, and compute the normalized d_a and d_o terms to obtain the episode-mean C_r. Rank sites by C_r and by local discrepancy under B_site, with B equivalent to B_site, then compare their bounded transfer on the stated held-out manipulation split. The contact-transition subset, C_r permutation, and oracle simulator-state branch distinguish a consequence signal from local-score correlation or calibration noise.",
+    "steps": [
+      {
+        "step_id": "S1",
+        "title": "Freeze a replayable calibration state",
+        "what_changes": "Before any paired measurement, freeze the calibration registry and pre-run manifest, including the exact Fast-WAM checkpoint identity and the idm configuration; make controller, RNG, history, and cache restoration executable. For the Optional IDM path, an absent or mismatched exact checkpoint identity is a halt condition.",
+        "why_this_step": "A paired consequence is interpretable only when both branches start from the same recoverable state; this preserves the version boundary instead of treating an unverified checkpoint as interchangeable.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "Fast-WAM calibration states, the FP16 reference, and the pre-run manifest",
+        "output": "Replayable calibration records with verified controller, RNG, history, and cache restoration"
+      },
+      {
+        "step_id": "S2",
+        "title": "Apply a single-site W/A intervention",
+        "what_changes": "For each numerical weight or activation site r, apply the chosen low-bit operator only at r and keep every other target site at FP16, yielding a paired branch for the same calibration record.",
+        "why_this_step": "This isolates the candidate's bounded site intervention and avoids treating joint coupling, joint-low-bit marginal effects, or joint optimality as new claims.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "A replayable FP16 calibration record and the registered W/A site set",
+        "output": "A single-site low-bit branch paired with the FP16 reference branch"
+      },
+      {
+        "step_id": "S3",
+        "title": "Measure one-transition consequence",
+        "what_changes": "Run both branches from matched restored states to produce complete action chunks, then execute only the first action and record the immediate next observation. For episode j and site r, define d_a(j,r) as the full-action-chunk MSE divided by max(sigma_a^2, epsilon_a^2), where sigma_a^2 is the population variance over all scalar coordinates of FP16 full action chunks in D_cal. Define d_o(j,r) as the mean per-pixel absolute next-observation difference divided by max(sigma_o, epsilon_o), where sigma_o is the calibration mean per-pixel standard deviation. Use epsilon_a=epsilon_o=1e-3 in normalized units, lambda_a=lambda_o=1 by default with a preregistered lambda_a/lambda_o sweep over {0.5,1,2}, and aggregate C_r as the episode mean with bootstrap intervals over complete episodes. Also define the open-loop local surrogate L_jr as the mean squared difference over all elements of the paired hook outputs and L_r as its episode mean.",
+        "why_this_step": "This defines a one-control-transition proxy for action-mediated consequence while explicitly avoiding identity with task loss, a full-horizon/replan marginal, or a jointly-low-bit marginal.",
+        "linked_component": "theory",
+        "linked_falsification": "metric_specification",
+        "input": "The paired single-site and FP16 branches plus the restored simulator state",
+        "output": "Sitewise C_r values paired with local discrepancy values"
+      },
+      {
+        "step_id": "S4",
+        "title": "Allocate protection at a matched budget",
+        "what_changes": "Rank sites by C_r and by local discrepancy separately. Define B_site, with B equivalent to B_site everywhere in this method, as the nonnegative integer high-precision-site count recorded by the matched local-fidelity baseline in the preregistered run manifest; upgrade exactly the top-B_site sites and leave all other sites at b_lo. The primary comparison is a site-count budget only, with ties resolved by registry order; record persistent weight bytes, peak live activation workspace, scale/copy overhead, and measured latency separately in a deployment-cost ledger.",
+        "why_this_step": "The comparison tests whether the proxy changes protection choices at a matched precision budget, rather than introducing a storage or runtime objective.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Sitewise C_r and local-score registries",
+        "output": "Matched C_r-ranked and local-score-ranked protection schedules"
+      },
+      {
+        "step_id": "S5",
+        "title": "Run the bounded transfer and permutation check",
+        "what_changes": "On the exact manifest, run idm with sigma_shift_FW=1.0 and infer_action on the stated small held-out RoboTwin 2.0/LIBERO manipulation split using the same b_lo and B; compare contact-sensitive task failures and next-observation deviation for the two schedules, then permute C_r across the site registry and use the stated oracle simulator-state branch as a positive control.",
+        "why_this_step": "The contact-transition subset and permutation are load-bearing mechanism tests: the candidate predicts ranking divergence and transfer for the real C_r association, with its advantage disappearing after permutation; the oracle branch checks calibration noise.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Verified paired calibration signals, matched schedules, the exact manifest, and the held-out manipulation split",
+        "output": "A bounded transfer result and a mechanism-distinguisher result"
+      }
+    ],
+    "design_reasoning_echo": "The design deliberately narrows the estimand. A single-site FP16-background intervention keeps the comparison interpretable when joint coupling and joint-low-bit marginals are already covered by prior work; the paired simulator counterfactual adds an action-mediated consequence signal that a local score does not provide. Executing only the first action keeps the claim at one control transition instead of silently becoming a full-horizon or replan marginal. Combining normalized full-action-chunk MSE d_a with normalized next-observation pixel L1 d_o, using lambda_a=lambda_o=1 by default and an episode-mean C_r, preserves the stated numerical operator. The allocation uses B_site with B equivalent to B_site and a separate deployment-cost ledger, not bytes or latency as the protection budget. Exact checkpoint identity plus executable controller/RNG/history/cache restoration protects reproducibility, and the C_r permutation plus oracle branch distinguishes an actual consequence association from calibration noise."
+  },
+  "plain_motivation_en": "For a coupled future-video/action World Action Model (WAM), post-training quantization (PTQ) calibration is not only about reproducing local tensor values. A numerical intervention can change the predicted full action chunk; after the first action is executed, it can also change the simulator's next observation. The practical bottleneck is deciding which weight/activation (W/A) sites should stay at high precision when a local PTQ discrepancy does not consistently identify contact-transition consequences. OTC-PTQ therefore treats the full action chunk as an intermediate object and the one resulting control transition as the measurable boundary.\n\nThe current Phase 0 frontier makes this boundary testable. QuantWAMs (arxiv:2607.28405v1) makes joint video/action sensitivity and closed-loop protection explicit, QuantWM (arxiv:2602.02110v1) provides a distinct latent rollout/planning sensitivity branch, and Fast-WAM provides the named idm feasibility path without providing a numerical PTQ consequence signal. Together with the stated RoboTwin 2.0/LIBERO manipulation split and Fast-WAM-only staged validation budget, this supports a small one-transition diagnostic, provided the exact Optional IDM checkpoint identity is fixed in the pre-run manifest.\n\nSeveral adjacent directions are already covered. QuantWAMs measures joint video/action sensitivity and repairs closed-loop protection schedules; QuantWM studies weight/activation PTQ sensitivity and long-horizon latent planning; and Fast-WAM does not provide a numerical PTQ consequence signal for one-site W/A protection allocation. Earlier task-consequence work—VAML, Model Advantage / Value-Aware Model Learning, and Deep Task-Based Quantization—already shows that downstream consequence can guide targeting, while SQIL covers critical-state protection through saliency-weighted QAT and action distillation. The narrower gap is whether one numerical W/A intervention, with every other target site at FP16, can provide a reproducible one-control-transition proxy from paired full-action-chunk and next-observation discrepancy. OTC-PTQ does not claim those broader downstream-consequence or critical-state-targeting principles as new.\n\nIf this gap closes, the field gains a bounded diagnostic for identifying when local PTQ discrepancy stops predicting one-control-transition consequence on contact states. It complements QuantWAMs' closed-loop protection branch and QuantWM's latent-planning sensitivity branch. It also enables a test of whether a C_r-ranked schedule transfers to held-out contact-sensitive failures and next-observation deviation under the same precision budget, with permutation separating the consequence association from quantizer and site-count controls. This would not establish task-loss identity, a full-horizon/replan marginal, joint-low-bit optimality, or a bytes/latency objective.",
+  "plain_motivation_zh": "对于一个耦合 future-video/action 的 World Action Model（WAM），post-training quantization（PTQ）校准不只是复现局部 tensor 数值。一次 numerical intervention 可能改变模型预测的完整 action chunk；只执行第一个 action 后，simulator 的 next observation 也可能改变。实际瓶颈是选择哪些 weight/activation（W/A）site 保持 high precision，因为 local PTQ discrepancy 并不能稳定识别 contact-transition states 上的 consequence。因此，OTC-PTQ 把完整 action chunk 当作中间对象，把随后产生的一次 control transition 作为可测量边界。\n\n当前 Phase 0 frontier 使这个边界可以被测试。QuantWAMs（arxiv:2607.28405v1）明确处理 joint video/action sensitivity 和 closed-loop protection，QuantWM（arxiv:2602.02110v1）提供不同的 latent rollout/planning sensitivity 分支，Fast-WAM 则提供名为 idm 的 feasibility path，但没有提供 numerical PTQ consequence signal。结合已经说明的 RoboTwin 2.0/LIBERO manipulation split 和 Fast-WAM-only staged validation budget，现在可以进行一个小规模 one-transition diagnostic；前提是 pre-run manifest 中固定 exact Optional IDM checkpoint identity。\n\n几个相邻方向已经有工作覆盖。QuantWAMs 测量 joint video/action sensitivity，并修复 closed-loop protection schedule；QuantWM 研究 weight/activation PTQ sensitivity 和 long-horizon latent planning；Fast-WAM 没有提供用于 one-site W/A protection allocation 的 numerical PTQ consequence signal。更早的 task-consequence 工作——VAML、Model Advantage / Value-Aware Model Learning 和 Deep Task-Based Quantization——已经说明 downstream consequence 可以指导 targeting；SQIL 则通过 saliency-weighted QAT 和 action distillation 覆盖 critical-state protection。因此，更窄的 gap 是：当其他 target site 全部保持 FP16 时，一次 numerical W/A intervention 能否根据 paired full-action-chunk 和 next-observation discrepancy，提供可复现的 one-control-transition proxy。OTC-PTQ 不把这些更广泛的 downstream-consequence 或 critical-state-targeting 原则宣称为新贡献。\n\n如果这个 gap 被填补，领域将得到一个有界 diagnostic，用来识别 local PTQ discrepancy 何时不再预测 contact states 上的一次 control transition consequence。它补充 QuantWAMs 的 closed-loop protection 分支和 QuantWM 的 latent-planning sensitivity 分支。它还可以检验 C_r-ranked schedule 是否能在相同 precision budget 下迁移到 held-out contact-sensitive failures 和 next-observation deviation；permutation 可以把 consequence association 与 quantizer 和 site-count controls 区分开来。这不会证明 task-loss identity、full-horizon/replan marginal、joint-low-bit optimality 或 bytes/latency objective。",
+  "plain_method_steps_en": [
+    {
+      "step_id": "S1",
+      "what_to_do": "Freeze the manifest. Before any paired measurement, record the calibration registry, exact checkpoint and configuration identities, controller/RNG/history/cache restoration contract, and environment identity; halt when a required identity or restoration check is absent or mismatched.",
+      "why_this_makes_sense": "Both branches are interpretable as a paired consequence only when they start from the same recoverable state. This preserves the version boundary instead of treating an unverified checkpoint as interchangeable."
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "For each numerical weight or activation site r, apply the chosen low-bit operator only at r and keep every other target site at FP16. Produce the single-site low-bit branch paired with the FP16 reference for the same calibration record.",
+      "why_this_makes_sense": "This isolates the bounded single-site intervention and avoids treating joint coupling, joint-low-bit marginal effects, or joint optimality as new claims."
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "Run the matched FP16 and single-site branches to obtain complete action chunks, execute only the first action, and record the immediate next observation. Define d_a(j,r) as full-action-chunk MSE divided by max(sigma_a^2, epsilon_a^2), with sigma_a^2 the population variance over all scalar coordinates of FP16 chunks in D_cal. Define d_o(j,r) as mean per-pixel absolute next-observation difference divided by max(sigma_o, epsilon_o), with sigma_o the calibration mean per-pixel standard deviation. Use epsilon_a=epsilon_o=1e-3, lambda_a=lambda_o=1 by default, preregister the lambda_a/lambda_o sweep {0.5,1,2}, and aggregate C_r as the episode mean with bootstrap intervals over complete episodes. Define L_jr as the all-element mean squared hook-output difference and L_r as its episode mean; keep valid masks, observation preprocessing, and invalid-row policy explicit.",
+      "why_this_makes_sense": "This defines a one-control-transition proxy for action-mediated consequence. C_r is not task loss, a full-horizon/replan marginal, or a jointly-low-bit marginal."
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "Rank sites by C_r and by local discrepancy separately. Define B_site as the nonnegative integer high-precision-site count recorded by the matched local-fidelity baseline, with B equivalent to B_site everywhere in this method; protect exactly the top-B_site sites and leave the others at b_lo. Keep numeric B_site as a manifest input, resolve ties by registry order, and record deployment bytes, activation workspace, scale/copy overhead, and measured latency separately from the site-count budget.",
+      "why_this_makes_sense": "The comparison tests whether the proxy changes protection choices at a matched precision budget, rather than introducing a storage or runtime objective."
+    },
+    {
+      "step_id": "S5",
+      "what_to_do": "On the exact manifest, run idm with sigma_shift_FW=1.0 and infer_action on the stated small held-out RoboTwin 2.0/LIBERO manipulation split, using the same b_lo and B. Compare contact-sensitive task failures and next-observation deviation for the two schedules. Then permute C_r across the site registry and use the stated oracle simulator-state branch as a positive control.",
+      "why_this_makes_sense": "The contact-transition subset and permutation are mechanism tests: the candidate predicts ranking divergence and transfer for the real C_r association, with the advantage disappearing after permutation. The oracle branch checks calibration noise."
+    }
+  ],
+  "plain_method_steps_zh": [
+    {
+      "step_id": "S1",
+      "what_to_do": "先冻结 manifest。 在任何 paired measurement 之前，记录 calibration registry、exact checkpoint 与 configuration identities、controller/RNG/history/cache restoration contract 和 environment identity；任何必需 identity 或 restoration check 缺失或不匹配时都 halt。",
+      "why_this_makes_sense": "只有两个 branch 都从同一个可恢复 state 开始，paired consequence 才能解释。这样可以保留 version boundary，不会把未经验证的 checkpoint 当作可互换对象。"
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "对每个 numerical weight 或 activation site r，只在 r 应用选定的 low-bit operator，其余 target site 全部保持 FP16。针对同一条 calibration record，生成与 FP16 reference 配对的 single-site low-bit branch。",
+      "why_this_makes_sense": "这会隔离有界的 single-site intervention，也避免把 joint coupling、joint-low-bit marginal effects 或 joint optimality 当作新的 claim。"
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "让匹配的 FP16 branch 与 single-site branch 生成完整 action chunks，只执行第一个 action，并记录 immediate next observation。定义 d_a(j,r)：完整 action chunk 的 MSE 除以 max(sigma_a^2, epsilon_a^2)，其中 sigma_a^2 是 D_cal 中 FP16 chunks 所有 scalar coordinates 的 population variance。定义 d_o(j,r)：next observation 的 per-pixel 绝对差除以 max(sigma_o, epsilon_o)，其中 sigma_o 是 calibration 中 per-pixel standard deviations 的 mean。使用 epsilon_a=epsilon_o=1e-3，默认 lambda_a=lambda_o=1，预注册 lambda_a/lambda_o sweep {0.5,1,2}，并将 C_r 按 episode mean 聚合，在完整 episode 上计算 bootstrap intervals；定义 L_jr 为 paired hook outputs 所有 elements 的 MSE，L_r 为其 episode mean。valid masks、observation preprocessing 与 invalid-row policy 仍须明确记录。",
+      "why_this_makes_sense": "这定义了一个表示 action-mediated consequence 的 one-control-transition proxy。C_r 不是 task loss、full-horizon/replan marginal，也不是 jointly-low-bit marginal。"
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "分别按照 C_r 和 local discrepancy 对 site 排名。将 B_site 定义为 matched local-fidelity baseline 在 preregistered manifest 中记录的 nonnegative integer high-precision-site count，并在本方法中固定 B 等价于 B_site；保护恰好 top-B_site sites，其余 site 保持 b_lo。B_site 的数值仍作为 manifest input，ties 按 registry order 处理；deployment bytes、activation workspace、scale/copy overhead 与 measured latency 必须和 site-count budget 分开记录。",
+      "why_this_makes_sense": "这个比较检验 proxy 是否会在匹配的 precision budget 下改变 protection choice，而不是引入 storage 或 runtime objective。"
+    },
+    {
+      "step_id": "S5",
+      "what_to_do": "在 exact manifest 上，使用 sigma_shift_FW=1.0 运行 idm，并在指定的小规模 held-out RoboTwin 2.0/LIBERO manipulation split 上运行 infer_action；两者使用相同的 b_lo 和 B。比较两个 schedule 的 contact-sensitive task failures 与 next-observation deviation。随后在 site registry 中 permutation C_r，并使用指定的 oracle simulator-state branch 作为 positive control。",
+      "why_this_makes_sense": "contact-transition subset 和 permutation 是 mechanism tests：candidate 预测真实 C_r association 会带来 ranking divergence 和 transfer，而 permutation 后这个 advantage 会消失。oracle branch 用来检查 calibration noise。"
+    }
+  ],
+  "plain_method_modules_en": [
+    {
+      "module_id": "M1_background",
+      "purpose_oneline": "Provide replayable calibration states and exact version and configuration boundaries for paired measurement.",
+      "step_ids": [
+        "S1"
+      ]
+    },
+    {
+      "module_id": "M2_one_transition_proxy",
+      "purpose_oneline": "Create the bounded single-site W/A intervention and compute the one-control-transition C_r signal.",
+      "step_ids": [
+        "S2",
+        "S3"
+      ]
+    },
+    {
+      "module_id": "M3_matched_protection",
+      "purpose_oneline": "Use C_r and local discrepancy to form matched protection schedules while keeping budget meanings separate.",
+      "step_ids": [
+        "S4"
+      ]
+    },
+    {
+      "module_id": "M4_validation",
+      "purpose_oneline": "Test contact-transition divergence and bounded transfer with permutation and oracle controls.",
+      "step_ids": [
+        "S5"
+      ]
+    }
+  ],
+  "plain_method_modules_zh": [
+    {
+      "module_id": "M1_background",
+      "purpose_oneline": "提供可 replay 的 calibration state，并固定 paired measurement 所需的 exact version 与 configuration boundary。",
+      "step_ids": [
+        "S1"
+      ]
+    },
+    {
+      "module_id": "M2_one_transition_proxy",
+      "purpose_oneline": "建立有界的 single-site W/A intervention，并计算 one-control-transition C_r signal。",
+      "step_ids": [
+        "S2",
+        "S3"
+      ]
+    },
+    {
+      "module_id": "M3_matched_protection",
+      "purpose_oneline": "使用 C_r 和 local discrepancy 形成 matched protection schedule，同时分开表达不同 budget 的含义。",
+      "step_ids": [
+        "S4"
+      ]
+    },
+    {
+      "module_id": "M4_validation",
+      "purpose_oneline": "通过 permutation 和 oracle controls 检验 contact-transition divergence 与有界 transfer。",
+      "step_ids": [
+        "S5"
+      ]
+    }
+  ],
+  "falsification_prediction": "Run the minimal experiment on the exact Fast-WAM checkpoint_FW in idm mode with sigma_shift_FW=1.0 and infer_action, using a small held-out RoboTwin 2.0/LIBERO manipulation split, the same low-bit setting b_lo, and the same high-precision budget B for local-score and C_r allocations. If the candidate works, the contact-transition subset will show a larger local-score-versus-C_r ranking divergence and the C_r schedule will reduce held-out contact-sensitive task failures and next-observation deviation relative to the matched local-score schedule, without changing the architecture or precision budget. The single load-bearing variable is C_r, the paired downstream consequence index; permute C_r across the site registry before selecting top-B sites, and the predicted effect is that the downstream contact-sensitive success/failure advantage disappears even though the quantizer and evaluation remain unchanged. A positive control is the oracle simulator-state branch that exposes the independent transition outcome during calibration; it should preserve more of the C_r allocation advantage than a model-only local discrepancy if the mechanism, rather than calibration noise, is carrying the result.",
+  "compute_budget": "1.2 GPU-day on an 80GB-class equivalent for a staged Fast-WAM-only validation (approximately two short single-GPU A100-40GB stages, no large-model training) + $0 paid API; LingBot-VA replication, if later added, requires a separate calibration-memory and inference budget.",
+  "almost_prior_paper_id": "arxiv:2607.28405v1",
+  "almost_prior_venue_year": "arXiv 2026",
+  "what_step_was_missed": "The closest paper would have needed to construct and execute a paired simulator counterfactual in which a single module or denoising-step perturbation changes the action chunk from a fixed state, then measure the resulting next observation or task transition and use that marginal consequence for precision selection; its replayed local discrepancy does not construct this action-mediated transition artifact.",
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "unverified",
+      "rationale": "The intake specifies an A100-40GB setting but gives no user-approved GPU-day or API-dollar allowance. The 1.2 (or 12) estimate is unmeasured, and no 80GB-class-to-A100-40GB time conversion has been measured; therefore feasibility cannot be inferred from phase4_skeleton.py factory caps (150 GPU-day and $10000 API)."
+    },
+    "data": {
+      "verdict": "tight",
+      "rationale": "The named RoboTwin 2.0/LIBERO manipulation split and calibration inputs are the intended accessible sources, but the exact Optional IDM checkpoint identity must be recorded in the pre-run manifest or the run must halt."
+    },
+    "theoretical": {
+      "verdict": "feasible",
+      "rationale": "The theoretical burden is to define and interpret a one-control-transition proxy, not to prove equality with task loss or a full-horizon/replan marginal."
+    },
+    "engineering": {
+      "verdict": "tight",
+      "rationale": "The binding implementation cost is executable restoration of controller, RNG, history, and cache across paired branches together with the real Fast-WAM single-site W/A intervention."
+    },
+    "falsification": {
+      "verdict": "feasible",
+      "rationale": "The stated paired schedules, contact-transition comparison, C_r permutation, and oracle branch are concrete within the model/simulator tooling once manifest and restoration prerequisites pass."
+    },
+    "overall": "unverified"
+  },
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "venue_year": "arXiv 2026",
+      "delta": "QuantWAMs already covers joint video/action empirical-Fisher cross terms over block and denoising-step granularity and fixed-count closed-loop protection-schedule repair, so joint coupling, denoising-step sensitivity, closed-loop protection, and contact-critical allocation are prior art; this candidate instead intervenes on one numerical weight-or-activation site r with every other target site at FP16, estimates C_r from paired full action-chunk discrepancy plus the next observation after only the first action is executed, and ranks sites under B_site, without claiming a jointly-low-bit marginal, joint optimality, task-success-loss identity, full-horizon/replan consequence, bytes objective, or latency objective."
+    },
+    {
+      "paper_id": "arxiv:2602.02110v1",
+      "venue_year": "arXiv 2026",
+      "delta": "QuantWM already covers weight/activation PTQ sensitivity and long-horizon error in a DINO-WM latent planning setting, so latent rollout/planning mismatch and that sensitivity branch are not claimed as novel here; this candidate is a manipulation WAM coupled future-video/action denoiser with a single-site FP16-background numerical intervention, a one-control-transition C_r estimand, and paired full-chunk/next-observation discrepancies rather than a latent rollout/planning marginal or a bytes/latency objective."
+    },
+    {
+      "paper_id": "VAML (AISTATS 2017)",
+      "venue_year": "",
+      "delta": "VAML is part of the earlier task-consequence/value-aware lineage supplied for this run, so defining a quantization target by downstream consequence is prior art and not this candidate's novelty; the bounded difference here is a single numerical W/A site intervention in a coupled future-video/action WAM, with C_r estimating a one-control-transition paired action/observation proxy and the numerical operator combining normalized full action-chunk MSE with next-observation pixel L1, not a claim of identical objective, task-loss identity, or full-horizon marginal."
+    },
+    {
+      "paper_id": "arxiv:2106.14080",
+      "venue_year": "",
+      "delta": "Model Advantage / Value-Aware Model Learning is included in the earlier task-consequence lineage, so broad downstream-consequence targeting is prior art; this candidate makes no equivalence claim about objectives or estimands and retains only the narrower concrete intervention of one-site W/A quantization with an FP16 background, the one-control-transition C_r proxy, and top-B_site allocation in a coupled WAM, without joint-low-bit optimality or task-loss claims."
+    },
+    {
+      "paper_id": "arxiv:1908.06845",
+      "venue_year": "",
+      "delta": "Deep Task-Based Quantization establishes the prior-art principle that downstream task consequence can guide quantization, which is not claimed as novel here; the candidate's distinct bounded object is a single-site W/A PTQ intervention with all other target sites at FP16, C_r over one simulator control transition, and a normalized full-action-chunk plus next-observation numerical score, while held-out task-failure reduction is only a predictive validation of transfer and not C_r itself."
+    },
+    {
+      "paper_id": "arxiv:2505.15304",
+      "venue_year": "",
+      "delta": "SQIL already treats mission-critical-state protection as prior art through saliency-weighted QAT and action distillation, so protecting contact or other critical states alone is not novel; this candidate uses a different bounded intervention and estimand—single-site numerical W/A PTQ in a coupled future-video/action WAM, paired simulator branches with only the first action executed, and C_r from full-chunk/next-observation discrepancy—and does not claim that SQIL is identical or that critical-state protection alone is its contribution."
+    },
+    {
+      "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+      "venue_year": "arXiv 2026-03",
+      "delta": "Fast-WAM isolates video co-training from explicit future imagination and does not provide a numerical PTQ consequence signal, whereas this candidate keeps the future/action-coupled idm feasibility path and adds single-site weight/activation intervention with consequence-based allocation."
+    }
+  ],
+  "reviewer_concerns_and_responses": [
+    {
+      "attack": "Paper-pointed threat: arxiv:2607.28405v1 (lit_table). QuantWAMs is the closest corpus threat: it already covers joint video/action empirical-Fisher cross terms over block and denoising-step granularity and fixed-count closed-loop protection-schedule repair. That subsumes any claim that joint coupling, denoising-step sensitivity, closed-loop protection, or contact-critical precision allocation is novel. The candidate survives only on a narrower concrete intervention and estimand: single-site numerical W/A PTQ with all other target sites at FP16, paired full action-chunk plus first-action-to-next-observation counterfactuals over D_cal, and C_r ranking; it explicitly disclaims the jointly low-bit marginal, joint optimality, task-success-loss identity, and full replan consequence. QuantWM is a distinct weight/activation PTQ and long-horizon latent rollout/planning branch, not this coupled manipulation-WAM estimator. VAML, Model Advantage / Value-Aware Model Learning, and Deep Task-Based Quantization already establish the broad task-consequence principle for choosing a quantization target, so that principle is not novel. SQIL already protects mission-critical states through saliency-weighted QAT and action distillation, so critical-state or contact-state protection is not novel by itself; SQIL is not identical to a single-site WAM simulator PTQ intervention, but the candidate must compare their intervention, estimand, and numerical mechanism explicitly. The branch remains distinct from latent rollout/planning, latent/action vector quantization, and VLA-only/tokenizer quantization only if it keeps the claim at this concrete W/A, one-control-transition operator.",
+      "severity": "non_blocking",
+      "response": "The defense is anchored in hook, differentiation_from_lit, and method_flow.steps: QuantWAMs' joint coupling and closed-loop protection, QuantWM's latent rollout sensitivity, the earlier downstream-consequence lineage, and SQIL's critical-state protection are all treated as prior art. The candidate claims only single-site W/A PTQ with an FP16 background and one-control-transition C_r, then uses the stated permutation distinguisher to test transfer; this follows the Phase 3.2 verdict_rationale's non-blocking boundary rather than broadening novelty.",
+      "fields_changed_to_address": [
+        "differentiation_from_lit",
+        "core_mechanism_steps",
+        "hook"
+      ]
+    },
+    {
+      "attack": "Gap-closure reject-check borderline on gap 1 (C00 (Reframe as a Solvable Object)): Porting a known attribution technique to a new architecture or domain while ignoring that technique's documented failure modes — and omitting comparisons to alternatives — leaves reviewers unable to s; Proposing a new attribution definition without an axiomatic or causal argument for why it should count as ground-truth collapses the moment a reviewer asks why this is the real importance.",
+      "severity": "non_blocking",
+      "response": "The defense is anchored in core_claim, sub_claims, and steps S2-S3: the object is a fixed one-site numerical intervention with all other target sites at FP16 and a paired simulator transition, not generic attribution. C_r is explicitly a proxy, while the permutation and oracle branches test whether it carries mechanism-specific information; no ground-truth/task-loss equivalence or joint optimality is claimed.",
+      "fields_changed_to_address": [
+        "differentiation_from_lit",
+        "core_mechanism_steps",
+        "hook"
+      ]
+    },
+    {
+      "attack": "Gap-closure reject-check borderline on gap 2 (C02 (Design a Confound-Isolating Diagnostic)): A diagnostic that only re-confirms a shortcut already known in advance, surfacing no previously unmeasurable failure, is read as confirmatory rather than as a contribution.; Validating a synthetic-ground-truth instrument only on synthetic data, without demonstrating that the controlled finding transfers to real-world instances, leaves ecological validity unestablished and; Pairing a single-task or small-sample instrument with broad capability claims triggers a scope-mismatch rejection, and assembling retrieval or engineering blocks without an isolating scientific insigh",
+      "severity": "non_blocking",
+      "response": "The defense is anchored in falsification_prediction, steps S4-S5, and feasibility_validation: contact-transition versus other states, matched local-score schedules, C_r permutation, and the oracle branch separate the consequence association from calibration noise, followed by the stated held-out RoboTwin 2.0/LIBERO transfer check. The scope remains contact-sensitive failure and next-observation behavior under one control transition, not a broad capability claim or synthetic-ground-truth guarantee.",
+      "fields_changed_to_address": [
+        "differentiation_from_lit",
+        "core_mechanism_steps",
+        "hook"
+      ]
+    }
+  ],
+  "domain_landscape": {
+    "n_papers": 84,
+    "pattern_distribution": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 7,
+        "share": 0.08,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 16,
+        "share": 0.19,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 23,
+        "share": 0.27,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 6,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 15,
+        "share": 0.18,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 38,
+        "share": 0.45,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 13,
+        "share": 0.15,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 5,
+        "share": 0.06,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 22,
+        "share": 0.26,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 8,
+        "share": 0.1,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 17,
+        "share": 0.2,
+        "saturation_band": "mid_frequency"
+      }
+    ],
+    "candidate_uses": [
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "role": "closes Gap 1",
+        "sub_pattern_id": "C00 (Reframe as a Solvable Object)",
+        "saturation_in_domain": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "role": "closes Gap 2",
+        "sub_pattern_id": "C02 (Design a Confound-Isolating Diagnostic)",
+        "saturation_in_domain": "mid_frequency"
+      }
+    ],
+    "position_note": "The candidate combines reframe_as_solvable_object and controlled_diagnostic_design, both mid-frequency patterns in the landscape, while the corpus is more concentrated in heterogeneous_decomposition, assumption_audit_and_pivot, and structural_prior_encoding."
+  },
+  "literature_breakdown": {
+    "summary": {
+      "n_phase0_total": 89,
+      "n_phase0_on_topic": 84,
+      "n_phase0_outside_taxonomy": 5,
+      "n_phase3_collision": 215
+    },
+    "phase0_by_pattern": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "pattern_name": "Adapt by Conditioning, Not Retraining",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:d9174ab271e74c1f148ff5e692e7dc7612135aca",
+            "title": "Learning Generalizable Robot Policy with Human Demonstration Video as a Prompt",
+            "venue_year": "arXiv 2025-05",
+            "bottleneck_targeted": "New tasks usually require expensive robot teleoperation data and policy fine-tuning."
+          },
+          {
+            "paper_id": "openalex:W4408555470",
+            "title": "Embodied large language models enable robots to complete complex tasks in unpredictable environments",
+            "venue_year": "Nature Machine Intelligence 2025",
+            "bottleneck_targeted": "Long-horizon tasks in unpredictable settings require contextual examples, plans, and feedback adaptation."
+          },
+          {
+            "paper_id": "openalex:W4413944793",
+            "title": "In-Context Learning Enables Robot Action Prediction in LLMs",
+            "venue_year": "arXiv 2025-05",
+            "bottleneck_targeted": "Direct robot-action prediction with off-the-shelf text-only LLMs is largely unexplored."
+          },
+          {
+            "paper_id": "arxiv:2608.26103v2",
+            "title": "Zero-WAM: In-Context World-Action Modeling from Human Videos for Open-Ended Task Generalization",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Unseen-task generalization normally requires task-specific robot data or parameter updates."
+          },
+          {
+            "paper_id": "arxiv:2606.12403v1",
+            "title": "World Pilot: Steering Vision-Language-Action Models with World-Action Priors",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Static image-text pretraining lacks continuous contact-rich dynamics for manipulation."
+          },
+          {
+            "paper_id": "arxiv:2608.08839v1",
+            "title": "SG-WAM: Text-Grounded and Spatial-aware Semantic Guidance for World-Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Visual-first WAM futures can be semantically misaligned with language instructions and therefore misdirect actions."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "pattern_name": "Substitute the Operator or Representation",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:3f524642bda4a50a0b029387987a9b6d74232d0e",
+            "title": "Flash-WAM: Modality-Aware Distillation for World Action Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Multi-step WAM denoising is too slow, and video and action streams have different noise regimes."
+          },
+          {
+            "paper_id": "semanticscholar:ec32faed572525deb3d9dff4cdcf6e0881d881ec",
+            "title": "Action Images: End-to-End Policy Learning via Multiview Video Generation",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Separate action modules and non-pixel-grounded action representations limit use of video priors and viewpoint transfer."
+          },
+          {
+            "paper_id": "openalex:W4414051084",
+            "title": "FAST: Efficient Action Tokenization for Vision-Language-Action Models",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Per-dimension, per-timestep action binning performs poorly for dexterous high-frequency skills."
+          },
+          {
+            "paper_id": "openalex:W4405785353",
+            "title": "RISE: 3D Perception Makes Real-World Robot Imitation Simple and Effective",
+            "venue_year": "arXiv 2024-10",
+            "bottleneck_targeted": "2D image policies are view-sensitive, while prior 3D policies often predict sparse keyframes rather than continuous actions."
+          },
+          {
+            "paper_id": "openalex:W4406622822",
+            "title": "LPM-Net: A Data-Driven Resource-Efficient Predictive Motion Planner for Mobile Robots",
+            "venue_year": "Neural Processing Letters 2025",
+            "bottleneck_targeted": "Conventional predictive planners are computationally expensive on mobile robot hardware."
+          },
+          {
+            "paper_id": "arxiv:2608.20735v2",
+            "title": "ForeTime-VLA: Causal Future-Token Distillation from a World Action Model for Conveyor-Belt Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Running a video-scale WAM teacher or imagining future frames at deployment is costly."
+          },
+          {
+            "paper_id": "arxiv:2605.12167v1",
+            "title": "From Imagined Futures to Executable Actions: Mixture of Latent Actions for Robot Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Predicted visual futures emphasize realism rather than control relevance and are difficult to convert into stable actions."
+          },
+          {
+            "paper_id": "arxiv:2608.06332v1",
+            "title": "GeniWorld: A Generalizable Interactive World Model for Robotic Manipulation via Visual Actions",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Action-conditioned world models have limited controllability and OOD generalization, while numerical actions are weakly spatially grounded."
+          },
+          {
+            "paper_id": "arxiv:2607.19804v1",
+            "title": "V2F: Vision-Informed Grasp Force Prediction for Damage-Aware Robotic Handling of Date Fruits",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Tactile exploration is slow or potentially damaging for objects with high detachment force and low bruise thresholds."
+          },
+          {
+            "paper_id": "arxiv:2606.08242v1",
+            "title": "Light-WAM: Efficient World Action Models with State-Fusion Action Decoding",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Large generative WAMs incur high training cost and inference latency, and heavy action experts are inefficient."
+          }
+        ]
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "pattern_name": "Audit and Pivot an Assumption",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:f3be325255c5fd6d53ae023730bdd0d542ee08fe",
+            "title": "WAM-RL: World-Action Model Reinforcement Learning with Reconstruction Rewards and Online Video SFT",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Dependence on expert trajectories limits fine-grained skills and continuous improvement through interaction."
+          },
+          {
+            "paper_id": "semanticscholar:535f33f5442c894f1b43385f086b06f47e2cc535",
+            "title": "Intrinsic Structure as a Proxy for Saliency: SVD-Based Weight Preservation for Mixed-Precision Quantization in Large Language Models",
+            "venue_year": "arXiv 2025-12",
+            "bottleneck_targeted": "Calibration-free quantization is needed when activation data are unavailable or private, while uniform quantization damages salient weights."
+          },
+          {
+            "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+            "title": "Fast-WAM: Do World Action Models Need Test-time Future Imagination?",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "Iterative future imagination creates test-time latency, but its actual contribution to action performance is unclear."
+          },
+          {
+            "paper_id": "semanticscholar:3136feb03c4c95b58c2336369024578d54681461",
+            "title": "AHA-WAM:Asynchronous Horizon-Adaptive World-Action Modeling with Observation-Guided Context Routing",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Binding world prediction and action execution to one temporal rhythm wastes video computation and weakens long-horizon context use."
+          },
+          {
+            "paper_id": "semanticscholar:b1665eedf96e3a4a68e3fab7547aeebb2b9c7d57",
+            "title": "FAIR-Calib: Frontier-Aware Instability-Reweighted Calibration for Post-Training Quantization of Diffusion Large Language Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "PTQ can flip fragile write-frontier decisions that are then irreversibly committed and amplified."
+          },
+          {
+            "paper_id": "semanticscholar:b13bdac2fab028608e5cd565ff4e1c4fa076d017",
+            "title": "MCAQ-YOLO: Morphological Complexity-Aware Quantization for Efficient Object Detection with Curriculum Learning",
+            "venue_year": "arXiv 2025-11",
+            "bottleneck_targeted": "Uniform spatial bit precision ignores heterogeneous visual complexity and sensitivity."
+          },
+          {
+            "paper_id": "semanticscholar:0e32a6a478bceacdc92f6ff7ad9ad359e7bc5c47",
+            "title": "GigaWorld-Policy: An Efficient Action-Centered World-Action Model",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "Joint future-video/action reasoning is expensive and can entangle motion prediction with video quality."
+          },
+          {
+            "paper_id": "openalex:W4407874080",
+            "title": "TinyVLA: Toward Fast, Data-Efficient Vision-Language-Action Models for Robotic Manipulation",
+            "venue_year": "IEEE Robotics and Automation Letters 2025",
+            "bottleneck_targeted": "Existing VLAs are slow and require extensive robotic pretraining for deployment."
+          },
+          {
+            "paper_id": "arxiv:2608.22364v1",
+            "title": "WAM-OPD: On-Policy Distillation for World Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Offline student data can miss deployment states, and distillation can lose capabilities without sparse-reward RL."
+          },
+          {
+            "paper_id": "arxiv:2607.29482v1",
+            "title": "Temporal Policy: History-Initialized Action Generation for Robotic Learning from Demonstration",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Independent Gaussian initialization forces costly vector fields in diffusion and flow-matching action generation."
+          },
+          {
+            "paper_id": "arxiv:2605.15725v1",
+            "title": "DiLA: Disentangled Latent Action World Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Latent action models face a trade-off between action abstraction and generation fidelity."
+          },
+          {
+            "paper_id": "arxiv:2608.22067v4",
+            "title": "DELE-w0.5: Inferring Action from Future Latent State for Robotic Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Dense video generation is costly and may model visual detail rather than the physical outcome needed for action."
+          },
+          {
+            "paper_id": "arxiv:2608.04404v1",
+            "title": "Faster-WAM: Efficient Inference-Time Future Conditioning for Robust World Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Removing future modeling reduces cost but may lose robustness, while full future conditioning is expensive."
+          },
+          {
+            "paper_id": "arxiv:2606.10040v2",
+            "title": "Efficient-WAM: A 1B-Parameter World-Action Model with Low-Cost Future Imagination",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Photorealistic future prediction causes high latency, although future prediction may still help control."
+          },
+          {
+            "paper_id": "arxiv:2607.25918v1",
+            "title": "DC-WAM: Dynamic-Centric Visual Supervision and Reasoning for World-Action Models",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Photorealistic RGB futures spend capacity on texture, illumination, and background weakly related to action selection."
+          },
+          {
+            "paper_id": "arxiv:2608.02365v1",
+            "title": "Faster-WAM: Do World Action Models Need Deep Action Modules?",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Tying action-module depth to a deep video backbone creates computational overhead and latency."
+          },
+          {
+            "paper_id": "arxiv:2608.04996v1",
+            "title": "DreamWAM: Beyond RGB Future Prediction for World Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "RGB futures entangle action-relevant state transitions with nuisance appearance, illumination, background, and viewpoint changes."
+          },
+          {
+            "paper_id": "arxiv:2607.07196v1",
+            "title": "Validate the Dream Before You Trust Its Verdict: Admissibility for World-Model Simulators",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Visual fidelity metrics do not certify action response, yet generative WMs may be used as test oracles."
+          },
+          {
+            "paper_id": "arxiv:2607.06988v2",
+            "title": "WAM-TTT: Steering World-Action Models by Watching Human Play at Test Time",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "New task variants usually require robot demonstrations, fine-tuning, or long-context conditioning."
+          },
+          {
+            "paper_id": "arxiv:2608.05903v2",
+            "title": "Robust-WAM: Bridging Generative Pretraining and Semantic Foresight in World-Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "VAE latents favor pixel detail and make action prediction fragile under visual shifts, while semantic latents lose VGM pretraining."
+          },
+          {
+            "paper_id": "arxiv:2608.09771v1",
+            "title": "SLIM-0.5B: Learning Action-Grounded Predictive Latents for Robot Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Large multimodal backbones and pixel-level prediction spend capacity on open-domain or visually irrelevant content for manipulation."
+          },
+          {
+            "paper_id": "arxiv:2607.28405v1",
+            "title": "QuantWAMs: Calibrating at the Right Granularity for World Action Models",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Efficient WAM deployment when iterative denoising and closed-loop execution make inference costly, while conventional PTQ uses open-loop objectives, homogeneous"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "pattern_name": "Design a Confound-Isolating Diagnostic",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:d1f8526d05599addca6a9f33d41b0920c7455168",
+            "title": "Temporal vs. Spatial: Comparing DINOv3 and V-JEPA2 Feature Representations for Video Action Analysis",
+            "venue_year": "arXiv 2025-09",
+            "bottleneck_targeted": "It is unclear which spatial or temporal representation is reliable for different action types."
+          },
+          {
+            "paper_id": "arxiv:2606.01095v1",
+            "title": "Beyond Task Success: Behavioral and Representational Diagnostics for WAM and VLA",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Final task success hides differences in behavior, predictive representations, target selectivity, and runtime cost."
+          },
+          {
+            "paper_id": "arxiv:2602.02110v1",
+            "title": "An Empirical Study of World Model Quantization",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "PTQ efficiency for world-model deployment: how weight/activation quantization, granularity, bit-width, and planning horizon affect iterative visual planning und"
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "pattern_name": "Decompose and Delegate to Solvers",
+        "papers": [
+          {
+            "paper_id": "openalex:W4407466343",
+            "title": "HiCRISP: An LLM-Based Hierarchical Closed-Loop Robotic Intelligent Self-Correction Planner",
+            "venue_year": "arXiv 2024-11",
+            "bottleneck_targeted": "Robotic LLM systems often cannot self-correct individual execution steps in dynamic environments."
+          },
+          {
+            "paper_id": "arxiv:2606.06061v1",
+            "title": "A Conversational Framework for Human-Robot Collaborative Manipulation with Distributed Generative AI models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Free-form commands need language understanding, visual grounding, orchestration, and motion execution in one responsive loop."
+          },
+          {
+            "paper_id": "arxiv:2607.04927v1",
+            "title": "DSWAM: A Dual-System World Action Foundation Model for Fine-Grained Robot Manipulation",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "WAMs lack an explicit language planning interface, and fair VLA-WAM real-robot comparison is missing."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "pattern_name": "Decompose for Differentiated Treatment",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:14003bb8b5236f4abb12963745c04a6c6610cc5d",
+            "title": "KVTuner: Sensitivity-Aware Layer-wise Mixed Precision KV Cache Quantization for Efficient and Nearly Lossless LLM Inference",
+            "venue_year": "International Conference on Machine Learning 2025",
+            "bottleneck_targeted": "Layer-wise KV sensitivity, online decision overhead, and inflexibility across models and constraints."
+          },
+          {
+            "paper_id": "semanticscholar:e0a1b54438e39bd14c41cb6268b0e82e156fa6a7",
+            "title": "Automatic mixed precision for optimizing gained time with constrained loss mean-squared-error based on model partition to sequential sub-graphs",
+            "venue_year": "arXiv 2025-05",
+            "bottleneck_targeted": "Uniform precision does not capture layer sensitivity, while hardware-aware time optimization is difficult."
+          },
+          {
+            "paper_id": "semanticscholar:aea2454e7391e9b6e33bbf47ea8183c5bd63c0fe",
+            "title": "OA-WAM: Object-Addressable World Action Model for Robust Robot Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Holistic world representations make instruction-referred object addressing difficult under scene shifts."
+          },
+          {
+            "paper_id": "semanticscholar:57aaf148599c940401b5143e00833b89e02127fa",
+            "title": "Mixed Precision PointPillars for Efficient 3D Object Detection with TensorRT",
+            "venue_year": "arXiv 2026-01",
+            "bottleneck_targeted": "Wide numerical distributions and outliers make direct uniform quantization degrade LiDAR detection."
+          },
+          {
+            "paper_id": "semanticscholar:d7710c7bd17a5b107288baf529a1bfde4ad6bd9a",
+            "title": "Tactile-WAM: Touch-Aware World Action Model with Tactile Asymmetric Attention",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Naive tactile-token injection can pollute visual dynamics, while RGB futures miss contact states such as slip and jamming."
+          },
+          {
+            "paper_id": "semanticscholar:1636a37dbb316d100254d5b97c4b660513bbaeda",
+            "title": "WINDQuant: Weight-Informed Neural Decision-Making for Global Mixed-Precision LLM Quantization",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Coarse or heuristic sensitivity analysis misses fine-grained variations within weight matrices under ultra-low-bit budgets."
+          },
+          {
+            "paper_id": "semanticscholar:d472d9aab787471aa33d385816fbbd70e66343a5",
+            "title": "HiMem-WAM: Hierarchical Memory-Gated World Action Models for Robotic Manipulation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Short-term history and weak task-relevant memory limit long-horizon manipulation."
+          },
+          {
+            "paper_id": "semanticscholar:e2fe3309f074c0704c6655dcf98807959023043d",
+            "title": "DIM-WAM: World-Action Modeling with Diverse Historical Event Memory",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Short-term history and short-horizon prediction cause forgetting and poor awareness of global task progress."
+          },
+          {
+            "paper_id": "semanticscholar:54a5112217c774cfdec12c60ddaff0e63e40e9b7",
+            "title": "ROSAQ: Rotation-based Saliency-Aware Weight Quantization for Efficiently Compressing Large Language Models",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Saliency identified in the original feature space is less effective than saliency in a rotation-invariant projected space."
+          },
+          {
+            "paper_id": "semanticscholar:22b90e9145af622f1276a864f799d6c0ab13f9c7",
+            "title": "DiRotQ: Rotation-Aware Quantization for 4-bit Diffusion Transformers",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Aggressive W4A4 quantization causes quality degradation from activation variation."
+          },
+          {
+            "paper_id": "semanticscholar:99d6d30931e71017f6e16c9bc5c58f8baacb8b64",
+            "title": "Roofline-Guided Mixed Quantization and Kernel Co-Optimization for Efficient Large Language Model Inference on Arm CPUs",
+            "venue_year": "2026 3rd International Conference on Digital Image Processing and Computer Applications (DIPCA) 2026",
+            "bottleneck_targeted": "Arm edge deployment is constrained by memory, bandwidth, and low-precision throughput."
+          },
+          {
+            "paper_id": "openalex:W4407384835",
+            "title": "HAMSTER: Hierarchical Action Models For Open-World Robot Manipulation",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Monolithic VLA policies struggle to use off-domain data and to separate task reasoning from precise control."
+          },
+          {
+            "paper_id": "openalex:W4413947089",
+            "title": "Mobile-TeleVision: Predictive Motion Priors for Humanoid Whole-Body Control",
+            "venue_year": "arXiv 2025-05",
+            "bottleneck_targeted": "Whole-body RL lacks precise high-DoF manipulation while maintaining robust locomotion."
+          },
+          {
+            "paper_id": "openalex:W4404955232",
+            "title": "Robots Can Multitask Too: Integrating a Memory Architecture and LLMs for Enhanced Cross-Task Robot Action Generation",
+            "venue_year": "arXiv 2024-11",
+            "bottleneck_targeted": "Multi-task robots need memory of prior task, environment, and action states for switching and long-term interaction."
+          },
+          {
+            "paper_id": "arxiv:2608.20114v2",
+            "title": "DECOWAM: Decoupled Whole-Body World-Action Model for Legged Mobile Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Fixed-base WAMs do not distinguish camera ego-motion from base and arm actions in mobile manipulation."
+          },
+          {
+            "paper_id": "arxiv:2606.31158v1",
+            "title": "LLM-Powered Interactive Robotic Action Synthesis from Multimodal Speech, Gestures, and Music",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Rigid commands limit expressive, adaptive, and context-aware human-robot interaction."
+          },
+          {
+            "paper_id": "arxiv:2608.12239v1",
+            "title": "HAMP-LIC: Hessian-Aware Mixed-Precision Post-Training Quantization for Learned Image Compression",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Uniform low-bit precision ignores layer sensitivity and harms rate-distortion quality."
+          },
+          {
+            "paper_id": "arxiv:2604.01985v2",
+            "title": "World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "World models need reliability over suboptimal actions that are underrepresented in action-labeled data."
+          },
+          {
+            "paper_id": "arxiv:2607.00678v2",
+            "title": "ABot-M0.5: Unified Mobility-and-Manipulation World Action Model",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Coarse chunks, entangled navigation/manipulation actions, and train-test mismatch cause fine-contact and long-horizon errors."
+          },
+          {
+            "paper_id": "arxiv:2607.10797v1",
+            "title": "Compositional Context Fine-Tuning Vision-Language Model for Complex Assembly Action Understanding from Videos",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Fine-grained assembly recognition is difficult because of subtle motion and hand-object interaction, with limited data."
+          },
+          {
+            "paper_id": "arxiv:2605.21133v2",
+            "title": "Humanoid Whole-Body Manipulation via Active Spatial Brain and Generalizable Action Cerebellum",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Complex 3D spatial reasoning and costly real-robot data limit generalizable humanoid loco-manipulation."
+          },
+          {
+            "paper_id": "arxiv:2608.13448v1",
+            "title": "Mind the Context: Continual Learning of Socially Appropriate Robot Actions via Environmental-Social Disentanglement",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Domain-incremental social action learning must adapt to environmental and social cues while retaining prior knowledge."
+          },
+          {
+            "paper_id": "arxiv:2604.02330v2",
+            "title": "ActionParty: Multi-Subject Action Binding in Generative Video Games",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Single-agent video world models struggle to bind specific actions to multiple subjects while preserving identity."
+          },
+          {
+            "paper_id": "arxiv:2608.17496v1",
+            "title": "Calibrated Predictive Safety for Heterogeneous Robots: An Action-Conditioned JEPA Framework with Model-Based Safety Shields",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "VLAs lack execution-time guarantees, while classical planners generalize poorly; candidate actions need risk/progress filtering."
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "pattern_name": "Reframe as a Solvable Object",
+        "papers": [
+          {
+            "paper_id": "openalex:W4413156213",
+            "title": "CoT-VLA: Visual Chain-of-Thought Reasoning for Vision-Language-Action Models",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Direct input-output VLA mappings lack intermediate visual goals, temporal planning, and reasoning."
+          },
+          {
+            "paper_id": "openalex:W4404939723",
+            "title": "Predicting the Next Action by Modeling the Abstract Goal",
+            "venue_year": "Lecture notes in computer science 2024",
+            "bottleneck_targeted": "Next-action prediction is framed through modeling an abstract goal."
+          },
+          {
+            "paper_id": "arxiv:2606.19672v1",
+            "title": "Safe Local Navigation for Ackermann-Steered Robots in Unmapped Environments",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Safe local navigation without a global goal must handle obstacles and steering constraints efficiently."
+          }
+        ]
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "pattern_name": "Relax Discrete Search to Continuous",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.25054v2",
+            "title": "Scale When Needed: Adaptive Neuron-level Mixed Precision Quantization Aware Training",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Coarse layer/channel mixed precision misses neuron-level variability under resource constraints."
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "pattern_name": "Encode Structure by Construction",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.03231v1",
+            "title": "Structure-Aware Robust Fine-Tuning: Defending Vision-Language-Action Robots Against Physical Attention Hijacking",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Physical adversarial patches can redirect policy-critical attention away from task-relevant regions."
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "pattern_name": "Unify Heterogeneous Inputs into One Space",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:99888c5119beae4db99120f059acd608e338da3c",
+            "title": "MV-WAM: Manifold-Aware World Action Model with Value Augmentation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Heterogeneous visual and action manifolds can make joint optimization degrade action robustness under distribution shift."
+          },
+          {
+            "paper_id": "semanticscholar:0f13c8d91f2d321c20553e7ee75e094ff8fbbd9a",
+            "title": "Unified 4D World Action Modeling from Video Priors with Asynchronous Denoising",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Prior unified world models are limited to 2D pixels and cannot balance action efficiency with 4D world quality."
+          },
+          {
+            "paper_id": "semanticscholar:54723625eec30d5445af967e8f06c3c1fd37479a",
+            "title": "GeoSem-WAM: Geometry- and Semantic-Aware World Action Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "RGB-only future prediction provides limited structural, spatial, and semantic understanding."
+          },
+          {
+            "paper_id": "arxiv:2608.09381v1",
+            "title": "JEPA-WAM: Learning Vision-Language-Action Policies with Joint-Embedding World Modeling",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Video-generation WAMs are costly, while latent WAMs may separate predictive and action representations or lose spatial correspondence."
+          },
+          {
+            "paper_id": "arxiv:2606.17046v2",
+            "title": "Geometric Action Model for Robot Policy Learning",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "2D image or latent spaces leave implicit the 3D geometry needed for contact-rich manipulation."
+          },
+          {
+            "paper_id": "arxiv:2605.22882v4",
+            "title": "GEM-4D: Geometry-Enhanced Video World Models for Robot Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Visually plausible generated futures can fail to track physical points consistently, weakening action grounding."
+          },
+          {
+            "paper_id": "arxiv:2604.03065v1",
+            "title": "Joint Prediction of Human Motions and Actions in Human-Robot Collaboration",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Continuous movements and discrete actions are usually modeled in isolation for human-robot collaboration."
+          },
+          {
+            "paper_id": "arxiv:2608.01397v1",
+            "title": "SG-WAM: Self-Guided World Modeling in Geometry-Aware Policy Space",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Future dynamics must be both action-aligned and geometry-aware without expensive observation-space targets."
+          },
+          {
+            "paper_id": "arxiv:2607.28443v3",
+            "title": "One Future, Every Robot: Label-Efficient Collective-State Prediction with Decentralized JEPA",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Decentralized robots see different evidence and lack a central estimate or output-level consensus."
+          },
+          {
+            "paper_id": "arxiv:2606.01027v2",
+            "title": "$τ_0$-WM: A Unified Video-Action World Model for Robotic Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Policy learning, future prediction, and action evaluation are usually separate despite the need to anticipate consequences before execution."
+          },
+          {
+            "paper_id": "arxiv:2608.08023v2",
+            "title": "4D-WAM: Infusing Spatiotemporal Awareness into World Action Models through Trajectory Fields",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "2D pixel representations leave a gap to the 3D space where robot actions execute and fail to model 3D dynamics fully."
+          }
+        ]
+      }
+    ],
+    "phase0_outside_taxonomy": [
+      {
+        "paper_id": "semanticscholar:cfa74f2cf728ae84602a7808dd5143a013e1e90d",
+        "title": "A framework for analog-digital mixed-precision neural network training and inference",
+        "venue_year": "International Symposium on Circuits and Systems 2025",
+        "bottleneck_targeted": "Not stated in the available abstract or metadata."
+      },
+      {
+        "paper_id": "openalex:W4414079054",
+        "title": "π₀: A Vision-Language-Action Flow Model for General Robot Control",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "The available abstract text is corrupted; the title alone does not specify a qualifying pattern execution."
+      },
+      {
+        "paper_id": "openalex:W4402952516",
+        "title": "ManiGaussian: Dynamic Gaussian Splatting for Multi-task Robotic Manipulation",
+        "venue_year": "Lecture notes in computer science 2024",
+        "bottleneck_targeted": "The available record provides only the title and no mechanism-level abstract evidence."
+      },
+      {
+        "paper_id": "openalex:W4404596846",
+        "title": "Optimizing Waste Sorting for Sustainability: An AI-Powered Robotic Solution for Beverage Container Recycling",
+        "venue_year": "Sustainability 2024",
+        "bottleneck_targeted": "The record describes an application system but does not execute a clear one of the 15 ideation patterns."
+      },
+      {
+        "paper_id": "openalex:W4403878347",
+        "title": "QUAR-VLA: Vision-Language-Action Model for Quadruped Robots",
+        "venue_year": "Lecture notes in computer science 2024",
+        "bottleneck_targeted": "The available record contains no abstract or mechanism-level evidence."
+      }
+    ],
+    "phase3_collision": [
+      {
+        "paper_id": "semanticscholar:d1e02fc0b88a1877cd787ee1bfe57ca1b8b26949",
+        "title": "EgoLoc: A Generalizable Solution for Temporal Interaction Localization in Egocentric Videos",
+        "venue_year": "IEEE Transactions on Pattern Analysis and Machine Intelligence 2025"
+      },
+      {
+        "paper_id": "openalex:W7166805920",
+        "title": "Optimizing immunotherapy in advanced gastric cancer: established and emerging biomarkers for precision patient selection",
+        "venue_year": "Frontiers in Immunology 2026"
+      },
+      {
+        "paper_id": "openalex:W7204096338",
+        "title": "WA-JEPA: Rethinking the Video JEPA Paradigm for World-Action Modeling in Autonomous Driving",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "semanticscholar:5e1ed4e38a964dbffb20b729562a7e396c2b0473",
+        "title": "Mixed-effects additive Bayesian networks for the assessment of ruptured intracranial aneurysms: Insights from multicenter data",
+        "venue_year": "Comput. Biol. Medicine 2025"
+      },
+      {
+        "paper_id": "semanticscholar:b1c6c7d162082ced77bfa1b37805fbc89c5bc8f5",
+        "title": "Scaling Video-Language Models to 10K Frames via Hierarchical Differential Distillation",
+        "venue_year": "International Conference on Machine Learning 2025"
+      },
+      {
+        "paper_id": "arxiv:2606.17046v2",
+        "title": "Geometric Action Model for Robot Policy Learning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.26694v2",
+        "title": "Unified 4D World Action Modeling from Video Priors with Asynchronous Denoising",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.00066v1",
+        "title": "Do Open-Loop Metrics Predict Closed-Loop Driving? A Cross-Benchmark Correlation Study of NAVSIM and Bench2Drive",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.13188v1",
+        "title": "Concurrent Image Understanding and Generation: Self-Correcting Coupled Markov Jump Processes",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7131314872",
+        "title": "From prediction to intervention: causal digital twins for personalized clinical decision support",
+        "venue_year": "Journal of Translational Medicine 2026"
+      },
+      {
+        "paper_id": "semanticscholar:a569087e1867d2215efe42bb9935869ef4a91dbe",
+        "title": "Fast Multi-Constellation GNSS Satellite Selection: Convex and Mixed-Integer Programming Approaches",
+        "venue_year": "IEEE Transactions on Vehicular Technology 2025"
+      },
+      {
+        "paper_id": "semanticscholar:d75eea84ecaa73e6c06cb9510c664b494d4d07a1",
+        "title": "Master Micro Residual Correction with Adaptive Tactile Fusion and Force-Mixed Control for Contact-Rich Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "semanticscholar:ac43c22245f70647013152cc6513ef742f0b61c1",
+        "title": "Design Trade-offs in Current Mirrors: Precision and Power Efficiency",
+        "venue_year": "Academic Journal of Science and Technology 2025"
+      },
+      {
+        "paper_id": "semanticscholar:2bb7125940158c7ee016fa85176f8b7264ac8844",
+        "title": "Knowledge, Attitudes, and Perceived Barriers to Genetics and Precision Medicine Among Rural Participants in a Large Academic Biobank: A Mixed-Methods Study",
+        "venue_year": "Journal of Personalized Medicine 2026"
+      },
+      {
+        "paper_id": "semanticscholar:994c5d407834f32af3a72ff06c3e61c5888aaf2e",
+        "title": "The Reliability-First Myth in Item Selection – Why Item Difficulty Matters",
+        "venue_year": "Psychological Test Adaptation and Development 2026"
+      },
+      {
+        "paper_id": "semanticscholar:a53ad9c51f108ad8917884825f03c149797e7b5b",
+        "title": "Optimized Design of Low-Noise Two-Stage Operational Amplifiers for High-Precision Applications",
+        "venue_year": "Journal of Microprocessor and Microcontroller Research 2025"
+      },
+      {
+        "paper_id": "semanticscholar:45d857d3f744208c2a4b0cb7c8cad6ce7f71100c",
+        "title": "Progress in sperm cell separation and analytical techniques for semen-epithelial mixed stains: a forensic perspective.",
+        "venue_year": "Legal Medicine 2026"
+      },
+      {
+        "paper_id": "semanticscholar:667bcf53c7f7745776bbcca52c3e4ebd49ecb6d3",
+        "title": "Beyond global trueness and precision: evaluating the clinical suitability of automated brachial cuff blood pressure measurements in acute care—a protocol for systematic review and meta-analysis of aggregated and individual participant data",
+        "venue_year": "Systematic Reviews 2025"
+      },
+      {
+        "paper_id": "semanticscholar:a9ebe4b546793de70ec83812bce48b06838a6ac5",
+        "title": "Unlocking Sweet Spots Using Reservoir Geophysics Techniques: A Strategy for Well Placement Optimization",
+        "venue_year": "SPE Nigeria Annual International Conference and Exhibition 2026"
+      },
+      {
+        "paper_id": "semanticscholar:5d22eb91f44bfadc853245f4746c2ceb0c524efb",
+        "title": "Assessment of spatial distortions affecting realism and interaction in mixed and augmented reality",
+        "venue_year": "Virtual Reality 2026"
+      },
+      {
+        "paper_id": "semanticscholar:5455ef0ee50209fdcb8d5fcf867945e55f64c75e",
+        "title": "A Critical Realist ERP Implementation in Zimbabwean Mining Industry Organisations",
+        "venue_year": "Tanzania Journal of Engineering and Technology 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.12528v1",
+        "title": "Excitation-Supervised Closed-Loop Self-Calibration and Target Seeking for an Unknown-Pose Range-Bearing Relay",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.03868v1",
+        "title": "Unified Video-Action Joint Denoising for Dexterous Action and Data Generation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.07404v1",
+        "title": "Score Shocks: The Burgers Equation Structure of Diffusion Generative Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.13347v2",
+        "title": "LLM-as-a-Judge Scores Are Unreliable Optimization Signals in Closed-Loop Table Recognition",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.24496v2",
+        "title": "EgoAction: Egocentric Action Composition with Reliability-Aware Temporal Fusion for the EPIC-KITCHENS Action Detection Challenge at CVPR 2026",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.18313v1",
+        "title": "Denoise and Align: Diffusion-Driven Foreground Knowledge Prompting for Open-Vocabulary Temporal Action Detection",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.05133v1",
+        "title": "UNIVERSE: Unified Video Action Models for Autonomous Driving with Flexible Mask-Modulated Modality Generation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7122750689",
+        "title": "A Wearable, Dual Closed‐loop Insulin Delivery System for Precision Diabetes Management",
+        "venue_year": "Advanced Materials 2026"
+      },
+      {
+        "paper_id": "openalex:W7124946853",
+        "title": "Engineered probiotics for inflammatory bowel disease therapy: mechanisms, delivery strategies, and precision medicine",
+        "venue_year": "Frontiers in Microbiology 2026"
+      },
+      {
+        "paper_id": "openalex:W4416718944",
+        "title": "A hyperconformal dual-modal metaskin for well-defined and high-precision contextual interactions",
+        "venue_year": "Nature Communications 2025"
+      },
+      {
+        "paper_id": "openalex:W4416470794",
+        "title": "Leveraging artificial intelligence in antibody-drug conjugate development: from target identification to clinical translation in oncology",
+        "venue_year": "npj Precision Oncology 2025"
+      },
+      {
+        "paper_id": "openalex:W4416904132",
+        "title": "The Counterfactual–Dialectical Optimization Framework: A Prescriptive Approach to Employee Attrition Management with Empirical Validation",
+        "venue_year": "Information 2025"
+      },
+      {
+        "paper_id": "openalex:W7126055443",
+        "title": "Towards efficient real-time video motion transfer via generative time series modeling",
+        "venue_year": "Multimedia Tools and Applications 2026"
+      },
+      {
+        "paper_id": "openalex:W7125416309",
+        "title": "Mathematical formalism of Ze",
+        "venue_year": "Longevity Horizon 2026"
+      },
+      {
+        "paper_id": "openalex:W4417120667",
+        "title": "The Redox–Adhesion–Exosome (RAX) Hub in Cancer: Lipid Peroxidation-Driven EMT Plasticity and Ferroptosis Defense with HNE/MDA Signaling and Lipidomic Perspectives",
+        "venue_year": "Antioxidants 2025"
+      },
+      {
+        "paper_id": "openalex:W7122628947",
+        "title": "Embodied Intelligence in Surgical Robotics: From Perception-Action Loops to Cognitive Collaboration",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7124470135",
+        "title": "Federated multimodal AI for precision-equitable diabetes care",
+        "venue_year": "Frontiers in Digital Health 2026"
+      },
+      {
+        "paper_id": "openalex:W4416337549",
+        "title": "The Endocannabinoid–Microbiota–Neuroimmune Super-System: A Unifying Feedback Architecture for Systems Resilience, Collapse Trajectories, and Precision Feedback Medicine",
+        "venue_year": "International Journal of Molecular Sciences 2025"
+      },
+      {
+        "paper_id": "openalex:W7165423802",
+        "title": "ImageWAM: Do World Action Models Really Need Video Generation, or Just Image Editing?",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "semanticscholar:716b5910bd31464c58e930378372df6315c44ebb",
+        "title": "MODE: Modality-Decomposed Expert-Level Mixed-Precision Quantization for MoE Multimodal LLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "semanticscholar:535f33f5442c894f1b43385f086b06f47e2cc535",
+        "title": "Intrinsic Structure as a Proxy for Saliency: SVD-Based Weight Preservation for Mixed-Precision Quantization in Large Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "semanticscholar:a05a835ef99fa78633e73225e35409ccbaf7790a",
+        "title": "Context-tuned strategies for marker selection precision in neuronal studies",
+        "venue_year": "Frontiers in Neuroscience 2026"
+      },
+      {
+        "paper_id": "semanticscholar:4e5c5ed587af507980df09488f2cf88276e015cf",
+        "title": "Experimental Investigation of Dynamic Contact Stiffness and Damping in Mixed Lubrication for Machine Tool Sliding Guide Interfaces",
+        "venue_year": "Shock and Vibration 2025"
+      },
+      {
+        "paper_id": "semanticscholar:e98b871f05d3be70555253686db7bf9dacd5016e",
+        "title": "Hybrid Mixed-Signal Conditioning for Non-Contact Capacitive Sensing of Hand Kinematics for Biomedical Applications",
+        "venue_year": "2026 Global Medical Engineering Physics Exchanges/ Pan American Health Care Exchanges (GMEPE/PAHCE) 2026"
+      },
+      {
+        "paper_id": "semanticscholar:310d3b41c2d717697e3b54319a21dc7383994bd1",
+        "title": "Precision Meets Pain Relief: Image-guided Nerve Blocks in Interventional Radiology.",
+        "venue_year": "Radiographics 2026"
+      },
+      {
+        "paper_id": "semanticscholar:a21dcd036027e68871375c8b71f29137e6709dfe",
+        "title": "A multi-critical-path co-driven evolutionary algorithm addressing the dual-resource flexible job shop scheduling problem with offline operations and job priority constraints",
+        "venue_year": "International Journal of Production Research 2025"
+      },
+      {
+        "paper_id": "semanticscholar:ff10f326e27d13ca63e599c2e5f418ec6dd4da18",
+        "title": "Laser drilling and cutting of carbon fiber reinforced polymers: Parameter selection and intelligent optimization – A review",
+        "venue_year": "Journal of Thermoplastic Composite Materials 2026"
+      },
+      {
+        "paper_id": "semanticscholar:51fcf9ad2038ea80ecae46456075b64867e5b8ef",
+        "title": "Collision Dynamics of Cassava Seed Stems: Analyzing Recovery Coefficients and Influential Factors for Precision Agriculture",
+        "venue_year": "Agronomy 2025"
+      },
+      {
+        "paper_id": "semanticscholar:5b2d8213cf74466397b0b2a4015be359ebb8eef1",
+        "title": "Real-Time Identification of Look-Alike Medical Vials Using Mixed Reality-Enabled Deep Learning",
+        "venue_year": "Future Internet 2025"
+      },
+      {
+        "paper_id": "semanticscholar:5611e016366c99747489a4a4b2b971da7fa6aabc",
+        "title": "Efficacy of biochar from mixed biomass resources for the removal of pharmaceutical residues from treated domestic wastewater.",
+        "venue_year": "Water Science and Technology 2026"
+      },
+      {
+        "paper_id": "semanticscholar:96583631db61e5413b81b26501d6cecce3e5084d",
+        "title": "Improving Recruitment Into Research Studies via Electronically Collected Patient-Entered Data: Mixed Methods Study",
+        "venue_year": "Journal of Medical Internet Research 2025"
+      },
+      {
+        "paper_id": "semanticscholar:85c40ce044089051f8df3c0a353a4ad04fceb1a7",
+        "title": "Estimation of individual tree aboveground biomass of genetically diverse Catalpa bungei based on nonlinear mixed-effects models and UAV LiDAR data",
+        "venue_year": "Frontiers in Plant Science 2026"
+      },
+      {
+        "paper_id": "semanticscholar:3113266a533f8164bb70f220bebfd6c891093573",
+        "title": "Electrical Discharge Machining of Composites: A Critical Review of Challenges and Innovations",
+        "venue_year": "Journal of Mechanical Engineering and Manufacturing 2025"
+      },
+      {
+        "paper_id": "semanticscholar:f9c764e2c6ee250a76cbe3b8c9406d960959b756",
+        "title": "Health related device instrumentation for healthcare improvement: A critical review of design, integration, performance and lawful adaptation frameworks",
+        "venue_year": "World Journal of Biology Pharmacy and Health Sciences 2025"
+      },
+      {
+        "paper_id": "semanticscholar:a2157fa2d77adecdba1cde6e9831c2d75f068f5a",
+        "title": "Predicting specific modulus of tibia from mixed modelled dataset using artificial neural network",
+        "venue_year": "npj Acoustics 2026"
+      },
+      {
+        "paper_id": "semanticscholar:41882f5e7cb41a985c0b51b74c705ee4cd31b987",
+        "title": "Role of mixed reality in the workflow of complex neurooncological surgeries: a case analysis in thalamic surgery",
+        "venue_year": "Acta Neurochirurgica 2025"
+      },
+      {
+        "paper_id": "semanticscholar:c4cc63302978cb10c91d6c8d031daf3547216bf5",
+        "title": "Low-Load and High-Precision Forming Technology for Large-Scale Graded Doubly Curved Q890 High-Strength Steel Thick Plates",
+        "venue_year": "Materials 2026"
+      },
+      {
+        "paper_id": "semanticscholar:890d6501af1dd5f5312d9c213ae55f5347b8ba03",
+        "title": "Enhanced Agricultural Decision-Making: Machine Learning Approaches for Crop Prediction and Analysis in India",
+        "venue_year": "Jurnal Online Informatika 2025"
+      },
+      {
+        "paper_id": "semanticscholar:149c041858a42d80ced3bbdf02eb8a024feca16c",
+        "title": "A Patented Noncontact Method for Measuring Tread Deformation at the Tire–Road Interface",
+        "venue_year": "IEEE Sensors Journal 2025"
+      },
+      {
+        "paper_id": "semanticscholar:dec28cb0987e40810160809bb53446c50a2babab",
+        "title": "Optimized Coverage Map Representation for Bandwidth-Limited Data Exchange of Agricultural Vehicles",
+        "venue_year": "IEEE Transactions on AgriFood Electronics 2026"
+      },
+      {
+        "paper_id": "semanticscholar:c639496275db26ea35e19164ea4ec0c15a4aa777",
+        "title": "Optimization of Signal Source and Clock Source Combination for ADC Chip Test Based on V93000 Platform",
+        "venue_year": "Journal of Engineering System 2026"
+      },
+      {
+        "paper_id": "semanticscholar:7f66e64faaacaee15cc8eb3bc52d265db80ed06b",
+        "title": "Quantum frequency goniometer utilizing frequency measurement of continuously tuned laser",
+        "venue_year": "Applied Physics Letters 2025"
+      },
+      {
+        "paper_id": "semanticscholar:036bcfb86cce5d3411ecc8767b6392e5afc9f89c",
+        "title": "Design and Simulation of a DAC-Based Multifrequency Sine Wave Signal Generator Based on Modelsim Platform",
+        "venue_year": "2025 6th International Conference on Intelligent Design (ICID) 2025"
+      },
+      {
+        "paper_id": "semanticscholar:46ff3989037b4d60603d04c52bc17c84ea69d33e",
+        "title": "Fabrication of abrasive jet machining",
+        "venue_year": "INTERANTIONAL JOURNAL OF SCIENTIFIC RESEARCH IN ENGINEERING AND MANAGEMENT 2025"
+      },
+      {
+        "paper_id": "semanticscholar:fead079865d3b4422986d96872838436f0d790fb",
+        "title": "Fermenting the Unused: Microbial Biotransformation of Food Industry By-Products for Circular Bioeconomy Valorisation",
+        "venue_year": "Fermentation 2026"
+      },
+      {
+        "paper_id": "semanticscholar:b57e5524ac4b11831855aca4da366334e607b48b",
+        "title": "Evidence-Based Evaluation of Malocclusion Management in the Mixed Dentition: From Prevention to Clinical Controversy.",
+        "venue_year": "Journal of Visualized Experiments 2026"
+      },
+      {
+        "paper_id": "semanticscholar:53c939a15758e74584f06610fee1e534495aff76",
+        "title": "Phenotype-guided selection of venlafaxine and topiramate for vestibular migraine: a narrative review",
+        "venue_year": "Frontiers in Neuroscience 2026"
+      },
+      {
+        "paper_id": "semanticscholar:8d511ca1a45931b0c32073106bbafcefc2a2bebe",
+        "title": "Ocular Allergy Within the Framework of the EAACI Nomenclature of Allergic Diseases and Hypersensitivity Reactions",
+        "venue_year": "Allergy Asthma and Immunology Research 2026"
+      },
+      {
+        "paper_id": "semanticscholar:99162252d4beeac1f37bd0071386baded472b2ab",
+        "title": "Research on a Lightweight Rail Surface Condition Identification Method for Wheel–Rail Maximum Adhesion Coefficient Estimation",
+        "venue_year": "Applied Sciences 2025"
+      },
+      {
+        "paper_id": "semanticscholar:e4e2710635befe0e11c55641ea46e1e71d3be706",
+        "title": "Deepfake Detection and Generalization: A Comparative Study of Deep Learning Architectures",
+        "venue_year": "Journal of Environmental Research and Engineering 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.02117v1",
+        "title": "Optimization of adaptive optics correction during observations: Algorithms and system parameters identification in closed-loop",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.27884v1",
+        "title": "SEADA: An efficient methodology for optimizing mixed-precision DNNs on multi-precision spatial architectures",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.02330v2",
+        "title": "ActionParty: Multi-Subject Action Binding in Generative Video Games",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.23727v1",
+        "title": "Mixed-Precision in adaptive Runge-Kutta method for large ODE systems",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.02504v1",
+        "title": "Closed-loop Structure of Quantum Probabilities from Unitarity",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.09330v1",
+        "title": "VAG: Dual-Stream Video-Action Generation for Embodied Data Synthesis",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7118269635",
+        "title": "Next-Generation Strategies for Controlling Foodborne Pathogens: Precision Antimicrobials, Biofilm Disruption, and Emerging Molecular Interventions",
+        "venue_year": "Foods 2026"
+      },
+      {
+        "paper_id": "openalex:W7118794375",
+        "title": "Soft sonocapacitor with topologically integrated piezodielectric nanospheres enables wireless epidural closed-loop neuromodulation",
+        "venue_year": "Nature Communications 2026"
+      },
+      {
+        "paper_id": "openalex:W7136468318",
+        "title": "Heterogeneity: Meaning and Measurement, Causes and Consequences",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7128785303",
+        "title": "Metabolomics biomarkers for precision psychiatry",
+        "venue_year": "Frontiers in Psychiatry 2026"
+      },
+      {
+        "paper_id": "openalex:W4417479407",
+        "title": "Application and challenges of tumor organoid technology in precision immunotherapy",
+        "venue_year": "Frontiers in Immunology 2025"
+      },
+      {
+        "paper_id": "openalex:W7152979392",
+        "title": "Vision-Language-Action (VLA) Models for Unmanned Aerial Robotics and Bimanual Manipulation: A Review",
+        "venue_year": "Preprints.org 2026"
+      },
+      {
+        "paper_id": "openalex:W7125397926",
+        "title": "Without safeguards, AI-Biology integration risks accelerating future pandemics",
+        "venue_year": "Frontiers in Microbiology 2026"
+      },
+      {
+        "paper_id": "openalex:W4416331906",
+        "title": "Intestinal blood vessel-associated macrophages and gut-vascular barrier dysfunction in cirrhosis",
+        "venue_year": "Gut 2025"
+      },
+      {
+        "paper_id": "openalex:W7130507775",
+        "title": "Healthcare applications of 0-1 neural networks in prescriptive problems with observational data",
+        "venue_year": "Health Care Management Science 2026"
+      },
+      {
+        "paper_id": "openalex:W4416721090",
+        "title": "Harmonizing Human Touch and AI Precision in Customer Service",
+        "venue_year": "Journal of Service Research 2025"
+      },
+      {
+        "paper_id": "openalex:W4417370281",
+        "title": "Artificial Intelligence of Things for Next-Generation Predictive Maintenance",
+        "venue_year": "Sensors 2025"
+      },
+      {
+        "paper_id": "openalex:W7135156230",
+        "title": "DiT4DiT: Jointly Modeling Video Dynamics and Actions for Generalizable Robot Control",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4417054304",
+        "title": "The impact of a longitudinal mentorship program on medical students: A mixed-methods study",
+        "venue_year": "PLoS ONE 2025"
+      },
+      {
+        "paper_id": "openalex:W7122678244",
+        "title": "Multidimensional EEG features integration with feature selection strategy for precision diagnosis of depressive disorders",
+        "venue_year": "Frontiers in Psychiatry 2026"
+      },
+      {
+        "paper_id": "openalex:W4416456361",
+        "title": "Next-Generation Sequencing for Bloodstream Infections: Shaping the Future of Rapid Diagnostics and Precision Medicine",
+        "venue_year": "Diagnostics 2025"
+      },
+      {
+        "paper_id": "openalex:W7119492309",
+        "title": "A Hybrid Genetic Algorithm for Sustainable Multi-Site Logistics: Integrating Production, Inventory, and Distribution Planning with Proactive CO2 Emission Forecasting",
+        "venue_year": "Sustainability 2026"
+      },
+      {
+        "paper_id": "openalex:W4417464646",
+        "title": "Structural insights into C3 convertase activity of the classical pathway of complement",
+        "venue_year": "Nature Communications 2025"
+      },
+      {
+        "paper_id": "openalex:W7138992485",
+        "title": "Bacteriophage Therapy Against Shigella spp.: A Precision Antimicrobial Strategy",
+        "venue_year": "Antibiotics 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.25466v1",
+        "title": "Residual-as-Teacher: Mitigating Bias Propagation in Student--Teacher Estimation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2311.08010v3",
+        "title": "Improving the Robustness of Distantly-Supervised Named Entity Recognition via Uncertainty-Aware Teacher Learning and Student-Student Collaborative Learning",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2405.10830v2",
+        "title": "CTS: Concurrent Teacher-Student Reinforcement Learning for Legged Locomotion",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2511.04063v1",
+        "title": "DartQuant: Efficient Rotational Distribution Calibration for LLM Quantization",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2301.11321v3",
+        "title": "Trajectory-Aware Eligibility Traces for Off-Policy Reinforcement Learning",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2604.25136v1",
+        "title": "Frictive Policy Optimization for LLMs: Epistemic Intervention, Risk-Sensitive Control, and Reflective Alignment",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2312.01457v1",
+        "title": "Marginal Density Ratio for Off-Policy Evaluation in Contextual Bandits",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2505.14302v1",
+        "title": "Scaling Law for Quantization-Aware Training",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2505.22492v1",
+        "title": "Demystifying the Paradox of Importance Sampling with an Estimated History-Dependent Behavior Policy in Off-Policy Evaluation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2411.14285v1",
+        "title": "Stochastic interventions, sensitivity analysis, and optimal transport",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2311.13930v1",
+        "title": "Periodically Exchange Teacher-Student for Source-Free Object Detection",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2602.07899v1",
+        "title": "Rethinking Practical and Efficient Quantization Calibration for Vision-Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2308.03443v3",
+        "title": "Doubly Robust Estimator for Off-Policy Evaluation with Large Action Spaces",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2307.00331v2",
+        "title": "Quantization Variation: A New Perspective on Training Transformers with Low-Bit Precision",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2602.07465v1",
+        "title": "On the Importance of a Multi-Scale Calibration for Quantization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2507.19146v2",
+        "title": "Diverse and Adaptive Behavior Curriculum for Autonomous Driving: A Student-Teacher Framework with Multi-Agent RL",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2302.05142v1",
+        "title": "DOMINO: Domain-aware Loss for Deep Learning Calibration",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2311.09755v2",
+        "title": "On the Impact of Calibration Data in Post-training Quantization and Pruning",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2609.02507v1",
+        "title": "Rethinking the Teacher-Student Framework for Test-Time Adaptation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.10202v1",
+        "title": "Task-Aware Calibration: Provably Optimal Decoding in LLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4393147284",
+        "title": "OWQ: Outlier-Aware Weight Quantization for Efficient Fine-Tuning and Inference of Large Language Models",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4304080501",
+        "title": "Towards Accurate Post-Training Quantization for Vision Transformer",
+        "venue_year": "Proceedings of the 30th ACM International Conference on Multimedia 2022"
+      },
+      {
+        "paper_id": "openalex:W4393157004",
+        "title": "Make RepVGG Greater Again: A Quantization-Aware Approach",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4394866199",
+        "title": "Marginal effect of electricity generation on CO2 emissions: Disaggregated level evidence from China by KRLS method and high-frequency daily data",
+        "venue_year": "Energy Strategy Reviews 2024"
+      },
+      {
+        "paper_id": "openalex:W4393160423",
+        "title": "Agile-Quant: Activation-Guided Quantization for Faster Inference of LLMs on the Edge",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4319298212",
+        "title": "Strategies to implement multifactorial falls prevention interventions in community-dwelling older persons: a systematic review",
+        "venue_year": "Implementation Science 2023"
+      },
+      {
+        "paper_id": "arxiv:2409.06562v1",
+        "title": "Teacher-student relationship and teaching styles in primary education. A model of analysis",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2311.14110v2",
+        "title": "When is Off-Policy Evaluation (Reward Modeling) Useful in Contextual Bandits? A Data-Centric Perspective",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2412.09149v2",
+        "title": "Student-Informed Teacher Training",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2606.16485v1",
+        "title": "Robust Koopman MPC with Sets Updates for Time Delayed Systems",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2410.05265v2",
+        "title": "PrefixQuant: Eliminating Outliers by Prefixed Tokens for Large Language Models Quantization",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2609.02756v1",
+        "title": "Off-policy causal estimation in networks",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2306.00286v2",
+        "title": "Efficient Deep Learning of Robust Policies from MPC using Imitation and Tube-Guided Data Augmentation",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2304.02488v7",
+        "title": "SCB-Dataset: A Dataset for Detecting Student and Teacher Classroom Behavior",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2508.07914v1",
+        "title": "Meta Off-Policy Estimation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2210.17332v1",
+        "title": "Teacher-Student Architecture for Knowledge Learning: A Survey",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2507.04495v1",
+        "title": "README: Robust Error-Aware Digital Signature Framework via Deep Watermarking Model",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2511.06817v3",
+        "title": "TiS-TSL: Image-Label Supervised Surgical Video Stereo Matching via Time-Switchable Teacher-Student Learning",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2306.04590v2",
+        "title": "Proximity-Informed Calibration for Deep Neural Networks",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2305.09659v2",
+        "title": "Double Pessimism is Provably Efficient for Distributionally Robust Offline Reinforcement Learning: Generic Algorithm and Robust Partial Coverage",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2505.00961v3",
+        "title": "DOLCE: Decomposing Off-Policy Evaluation/Learning into Lagged and Current Effects",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2210.15543v1",
+        "title": "Beyond the Return: Off-policy Function Estimation under User-specified Error-measuring Distributions",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2604.09529v1",
+        "title": "VL-Calibration: Decoupled Confidence Calibration for Large Vision-Language Models Reasoning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2509.16989v3",
+        "title": "PTQTP: Post-Training Quantization to Trit-Planes for Large Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2311.14237v1",
+        "title": "Pseudo-label Correction for Instance-dependent Noise Using Teacher-student Framework",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2407.16040v2",
+        "title": "Generalizing Teacher Networks for Effective Knowledge Distillation Across Student Architectures",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2401.15670v1",
+        "title": "YODA: Teacher-Student Progressive Learning for Language Models",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2605.26872v5",
+        "title": "When the Strongest Teacher Is Not the Best Teacher: Student-Centric Answer Selection",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W3196836501",
+        "title": "Revisiting Event-Study Designs: Robust and Efficient Estimation",
+        "venue_year": "The Review of Economic Studies 2024"
+      },
+      {
+        "paper_id": "openalex:W4320005426",
+        "title": "Robust TS-ANFIS MPC of an Autonomous Racing Electrical Vehicle Considering the Battery State of Charge",
+        "venue_year": "IEEE/ASME Transactions on Mechatronics 2023"
+      },
+      {
+        "paper_id": "openalex:W4366827835",
+        "title": "Quantitative evidence synthesis: a practical guide on meta-analysis, meta-regression, and publication bias tests for environmental sciences",
+        "venue_year": "Environmental Evidence 2023"
+      },
+      {
+        "paper_id": "openalex:W4366816458",
+        "title": "The factors associated with teachers’ job satisfaction and their impacts on students’ achievement: a review (2010–2021)",
+        "venue_year": "Humanities and Social Sciences Communications 2023"
+      },
+      {
+        "paper_id": "openalex:W4367849331",
+        "title": "Do AI chatbots improve students learning outcomes? Evidence from a meta‐analysis",
+        "venue_year": "British Journal of Educational Technology 2023"
+      },
+      {
+        "paper_id": "openalex:W4323846342",
+        "title": "Real-Time Attention Monitoring System for Classroom: A Deep Learning Approach for Student’s Behavior Recognition",
+        "venue_year": "Big Data and Cognitive Computing 2023"
+      },
+      {
+        "paper_id": "openalex:W4392181806",
+        "title": "APTQ: Attention-aware Post-Training Mixed-Precision Quantization for Large Language Models",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4380714727",
+        "title": "SqueezeLLM: Dense-and-Sparse Quantization",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4365458703",
+        "title": "Developing a gamified artificial intelligence educational robot to promote learning effectiveness and behavior in laboratory safety courses for undergraduate students",
+        "venue_year": "International Journal of Educational Technology in Higher Education 2023"
+      },
+      {
+        "paper_id": "openalex:W4381827290",
+        "title": "Quantization-Aware NN Layers with High-throughput FPGA Implementation for Edge AI",
+        "venue_year": "Sensors 2023"
+      },
+      {
+        "paper_id": "openalex:W3171395320",
+        "title": "Learning curves of generic features maps for realistic datasets with a teacher-student model*",
+        "venue_year": "Journal of Statistical Mechanics Theory and Experiment 2022"
+      },
+      {
+        "paper_id": "openalex:W4411918916",
+        "title": "Evaluating the impact of two decades of USAID interventions and projecting the effects of defunding on mortality up to 2030: a retrospective impact evaluation and forecasting analysis",
+        "venue_year": "The Lancet 2025"
+      },
+      {
+        "paper_id": "openalex:W4387573316",
+        "title": "Predictive Analytics for Sustainable E-Learning: Tracking Student Behaviors",
+        "venue_year": "Sustainability 2023"
+      },
+      {
+        "paper_id": "arxiv:2507.11420v1",
+        "title": "A Risk-Aware Adaptive Robust MPC with Learned Uncertainty Quantification",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2407.15508v3",
+        "title": "Compensate Quantization Errors+: Quantized Models Are Inquisitive Learners",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2511.19709v1",
+        "title": "Whole-Body Inverse Dynamics MPC for Legged Loco-Manipulation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2604.05639v3",
+        "title": "Estimating Dynamic Marginal Policy Effects under Sequential Unconfoundedness",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.08349v1",
+        "title": "Certified Interventional Fidelity: Anytime-Valid, Adaptive Evaluation of Causal Claims in Mechanistic Interpretability",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2601.00027v1",
+        "title": "Zero-Dimensional Cardiovascular Modeling: A Personalized Approach to Non-Invasive Measurement and Sensitivity Analysis",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2502.04048v1",
+        "title": "Adaptive Output Feedback MPC with Guaranteed Stability and Robustness",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2405.10024v2",
+        "title": "$Δ\\text{-}{\\rm OPE}$: Off-Policy Estimation with Pairs of Policies",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2506.11694v2",
+        "title": "Structural Representations and Identification of Marginal Policy Effects",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2502.06996v2",
+        "title": "A view on learning robust goal-conditioned value functions: Interplay between RL and MPC",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2605.23691v1",
+        "title": "Joint Estimation of Marginal and Heterogeneous Treatment Effects",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2411.13343v1",
+        "title": "Fact-Level Confidence Calibration and Self-Correction",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2404.01830v1",
+        "title": "Doubly-Robust Off-Policy Evaluation with Estimated Logging Policy",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2512.18641v3",
+        "title": "The Choice of Line Lengths in Multiline Thru-Reflect-Line Calibration",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2505.05530v1",
+        "title": "Low-bit Model Quantization for Deep Neural Networks: A Survey",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2401.04191v2",
+        "title": "Dense Hopfield Networks in the Teacher-Student Setting",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2509.16830v1",
+        "title": "Factorizing Diffusion Policies for Observation Modality Prioritization",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2505.09546v1",
+        "title": "Distilling Realizable Students from Unrealizable Teachers",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2303.07586v1",
+        "title": "Teacher-Student Knowledge Distillation for Radar Perception on Embedded Accelerators",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2402.13183v1",
+        "title": "Robust Model Predictive Control for nonlinear discrete-time systems using iterative time-varying constraint tightening",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2603.00283v3",
+        "title": "Robust Adaptive MPC in the Presence of Nonlinear Time-Varying Uncertainties: An Uncertainty Compensation Approach",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2402.17091v1",
+        "title": "Structural Teacher-Student Normality Learning for Multi-Class Anomaly Detection and Localization",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2508.03332v2",
+        "title": "Exploring Layer-wise Information Effectiveness for Post-Training Quantization in Small Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "openalex:W4307934016",
+        "title": "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers",
+        "venue_year": "arXiv (Cornell University) 2022"
+      },
+      {
+        "paper_id": "openalex:W4384277430",
+        "title": "The state of evidence for social and emotional learning: A contemporary meta-analysis of universal school-based SEL interventions",
+        "venue_year": "Child Development 2023"
+      },
+      {
+        "paper_id": "openalex:W3122303693",
+        "title": "The Long-Run Impacts of Same-Race Teachers",
+        "venue_year": "American Economic Journal Economic Policy 2022"
+      },
+      {
+        "paper_id": "openalex:W4310909151",
+        "title": "Fixed effect estimates of student-teacher racial or ethnic matching in U.S. elementary schools",
+        "venue_year": "Early Childhood Research Quarterly 2022"
+      },
+      {
+        "paper_id": "openalex:W4328052969",
+        "title": "How social imbalance and governance quality shape policy directives for energy transition in the OECD countries?",
+        "venue_year": "Energy Economics 2023"
+      },
+      {
+        "paper_id": "openalex:W4382796394",
+        "title": "Swift and extensive Omicron outbreak in China after sudden exit from ‘zero-COVID’ policy",
+        "venue_year": "Nature Communications 2023"
+      },
+      {
+        "paper_id": "openalex:W4384465778",
+        "title": "Teachers’ reflections on academic dishonesty in EFL students’ writings in the era of artificial intelligence",
+        "venue_year": "Journal of Applied Learning & Teaching 2023"
+      },
+      {
+        "paper_id": "openalex:W4402683730",
+        "title": "A Comprehensive Evaluation of Quantization Strategies for Large Language Models",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4300962388",
+        "title": "Motivational climate in mathematics classrooms: teacher self-efficacy for student engagement, student- and teacher-reported emotional support and student interest",
+        "venue_year": "ZDM 2022"
+      },
+      {
+        "paper_id": "openalex:W4389300341",
+        "title": "How to Get Coal Country to Vote for Climate Policy: The Effect of a “Just Transition Agreement” on Spanish Election Results",
+        "venue_year": "American Political Science Review 2023"
+      },
+      {
+        "paper_id": "openalex:W4391305495",
+        "title": "Risk-Aware Wasserstein Distributionally Robust Control of Vessels in Natural Waterways",
+        "venue_year": "IEEE Transactions on Control Systems Technology 2024"
+      },
+      {
+        "paper_id": "openalex:W4391725262",
+        "title": "MPCDiff: Testing and Repairing MPC-Hardened Deep Learning Models",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4381686136",
+        "title": "Enhancing Student Engagement: Harnessing “AIED”’s Power in Hybrid Education—A Review Analysis",
+        "venue_year": "Education Sciences 2023"
+      },
+      {
+        "paper_id": "openalex:W4385571219",
+        "title": "Large Language Models Are Reasoning Teachers",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4389524393",
+        "title": "Outlier Suppression+: Accurate quantization of large language models by equivalent and effective shifting and scaling",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4304943299",
+        "title": "Ethical principles for artificial intelligence in education",
+        "venue_year": "Education and Information Technologies 2022"
+      },
+      {
+        "paper_id": "openalex:W4306663560",
+        "title": "Interventions Associated With Reduced Loneliness and Social Isolation in Older Adults",
+        "venue_year": "JAMA Network Open 2022"
+      },
+      {
+        "paper_id": "openalex:W4381570295",
+        "title": "Navigating the Ethical Challenges of Artificial Intelligence in Higher Education: An Analysis of Seven Global AI Ethics Policies",
+        "venue_year": "TEM Journal 2023"
+      },
+      {
+        "paper_id": "openalex:W4301401232",
+        "title": "The effect of sustainable business practices on profitability. Accounting for strategic disclosure",
+        "venue_year": "Corporate Social Responsibility and Environmental Management 2022"
+      },
+      {
+        "paper_id": "openalex:W4323567268",
+        "title": "High-accuracy deep ANN-to-SNN conversion using quantization-aware training framework and calcium-gated bipolar leaky integrate and fire neuron",
+        "venue_year": "Frontiers in Neuroscience 2023"
+      },
+      {
+        "paper_id": "openalex:W4393153766",
+        "title": "BAT: Behavior-Aware Human-Like Trajectory Prediction for Autonomous Driving",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4385438804",
+        "title": "Multiple-Input-Single-Output prediction models of crowd dynamics for Model Predictive Control (MPC) of crowd evacuations",
+        "venue_year": "Transportation Research Part C Emerging Technologies 2023"
+      },
+      {
+        "paper_id": "openalex:W4388219729",
+        "title": "Cost-Effectiveness Analysis of Myopia Progression Interventions in Children",
+        "venue_year": "JAMA Network Open 2023"
+      },
+      {
+        "paper_id": "openalex:W4383604976",
+        "title": "Pruning vs Quantization: Which is Better?",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4385878593",
+        "title": "New Era of Artificial Intelligence in Education: Towards a Sustainable Multifaceted Revolution",
+        "venue_year": "Sustainability 2023"
+      },
+      {
+        "paper_id": "openalex:W4327661596",
+        "title": "Quantization Robust Pruning With Knowledge Distillation",
+        "venue_year": "IEEE Access 2023"
+      },
+      {
+        "paper_id": "openalex:W4318464187",
+        "title": "Relationship between Principals’ Leadership Styles and Teachers’ Behavior",
+        "venue_year": "Behavioral Sciences 2023"
+      },
+      {
+        "paper_id": "openalex:W4384283976",
+        "title": "Transfer Learning on Electromyography (EMG) Tasks: Approaches and Beyond",
+        "venue_year": "IEEE Transactions on Neural Systems and Rehabilitation Engineering 2023"
+      },
+      {
+        "paper_id": "openalex:W4402354135",
+        "title": "Differentiable Robust Model Predictive Control",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4386791110",
+        "title": "Longitudinal relations between teacher self-efficacy and student motivation through matching characteristics of perceived teaching practice",
+        "venue_year": "European Journal of Psychology of Education 2023"
+      },
+      {
+        "paper_id": "openalex:W4304589264",
+        "title": "Rural Land Transfer in the Information Age: Can Internet Use Affect Farmers’ Land Transfer-In?",
+        "venue_year": "Land 2022"
+      },
+      {
+        "paper_id": "arxiv:2509.18760v1",
+        "title": "Guaranteed Robust Nonlinear MPC via Disturbance Feedback",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2605.31191v2",
+        "title": "Student Capacity Moderates Knowledge Distillation Effectiveness: A Systematic Study Across ResNet Teacher-Student Pairs on CIFAR-10",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2404.13990v1",
+        "title": "QCore: Data-Efficient, On-Device Continual Calibration for Quantized Models -- Extended Version",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2406.16299v1",
+        "title": "Compensate Quantization Errors: Make Weights Hierarchical to Compensate Each Other",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2605.17463v1",
+        "title": "Teachers' Vocal Expressions and Student Engagement in Asynchronous Video Learning",
+        "venue_year": "arXiv 2026"
+      }
+    ]
+  }
+}

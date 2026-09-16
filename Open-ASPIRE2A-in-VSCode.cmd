@@ -3,7 +3,7 @@ setlocal
 title Open ASPIRE2A in VS Code
 
 set "ROOT_DIR=%~dp0"
-set "NSCC_CREDENTIAL_FILE=%ROOT_DIR%nscc-access\nscc-credentials.env"
+set "NSCC_CREDENTIAL_FILE=%ROOT_DIR%credentials.env"
 set "SSH_ASKPASS=%ROOT_DIR%nscc-access\nscc-askpass.cmd"
 set "SSH_ASKPASS_REQUIRE=force"
 set "DISPLAY=1"

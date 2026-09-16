@@ -1,0 +1,63 @@
+#!/bin/bash
+#PBS -N otc_restore_cpu
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+test -r "${PBS_NODEFILE:-/nonexistent}" || exit 64
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+# Only small scheduler queries precede the allocation guard.
+qstat -f "$PBS_JOBID" > /tmp/otc-allocation-"$PBS_JOBID".txt
+grep -Eq 'job_state = R' /tmp/otc-allocation-"$PBS_JOBID".txt || exit 64
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+ROOT=/scratch/users/ntu/yguo017/otc-ptq-phase1
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+cp /tmp/otc-allocation-"$PBS_JOBID".txt "$ARTIFACTS/allocation.txt"
+cp "$ROOT/restore_cpu.pbs" "$ROOT/restore_preflight.py" "$ROOT/runner.py" "$ROOT/manifest.json" "$ROOT/source_identity.json" "$ROOT/identity_gate.py" "$ARTIFACTS/"
+if [ "${COLLECTED_REPLAY:-0}" = 1 ]; then
+  cp "$ROOT/collected_replay_preflight.py" "$ARTIFACTS/"
+fi
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+date
+hostname
+run_python() {
+  apptainer exec --cleanenv \
+    --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+    --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+    --env "CUDA_VISIBLE_DEVICES=" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,OTC_ALLOCATION_HOST=$HOST" \
+    --env "PYTHONPATH=$BASE/libero-compat:$BASE/libero:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero" \
+    --env "LIBERO_CONFIG_PATH=$BASE/libero-config,ARTIFACTS=$ARTIFACTS" \
+    --env "DIFFSYNTH_MODEL_BASE_PATH=$BASE/model-cache" \
+    --env DIFFSYNTH_DOWNLOAD_SOURCE=huggingface,DIFFSYNTH_SKIP_DOWNLOAD=true,HF_HUB_OFFLINE=1 \
+    --env "HF_HOME=$BASE/cache/huggingface" \
+    --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+    --env OMP_NUM_THREADS=4,OPENBLAS_NUM_THREADS=4,LP_NUM_THREADS=4 \
+    --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1,TOKENIZERS_PARALLELISM=false \
+    "$SIF" "$BASE/venv/bin/python" "$@"
+}
+run_python "$ARTIFACTS/identity_gate.py"
+test -f "$BASE/checkpoints/libero_optional_idm_2cam224.clean.VERIFIED"
+cd "$BASE/FastWAM"
+if [ "${COLLECTED_REPLAY:-0}" = 1 ]; then
+  run_python "$ARTIFACTS/collected_replay_preflight.py" --task-id "${TASK_ID:-0}" --data-dir "$ROOT/data"
+else
+  run_python "$ARTIFACTS/restore_preflight.py" --task-id "${TASK_ID:-0}"
+fi
+touch "$ARTIFACTS/SUCCESS"
+date

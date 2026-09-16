@@ -1,0 +1,293 @@
+{
+  "intake": {
+    "domain": "numerical low-bit weight/activation quantization for action-conditioned latent world models used in multi-step model-based control",
+    "venue": "ICLR/ICML/NeurIPS-style research proposal",
+    "time": "near-term FYP pilot",
+    "data": [
+      "existing continuous-control datasets/tasks"
+    ],
+    "compute": "one NSCC ASPIRE2A A100 40GB for pilot experiments; no foundation-model pretraining; GPU experiments are deferred until the proposal is validated",
+    "expertise": "intermediate ML/robotics researcher with world-model, VLA, and quantization context",
+    "preference": "both",
+    "baseline": "FP32/FP16 inference on a public DreamerV3- or TD-MPC2-style action-conditioned latent world model",
+    "user_direction": "n_a",
+    "excluded_direction": "jointly generating future observations and robot action chunks in World Action Models",
+    "limitation": "Current evidence does not establish a control-relevant criterion for when low-bit numerical perturbations change multi-step imagined rollout quality or planning decisions in action-conditioned latent world models.",
+    "contribution_type": "method",
+    "_inferred_fields": [
+      "domain",
+      "venue",
+      "time",
+      "data",
+      "compute",
+      "expertise",
+      "preference",
+      "baseline",
+      "limitation",
+      "contribution_type"
+    ]
+  },
+  "bottleneck_statement": "For any action-conditioned latent world model whose quantized transition is iterated inside a planner, low-bit PTQ has a structural mismatch between local numerical fidelity and multi-step decision fidelity: a perturbation that is small under layer or calibration statistics can be repeatedly fed into the latent transition and change the ordering of imagined action sequences, so the planning objective no longer reliably tracks task success as the horizon and visited states change. arxiv:2602.02110v1 demonstrates this primary instance in DINO-WM: weight-only and joint weight-activation PTQ behave differently by module, granularity, and horizon, and aggressive settings break planning-objective/task-success alignment, but the study remains a two-task visual-planning characterization. arxiv:2607.28405v1 shows the neighboring WAM setting is also rollout- and deployment-distribution-sensitive, yet its joint future/action denoising setting does not establish the corresponding failure for latent-dynamics imagined rollouts. The gap is therefore a missing control-relevant account of when finite-precision numerical error becomes a planning-decision error, not the absence of a particular quantizer.",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2602.02110v1",
+      "is_anchor": true,
+      "summary_and_residue": "It evaluates RTN, OMSE, AWQ, SmoothQuant, and OmniQuant on the public DINO-WM checkpoint under weight-only and joint weight-activation PTQ, varying bits, weight grouping, activation granularity, encoder/predictor modules, and planning horizons through 50 iterations on Wall and PushT. Its method shows encoder quantization can cause persistent representation loss while predictor noise can be partly recovered by longer planning, and that aggressive settings can decouple planning loss from success, but it does not identify a rollout-state/action-conditioned predictor of candidate-ranking failure across backbones or closed-loop tasks."
+    },
+    {
+      "paper_id": "arxiv:2608.24855v1",
+      "is_anchor": false,
+      "summary_and_residue": "It trains a rectified-flow latent-path planner and inverse-dynamics decoder on a frozen LeWM, then uses autoregressive LeWM rollout distance to rerank candidates instead of running CEM from scratch. The method leaves the backbone, planner, and verifier in full precision, so it does not establish how numerical weight/activation quantization changes latent endpoints, decoded actions, candidate ranking, or receding-horizon success."
+    },
+    {
+      "paper_id": "arxiv:2603.12231v3",
+      "is_anchor": false,
+      "summary_and_residue": "It jointly trains a JEPA encoder, action encoder, and predictor with a curvature regularizer so Euclidean latent distance better tracks feasible geodesic progress and gradient planning is better conditioned. Its method does not evaluate low-bit weights or activations, so whether the learned geometry and action ordering survive repeated quantized transitions remains unresolved."
+    },
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "is_anchor": false,
+      "summary_and_residue": "The available record describes PTQ for WAMs using model-structure-compatible activation evidence, joint video-action saliency, and fixed-intervention rollout auditing to align precision decisions with deployment. Its evidence is limited to Fast-WAM/LingBot-VA, selected blocks, and selected manipulation benchmarks, so it does not establish the corresponding criterion for latent-dynamics imagined rollouts without WAM-style future/action coupling."
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "For the setting studied by arxiv:2602.02110v1, and more generally for action-conditioned latent world models, no retrieved leaf establishes whether a low-bit perturbation preserves the ranking of candidate action sequences as the imagined-rollout horizon and visited latent states change — stakes: practitioners can deploy a model that looks acceptable on local or short-horizon metrics but selects systematically worse actions, wasting the single-GPU pilot and blocking reliable closed-loop control; intellectually, PTQ conclusions do not transfer from visual-goal planning to model-based control.",
+    "No retrieved leaf establishes whether a precision choice that works in DINO-WM's visual-goal setup remains valid when the same finite-precision perturbation is propagated through action-conditioned DreamerV3/TD-MPC2-style latent dynamics and receding-horizon control — stakes: practitioners cannot choose a precision budget without retuning every backbone/task, while intellectually a reported bit-width recommendation has no cross-system validity and blocks principled deployment guidance.",
+    "At the anchor frontier, no retrieved paper tests whether layer-local reconstruction error and calibration-distribution fidelity are sufficient proxies for multi-step planner fidelity, rather than inherited assumptions of the PTQ lineage — stakes: practitioners may optimize a cheap proxy that preserves tensors while changing actions and spend deployment/debugging compute, while intellectually an unexamined proxy assumption can invalidate comparisons and prevent a principled account of low-bit rollout reliability."
+  ],
+  "method_lineage": {
+    "line": "calibration- and reconstruction-based numerical PTQ for action-conditioned latent world-model rollouts",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "Uniform affine finite-grid PTQ (RTN-style)",
+        "move": "Maps floating-point weights and activations to a finite grid using fixed scale and zero-point choices.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "high",
+        "residual_problem": "A local numerical error measure says little about how repeated transition errors alter imagined trajectories or planner decisions.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n1",
+        "method": "Representative-data layer-output reconstruction (OMSE-style PTQ)",
+        "move": "Uses calibration activations to choose quantizer parameters that reduce local layer-output error instead of applying direct rounding.",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "The calibration objective remains local and open-loop, with no explicit estimand for multi-step control fidelity.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n2",
+        "method": "Activation-aware and curvature-aware transformer PTQ (SmoothQuant/GPTQ/AWQ family)",
+        "move": "Uses activation saliency, equivalent scale migration, or second-order sensitivity to preserve selected transformer outputs at lower bits.",
+        "parent": "n1",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "The protected statistics still come from calibration or local model loss and are not conditioned on action-conditioned rollout visitation or candidate ordering.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n3",
+        "method": "World-model PTQ study with rollout-horizon and module sweeps (An Empirical Study of World Model Quantization)",
+        "move": "Applies multiple weight-only and joint weight-activation PTQ variants to DINO-WM and evaluates granularity, modules, and planning horizons.",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2602.02110v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "It shows that low-bit choices can alter success and planning-objective alignment, but does not identify a generally predictive rollout-conditioned planning criterion or validate transfer across action-conditioned latent backbones and closed-loop tasks.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "c1",
+        "method": "PACT-style learned activation clipping",
+        "move": "Learns an activation clipping threshold during training to control range distortion before quantization.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "high",
+        "residual_problem": "Learned clipping is still optimized for a single-step task or reconstruction loss rather than preservation of multi-step control decisions.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c2",
+        "method": "LSQ-style learned step-size quantization",
+        "move": "Learns quantizer step sizes by backpropagating a task loss instead of fixing them only from calibration statistics.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "The learned step size does not by itself specify which action-conditioned rollout states or planner decisions should determine the loss.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c3",
+        "method": "AdaRound-style learned rounding",
+        "move": "Optimizes discrete rounding choices against layer or block reconstruction rather than nearest rounding.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Block reconstruction remains a local proxy and does not expose recurrent error amplification or action-sequence ranking changes.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c4",
+        "method": "HAWQ-style Hessian-aware mixed-precision allocation",
+        "move": "Allocates bit-width using local Hessian sensitivity under a layerwise error proxy.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Local sensitivity does not identify the action-conditioned trajectory visitation or decision boundary that makes one layer consequential for planning.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c5",
+        "method": "ZeroQ-style data-free calibration",
+        "move": "Synthesizes calibration statistics without access to the original training data.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Synthetic calibration may not match the action-conditioned state distribution visited by long imagined rollouts.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "The ancestry chain uses parametric awareness-only nodes for the established PTQ line; only n3 is retrieved and citable. The 2-4y node is lower-confidence because it sits just outside the retrieval window. The collateral-family check covered learned activation clipping (PACT), learned step size (LSQ), learned rounding (AdaRound), Hessian-aware mixed precision (HAWQ), and data-free calibration (ZeroQ); these nodes attack range, step, rounding, sensitivity, or calibration-distribution failure through different mechanisms but are not gap sites. DreamerV3 and TD-MPC2 are inferred backbone anchors only; no unpresent record is cited, and LeWM is used only as the connector-backed full-text adjacent record."
+  },
+  "domain_pattern_distribution": {
+    "n_total": 63,
+    "n_on_topic": 57,
+    "patterns": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 20,
+        "share": 0.35,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 17,
+        "share": 0.3,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 13,
+        "share": 0.23,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 8,
+        "share": 0.14,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 7,
+        "share": 0.12,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 7,
+        "share": 0.12,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 7,
+        "share": 0.12,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 6,
+        "share": 0.11,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 5,
+        "share": 0.09,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 4,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 4,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 4,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "algebraic_equivalence_unification",
+        "count": 2,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      }
+    ],
+    "saturation_threshold_saturated": 0.5,
+    "saturation_threshold_untested_count": 1,
+    "notes": "The most-used pattern is architectural_operator_substitution (20/57); the closest papers using it tend to change the planner or representation while leaving numerical low-bit behavior under multi-step action-conditioned rollouts unmeasured."
+  },
+  "anchor_rule_pinning": {
+    "paper_id": "arxiv:2602.02110v1",
+    "method_chars": 20698,
+    "pinned": [
+      "Planning is performed by rolling out candidate action sequences using the world model and selecting actions that minimize the discrepancy between predicted future observations and the target observation.",
+      "For calibration, we sample short planning trajectories with a fixed planning horizon of 2 iterations.",
+      "We report planning results over planning horizons ranging from 0 to 50 iterations, covering both short-horizon and long-horizon planning behaviors.",
+      "For per-group quantization, we use a fixed group size of 128 across all experiments.",
+      "All quantized models are evaluated using the same inference codebase to ensure that any observed performance differences are solely attributed to the quantization effects."
+    ],
+    "unpinned": [
+      "The number of candidate action sequences evaluated per planning step.",
+      "The number of calibration trajectories and their batch construction.",
+      "The exact candidate-update, sampling, or optimizer-refinement rule used by the planner.",
+      "The precise receding-horizon execution and update convention inherited from DINO-WM.",
+      "Tie-breaking when multiple candidates have identical discrepancy."
+    ],
+    "sufficient_for_faithful_generator": false,
+    "why": "The method fixes the target-discrepancy selection predicate and headline horizons, but a faithful downstream generator would still have to guess candidate population, calibration population, update and sampling schedule, receding-horizon execution details, and tie-breaking."
+  },
+  "hard_constraints": [
+    "Any Phase 2 claim about the anchor must be evaluated across a grid over candidate population, calibration population, candidate-update or sampling schedule, receding-horizon execution convention, and tie-breaking; no single assumed setting may support a headline claim.",
+    "Keep Phase 2 within numerical low-bit weight/activation quantization over multi-step imagined rollouts and planning; VQ tokenizer work is out of scope, and WAM future/action coupling is only an adjacent comparison.",
+    "Do not introduce foundation-model pretraining; retain the one NSCC ASPIRE2A A100 40GB pilot envelope."
+  ],
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}
