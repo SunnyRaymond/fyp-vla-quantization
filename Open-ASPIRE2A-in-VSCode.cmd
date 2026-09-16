@@ -7,10 +7,20 @@ set "NSCC_CREDENTIAL_FILE=%ROOT_DIR%credentials.env"
 set "SSH_ASKPASS=%ROOT_DIR%nscc-access\nscc-askpass.cmd"
 set "SSH_ASKPASS_REQUIRE=force"
 set "DISPLAY=1"
+set "WINDOWS_SSH=%WINDIR%\System32\OpenSSH\ssh.exe"
 
 if not exist "%NSCC_CREDENTIAL_FILE%" (
     echo Credential file not found:
     echo %NSCC_CREDENTIAL_FILE%
+    pause
+    exit /b 1
+)
+
+if not exist "%WINDOWS_SSH%" (
+    echo Windows OpenSSH was not found:
+    echo %WINDOWS_SSH%
+    echo.
+    echo VS Code Remote-SSH needs this client for the NTU Jump Host connection.
     pause
     exit /b 1
 )
