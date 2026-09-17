@@ -4,14 +4,14 @@
 
 ## 内容入口
 
-- [WM / WAM 量化专题阅读库](papers/wam/wm-wam-quantization-reading-guide/README.md)：LeCun 相关 baseline、代表开源工作、量化 prior art 与 benchmark。
+- [VLA papers](papers/vla/README.md)、[WAM papers](papers/wam/README.md)、[WM papers](papers/wm/README.md)：每个分类下直接按编号进入单篇 paper。
 
 - `idea/`：现有 research ideas、IdeaSpark pipeline、prior-art review 和 idea briefs；明确的验证运行放在 `experiment/idea-validation/`。
 - `experiment/idea-validation/`：对现有 ideas 的 screen、pilot、verification 和运行产物。
 - `experiment/reproduction/`：paper/code audits、quantization reproduction、VLA evaluation 和 benchmark 运行。
-- `papers/vla/`：VLA、VLA quantization、simulation evaluation 及其阅读材料。
-- `papers/wam/`：World Action Model papers 和对应阅读材料。
-- `papers/wm/`：World Model papers 和对应阅读材料。
+- `papers/vla/`：VLA、VLA quantization、simulation evaluation 及其单篇 paper 文件夹。
+- `papers/wam/`：World Action Model papers 的单篇文件夹。
+- `papers/wm/`：World Model papers 的单篇文件夹。
 - `ASPIRE2A_README.md`、`nscc-access/`：集群使用说明与脚本。
 
 ## 备份范围
