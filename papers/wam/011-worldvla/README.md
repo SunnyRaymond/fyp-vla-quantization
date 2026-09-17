@@ -2,7 +2,7 @@
 
 **WorldVLA: Towards Autoregressive Action World Model**  
 Cen, Jun, Yu, Chaohui, Yuan, Hangjie, Jiang, Yuming, Huang, Siteng, Guo, Jiayan et al.  
-**VLA / WAM bridge · 原总结列出** · arXiv preprint；本次未独立核验 venue  
+**World Action Model / VLA bridge · 原总结列出** · arXiv preprint；本次未独立核验 venue
 本地版本：**arXiv:2506.21539v1，14 页** · 阅读状态：`unread`
 
 - [本地 PDF](paper-arxiv-v1.pdf) · [官方来源 / 版本记录](https://arxiv.org/abs/2506.21539v1)

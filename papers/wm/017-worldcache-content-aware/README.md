@@ -1,6 +1,6 @@
 # WorldCache: Content-Aware Caching for Accelerated Video World Models
 
-> **在本指南中的角色：** 李老师新增指定阅读，active VLA reading `#035`；连接 `video world model`、content-aware cache 与 robot-data video prediction 的 systems bridge。
+> **在本指南中的角色：** 李老师新增指定阅读，active WM reading `#017`；连接 `video world model`、content-aware cache 与 robot-data video prediction 的 systems bridge。
 > **本地论文：** [paper-arxiv-v1.pdf](paper-arxiv-v1.pdf)  
 > **Official resources：** [arXiv](https://arxiv.org/abs/2603.22286) · [ECCV 2026 accepted-paper list](https://eccv.ecva.net/Conferences/2026/AcceptedPapers) · [project](https://umair1221.github.io/World-Cache/) · [code](https://github.com/umair1221/WorldCache)  
 > **建议先修：** `Diffusion Transformer (DiT)`、denoising timestep、feature caching、`Zero-Order Hold`、optical flow、`PSNR/SSIM/LPIPS`。  
@@ -18,7 +18,7 @@
 
 **版本边界。** 本地是 arXiv v1，不称为 ECCV proceedings final。venue acceptance 与本地 binary version 必须分开说。
 
-**同名边界。** 这篇不是 [WorldCache: Accelerating World Models for Free via Heterogeneous Token Caching](../036-worldcache-heterogeneous-token-caching/README.md)。本篇用 `CFC + SWD + OFA + ATS` 决定 deep blocks 何时缓存、如何补偿；`#036` 用 token-level curvature 把 outputs 分成 stable/linear/chaotic。作者、arXiv、venue、model 和 cache granularity 均不同。
+**同名边界。** 这篇不是 [WorldCache: Accelerating World Models for Free via Heterogeneous Token Caching](../018-worldcache-heterogeneous-token-caching/README.md)。本篇用 `CFC + SWD + OFA + ATS` 决定 deep blocks 何时缓存、如何补偿；`#018` 用 token-level curvature 把 outputs 分成 stable/linear/chaotic。作者、arXiv、venue、model 和 cache granularity 均不同。
 
 ## 2. 一句话结论
 
@@ -158,9 +158,9 @@ Supplement Table 6（local PDF p. 26）在 `EgoDex-Eval` 上测 video prediction
 - **schedule details 有 main/supplement 差异。** 复现必须以 exact code/config 为准。
 - **未做 policy-in-the-loop evaluation。** 若把 world model 用于 planning，缓存误差可能改变 action selection，不能从 video fidelity 直接推出 safety。
 
-## 8. 与 `#036 WorldCache` 的最短对照
+## 8. 与 `#018 WorldCache` 的最短对照
 
-| Dimension | 本篇 `#035` | `#036` |
+| Dimension | 本篇 `#017` | `#018` |
 |---|---|---|
 | Cache granularity | probe 后的 deep blocks / feature cache | whole-model output 中的 token groups |
 | Main signal | latent change + saliency-weighted feature drift | per-token temporal curvature |
@@ -202,7 +202,7 @@ Supplement Table 6（local PDF p. 26）在 `EgoDex-Eval` 上测 video prediction
 5. 重算 Tables 1–3 的 speedup/retention。
 6. 读 Figure 6，解释 step budget 为什么改变 speedup。
 7. 找作者 limitations，再补 policy-in-loop boundary。
-8. 与 `#036` 填一张 matched comparison table。
+8. 与 `#018` 填一张 matched comparison table。
 
 ### 3-hour deep route
 
@@ -236,7 +236,7 @@ Supplement Table 6（local PDF p. 26）在 `EgoDex-Eval` 上测 video prediction
 - **Mechanism:**
 - **Strongest evidence:**
 - **Strongest limitation / unsupported leap:**
-- **与 `#036 WorldCache` 的一句区别:**
+- **与 `#018 WorldCache` 的一句区别:**
 - **FYP experiment:**
 - **Question for 李老师:**
 

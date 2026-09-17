@@ -2,7 +2,7 @@
 
 **LaWAM: Latent World Action Models for Efficient Dynamics-Aware Robot Policies**  
 Chen, Jialei, Wang, Kai, Chen, Kang, Chen, Shuaihang, Gao, Feng, Tang, Wenhao et al.  
-**直接 VLA / latent-world-model prior art · 原总结列出** · arXiv preprint；本次未独立核验 venue  
+**World Action Model / latent-world-model prior art · 原总结列出** · arXiv preprint；本次未独立核验 venue
 本地版本：**arXiv:2606.15768v1，23 页** · 阅读状态：`unread`
 
 - [本地 PDF](paper-arxiv-v1.pdf) · [官方来源 / 版本记录](https://arxiv.org/abs/2606.15768v1)
@@ -28,7 +28,7 @@ Section 3 / Figures 2–3（pp.2–5），Tables 1–3（pp.6–7），Section 5
 
 ## 与师兄方向的关系
 
-虽在原总结方向二引用，这里放方向三主目录，因为它最直接约束 compact predictive world model 的新颖性；方向二保留 cross-link。 这是阅读组织与研究判断，不是原论文已经完成的新实验。
+本篇归入 WAM 主目录，因为其核心是 latent-action-conditioned world model 与 dynamics-aware action generation；这是阅读组织与研究判断，不是原论文已经完成的新实验。
 
 ## 阅读路线
 
