@@ -7,5 +7,6 @@
 - `045–059`：VLA simulation / evaluation benchmarks
 - `060–087`：action tokenization、active control 与 world-model 相关方向
 - `088–104`：VLA quantization literature
+- `105`：Efficient VLA survey（model–training–data 全链路 taxonomy）
 
 重复的 OpenVLA、BitVLA、HBVLA、OPTQ/GPTQ、QuaRot、FAST 和 TD-MPC2 已合并到一个 canonical copy；相近但不是同一篇的 paper（例如 FlashVLA 与 Think Twice, Act Once）仍分别保留。
