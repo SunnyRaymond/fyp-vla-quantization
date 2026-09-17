@@ -1,6 +1,6 @@
 # WorldCache: Accelerating World Models for Free via Heterogeneous Token Caching
 
-> **在本指南中的角色：** 李老师新增指定阅读，active core `#22`；以 token temporal curvature 做 heterogeneous caching 的 world-model inference paper。  
+> **在本指南中的角色：** 李老师新增指定阅读，active VLA reading `#036`；以 token temporal curvature 做 heterogeneous caching 的 world-model inference paper。
 > **本地论文：** [paper-arxiv-v2.pdf](paper-arxiv-v2.pdf)  
 > **Official resources：** [arXiv](https://arxiv.org/abs/2603.06331) · [ICML 2026 accepted-paper list](https://icml.cc/Downloads/2026) · [code](https://github.com/FofGofx/WorldCache)  
 > **建议先修：** `Diffusion Transformer`、feature/model-wise caching、finite difference、curvature、`cubic Hermite interpolation`、RGB/depth world models。  
@@ -16,7 +16,7 @@
 | arXiv | 2603.06331，v1 2026-03-06；v2 2026-06-01 |
 | Local artifact | arXiv v2 / proceedings-style author manuscript，26 pages，13,203,052 bytes，SHA-256 `436c67f3301ad02cced74cd40aaa2d8f28fab27b57616def71e7b64dbb9b341a` |
 
-**同名边界。** 本篇不是 [WorldCache: Content-Aware Caching for Accelerated Video World Models](../035-worldcache-content-aware/README.md)。本篇的核心是 `CHTP + CAS`：把 RGB/depth tokens 按 temporal curvature 分组并采用不同 predictor；`#21` 是 probe/deep-block cache，使用 content change、saliency、optimal approximation 与 timestep schedule。
+**同名边界。** 本篇不是 [WorldCache: Content-Aware Caching for Accelerated Video World Models](../035-worldcache-content-aware/README.md)。本篇的核心是 `CHTP + CAS`：把 RGB/depth tokens 按 temporal curvature 分组并采用不同 predictor；`#035` 是 probe/deep-block cache，使用 content change、saliency、optimal approximation 与 timestep schedule。
 
 **“For Free”边界。** 指不 retrain base world model、controller overhead 很低；并不表示零 memory、零 integration、零 quality risk 或任何 hardware 都得到同样 speedup。
 
@@ -161,9 +161,9 @@ Layer-wise baselines 的 peak memory 超过 100 GB，论文使用 CPU offloading
 - **缺少 power/energy 与 tail latency。** average end-to-end latency 不能覆盖 interactive deployment jitter。
 - **warm-up 与 discontinuity risk。** 只基于三个 full outputs 的 finite differences，遇到 scene cut/abrupt motion 可能过时。
 
-## 8. 与 `#21 WorldCache` 的最短对照
+## 8. 与 `#035 WorldCache` 的最短对照
 
-| Dimension | 本篇 `#22` | `#21` |
+| Dimension | 本篇 `#036` | `#035` |
 |---|---|---|
 | Unit | output token | deep-block feature/cache decision |
 | Heterogeneity | stable / linear / chaotic | spatial saliency + temporal content |
@@ -203,7 +203,7 @@ Layer-wise baselines 的 peak memory 超过 100 GB，论文使用 CPU offloading
 5. 重算 Table 2 speedup 与 metric differences。
 6. 用 Tables 5–6 判断 evidence 是否支持 CHTP/CAS，而不是只支持整套 system。
 7. 读 Tables 7–11，记录跨 frames/steps/model 的 sensitivity。
-8. 与 `#21` 做 matched/not-matched comparison。
+8. 与 `#035` 做 matched/not-matched comparison。
 
 ### 3-hour deep route
 
@@ -238,7 +238,7 @@ Layer-wise baselines 的 peak memory 超过 100 GB，论文使用 CPU offloading
 - **Mechanism:**
 - **Strongest evidence:**
 - **Strongest limitation / unsupported leap:**
-- **与 `#21 WorldCache` 的一句区别:**
+- **与 `#035 WorldCache` 的一句区别:**
 - **FYP experiment:**
 - **Question for 李老师:**
 

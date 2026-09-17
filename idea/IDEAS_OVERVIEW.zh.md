@@ -1,5 +1,7 @@
 # World Model / World Action Model × Quantization：两个研究 idea
 
+> 2026-09-17：现有主线、14 个 bounded screens 与 prior-only 候选的 Efficient VLA / WM / WAM taxonomy 映射，以及 2–4×A100 下的可行空缺，见 [taxonomy 审查](EFFICIENT_TAXONOMY_AUDIT_2026-09-17.zh.md)。
+
 2026-09-08 · ResearchStudio-Idea / IdeaSpark · 当前状态：两条 pipeline 均已到达 DONE；六份阅读卡已生成。
 
 以下是待实验检验的研究假设。pipeline 的文献与模型审查不构成新颖性认证，也没有证明机器人成功率、显存或速度收益。本次未执行 GPU、SSH 或机器人实验；数值检查仅使用 CPU toy examples。
