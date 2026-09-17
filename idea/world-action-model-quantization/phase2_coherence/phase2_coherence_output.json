@@ -1,0 +1,538 @@
+{
+  "trace_report": {
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "consumes": [
+          "official Fast-WAM checkpoint artifact",
+          "run-manifest identity",
+          "repository revision",
+          "Fast-WAM mode/inference contract",
+          "W/A quantizer and kernel"
+        ],
+        "produces": [
+          "F0 FP16 model",
+          "Fr construction rule",
+          "versioned configuration manifest"
+        ],
+        "note": "verbatim: 1. Freeze the public artifacts and inference contract. Use the exact official Fast-WAM released checkpoint selected for the run manifest as checkpoint_FW, set mode_FW=idm, sigma_shift_FW=1.0, and inference_path_FW=infer_action with the README's current no-default-VAE-decoding behavior; do not substitute first_frame because it removes the future branch. Set b_lo to the matched QuantWAMs W4A4-dominant numerical weight/activation setting, keep the action/video coupling unchanged, and output a versioned configuration manifest with the checkpoint filename, repository revision, mode, sigma shift, inference path, and low-bit kernels. The minimal validation uses Fast-WAM only; if LingBot-VA is added, use its official VAE/text-encoder CPU-offload inference configuration and report backward-calibration memory as a separate measurement rather than reusing the reported inference-memory figure. reading_robust finding: checkpoint_FW and b_lo are named but their concrete identity/bit tuple are not supplied; the future branch is explicitly retained by idm and infer_action, and first_frame is excluded."
+      },
+      {
+        "step": "S2",
+        "consumes": [
+          "RoboTwin 2.0/LIBERO episode records",
+          "N_cal=32 and 16/32/64 sensitivity plan"
+        ],
+        "produces": [
+          "D_cal episode manifest",
+          "held-out episode/task split",
+          "histories, instructions, states, chunks, seeds, and transition flags"
+        ],
+        "note": "verbatim: 2. Build an episode-level calibration manifest from existing RoboTwin 2.0 and LIBERO simulator episodes. Set N_cal=32 as the default to match the fixed-trajectory scale reported for QuantWAMs, with a pre-registered 16/32/64 episode sensitivity check; preserve observation histories, instructions, simulator states, action chunks, denoising seeds xi_j, simulator seeds eta_j, and native contact/task-transition flags. Output D_cal and a held-out episode/task split without mixing adjacent frames across splits. reading_robust finding: the original text does not state complete controller/RNG/history/cache snapshot contents or an empty-split guard."
+      },
+      {
+        "step": "S3",
+        "consumes": [
+          "public WAM implementation",
+          "PTQ hook inventory",
+          "configuration manifest"
+        ],
+        "produces": [
+          "deterministic registry R",
+          "site-to-kernel/bit mapping"
+        ],
+        "note": "verbatim: 3. Enumerate the intervention registry R from the public WAM implementation. Each r=(branch, module, denoising_step, axis) identifies one actual quantization hook in the coupled video/action denoiser, with axis in {weight, activation}; exclude VAE-only, text-only, latent/action tokenizer, and planner-only sites. Output a deterministic registry with a lexicographic tie-break order and a mapping from each site to its kernel and bit setting. reading_robust: this is the scope boundary that preserves numerical W/A quantization inside the coupled future-video/action denoiser and excludes latent rollout/planning and vector-token sites."
+      },
+      {
+        "step": "S4",
+        "consumes": [
+          "F0",
+          "single-site registry entries",
+          "D_cal",
+          "h_j/l_j/xi_j",
+          "persistent cache",
+          "matched low-bit quantizer"
+        ],
+        "produces": [
+          "paired full action chunks a_j0/a_jr",
+          "local discrepancy L_r",
+          "paired model traces"
+        ],
+        "note": "verbatim: 4. Measure single-site model interventions with matched stochastic state. For every r and calibration item j, restore the immutable FP16 model and persistent cache, run F_0 and F_r with the same h_j, l_j, xi_j, and inference path, and record the full action chunks a_j0 and a_jr plus the local output discrepancy L_r. Use fake-quant/dequantized GEMM only as a profiling implementation; record whether it was used and keep it separate from the real low-bit-kernel evaluation. Output paired model traces indexed by (j,r). reading_robust finding: L_r is consumed later but no local-output tensor, metric, or aggregation is defined; “same ... cache” is also operationally underspecified."
+      },
+      {
+        "step": "S5",
+        "consumes": [
+          "paired action chunks",
+          "z_j and eta_j",
+          "simulator/controller state"
+        ],
+        "produces": [
+          "next observations o_(j+1)0/o_(j+1)r",
+          "independent contact/task-transition state"
+        ],
+        "note": "verbatim: 5. Execute paired environment counterfactuals. Restore the same simulator state z_j and eta_j for the two traces, apply the first executable action from each full chunk, and record o_(j+1)0, o_(j+1)r, and the simulator's independent contact/task-transition state. The downstream output of this step is the actual next observation and state transition caused by the altered action, not merely a changed intermediate discrepancy. reading_robust: this is a one-control-transition estimand. It applies only the first executable action, despite retaining the full chunk for d_a; later chunk execution/replanning is not measured."
+      },
+      {
+        "step": "S6",
+        "consumes": [
+          "FP16 action chunks",
+          "paired action chunks",
+          "FP16 next observations",
+          "paired next observations",
+          "epsilon_a/epsilon_o",
+          "lambda_a/lambda_o"
+        ],
+        "produces": [
+          "sigma_a^2",
+          "sigma_o",
+          "d_a/d_o",
+          "C_r",
+          "bootstrap intervals"
+        ],
+        "note": "verbatim: 6. Compute the consequence object. Calculate sigma_a from the coordinate variance of FP16 full action chunks and sigma_o from the mean per-pixel standard deviation of FP16 next observations; use named floors epsilon_a=epsilon_o=1e-3 in normalized units, with a pre-registered 1e-4/1e-3/1e-2 sensitivity check. Compute d_a and d_o as the normalized full-action-chunk and next-observation differences, set lambda_a=lambda_o=1 by default with a held-out sensitivity sweep over lambda_a/lambda_o in {0.5,1,2}, and output C_r as their episode mean with bootstrap intervals over complete episodes. reading_dependent: “mean coordinate variance” admits flattened-population and mean-per-coordinate readings; “standard deviation” admits population/sample readings. The executed T2 runs all eight combinations; the ranking changes, so exact population definitions are needed. C_r measures an action/observation proxy, not task success."
+      },
+      {
+        "step": "S7",
+        "consumes": [
+          "C_r",
+          "b_lo",
+          "B",
+          "registry tie order",
+          "matched baseline schedule"
+        ],
+        "produces": [
+          "top-B precision schedule",
+          "jointly configured model"
+        ],
+        "note": "verbatim: 7. Replace the local allocation operator without retraining. Set B to the exact high-precision-site count or matched bit-cost of the QuantWAMs comparison schedule, rank sites by C_r, and upgrade the top-B sites while leaving all other sites at b_lo; resolve ties by the registry order. This modifies the numerical precision assignment and therefore the downstream generated action chunk, while preserving the same checkpoint, denoising schedule, data, and model architecture. reading_robust finding: “site count or matched bit-cost” leaves the primary budget mode unresolved, and site count does not imply equal bytes or latency."
+      },
+      {
+        "step": "S8",
+        "consumes": [
+          "L_r",
+          "C_r",
+          "contact/task-transition subsets",
+          "B"
+        ],
+        "produces": [
+          "Spearman comparisons",
+          "C_r vs L_r allocation comparison",
+          "permuted negative control"
+        ],
+        "note": "verbatim: 8. Run the confound-isolating diagnostic. On the same episodes, compare L_r and C_r using Spearman rank correlation separately on simulator-identified contact/task-transition and non-contact subsets, then compare top-B C_r allocation against top-B L_r allocation and a score-permuted negative control. The reported object is the divergence in downstream action/observation and task metrics, not a claim that a correlation itself is causal. reading_robust finding: L_r is undefined until S4 is repaired; constant or one-site vectors make Spearman undefined and need an explicit outcome."
+      },
+      {
+        "step": "S9",
+        "consumes": [
+          "selected schedules",
+          "held-out episodes",
+          "real low-bit kernel",
+          "same checkpoint/configuration",
+          "B"
+        ],
+        "produces": [
+          "task/contact metrics",
+          "action/observation deviations",
+          "peak memory and latency"
+        ],
+        "note": "verbatim: 9. Validate the selected schedule on held-out RoboTwin 2.0 and LIBERO episodes with the real low-bit kernel. Compare FP16, the matched local-fidelity baseline, the C_r allocation, and uniform precision at the same B; measure task success, contact-sensitive failure rate, full action-chunk deviation, next-observation deviation, peak memory, and latency, with the same Fast-WAM configuration and multiple episode seeds. reading_robust: it empirically tests task consequence and deployment cost; it does not make the C_r proxy equal to task loss or make B a byte/latency match."
+      },
+      {
+        "step": "S10",
+        "consumes": [
+          "CPU arithmetic traces",
+          "real-kernel deployment measurements",
+          "optional LingBot-VA configuration"
+        ],
+        "produces": [
+          "separate arithmetic/profile report",
+          "separate deployment/calibration report"
+        ],
+        "note": "verbatim: 10. Keep CPU arithmetic checks and deployment claims separate. CPU runs may verify site indexing, deterministic paired seeds, scale normalization, and C_r arithmetic only; they do not establish robot success, GPU memory, or speedup. Report any LingBot-VA replication as a separate calibration/inference experiment with its offload and checkpoint configuration, and do not combine fake-quant traces with real-kernel performance. reading_robust: this keeps CPU/fake-quant evidence from being misread as robot success, GPU memory, or real-kernel speedup."
+      }
+    ],
+    "dry_run": {
+      "instance": "N_cal=2 episodes, action chunks of length 2, two-pixel next observations, sites R={r1,r2,r3}, B=1, lambda_a=lambda_o=1, epsilon_a=epsilon_o=1e-3. j1 is a contact transition: a0=[1,2], o0=[10,20], ar1=[2,2], or1=[11,20], ar2=[1.5,2.5], or2=[10,22], ar3=[1,2], or3=[10,20]. j2 is non-contact: a0=[3,4], o0=[12,22], ar1=[3,5], or1=[12,24], ar2=[3.5,4.5], or2=[13,23], ar3=[3,4], or3=[12,22]. The independent local naive surrogate uses per-episode MSEs L_j={r1:1,r2:0.25,r3:0.0625}. The script also executes the three alternative action-normalization conventions and two observation-standard-deviation conventions required by the dual-reading check.",
+      "execution": {
+        "mode": "executed",
+        "script": "from math import sqrt\nfrom statistics import mean, pstdev, stdev\n\neps_a = eps_o = 1e-3\nlam_a = lam_o = 1.0\nB = 1\nsites = [\"r1\", \"r2\", \"r3\"]\nepisodes = [\n    {\n        \"id\": \"j1\", \"contact\": True,\n        \"a0\": [1.0, 2.0], \"o0\": [10.0, 20.0],\n        \"ar\": {\n            \"r1\": [2.0, 2.0], \"r2\": [1.5, 2.5], \"r3\": [1.0, 2.0]\n        },\n        \"or\": {\n            \"r1\": [11.0, 20.0], \"r2\": [10.0, 22.0], \"r3\": [10.0, 20.0]\n        },\n    },\n    {\n        \"id\": \"j2\", \"contact\": False,\n        \"a0\": [3.0, 4.0], \"o0\": [12.0, 22.0],\n        \"ar\": {\n            \"r1\": [3.0, 5.0], \"r2\": [3.5, 4.5], \"r3\": [3.0, 4.0]\n        },\n        \"or\": {\n            \"r1\": [12.0, 24.0], \"r2\": [13.0, 23.0], \"r3\": [12.0, 22.0]\n        },\n    },\n]\n\ndef mse(x, y):\n    return mean((a - b) ** 2 for a, b in zip(x, y))\n\ndef pixel_l1(x, y):\n    return mean(abs(a - b) for a, b in zip(x, y))\n\ndef ranks(values):\n    order = sorted(range(len(values)), key=lambda i: values[i])\n    out = [0] * len(values)\n    for rank, i in enumerate(order, 1):\n        out[i] = rank\n    return out\n\ndef spearman(x, y):\n    rx, ry = ranks(x), ranks(y)\n    mx, my = mean(rx), mean(ry)\n    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))\n    den = sqrt(sum((a - mx) ** 2 for a in rx) * sum((b - my) ** 2 for b in ry))\n    return None if den == 0 else num / den\n\nlocal = {\"r1\": [1.0, 1.0], \"r2\": [0.25, 0.25], \"r3\": [0.0625, 0.0625]}\nall_action_values = [v for e in episodes for v in e[\"a0\"]]\nflat_mean = mean(all_action_values)\nsigma_a2_readings = {\n    \"flattened_population\": mean((v - flat_mean) ** 2 for v in all_action_values),\n    \"per_coordinate_population\": mean(\n        pstdev([e[\"a0\"][p] for e in episodes]) ** 2\n        for p in range(len(episodes[0][\"a0\"]))\n    ),\n    \"flattened_sample\": sum((v - flat_mean) ** 2 for v in all_action_values) / (len(all_action_values) - 1),\n    \"per_coordinate_sample\": mean(\n        stdev([e[\"a0\"][p] for e in episodes]) ** 2\n        for p in range(len(episodes[0][\"a0\"]))\n    ),\n}\nsigma_o_readings = {\n    \"per_pixel_population\": mean(\n        pstdev([e[\"o0\"][p] for e in episodes])\n        for p in range(len(episodes[0][\"o0\"]))\n    ),\n    \"per_pixel_sample\": mean(\n        stdev([e[\"o0\"][p] for e in episodes])\n        for p in range(len(episodes[0][\"o0\"]))\n    ),\n}\n\nfor a_name, sigma_a2 in sigma_a2_readings.items():\n    for o_name, sigma_o in sigma_o_readings.items():\n        rows = {}\n        for r in sites:\n            da = [mse(e[\"a0\"], e[\"ar\"][r]) / max(sigma_a2, eps_a ** 2) for e in episodes]\n            do = [pixel_l1(e[\"o0\"], e[\"or\"][r]) / max(sigma_o, eps_o) for e in episodes]\n            combined = [lam_a * a + lam_o * o for a, o in zip(da, do)]\n            rows[r] = {\n                \"d_a\": da, \"d_o\": do, \"episode_C\": combined,\n                \"C\": mean(combined), \"L\": mean(local[r]),\n            }\n\n        def selection(key):\n            return sorted(sites, key=lambda r: (-rows[r][key], r))[:B]\n\n        print(\"reading=\", a_name + \"+\" + o_name,\n              \"sigma_a2=\", sigma_a2, \"sigma_o=\", sigma_o)\n        for r in sites:\n            print(r, rows[r])\n        print(\"C_rank_desc=\", sorted(sites, key=lambda r: (-rows[r][\"C\"], r)))\n        print(\"L_rank_desc=\", sorted(sites, key=lambda r: (-rows[r][\"L\"], r)))\n        print(\"mechanism_top_B=\", selection(\"C\"), \"naive_top_B=\", selection(\"L\"))\n        print(\"rho_all=\", spearman([rows[r][\"C\"] for r in sites], [rows[r][\"L\"] for r in sites]))\n        for contact in (True, False):\n            idx = [i for i, e in enumerate(episodes) if e[\"contact\"] == contact]\n            cvals = [mean([rows[r][\"episode_C\"][i] for i in idx]) for r in sites]\n            lvals = [rows[r][\"L\"] for r in sites]\n            print(\"contact=\", contact, \"C=\", cvals, \"L=\", lvals,\n                  \"rho=\", spearman(cvals, lvals))\n        print(\"---\")\nprint(\"synthetic_joint_stress_residual_loss_when_one_site_protected=\",\n      {\"r1\": 100, \"r2\": 20, \"r3\": 5},\n      \"single_site_C_top=\", \"r2 under flattened_population+per_pixel_population\",\n      \"joint_best_lower_loss=\", \"r3\")\nprint(\"synthetic_site_count_cost_stress=\",\n      {\"same_B_site\": 1, \"schedule_A_bytes\": 9, \"schedule_B_bytes\": 1,\n       \"bytes_ratio\": 9},\n      \"site_count_does_not_fix_bytes=True\")\nprint(\"nominal_1_2_gpu_day_hours_if_gpu_day_means_24h=\", 1.2 * 24,\n      \"memory_equivalence_unestablished=True\")\n\r\n",
+        "output": "reading= flattened_population+per_pixel_population sigma_a2= 1.25 sigma_o= 1.0\r\nr1 {'d_a': [0.4, 0.4], 'd_o': [0.5, 1.0], 'episode_C': [0.9, 1.4], 'C': 1.15, 'L': 1.0}\r\nr2 {'d_a': [0.2, 0.2], 'd_o': [1.0, 1.0], 'episode_C': [1.2, 1.2], 'C': 1.2, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r2', 'r1', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r2'] naive_top_B= ['r1']\r\nrho_all= 0.5\r\ncontact= True C= [0.9, 1.2, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.4, 1.2, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= flattened_population+per_pixel_sample sigma_a2= 1.25 sigma_o= 1.4142135623730951\r\nr1 {'d_a': [0.4, 0.4], 'd_o': [0.35355339059327373, 0.7071067811865475], 'episode_C': [0.7535533905932738, 1.1071067811865474], 'C': 0.9303300858899106, 'L': 1.0}\r\nr2 {'d_a': [0.2, 0.2], 'd_o': [0.7071067811865475, 0.7071067811865475], 'episode_C': [0.9071067811865474, 0.9071067811865474], 'C': 0.9071067811865474, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r1', 'r2', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r1'] naive_top_B= ['r1']\r\nrho_all= 1.0\r\ncontact= True C= [0.7535533905932738, 0.9071067811865474, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.1071067811865474, 0.9071067811865474, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= per_coordinate_population+per_pixel_population sigma_a2= 1.0 sigma_o= 1.0\r\nr1 {'d_a': [0.5, 0.5], 'd_o': [0.5, 1.0], 'episode_C': [1.0, 1.5], 'C': 1.25, 'L': 1.0}\r\nr2 {'d_a': [0.25, 0.25], 'd_o': [1.0, 1.0], 'episode_C': [1.25, 1.25], 'C': 1.25, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r1', 'r2', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r1'] naive_top_B= ['r1']\r\nrho_all= 0.5\r\ncontact= True C= [1.0, 1.25, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.5, 1.25, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= per_coordinate_population+per_pixel_sample sigma_a2= 1.0 sigma_o= 1.4142135623730951\r\nr1 {'d_a': [0.5, 0.5], 'd_o': [0.35355339059327373, 0.7071067811865475], 'episode_C': [0.8535533905932737, 1.2071067811865475], 'C': 1.0303300858899105, 'L': 1.0}\r\nr2 {'d_a': [0.25, 0.25], 'd_o': [0.7071067811865475, 0.7071067811865475], 'episode_C': [0.9571067811865475, 0.9571067811865475], 'C': 0.9571067811865475, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r1', 'r2', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r1'] naive_top_B= ['r1']\r\nrho_all= 1.0\r\ncontact= True C= [0.8535533905932737, 0.9571067811865475, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.2071067811865475, 0.9571067811865475, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= flattened_sample+per_pixel_population sigma_a2= 1.6666666666666667 sigma_o= 1.0\r\nr1 {'d_a': [0.3, 0.3], 'd_o': [0.5, 1.0], 'episode_C': [0.8, 1.3], 'C': 1.05, 'L': 1.0}\r\nr2 {'d_a': [0.15, 0.15], 'd_o': [1.0, 1.0], 'episode_C': [1.15, 1.15], 'C': 1.15, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r2', 'r1', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r2'] naive_top_B= ['r1']\r\nrho_all= 0.5\r\ncontact= True C= [0.8, 1.15, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.3, 1.15, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= flattened_sample+per_pixel_sample sigma_a2= 1.6666666666666667 sigma_o= 1.4142135623730951\r\nr1 {'d_a': [0.3, 0.3], 'd_o': [0.35355339059327373, 0.7071067811865475], 'episode_C': [0.6535533905932738, 1.0071067811865475], 'C': 0.8303300858899106, 'L': 1.0}\r\nr2 {'d_a': [0.15, 0.15], 'd_o': [0.7071067811865475, 0.7071067811865475], 'episode_C': [0.8571067811865475, 0.8571067811865475], 'C': 0.8571067811865475, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r2', 'r1', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r2'] naive_top_B= ['r1']\r\nrho_all= 0.5\r\ncontact= True C= [0.6535533905932738, 0.8571067811865475, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.0071067811865475, 0.8571067811865475, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= per_coordinate_sample+per_pixel_population sigma_a2= 2.0000000000000004 sigma_o= 1.0\r\nr1 {'d_a': [0.24999999999999994, 0.24999999999999994], 'd_o': [0.5, 1.0], 'episode_C': [0.75, 1.25], 'C': 1.0, 'L': 1.0}\r\nr2 {'d_a': [0.12499999999999997, 0.12499999999999997], 'd_o': [1.0, 1.0], 'episode_C': [1.125, 1.125], 'C': 1.125, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r2', 'r1', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r2'] naive_top_B= ['r1']\r\nrho_all= 0.5\r\ncontact= True C= [0.75, 1.125, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [1.25, 1.125, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nreading= per_coordinate_sample+per_pixel_sample sigma_a2= 2.0000000000000004 sigma_o= 1.4142135623730951\r\nr1 {'d_a': [0.24999999999999994, 0.24999999999999994], 'd_o': [0.35355339059327373, 0.7071067811865475], 'episode_C': [0.6035533905932737, 0.9571067811865475], 'C': 0.7803300858899106, 'L': 1.0}\r\nr2 {'d_a': [0.12499999999999997, 0.12499999999999997], 'd_o': [0.7071067811865475, 0.7071067811865475], 'episode_C': [0.8321067811865475, 0.8321067811865475], 'C': 0.8321067811865475, 'L': 0.25}\r\nr3 {'d_a': [0.0, 0.0], 'd_o': [0.0, 0.0], 'episode_C': [0.0, 0.0], 'C': 0.0, 'L': 0.0625}\r\nC_rank_desc= ['r2', 'r1', 'r3']\r\nL_rank_desc= ['r1', 'r2', 'r3']\r\nmechanism_top_B= ['r2'] naive_top_B= ['r1']\r\nrho_all= 0.5\r\ncontact= True C= [0.6035533905932737, 0.8321067811865475, 0.0] L= [1.0, 0.25, 0.0625] rho= 0.5\r\ncontact= False C= [0.9571067811865475, 0.8321067811865475, 0.0] L= [1.0, 0.25, 0.0625] rho= 1.0\r\n---\r\nsynthetic_joint_stress_residual_loss_when_one_site_protected= {'r1': 100, 'r2': 20, 'r3': 5} single_site_C_top= r2 under flattened_population+per_pixel_population joint_best_lower_loss= r3\r\nsynthetic_site_count_cost_stress= {'same_B_site': 1, 'schedule_A_bytes': 9, 'schedule_B_bytes': 1, 'bytes_ratio': 9} site_count_does_not_fix_bytes=True\r\nnominal_1_2_gpu_day_hours_if_gpu_day_means_24h= 28.799999999999997 memory_equivalence_unestablished=True\r\n"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "sigma_a^2 under flattened population reading",
+          "value": "1.25",
+          "arithmetic": "mean action value=2.5; squared deviations sum=5; 5/4=1.25"
+        },
+        {
+          "quantity": "sigma_o under per-pixel population reading",
+          "value": "1.0",
+          "arithmetic": "pixel std([10,12])=1 and std([20,22])=1; mean=(1+1)/2=1"
+        },
+        {
+          "quantity": "r1 normalized action terms",
+          "value": "[0.4,0.4]",
+          "arithmetic": "each chunk MSE=0.5; 0.5/1.25=0.4"
+        },
+        {
+          "quantity": "r1 normalized observation terms",
+          "value": "[0.5,1.0]",
+          "arithmetic": "pixel L1 means=[0.5,1.0]; divide by sigma_o=1"
+        },
+        {
+          "quantity": "r1 C_r",
+          "value": "1.15",
+          "arithmetic": "mean([0.4+0.5,0.4+1.0])=1.15"
+        },
+        {
+          "quantity": "r2 normalized action terms",
+          "value": "[0.2,0.2]",
+          "arithmetic": "each chunk MSE=0.25; 0.25/1.25=0.2"
+        },
+        {
+          "quantity": "r2 normalized observation terms",
+          "value": "[1.0,1.0]",
+          "arithmetic": "pixel L1 means=[1.0,1.0]; divide by sigma_o=1"
+        },
+        {
+          "quantity": "r2 C_r",
+          "value": "1.2",
+          "arithmetic": "mean([0.2+1.0,0.2+1.0])=1.2"
+        },
+        {
+          "quantity": "r3 C_r",
+          "value": "0",
+          "arithmetic": "both action and observation differences are zero"
+        },
+        {
+          "quantity": "top-B selections",
+          "value": "mechanism=r2; naive=r1",
+          "arithmetic": "C order r2(1.2)>r1(1.15)>r3(0); L order r1(1)>r2(0.25)>r3(0.0625)"
+        },
+        {
+          "quantity": "Spearman rho",
+          "value": "all=0.5; contact=0.5; non-contact=1.0",
+          "arithmetic": "rank orders are [r2,r1,r3] versus [r1,r2,r3] overall/contact, and equal non-contact order"
+        },
+        {
+          "quantity": "joint-background stress",
+          "value": "single-site top=r2; synthetic joint best=r3",
+          "arithmetic": "single-site C={r1:1.15,r2:1.20,r3:0}; independent residual-loss table when one site is protected={r1:100,r2:20,r3:5}, lower is better"
+        },
+        {
+          "quantity": "site-count cost stress",
+          "value": "same B_site=1 can be 9 versus 1 bytes",
+          "arithmetic": "9/1=9; count alone does not determine persistent weights, live activations, scales/copies, or latency"
+        },
+        {
+          "quantity": "nominal GPU-day conversion",
+          "value": "28.8 hours",
+          "arithmetic": "1.2*24=28.8 only under the convention GPU-day=24 hours; this says nothing about 80GB-to-A100-40GB equivalence"
+        }
+      ],
+      "anomalies": [
+        {
+          "anomaly": "The unqualified normalizer readings are not outcome-equivalent: the intended flattened-population plus population-pixel reading selects r2, but flattened-population plus sample-pixel selects r1, and per-coordinate population ties r1/r2; the exact score is therefore not unique until the variance convention is written.",
+          "kind": "structural",
+          "why": "The procedure leaves the aggregation convention open, so different defensible formalizations alter the algorithm's output; the eight executed combinations expose this on the same instance."
+        },
+        {
+          "anomaly": "Under the intended reading, C_r and local L_r diverge at the contact transition: C_contact(r2)=1.2>C_contact(r1)=0.9 while L(r1)=1>L(r2)=0.25.",
+          "kind": "instance_contingent",
+          "why": "These values depend on the constructed episode and local outputs; they are a T5 stress instance, not evidence about the real WAM."
+        },
+        {
+          "anomaly": "A single-site FP16-background ranking need not equal a joint-low-bit protection marginal: the executed toy table ranks r2 by C_r, while an independent joint residual-loss table makes r3 the best protected site.",
+          "kind": "instance_contingent",
+          "why": "The table is an adversarial invented joint landscape; it establishes only that no algebraic identity links the candidate's single-site estimand to joint deployment marginal gain."
+        },
+        {
+          "anomaly": "A site-count budget does not determine deployment cost: the executed same-count stress gives a 9:1 byte ratio.",
+          "kind": "structural",
+          "why": "Different W/A sites can have different tensor sizes, live ranges, scale/copy overhead, and kernels; count equality cannot establish byte or latency equality."
+        }
+      ]
+    },
+    "degenerate_probes": [
+      {
+        "probe": "empty D_cal or empty held-out split",
+        "behavior": "Executed probe: mean([]) raised StatisticsError; the original procedure has no valid episode mean/variance or held-out result.",
+        "finding": "Needs an explicit precondition and halt; repaired in S2."
+      },
+      {
+        "probe": "B=0",
+        "behavior": "Executed probe: top-B returned []; this is a valid all-low-bit schedule if the run explicitly permits zero upgrades.",
+        "finding": null
+      },
+      {
+        "probe": "all-identical action/observation elements",
+        "behavior": "Executed probe: sigma_a^2=0 and sigma_o=0; epsilon floors prevent division by zero, but a constant C/L vector makes Spearman undefined.",
+        "finding": "The original needs an explicit undefined-correlation outcome; repaired in S8."
+      },
+      {
+        "probe": "ties at every threshold",
+        "behavior": "Executed probe: lexicographic registry tie-break selected r1 for B=1.",
+        "finding": null
+      },
+      {
+        "probe": "single-site or single-episode input",
+        "behavior": "Executed probe: one-site Spearman is undefined; population variance with one episode is zero and floors are usable, whereas an alternative sample-variance reading raises StatisticsError.",
+        "finding": "The original's variance convention and low-cardinality correlation outcome were underspecified; repaired in S6/S8."
+      },
+      {
+        "probe": "B>|R|",
+        "behavior": "Executed probe: top-B silently returned all available sites for B=2,R={r1}; it did not enforce the declared budget.",
+        "finding": "Needs a bound check; repaired in S7."
+      },
+      {
+        "probe": "R empty",
+        "behavior": "No site score/ranking or Spearman comparison can be produced.",
+        "finding": "Needs an explicit empty-registry halt; repaired in S3."
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "C_r is the episode mean of lambda_a d_a plus lambda_o d_o.",
+        "established_by": "S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "C_r estimates the declared one-control-transition consequence over D_cal under matched h_j,l_j,xi_j,z_j,eta_j.",
+        "established_by": "S2+S4+S5+S6",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "the complete snapshot really restores controller, RNG, history, and cache state",
+          "the stated population normalizers are the intended estimand scale"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The action/next-observation signal is more deployment-relevant than local discrepancy.",
+        "established_by": "S5+S6",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "the proxy distances predict the deployment metric of interest",
+          "the one-transition effect is informative for the selected task"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Contact/task-transition regimes can rank sites differently from non-contact regimes.",
+        "established_by": "S8",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Top-B precision allocation is a defined operator.",
+        "established_by": "S7",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The method preserves the coupled future-video/action path and uses numerical W/A quantization only.",
+        "established_by": "S1+S3+S4",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "the manifest-selected Optional IDM checkpoint and public hooks implement the stated future/action path",
+          "the real kernel implements the exact W/A bit tuple"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The method is distinct from the main latent rollout/planning branch and from latent/action vector quantization.",
+        "established_by": "S1+S3+S5",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The paired intervention constructs an action-to-next-observation consequence object and tests local-score sufficiency.",
+        "established_by": "S4+S5+S8",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "C_r allocation reduces contact-sensitive failures and next-observation deviation.",
+        "established_by": "S9",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Fake-quant/dequantized GEMM is profiling-only and cannot support deployment claims.",
+        "established_by": "S4+S10",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Concrete lineage distinction is limited to the W/A intervention inside a coupled denoiser, the one-transition D_cal estimand, and the normalized full-chunk/next-observation numerical operator; broad downstream-task-consequence quantization is prior art.",
+        "established_by": "S1+S3+S4+S5+S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "(i) false-premise",
+      "naive_version": "On the same open-loop calibration inputs, compute the per-site FP16-versus-low-bit local hook-output MSE and upgrade the top-B_site sites.",
+      "naive_fairness": "It uses the same registry, checkpoint/configuration, b_lo, D_cal, FP16-background single-site information, site-count budget B_site, and deployment restriction; it is simpler because it has no simulator counterfactual, state snapshot cloning, next-observation pass, or combined score.",
+      "instance_behavior": {
+        "naive": "L={r1:1.0,r2:0.25,r3:0.0625}; top-B_site={r1}",
+        "mechanism": "C={r1:1.15,r2:1.20,r3:0}; top-B_site={r2} under flattened-population/per-pixel-population reading",
+        "divergence": "contact C(r2)=1.2 versus C(r1)=0.9, while local L(r1)=1>L(r2)=0.25; rho_contact=0.5",
+        "kind": "instance_contingent"
+      },
+      "verdict": "confronts_obstacle",
+      "reasoning": "On the same toy inputs and site-count constraint, the local naive misses the larger next-observation consequence at the contact item and selects r1, while the full mechanism selects r2. This is a positive T5 divergence for the declared false-premise branch, but it is not evidence of real task improvement."
+    }
+  },
+  "verdict": "patched",
+  "unrepaired": [
+    {
+      "finding": "C_r is still a single-site FP16-background score, so its value is not the marginal consequence of the jointly low-bit deployment; interaction/saturation can reverse the protection choice.",
+      "severity": "note",
+      "why_not_repaired": "The wording is patched to forbid a joint-optimality reading, but measuring all joint-low-bit marginals or adding a joint optimizer would change the central single-site mechanism and exceed a coherence repair. The held-out schedule comparison must carry this empirical risk.",
+      "verbatim_step_quote": "the top-B sites replace the local PTQ ranking under the same high-precision budget B as the matched baseline.",
+      "executed_evidence": "T2 intended-reading output: C={r1:1.15,r2:1.20,r3:0}, so B_site=1 selects r2. The independent toy joint residual-loss table for protecting one site is {r1:100,r2:20,r3:5}, where lower is better, so r3 is best. The table is explicitly synthetic, not a WAM measurement; it shows only that the single-site score does not algebraically identify a joint marginal.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The action-chunk MSE plus next-observation pixel L1 remains a one-transition proxy, not task-success loss or full-chunk/replan consequence.",
+      "severity": "note",
+      "why_not_repaired": "Replacing the declared estimand with reward/success or a full replan-horizon intervention would redesign the method. The repair states the proxy boundary; S9 must test task metrics empirically.",
+      "verbatim_step_quote": "Define d_a(j,r) as the mean squared difference between the two full action chunks divided by max(sigma_a^2, epsilon_a^2), where sigma_a^2 is the mean coordinate variance of FP16 full action chunks over the calibration episodes and epsilon_a is a named normalized-scale floor; define d_o(j,r) as the mean per-pixel absolute next-observation difference divided by max(sigma_o, epsilon_o), where sigma_o is the calibration mean per-pixel standard deviation.",
+      "executed_evidence": "T2 computes only d_a/d_o and C_r: for the intended reading C(r1)=1.15 and C(r2)=1.20. No reward, success label, contact loss, or later replanning output enters that arithmetic, so the score cannot be identified with task consequence from the procedure alone.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The primary B_site site-count match does not establish equal bytes, peak memory, or latency across schedules.",
+      "severity": "note",
+      "why_not_repaired": "A measured cost-constrained selector would change the top-B_site allocation operator. The repair makes site count the explicit primary experimental budget and requires a separate real-kernel cost ledger; later deployment/implementability review owns cost equality.",
+      "verbatim_step_quote": "Set B to the exact high-precision-site count or matched bit-cost of the QuantWAMs comparison schedule, rank sites by C_r, and upgrade the top-B sites while leaving all other sites at b_lo; resolve ties by the registry order.",
+      "executed_evidence": "T2 cost stress: two schedules with the same B_site=1 can have costs 9 and 1 bytes, ratio 9:1. This is a toy structural counterexample; actual weight copies, scales, activation live ranges, layout, and kernel latency were not measured.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The exact Optional IDM checkpoint identity is not present in the candidate: checkpoint_FW is a placeholder rather than a concrete filename/revision identity.",
+      "severity": "note",
+      "why_not_repaired": "The supplied files provide no concrete identity and the review forbids inventing one. The patch adds a required manifest entry and a halt-on-missing rule; the actual identity must be supplied by the run manifest before execution.",
+      "verbatim_step_quote": "Use the exact official Fast-WAM released checkpoint selected for the run manifest as checkpoint_FW, set mode_FW=idm, sigma_shift_FW=1.0, and inference_path_FW=infer_action",
+      "executed_evidence": "Read-only field check: the candidate names checkpoint_FW and asks for a filename/repository revision in a future manifest, but no concrete filename, revision, or digest value occurs in the supplied candidate/select inputs. Therefore exact identity cannot be verified here without inventing evidence.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The 1.2 GPU-day 80GB-class estimate is not a measured duration conversion for A100 40GB stages.",
+      "severity": "note",
+      "why_not_repaired": "compute_budget is a forbidden repair target owned by the later audit, and no external measurement may be invented. The report preserves the claim while marking the nominal arithmetic and memory equivalence as unverified.",
+      "verbatim_step_quote": "1.2 GPU-day on an 80GB-class equivalent for a staged Fast-WAM-only validation (approximately two short single-GPU A100-40GB stages, no large-model training) + $0 paid API; LingBot-VA replication, if later added, requires a separate calibration-memory and inference budget.",
+      "executed_evidence": "The executed T2 terminal check gives 1.2*24=28.8 nominal GPU-hours only if GPU-day means 24 hours and prints memory_equivalence_unestablished=True. It provides no stage walltimes and cannot convert 80GB-class memory or calibration behavior into A100-40GB duration.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "applied_revisions": [
+    {
+      "scope": "coherence",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "For coherence purposes, C_r is explicitly a single-site FP16-background ranking proxy for one control transition—not the marginal consequence of the jointly low-bit schedule, not a jointly optimality guarantee, not task-success loss, and not a consequence of executing the full chunk or subsequent replanning; the primary allocation budget is B_site, the matched baseline's pre-registered site count, while persistent weight bytes, peak live activation workspace, scale/copy overhead, and latency are separate measured deployment quantities; the concrete method scope is numerical weight or activation intervention inside the coupled future-video/action denoiser with the one-transition estimand and normalized full-chunk/next-observation score, and the broad downstream-task-consequence quantization principle is treated as prior art.",
+      "outcome": "applied",
+      "delta_summary": "Repairs T1 dual-reading and T4 overclaim risk by making the single-site, one-transition proxy, site-count budget, coupled-WAM scope, and prior-art boundary explicit."
+    },
+    {
+      "scope": "coherence",
+      "op": "replace",
+      "field": "core_mechanism_steps",
+      "value": "1. Freeze the public artifacts and inference contract. Require a pre-existing run-manifest entry checkpoint_FW containing the exact official Fast-WAM released checkpoint filename, repository revision, and immutable digest when available; if the entry is missing or ambiguous, halt before calibration. Set mode_FW=idm, sigma_shift_FW=1.0, and inference_path_FW=infer_action with the README's current no-default-VAE-decoding behavior; do not substitute first_frame because it removes the future branch. Bind b_lo to an exact per-axis numerical weight/activation bit tuple and real low-bit kernel identifier in the same manifest, and halt if the selected real kernel is unavailable; fake-quant/dequantized GEMM is not evidence of kernel support. Keep the action/video coupling unchanged and output a versioned configuration manifest with the checkpoint filename, repository revision, mode, sigma shift, inference path, bit tuple, and kernel identifiers. The minimal validation uses Fast-WAM only; if LingBot-VA is added, use its official VAE/text-encoder CPU-offload inference configuration and report backward-calibration memory as a separate measurement rather than reusing the reported inference-memory figure.\n2. Build an episode-level calibration manifest from existing RoboTwin 2.0 and LIBERO simulator episodes. Set N_cal=32 as the default to match the fixed-trajectory scale reported for QuantWAMs, with a pre-registered 16/32/64 episode sensitivity check; preserve observation histories, instructions, simulator states, action chunks, denoising seeds xi_j, simulator seeds eta_j, and native contact/task-transition flags. For each item, capture a complete paired-state snapshot S_j containing h_j, l_j, simulator state z_j, controller state, simulator RNG state eta_j, model/denoising RNG state xi_j, observation/history buffers, and persistent model-cache state. Output D_cal and a held-out episode/task split without mixing adjacent frames across splits. Reject an empty calibration or held-out split before scoring.\n3. Enumerate the intervention registry R from the public WAM implementation. Each r=(branch, module, denoising_step, axis) identifies one actual quantization hook in the coupled video/action denoiser, with axis in {weight, activation}; exclude VAE-only, text-only, latent/action tokenizer, and planner-only sites. Output a deterministic registry with a lexicographic tie-break order and a mapping from each site to its real kernel and exact bit setting. Reject an empty registry before ranking.\n4. Measure single-site model interventions with matched stochastic state. For every r and calibration item j, restore an independent clone of S_j before each branch, including controller state, simulator RNG, model RNG/generator, observation/history buffers, and persistent model cache; then run F_0 and F_r with the same h_j, l_j, xi_j, and inference path. Record the full action chunks a_j0 and a_jr and the hook outputs y_jr0 and y_jrr. Define the open-loop local surrogate L_jr as the mean squared difference over all elements of y_jr0 and y_jrr, and L_r as the episode mean of L_jr. Use fake-quant/dequantized GEMM only as a profiling implementation; record whether it was used and keep it separate from the real low-bit-kernel evaluation. Output paired model traces indexed by (j,r).\n5. Execute paired environment counterfactuals. Restore independent clones of S_j, including z_j, controller state, simulator RNG eta_j, observation/history buffers, model RNG/generator state, and persistent cache, for the two traces. Apply the first executable action after the restored controller's identical action transformation to each full chunk, and record o_(j+1)0, o_(j+1)r, and the simulator's independent contact/task-transition state. The downstream output of this step is the actual next observation and state transition caused by the altered first action, not merely a changed intermediate discrepancy; C_r therefore does not estimate effects of executing later chunk actions or subsequent replanning.\n6. Compute the consequence object. Define sigma_a^2 as the population variance over all scalar coordinates of all FP16 full action chunks in D_cal, and sigma_o as the mean of the population per-pixel standard deviations of FP16 next observations across D_cal. Use named floors epsilon_a=epsilon_o=1e-3 in normalized units, with a pre-registered 1e-4/1e-3/1e-2 sensitivity check. Compute d_a and d_o as the normalized full-action-chunk MSE and next-observation per-pixel L1 differences, set lambda_a=lambda_o=1 by default with a held-out sensitivity sweep over lambda_a/lambda_o in {0.5,1,2}, and output C_r as their episode mean with bootstrap intervals over complete episodes. C_r is a one-control-transition action/observation proxy, not task-success loss.\n7. Replace the local allocation operator without retraining. Define B_site, with B equivalent to B_site everywhere in this method, as the nonnegative integer high-precision-site count recorded by the matched local-fidelity baseline in the pre-registered run manifest; halt if that entry is missing or B_site>|R|. Rank sites by C_r and upgrade exactly the top-B_site sites while leaving all other sites at b_lo; resolve ties by the registry order. This primary comparison is a site-count budget only, not a claim of equal bytes or latency. For every schedule, record a separate deployment-cost ledger covering persistent weight bytes including copies and scales, peak live activation workspace under the real kernel, and measured latency; do not substitute that ledger for B_site or call the quantities equivalent.\n8. Run the confound-isolating diagnostic. On the same episodes, compare L_r and C_r using Spearman rank correlation separately on simulator-identified contact/task-transition and non-contact subsets, then compare top-B_site C_r allocation against top-B_site L_r allocation and a score-permuted negative control. If fewer than two sites exist, or either score vector is constant in a subset, record Spearman as undefined and skip that correlation rather than fabricate a value. The reported object is the divergence in downstream action/observation and task metrics, not a claim that a correlation itself is causal.\n9. Validate the selected schedule on held-out RoboTwin 2.0 and LIBERO episodes with the real low-bit kernel. Compare FP16, the matched local-fidelity baseline, the C_r allocation, and uniform precision at the same B_site site-count budget; measure task success, contact-sensitive failure rate, full action-chunk deviation, next-observation deviation, peak memory, and latency, with the same Fast-WAM configuration and multiple episode seeds.\n10. Keep CPU arithmetic checks and deployment claims separate. CPU runs may verify site indexing, deterministic paired seeds, scale normalization, and C_r arithmetic only; they do not establish robot success, GPU memory, or speedup. Report any LingBot-VA replication as a separate calibration/inference experiment with its offload and checkpoint configuration, and do not combine fake-quant traces with real-kernel performance.",
+      "outcome": "applied",
+      "delta_summary": "Repairs T1 findings on undefined L_r, normalizer convention, checkpoint/bit binding, complete controller-RNG-history-cache restoration, B bounds/cost semantics, real-kernel separation, and degenerate inputs without changing the WAM or W/A intervention."
+    },
+    {
+      "scope": "coherence",
+      "op": "append_sentence",
+      "field": "core_mechanism_reasoning",
+      "value": "The phrase more deployment-relevant is a conditional design hypothesis rather than an established equality to task loss; no joint-low-bit additivity or single-site-to-joint marginal assumption is made, and the broad downstream-task-consequence principle is prior art.",
+      "outcome": "applied",
+      "delta_summary": "Repairs T4's conditional grading of deployment relevance and prevents the lineage principle from being presented as novelty."
+    }
+  ],
+  "final_candidate": {
+    "title": "Causal Consequence Calibration for Quantized World Action Models",
+    "hook": "At a matched high-precision-unit budget, the candidate predicts that the rank correlation between local PTQ discrepancy and paired one-step closed-loop consequence will drop specifically on contact-transition states, while consequence-ranked protection will reduce contact-sensitive task failures relative to local-score ranking. The surprising result is the regime split, not a claim that local numerical error is useless everywhere.",
+    "hook_shape_rationale": "(a) Surprising empirical reveal: the named Spearman rank correlation between local discrepancy and the counterfactual consequence index should be lower on simulator-identified contact transitions, and the same fixed-budget allocation should improve the downstream contact-sensitive task metric. Shape (c) was viable because all allocations use the same precision budget, but it was rejected because the method adds calibration rollouts rather than being strictly no-more-cost on a load-bearing resource.",
+    "gap_closure": [
+      {
+        "gap": "additive: No retrieved WAM-quantization leaf establishes the downstream consequence of a numerical perturbation at a module or denoising step for the final action chunk and the next closed-loop observation in contact-critical manipulation; this is the unresolved residue of QuantWAMs (arxiv:2607.28405v1), not a request for a particular remedy. — stakes: practitioners may deploy a memory- and latency-efficient WAM that preserves local calibration metrics but fails on contact-sensitive actions, while researchers may mistake local fidelity for transferable closed-loop reliability.",
+        "main_pattern": "reframe_as_solvable_object",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "companion_pattern": "architectural_operator_substitution",
+        "how_closed": "Closed by recasting each numerical intervention as a per-site counterfactual action-and-next-observation consequence functional, then using the companion at the main-pattern level to replace the layer-local fidelity score with a runnable precision-scoring and allocation operator."
+      },
+      {
+        "gap": "subtractive: No retrieved WAM-quantization leaf tests whether the local numerical-fidelity surrogate inherited from layer-local PTQ is actually sufficient for precision selection in the coupled video/action setting, rather than an assumed proxy for downstream task impact; this questions the inherited assumption and leaves the replacement open. — stakes: precision-allocation conclusions can rest on an unexamined surrogate and invalidate comparisons across WAMs or tasks, while deployment teams cannot tell whether an apparent speed or memory gain preserves the action behavior they require.",
+        "main_pattern": "controlled_diagnostic_design",
+        "sub_pattern": "C02 (Design a Confound-Isolating Diagnostic)",
+        "companion_pattern": null,
+        "how_closed": "Closed by evaluating local fidelity and the counterfactual consequence on the same site, history, denoising seed, simulator state, and precision budget, then reporting their divergence separately for contact and non-contact transitions."
+      }
+    ],
+    "core_mechanism": "The shared object is a per-site counterfactual consequence index C_r for a numerical quantization site r, where r is a tuple of WAM branch, module, inner denoising step, and weight-or-activation axis; the site registry is enumerated from the public coupled WAM's actual PTQ hooks, so no latent rollout/planning or action-tokenization site is introduced. For calibration episode j, the inputs are the recorded observation history h_j, language instruction l_j, simulator state z_j, denoising seed xi_j, and simulator seed eta_j from an existing RoboTwin 2.0 or LIBERO episode, while F_0 is the full-precision WAM and F_r is the same model with only site r using the matched low-bit numerical quantizer and every other target site left at FP16. Running F_0 and F_r with the same history, seed, cache, and coupled future-video/action inference produces full action chunks a_j0 and a_jr; the first executable action from each chunk is then applied from the identical simulator state z_j to obtain next observations o_(j+1)0 and o_(j+1)r. Define d_a(j,r) as the mean squared difference between the two full action chunks divided by max(sigma_a^2, epsilon_a^2), where sigma_a^2 is the mean coordinate variance of FP16 full action chunks over the calibration episodes and epsilon_a is a named normalized-scale floor; define d_o(j,r) as the mean per-pixel absolute next-observation difference divided by max(sigma_o, epsilon_o), where sigma_o is the calibration mean per-pixel standard deviation. With lambda_a=lambda_o=1 as the default dimensionless weights, selected before held-out evaluation and sensitivity-checked over a named ratio sweep, C_r is the episode mean of lambda_a d_a plus lambda_o d_o, and its top-B sites replace the local PTQ ranking under the same high-precision budget B as the matched baseline. The C00 reframe supplies a computable responsibility-like object and the operator substitution makes it actionable for numerical weight/activation precision selection, while the C02 diagnostic compares C_r with the same-context local discrepancy L_r and uses the simulator's native contact or task-transition flag to report the divergence without treating the evaluated WAM as its own oracle. This closes the additive gap because a single-site perturbation is followed through the coupled action output and an externally simulated next observation, and it closes the subtractive gap because the same paired intervention tests whether L_r is sufficient rather than assuming it. The candidate remains a coupled future-prediction/action-generation WAM method: the minimal Fast-WAM path uses the official released checkpoint in idm mode with sigma_shift_FW=1.0 and the current infer_action path, not first_frame, and numerical W/A quantization only; an optional LingBot-VA replication must use the README's VAE/text-encoder CPU offload and budget backward calibration separately from its reported inference memory. Fake-quant or dequantized GEMM is used only for profiling and must be reported separately from final measurements with the real low-bit kernel. For coherence purposes, C_r is explicitly a single-site FP16-background ranking proxy for one control transition—not the marginal consequence of the jointly low-bit schedule, not a jointly optimality guarantee, not task-success loss, and not a consequence of executing the full chunk or subsequent replanning; the primary allocation budget is B_site, the matched baseline's pre-registered site count, while persistent weight bytes, peak live activation workspace, scale/copy overhead, and latency are separate measured deployment quantities; the concrete method scope is numerical weight or activation intervention inside the coupled future-video/action denoiser with the one-transition estimand and normalized full-chunk/next-observation score, and the broad downstream-task-consequence quantization principle is treated as prior art.",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger\nP1 — Coupled closed-loop premise: each denoising call produces an action chunk and later calls consume observations affected by earlier actions; this is supported by the WAM formulation and the QuantWAMs pipeline record, but the size of a quantization-induced downstream effect is untested — falsification target.\nP2 — Single-site intervention premise: the public WAM/PTQ implementation can execute one named weight or activation site at the matched low-bit setting while the remaining target sites stay at FP16 and the same stochastic state is restored; this is an implementation bet — untested — falsification target.\nP3 — External transition premise: RoboTwin 2.0 and LIBERO provide existing simulator states, action execution, next observations, and native task/contact state needed to compare the two branches without inventing a new large dataset; this is believed true because both are the stated public robot-manipulation evaluation resources.\nP4 — Consequence relevance premise: a perturbation that changes the full action chunk and the next simulator observation is more deployment-relevant than a one-call local discrepancy; this follows directly from the Phase 1 bottleneck, but the ranking advantage is untested — falsification target.\nP5 — Contact-regime premise: local discrepancy and downstream consequence can rank sites differently around contact or task-state transitions; this is a domain bet motivated by contact-sensitive manipulation, and is untested — falsification target.\nobservation-model: calibration inputs are sampled as complete episodes from the available RoboTwin 2.0 and LIBERO splits, not as iid frames; histories are temporally dependent, task and embodiment proportions are inherited from the manifest, and simulator states are selected by the recorded trajectory, so C_r estimates the calibration episode distribution rather than an unbiased deployment distribution. Episode-level resampling and a held-out task/episode split are required.\nESTIMAND: for each site r, C_r estimates the mean dimensionless one-control-transition consequence of intervening on r over the calibration episode distribution D_cal, conditional on the same h_j, l_j, denoising seed xi_j, simulator state z_j, and simulator seed eta_j; it is not an unbiased estimate of global task-success loss or of an arbitrary real-robot deployment population.\nlineage constraint: the load-bearing artifact is the paired action-to-simulator-observation counterfactual, not n1 layer-local PTQ, n2 static sensitivity allocation, n3 QuantWM latent rollout/planning, or n4 QuantWAMs joint empirical-Fisher scoring and fixed-count schedule repair.\nBLOCK 2 — NAIVE-BASELINE AUDIT (branch (i))\nThe naive version is runnable-in-principle local PTQ: compute each site's FP16-versus-low-bit local output discrepancy on open-loop calibration inputs and upgrade the top-B sites. It does not already work because it silently assumes that local discrepancy is a sufficient proxy for downstream consequence, and that premise is false in this setting: a changed action chunk changes the next observation and therefore the inputs to later coupled predictions and contact dynamics. The mechanism confronts that failure head-on with paired simulator counterfactuals; ordinary local sensitivity or one-step PTQ does not resolve the WAM-specific combination of coupled video/action denoising, action-mediated state transition, and contact-critical feedback, so this is not a textbook tool application with the structure removed.\nBLOCK 3 — design rationale\nBoth gaps share one intervention registry and one C_r object: the anchor uses it to allocate precision, while the sibling uses the same contexts to isolate whether L_r agrees with it, so no second architecture or dataset is needed. A replay-only local profile in the style of QuantWAMs was rejected because it never executes the changed action to obtain the next observation, and a full Jacobian-product or latent-rollout planner was rejected because it would add unobserved assumptions and move the branch into the excluded latent planning route. The chosen design therefore preserves the WAM's coupled future/action path, adds only a one-site causal diagnostic and matched allocation operator, and explicitly avoids the occupied ancestral nodes and the already-covered QuantWAMs mechanisms. The phrase more deployment-relevant is a conditional design hypothesis rather than an established equality to task loss; no joint-low-bit additivity or single-site-to-joint marginal assumption is made, and the broad downstream-task-consequence principle is prior art.",
+    "core_mechanism_steps": "1. Freeze the public artifacts and inference contract. Require a pre-existing run-manifest entry checkpoint_FW containing the exact official Fast-WAM released checkpoint filename, repository revision, and immutable digest when available; if the entry is missing or ambiguous, halt before calibration. Set mode_FW=idm, sigma_shift_FW=1.0, and inference_path_FW=infer_action with the README's current no-default-VAE-decoding behavior; do not substitute first_frame because it removes the future branch. Bind b_lo to an exact per-axis numerical weight/activation bit tuple and real low-bit kernel identifier in the same manifest, and halt if the selected real kernel is unavailable; fake-quant/dequantized GEMM is not evidence of kernel support. Keep the action/video coupling unchanged and output a versioned configuration manifest with the checkpoint filename, repository revision, mode, sigma shift, inference path, bit tuple, and kernel identifiers. The minimal validation uses Fast-WAM only; if LingBot-VA is added, use its official VAE/text-encoder CPU-offload inference configuration and report backward-calibration memory as a separate measurement rather than reusing the reported inference-memory figure.\n2. Build an episode-level calibration manifest from existing RoboTwin 2.0 and LIBERO simulator episodes. Set N_cal=32 as the default to match the fixed-trajectory scale reported for QuantWAMs, with a pre-registered 16/32/64 episode sensitivity check; preserve observation histories, instructions, simulator states, action chunks, denoising seeds xi_j, simulator seeds eta_j, and native contact/task-transition flags. For each item, capture a complete paired-state snapshot S_j containing h_j, l_j, simulator state z_j, controller state, simulator RNG state eta_j, model/denoising RNG state xi_j, observation/history buffers, and persistent model-cache state. Output D_cal and a held-out episode/task split without mixing adjacent frames across splits. Reject an empty calibration or held-out split before scoring.\n3. Enumerate the intervention registry R from the public WAM implementation. Each r=(branch, module, denoising_step, axis) identifies one actual quantization hook in the coupled video/action denoiser, with axis in {weight, activation}; exclude VAE-only, text-only, latent/action tokenizer, and planner-only sites. Output a deterministic registry with a lexicographic tie-break order and a mapping from each site to its real kernel and exact bit setting. Reject an empty registry before ranking.\n4. Measure single-site model interventions with matched stochastic state. For every r and calibration item j, restore an independent clone of S_j before each branch, including controller state, simulator RNG, model RNG/generator, observation/history buffers, and persistent model cache; then run F_0 and F_r with the same h_j, l_j, xi_j, and inference path. Record the full action chunks a_j0 and a_jr and the hook outputs y_jr0 and y_jrr. Define the open-loop local surrogate L_jr as the mean squared difference over all elements of y_jr0 and y_jrr, and L_r as the episode mean of L_jr. Use fake-quant/dequantized GEMM only as a profiling implementation; record whether it was used and keep it separate from the real low-bit-kernel evaluation. Output paired model traces indexed by (j,r).\n5. Execute paired environment counterfactuals. Restore independent clones of S_j, including z_j, controller state, simulator RNG eta_j, observation/history buffers, model RNG/generator state, and persistent cache, for the two traces. Apply the first executable action after the restored controller's identical action transformation to each full chunk, and record o_(j+1)0, o_(j+1)r, and the simulator's independent contact/task-transition state. The downstream output of this step is the actual next observation and state transition caused by the altered first action, not merely a changed intermediate discrepancy; C_r therefore does not estimate effects of executing later chunk actions or subsequent replanning.\n6. Compute the consequence object. Define sigma_a^2 as the population variance over all scalar coordinates of all FP16 full action chunks in D_cal, and sigma_o as the mean of the population per-pixel standard deviations of FP16 next observations across D_cal. Use named floors epsilon_a=epsilon_o=1e-3 in normalized units, with a pre-registered 1e-4/1e-3/1e-2 sensitivity check. Compute d_a and d_o as the normalized full-action-chunk MSE and next-observation per-pixel L1 differences, set lambda_a=lambda_o=1 by default with a held-out sensitivity sweep over lambda_a/lambda_o in {0.5,1,2}, and output C_r as their episode mean with bootstrap intervals over complete episodes. C_r is a one-control-transition action/observation proxy, not task-success loss.\n7. Replace the local allocation operator without retraining. Define B_site, with B equivalent to B_site everywhere in this method, as the nonnegative integer high-precision-site count recorded by the matched local-fidelity baseline in the pre-registered run manifest; halt if that entry is missing or B_site>|R|. Rank sites by C_r and upgrade exactly the top-B_site sites while leaving all other sites at b_lo; resolve ties by the registry order. This primary comparison is a site-count budget only, not a claim of equal bytes or latency. For every schedule, record a separate deployment-cost ledger covering persistent weight bytes including copies and scales, peak live activation workspace under the real kernel, and measured latency; do not substitute that ledger for B_site or call the quantities equivalent.\n8. Run the confound-isolating diagnostic. On the same episodes, compare L_r and C_r using Spearman rank correlation separately on simulator-identified contact/task-transition and non-contact subsets, then compare top-B_site C_r allocation against top-B_site L_r allocation and a score-permuted negative control. If fewer than two sites exist, or either score vector is constant in a subset, record Spearman as undefined and skip that correlation rather than fabricate a value. The reported object is the divergence in downstream action/observation and task metrics, not a claim that a correlation itself is causal.\n9. Validate the selected schedule on held-out RoboTwin 2.0 and LIBERO episodes with the real low-bit kernel. Compare FP16, the matched local-fidelity baseline, the C_r allocation, and uniform precision at the same B_site site-count budget; measure task success, contact-sensitive failure rate, full action-chunk deviation, next-observation deviation, peak memory, and latency, with the same Fast-WAM configuration and multiple episode seeds.\n10. Keep CPU arithmetic checks and deployment claims separate. CPU runs may verify site indexing, deterministic paired seeds, scale normalization, and C_r arithmetic only; they do not establish robot success, GPU memory, or speedup. Report any LingBot-VA replication as a separate calibration/inference experiment with its offload and checkpoint configuration, and do not combine fake-quant traces with real-kernel performance.",
+    "falsification_prediction": "Run the minimal experiment on the exact Fast-WAM checkpoint_FW in idm mode with sigma_shift_FW=1.0 and infer_action, using a small held-out RoboTwin 2.0/LIBERO manipulation split, the same low-bit setting b_lo, and the same high-precision budget B for local-score and C_r allocations. If the candidate works, the contact-transition subset will show a larger local-score-versus-C_r ranking divergence and the C_r schedule will reduce held-out contact-sensitive task failures and next-observation deviation relative to the matched local-score schedule, without changing the architecture or precision budget. The single load-bearing variable is C_r, the paired downstream consequence index; permute C_r across the site registry before selecting top-B sites, and the predicted effect is that the downstream contact-sensitive success/failure advantage disappears even though the quantizer and evaluation remain unchanged. A positive control is the oracle simulator-state branch that exposes the independent transition outcome during calibration; it should preserve more of the C_r allocation advantage than a model-only local discrepancy if the mechanism, rather than calibration noise, is carrying the result.",
+    "compute_budget": "1.2 GPU-day on an 80GB-class equivalent for a staged Fast-WAM-only validation (approximately two short single-GPU A100-40GB stages, no large-model training) + $0 paid API; LingBot-VA replication, if later added, requires a separate calibration-memory and inference budget.",
+    "differentiation_from_lit": [
+      {
+        "paper_id": "arxiv:2607.28405v1",
+        "delta": "QuantWAMs scores local block and denoising-step discrepancies on replayed full-precision states and repairs a fixed-count protection schedule, whereas this candidate constructs a paired single-site counterfactual that executes the altered action from the same simulator state and uses the resulting next observation as the precision-selection signal."
+      },
+      {
+        "paper_id": "arxiv:2602.02110v1",
+        "delta": "QuantWM studies weight/activation PTQ and long-horizon error in a DINO-WM latent planning setting, whereas this candidate measures the action-chunk and next-observation consequence of numerical perturbations inside a coupled video/action manipulation WAM."
+      },
+      {
+        "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+        "delta": "Fast-WAM isolates video co-training from explicit future imagination and does not provide a numerical PTQ consequence signal, whereas this candidate keeps the future/action-coupled idm feasibility path and adds single-site weight/activation intervention with consequence-based allocation."
+      }
+    ],
+    "almost_prior_paper_id": "arxiv:2607.28405v1",
+    "what_step_was_missed": "The closest paper would have needed to construct and execute a paired simulator counterfactual in which a single module or denoising-step perturbation changes the action chunk from a fixed state, then measure the resulting next observation or task transition and use that marginal consequence for precision selection; its replayed local discrepancy does not construct this action-mediated transition artifact.",
+    "signature_terms": [
+      "single-site closed-loop consequence score",
+      "action and next-observation counterfactuals",
+      "contact-critical mixed-precision selection",
+      "coupled video-action denoising"
+    ],
+    "alias_terms": [
+      "task-loss-aware quantization calibration",
+      "model-error-aware robust MPC",
+      "teacher-student behavior matching",
+      "off-policy marginal effect estimation",
+      "interventional policy sensitivity analysis"
+    ],
+    "composition_note": ""
+  },
+  "falsification_rewritten": false
+}

@@ -1,0 +1,78 @@
+{
+  "title": "Frozen-Residual Transport PTQ",
+  "status": "conditional_candidate",
+  "canonicality": "This is a revised candidate after independent review; the earlier STRC file remains historical under rejected_attempt and is not reused.",
+  "hook": "Can a fixed W4 quantizer calibrate its scalar scales and rounding by preserving how its own deployment-induced residual direction is transported by a one-step world-model map, rather than only minimizing clean output reconstruction?",
+  "anchor": {
+    "model": "DINO-WM Wall epoch-65 artifact and existing verified planner, if the runner exposes the required interface",
+    "reference": "FP32 weights, FP32 activations",
+    "baseline_quantizer": "Q0 = symmetric per-output-channel weight-only W4 RTN, with the exact same registered predictor target blocks",
+    "first_scope": "Quantize predictor target blocks only; keep encoder, policy/readout and environment FP32 in the first pilot. WAM/VLA transfer is future work, not evidence here.",
+    "deployment": "Fixed W4 logical map and no FP teacher, observer, extra state or online correction at deployment. Native packed bytes/latency are unmeasured unless a real backend is separately implemented."
+  },
+  "notation_and_dataflow": [
+    "X_t is the complete DINO-WM history state (all context slots, cache/history fields and the newly predicted slot), a is a fixed action/chunk, and F_theta(X,a) is the pure one-step predictor map after applying quantizer parameters theta.",
+    "Collect paired same-history/action/RNG records before fitting: delta_i = stopgrad(F_Q0(X_i,a_i)-F_FP(X_i,a_i)). Store delta_i in the newly predicted latent slot only; X_i and all older history slots stay unchanged. delta is frozen and is never recomputed from a fitted theta.",
+    "For each candidate theta, form the full next-step history x_i = shift/concat(X_i,F_FP(X_i,a_i)) and put delta_i only in its newest slot. Evaluate the finite-difference transport T_theta(x_i,delta_i,a'_i)=F_theta(x_i+delta_i^slot,a'_i)-F_theta(x_i,a'_i). Use the same fixed action a'_i for T_FP, and compare T_FP(x_i,delta_i,a'_i)=F_FP(x_i+delta_i^slot,a'_i)-F_FP(x_i,a'_i). This is a finite-difference transport contrast, not a causal kernel and not a strict linear/Jacobian approximation.",
+    "With frozen diagonal scale W_z in latent units (estimated from FP CAL variance and never treated as a physical coordinate transform), optimize L_FRT(theta)=E_i[||W_z(F_theta(X_i,a_i)-F_FP(X_i,a_i))||_2^2 + lambda_T ||W_z(T_theta-T_FP)||_2^2]. The clean term is retained; lambda_T is predeclared and swept only on CAL/DEV. Physical xy is measured only at an independent environment closed-loop endpoint, without assuming a latent-to-xy linear readout.",
+    "theta jointly contains per-output-channel scales and per-weight AdaRound rounding variables over all registered predictor blocks. In CAL use q_int,g=clip(floor(w_g/s_g)+h(alpha_g),q_min,q_max), h(alpha_g) in [0,1]; freeze h(alpha_g) to {0,1}, discard alpha_g and deploy w_hat_g=s_g*q_int,g. No per-site score is summed, no alpha is stored and no bit allocation is changed.",
+    "Source rollout uses predict(z[:, -num_hist:]), extracts the last prediction, replace_actions_from_z with known next action, then appends. Use the same known action embedding on FP/Q0 branches before forming delta; delta action coordinates must be zero, observation/proprio only. Preserve all old history. No separate KV cache is apparent in this source path."
+  ],
+  "mechanism_steps": [
+    "1. Interface gate: in a light local/source check, verify that the existing Wall runner can serialize full X, restore history/action/RNG, evaluate F_FP/F_Q0, and expose the independent environment physical xy/goal endpoint. If full history or the pure one-step map is missing, stop the pilot before heavy work; no latent-to-xy linear readout is assumed.",
+    "2. Freeze Q0 and parameter grid: exact target-block list, W4 logical byte budget, scale/rounding bounds, W_z, lambda_T and fit seed list are written before TEST is opened. Encoder and policy remain FP32.",
+    "3. Split by episode/initial state: CAL=6 episodes, DEV=6, TEST=12 for the minimal pilot; use 3 independent fitting seeds. Counts are episode/seed units, not frames or candidate perturbations. Common initial states and common random numbers are used only within each FP/Q pair; identities are disjoint across CAL/DEV/TEST.",
+    "4. On CAL only, collect paired FP/Q0 full-history records and frozen delta_i. Keep a second fresh Q0 residual collection from DEV; after fitting, run Q_theta once on DEV to produce fresh Q_theta residuals. All DEV residuals are stop-gradient and are never used to optimize theta.",
+    "5. Fit all target-block scalar scales and AdaRound variables jointly with L_FRT. Use a bounded soft-rounding/STE search, hard-freeze h(alpha) to {0,1}, discard alpha and materialize the exact W4 checkpoint. There is no weight training, label, QAT, observer or online state.",
+    "6. Compare matched-budget controls: local output MSE; direct two-step unrolled FP/Q matching; QDrop/input-noise reconstruction; random same-norm delta replacing frozen Q0 delta; and a clean PD-Quant-style prediction-difference objective. The random same-norm control is the GAD/Sobolev-like sensitivity control. Also retain RTN Q0 and FP32.",
+    "7. DEV: compute clean reconstruction, frozen-delta transport, fresh-Q0 and one-time fresh-Q_theta transport, physical xy endpoint error and short closed-loop drift/success; report fit-seed direction and select hyperparameters before TEST.",
+    "8. TEST: evaluate the frozen W4 map on independent episodes with paired initial states, physical xy/goal progress and success, action error, peak memory and synchronized latency only if a real backend exists. Do not use TEST for fitting or map selection."
+  ],
+  "hypotheses": {
+    "H1": "At the same W4 logical bytes and calibration/evaluation budget, L_FRT predicts held-out short closed-loop physical xy drift better than local MSE, direct two-step matching, QDrop/input-noise and random same-norm delta controls.",
+    "H2": "Fresh Q0 residual directions on DEV, plus one fresh Q_theta residual collection after fitting, preserve the transport comparison enough to show that the frozen delta is not a calibration self-reconstruction loop.",
+    "H0": "The Q0 direction carries no extra information beyond perturbation norm/clean output; then random same-norm or local/2-step controls match FRT and the idea is rejected."
+  },
+  "falsification": {
+    "primary": "The load-bearing comparison is Q0-derived frozen delta versus random same-norm delta, both evaluated with identical x, action, W_z and W4 bytes. If downstream drift/success and fresh-DEV transport are equivalent, reject the claimed residual-direction mechanism. The random control uses the identical finite-difference transport loss, parameter freedom, optimizer updates and fit/evaluation budget; only the direction source changes.",
+    "secondary": "If FRT beats CAL but not fresh-DEV Q0 or the one-time fresh-Q_theta residual check, treat it as overfit and reject. If joint fitting gives no downstream gain over independent/local controls, label it a reparameterized local PTQ objective and reject.",
+    "resource_stop": "Pilot budget is capped at 12 A100 GPU-hours total including controls. After the first bounded screen, if no predeclared direction appears on DEV or the required full-history F interface fails, stop; a 5% relative median change is a resource decision threshold, not a statistical guarantee. The A100-40GB plan is a conservative smoke allowance, not a claim that the model will fit. Do not continue by switching to A100-80GB.",
+    "non_claims": "Do not claim quantization noise is small, linearization is exact, transport is causal, or native low-bit speed/memory follows from nominal bits. Do not add an observer, error-feedback accumulator, mixed-bit saliency or deployment-time FP reference."
+  },
+  "prior_boundaries": [
+    "AdaRound (arXiv:2004.10568) supplies data/task-aware layer-local rounding; FRT may use its hard-rounding materialization, but the objective is the fixed Q0 residual finite difference rather than layer-local reconstruction.",
+    "QDrop (arXiv:2203.05740) randomly drops activation quantization to improve PTQ flatness; it is a matched input-noise/reconstruction baseline, not a source of a deployment-induced residual direction.",
+    "PD-Quant (arXiv:2212.07048) uses global FP/Q prediction difference with regularization and distribution correction; FRT compares the transport of x+delta against x and must include fresh-residual validation to avoid its documented small-CAL overfit pattern.",
+    "Sobolev Training (arXiv:1706.04859) and GAD (arXiv:2606.01651) establish derivative/JVP or local sensitivity matching as broad ideas. FRT is narrower: frozen Q0 residual finite differences in a WM one-step map; random same-norm delta is a required GAD-like control. No first-use or generic sensitivity novelty is claimed.",
+    "DA-PTQ (arXiv:2604.11572) already covers trajectory motion surrogate, virtual Jacobian and mixed precision; QuantWAMs (arXiv:2607.28405v1) covers shared-basis/Fisher/reachable-state audit and WAM schedule repair; Feedback World Model (arXiv:2605.15705v1) covers an online transition-residual observer. FRT uses none of those allocation/schedule/observer operations.",
+    "RPIQ (OpenAlex W7119233972) and When Can Depth Replace Precision? (OpenAlex W7171748342) make residual-projected closed-loop compensation and increment error feedback direct collision families. FRT deliberately does not implement residual compensation or error-feedback arithmetic; these are warnings against a broad closed-loop residual claim.",
+    "SQIL is training-based saliency-weighted QAT; QVLA/BitVLA are action/model quantization or QAT/kernel families; QuantWM is low-bit WM/planning sensitivity; QuaDreamer and related work concerns generative/token or representation quantization; existing closed-loop QAT and the Calibrate Where You Deploy author report concern adaptation/on-policy calibration. In this bounded search no exact FRT protocol was verified, which is not evidence that none exists."
+  ],
+  "evaluation_matrix": [
+    "RTN Q0 and FP32 positive control",
+    "Local-MSE/AdaRound-style clean reconstruction at same W4 bytes",
+    "PD-Quant-style clean prediction difference plus regularization",
+    "Direct two-step unrolled matching",
+    "QDrop/input-noise reconstruction",
+    "Random same-norm delta (GAD/Sobolev-like sensitivity control)",
+    "FRT with frozen Q0 delta; ablate clean term, transport term, fresh-Q0-DEV check and one-time fresh-Qtheta-DEV check",
+    "Joint versus independently fit scalar parameters, with no additive site scores"
+  ],
+  "split_and_budget": {
+    "split": "CAL 6 / DEV 6 / TEST 12 episodes, 3 fit seeds; episode/initial-state is the independent unit.",
+    "pilot": "<=12 A100 GPU-hours total including baseline and failure/startup costs; concurrency 1-4 A100-40GB only. This is a conservative smoke allowance and planning cap, not a measured runtime or fit guarantee.",
+    "40_vs_80": "Only A100-40GB is planned for the smoke pilot. A100-80GB is not a fallback to extend the cap; any future 80GB feasibility must be separately approved and reported.",
+    "native_boundary": "Logical W4 bytes and fake-quant numerical drift are reported separately from packed checkpoint bytes, peak VRAM, synchronized throughput and latency. Native claims require an actual backend and same-workload FP/BF16 comparison."
+  },
+  "collision_status": "Independent review completed: revise / pilot-ready conditional, novelty unverified; see ../FINAL_IDEA_REVIEW_2026-09-12.zh.md. Root subsequently specified action-coordinate masking and hard-W4 boundary details; runtime gates remain untested.",
+  "hard_w4_contract": {
+    "q_min": -7,
+    "q_max": 7,
+    "scale_axis": "per output channel",
+    "Q0_scale": "max(abs(w))/7; zero channel uses scale=1 and zero integers",
+    "Q0_ties": "ties to even",
+    "fit_scale": "positive bounded parameterization",
+    "hardening": "h>=0.5 -> 1; floor plus hard h, then clamp, then integer cast; discard alpha",
+    "accounting": "include scales, metadata, padding and unquantized parameters; rerun from hard materialized weights"
+  }
+}

@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N cem_update_prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=20gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+case "$(hostname -s)" in *login*) exit 91;; esac
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+BASE="$ROOT/cem_update_v1"
+CONTROL="$BASE/control"
+python3 "$CONTROL/allocation_guard.py"
+mkdir -p "$BASE/artifacts/$PBS_JOBID"
+exec > >(tee -a "$BASE/artifacts/$PBS_JOBID/job.log") 2>&1
+python3 "$CONTROL/allocation_guard.py" > "$BASE/artifacts/$PBS_JOBID/allocation.json"
+test ! -e "$BASE/runtime_ready.json"
+mkdir "$BASE/runtime-preparation-lock"
+mkdir "$BASE/runtime_bundle"
+tar -xf "$ROOT/runtime-complete.tar" -C "$BASE/runtime_bundle"
+test -x "$BASE/runtime_bundle/runtime/venv/bin/python"
+for name in smoke_runner.py screen_runner.py probe_runner.py joint_fidelity.py; do
+    cp "$ROOT/rankcal_screen/artifacts/16177209.pbs101/$name" "$CONTROL/$name"
+done
+printf '{"status":"complete","job_id":"%s","purpose":"CPU-only runtime extraction; no model loaded"}\n' "$PBS_JOBID" > "$BASE/runtime_ready.json"
+rmdir "$BASE/runtime-preparation-lock"

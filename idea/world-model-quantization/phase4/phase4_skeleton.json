@@ -1,0 +1,1903 @@
+{
+  "title": "RankCal: Counterfactual Influence Quantization for Action-Conditioned Latent World-Model Planning",
+  "title_zh": "<TODO[title_zh]: Chinese translation; keep proper nouns and method acronyms in English>",
+  "method_name": "<TODO[method_name]: short handle for the proposed method, e.g. 'Persistent Baseline GRPO (PB-GRPO)'>",
+  "hook": "At matched memory and nominal bit-width, candidate-order agreement should improve more by protecting sites with high rollout-ranking influence than by protecting sites with the largest local reconstruction error, especially in the longer-horizon cells of the evaluation grid. This predicts that a deliberately worse tensor-MSE allocation can yield higher closed-loop success, exposing a decision-level failure mode that the full-text DINO-WM sweep did not measure.",
+  "abstract_draft": "<TODO[abstract_draft]: 150-250 words. Order: problem → bottleneck (cite ≥ 1 Phase 0 paper) → contribution (one sentence) → falsification prediction → expected outcome.>",
+  "motivation": {
+    "problem_framing": "<TODO[motivation.problem_framing]: 2-3 paragraphs framing the user's problem. Reference the bottleneck_statement from Phase 1 and the closest_adjacent papers. NOT a category label.>",
+    "why_now": "<TODO[motivation.why_now]: one paragraph on what makes this gap timely. Cite the most recent Phase 0 papers (within last 4-12 months) that get close but stop short.>",
+    "why_prior_stopped": [
+      {
+        "paper_id": "arxiv:2602.02110v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[0].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[0].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[0].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2608.24855v1",
+        "venue_year": "arXiv 2026-08",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[1].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[1].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[1].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2603.12231v3",
+        "venue_year": "arXiv 2026-03",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[2].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[2].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[2].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2607.28405v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[3].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[3].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[3].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      }
+    ],
+    "what_changes_when_gap_closes": "<TODO[motivation.what_changes_when_gap_closes]: 2-3 sentences naming downstream consequences. NOT \"better numbers\" — name the specific capability or theoretical statement that becomes available>"
+  },
+  "core_claim": "<TODO[core_claim]: one sentence; should mirror the candidate's hook stripped to its load-bearing assertion>",
+  "sub_claims": "<TODO[sub_claims]: list of {id, statement, supports_which_aspect}; 2-4 entries>",
+  "key_equations": "<TODO[key_equations]: optional 3-6 equations; each {id, linked_step_id, latex, description, description_zh}. Emit [] (literal empty list) for a pure-prose candidate.>",
+  "method_flow": {
+    "high_level_pipeline": "<TODO[method_flow.high_level_pipeline]: 3-5 sentences narrating the method end-to-end as a story: input → key transformation → output>",
+    "steps": "<TODO[method_flow.steps]: derive from candidate.core_mechanism_steps; emit a list where each entry is {step_id, title, what_changes, why_this_step, linked_component, linked_falsification, input, output}. Each step_id MUST be S1, S2, ... in reading order. linked_component ∈ {theory, engineering, both}; linked_falsification ∈ {metric_specification, mechanism_distinguisher, both}.>",
+    "design_reasoning_echo": "<TODO[method_flow.design_reasoning_echo]: one paragraph echoing or condensing candidate.core_mechanism_reasoning>"
+  },
+  "plain_motivation_en": "<TODO[plain_motivation_en]: plain-language English rendering of motivation for a reader outside this subfield. Simplify LANGUAGE only — never drop the load-bearing mechanism. Spell out every abbreviation on first use.>",
+  "plain_motivation_zh": "<TODO[plain_motivation_zh]: Chinese 普通版 counterpart. Same content; keep identifiers/symbols/acronyms in English.>",
+  "plain_method_steps_en": "<TODO[plain_method_steps_en]: list of {step_id, what_to_do, why_this_makes_sense}; SAME step_ids and SAME order as method_flow.steps.>",
+  "plain_method_steps_zh": "<TODO[plain_method_steps_zh]: Chinese 普通版 counterpart; English for identifiers/symbols/acronyms.>",
+  "plain_method_modules_en": "<TODO[plain_method_modules_en]: group the CONTRIBUTION steps into named modules; list of {module_id, purpose_oneline, step_ids}.>",
+  "plain_method_modules_zh": "<TODO[plain_method_modules_zh]: Chinese 普通版 counterpart.>",
+  "falsification_prediction": "Minimal experiment: on one public FP16 DreamerV3- or TD-MPC2-style checkpoint (inferred pilot anchor) and one DeepMind Control Suite visual continuous-control task, compare RankCal with uniform-bit and local-reconstruction allocation at matched peak memory across the full C grid. If the mechanism works, the primary downstream metric, closed-loop task-success rate, will be higher for RankCal than for the matched controls, while candidate-order and first-action agreement will degrade less in the longer-horizon cells. The single load-bearing variable is I_g(b), the site-only rollout-ranking influence profile; randomize its mapping to bit pairs while preserving the bit histogram, memory, candidate/update schedule, receding-horizon convention, and tie rule, then rerun fresh D_eval episodes. The negative control predicts that the randomized map's downstream task-success rate returns to the matched local-reconstruction or uniform-PTQ baseline, not merely that I_g changes; if the benefit survives the randomized mapping, the proposed influence signal is not the mechanism carrying the result.",
+  "compute_budget": "GPU: estimated 12 GPU-days on one NSCC ASPIRE2A A100-SXM4-40GB for the one-task pilot, site-only probes, full nuisance grid, matched controls, and held-out closed-loop evaluation; an optional second DMC task family would add an estimated 6 GPU-days. API: $0 for the full campaign because model inference, calibration, and evaluation are local and no paid API judge is required. No GPU experiments are run during this proposal phase.",
+  "almost_prior_paper_id": "arxiv:2602.02110v1",
+  "almost_prior_venue_year": "arXiv 2026",
+  "what_step_was_missed": "It would have needed to hold candidate pools, planner inputs, receding-horizon conventions, and tie rules fixed while quantizing one site at a time, estimate that site's candidate-order discordance over action-conditioned rollout states, and solve the resulting profile as a memory-constrained mixed W/A assignment; the supplied method constructs PTQ sweeps and outcome analyses but not this decision-influence object or allocation step.",
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "unverified",
+      "rationale": "No user GPU-day or API-dollar quota is supplied. The single A100 40GB is a hardware constraint, while the 12 GPU-day estimate (and any 80GB-to-40GB scaling) is unmeasured; factory caps cannot establish feasibility."
+    },
+    "data": {
+      "verdict": "<TODO[feasibility_validation.data.verdict]: feasible | tight | infeasible>",
+      "rationale": "<TODO[feasibility_validation.data.rationale]: one sentence: required data sources accessible; if any closed/private, name a public substitute>"
+    },
+    "theoretical": {
+      "verdict": "<TODO[feasibility_validation.theoretical.verdict]: feasible | tight | infeasible | n/a (only when the candidate has no theoretical contribution)>",
+      "rationale": "<TODO[feasibility_validation.theoretical.rationale]: one sentence; if tight, name the missing prerequisite>"
+    },
+    "engineering": {
+      "verdict": "<TODO[feasibility_validation.engineering.verdict]: feasible | tight | infeasible | n/a (only when the candidate has no engineering contribution)>",
+      "rationale": "<TODO[feasibility_validation.engineering.rationale]: one sentence; if tight, name the binding implementation cost>"
+    },
+    "falsification": {
+      "verdict": "<TODO[feasibility_validation.falsification.verdict]: feasible | tight | infeasible>",
+      "rationale": "<TODO[feasibility_validation.falsification.rationale]: one sentence: the falsification_prediction experiment is concrete enough to run with available tooling>"
+    },
+    "overall": "unverified"
+  },
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2602.02110v1",
+      "venue_year": "arXiv 2026",
+      "delta": "The full-text-backed DINO-WM record constructs a systematic weight-only and joint weight-activation PTQ sweep over methods, granularity, modules, and planning horizons, whereas RankCal constructs a site-level counterfactual candidate-order influence profile over action-conditioned latent states and uses it for memory-constrained mixed W/A assignment."
+    },
+    {
+      "paper_id": "arxiv:2608.24855v1",
+      "venue_year": "arXiv 2026-08",
+      "delta": "The full-text-backed LeFlow record replaces repeated CEM search with rectified-flow latent trajectory generation, inverse-dynamics decoding, and frozen-LeWM rollout reranking, whereas RankCal leaves the planner and latent backbone fixed and changes the numerical PTQ calibration/allocation signal to preserve candidate ordering under multi-step quantized rollouts."
+    },
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "venue_year": "arXiv 2026",
+      "delta": "The connector-verified but abstract-only adjacent QuantWAMs record proposes coordinate-compatible activation evidence, joint video-action saliency, and fixed-intervention auditing for WAM PTQ, whereas RankCal targets latent-dynamics planner rankings without WAM future/action coupling and derives weight/activation bits from site-only ranking influence."
+    },
+    {
+      "paper_id": "arxiv:2602.11882v1",
+      "venue_year": "",
+      "delta": "The official-HTML full-text record for the user-supplied pure ID 2602.11882, Where Bits Matter in World-Model Planning: A Paired Mixed-Bit Study for Efficient Spatial Reasoning, compares paired mixed-bit/planner-budget allocations by DINO-WM planning success, whereas RankCal uses a frozen action-conditioned latent-dynamics, site-only candidate-order influence estimand, a measured system-level PeakBytes constraint, and an exact histogram-plus-bytes permutation. This is latent world-model planning rather than a WAM future/action-denoising prior; QuantWAMs remains the connector-verified but abstract-only adjacent WAM record."
+    }
+  ],
+  "reviewer_concerns_and_responses": [
+    {
+      "attack": "Paper-pointed threat: arxiv:2602.02110v1 (lit_table). arxiv:2602.02110v1 is the strongest run-pool threat: lit_table marks it host_recall, and the candidate identifies connector-verified H/html_arxiv full text; it already varies weight-only and joint W/A PTQ by module, granularity, and horizon and reports planning-objective/task-success mismatch. The supplemental review also supplies the exact identity and title arxiv:2602.11882v1, Where Bits Matter in World-Model Planning, with official-HTML sections 4–6 evidence of paired mixed-bit/planner-budget comparisons and planning-success allocation, so it is not dropped because of a failed title lookup; it also records arxiv:2607.28405v1 as connector-verified host_recall, while this run's candidate evidence is abstract-only with no fulltext cache entry (the supplemental review separately reports official-HTML section/equation checks). These priors threaten the broad decision-aware and mixed-precision framing, but the supplied evidence does not show the same imagined action-sequence latent-dynamics branch, frozen-model all-other-FP16 site-only candidate-order estimand, measured end-to-end PeakBytes-constrained mixed W/A assignment, or exact histogram-plus-bytes permutation; QuantWAMs remains a WAM joint future/action-denoising prior, not an exact branch match. The threat is therefore addressable differentiation, not exact-mechanism overlap or novelty certification.",
+      "severity": "non_blocking",
+      "response": "<TODO[reviewer_concerns_and_responses[0].response]: 2-3 sentences: explain where in the candidate (which field) the defense is anchored; reference the Phase 3.2 verdict_rationale when relevant>",
+      "fields_changed_to_address": [
+        "differentiation_from_lit"
+      ]
+    },
+    {
+      "attack": "Un-retrieved mechanism family flagged by the audit (parametric knowledge, not in the retrieved pool): value-aware and value-gradient-weighted model-learning objectives; query phrases such as 'value-aware model-based RL loss' and 'value-gradient weighted model learning' before treating decision-aware error as a novelty claim. — novelty vs this family is UNVERIFIED; run a targeted scoop-check on that vocabulary before investing.",
+      "severity": "non_blocking",
+      "response": "<TODO[reviewer_concerns_and_responses[1].response]: 1-2 sentences: state what a scoop-check on the named family must establish for the candidate's delta to survive (do NOT claim the check already passed)>",
+      "fields_changed_to_address": [
+        "differentiation_from_lit"
+      ]
+    },
+    {
+      "attack": "Gap-closure reject-check borderline on gap 1 (C00 (Reframe as a Solvable Object)): Proposing a new attribution definition without an axiomatic or causal argument for why it should count as ground-truth collapses the moment a reviewer asks why this is the real importance.",
+      "severity": "non_blocking",
+      "response": "<TODO[reviewer_concerns_and_responses[2].response]: 2-3 sentences: anchor the defense in a specific candidate field>",
+      "fields_changed_to_address": [
+        "core_mechanism_reasoning"
+      ]
+    }
+  ],
+  "domain_landscape": {
+    "n_papers": 57,
+    "pattern_distribution": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 20,
+        "share": 0.35,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 17,
+        "share": 0.3,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 13,
+        "share": 0.23,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 8,
+        "share": 0.14,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 7,
+        "share": 0.12,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 7,
+        "share": 0.12,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 7,
+        "share": 0.12,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 6,
+        "share": 0.11,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 5,
+        "share": 0.09,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 4,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 4,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 4,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "algebraic_equivalence_unification",
+        "count": 2,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      }
+    ],
+    "candidate_uses": [
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "role": "closes Gap 1",
+        "sub_pattern_id": "C00 (Reframe as a Solvable Object)",
+        "saturation_in_domain": "unknown"
+      }
+    ],
+    "position_note": "<TODO[domain_landscape.position_note]: one sentence describing how the candidate's chosen patterns sit relative to the area's pattern usage; descriptive, not prescriptive>"
+  },
+  "literature_breakdown": {
+    "summary": {
+      "n_phase0_total": 63,
+      "n_phase0_on_topic": 57,
+      "n_phase0_outside_taxonomy": 6,
+      "n_phase3_collision": 213
+    },
+    "phase0_by_pattern": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "pattern_name": "Adapt by Conditioning, Not Retraining",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:de1ce2f87e18481920b707937eea4cae6c190cfe",
+            "title": "In-Context Planning with Latent Temporal Abstractions",
+            "venue_year": "arXiv 2026-02",
+            "bottleneck_targeted": "Primitive-time planning causes branching and long horizons, while stationary fully observed dynamics fail under regime shifts."
+          }
+        ]
+      },
+      {
+        "pattern_id": "adapt_via_conditioning, decompose_and_delegate",
+        "pattern_name": "adapt_via_conditioning, decompose_and_delegate",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.06014v1",
+            "title": "PLAN-S: Bridging Planning with Latent Style Dynamics for Autonomous Driving World Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Entangled latent-to-planner pathways lack inspectable, style-controllable risk and drivability signals"
+          }
+        ]
+      },
+      {
+        "pattern_id": "adapt_via_conditioning, heterogeneous_decomposition",
+        "pattern_name": "adapt_via_conditioning, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.12403v1",
+            "title": "World Pilot: Steering Vision-Language-Action Models with World-Action Priors",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "静态 image-text grounding 缺少连续接触动力学；把 WAM prior 分为 scene-evolution latent 和 trajectory hint，分别条件化 perception 与 action generation。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "pattern_name": "Substitute the Operator or Representation",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:326af481ee2dc10919a1f185e8fc9edecdadc593",
+            "title": "Active Inference with Dynamic Planning and Information Gain in Continuous Space by Inferring Low-Dimensional Latent States",
+            "venue_year": "Entropy 2025",
+            "bottleneck_targeted": "High-dimensional continuous policy search is unstable and expensive for active inference."
+          },
+          {
+            "paper_id": "semanticscholar:ea2b5f2f71e58f8cbea1502f6d95042a4a07ef6e",
+            "title": "Planning as Descent: Goal-Conditioned Latent Trajectory Synthesis in Learned Energy Landscapes",
+            "venue_year": "arXiv 2025-12",
+            "bottleneck_targeted": "Direct policy learning and decoupled planning suffer from train-test mismatch and weak verification of generated trajectories."
+          },
+          {
+            "paper_id": "semanticscholar:eafde7c9ad8615ed36e95572cde9e74427df58fa",
+            "title": "Efficient Virtuoso: A Latent Diffusion Transformer Model for Goal-Conditioned Trajectory Planning",
+            "venue_year": "arXiv 2025-09",
+            "bottleneck_targeted": "Trajectory planners must jointly achieve fidelity, computational efficiency, and precise goal-conditioned control."
+          },
+          {
+            "paper_id": "semanticscholar:e306a1a1fcd7dc90d442bc6b84c093c03ed1199c",
+            "title": "HALO: Hybrid Auto-encoded Locomotion with Learned Latent Dynamics, Poincaré Maps, and Regions of Attraction",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Full-order hybrid locomotion is difficult to analyze, while latent stability and safety may not transfer to the robot."
+          },
+          {
+            "paper_id": "openalex:W4404485106",
+            "title": "LIRL: Latent Imagination-Based Reinforcement Learning for Efficient Coverage Path Planning",
+            "venue_year": "Symmetry 2024",
+            "bottleneck_targeted": "Coverage planning needs sample-efficient long-horizon foresight in unknown environments."
+          },
+          {
+            "paper_id": "openalex:W4405841970",
+            "title": "Exploring spiking neural networks for deep reinforcement learning in robotic tasks",
+            "venue_year": "Scientific Reports 2024",
+            "bottleneck_targeted": "Conventional ANN-based deep RL is costly for temporal robotic tasks, and suitable SNN depth and topology are uncertain."
+          },
+          {
+            "paper_id": "openalex:W4405785427",
+            "title": "From LLMs to Actions: Latent Codes as Bridges in Hierarchical Robot Control",
+            "venue_year": "arXiv 2024-10",
+            "bottleneck_targeted": "Natural-language interfaces are rigid for embodied plans and make end-to-end adaptation vulnerable to domain shift and forgetting."
+          },
+          {
+            "paper_id": "arxiv:2211.10438v7",
+            "title": "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models",
+            "venue_year": "arXiv 2022",
+            "bottleneck_targeted": "Activation outliers make joint W8A8 PTQ difficult even when weights are easier to quantize."
+          },
+          {
+            "paper_id": "arxiv:2210.17323v2",
+            "title": "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers",
+            "venue_year": "arXiv 2022",
+            "bottleneck_targeted": "Massive generative transformers impose prohibitive storage and inference costs, while existing compression methods do not preserve accuracy at this scale."
+          },
+          {
+            "paper_id": "dblp:journals/corr/abs-2405-16406",
+            "title": "SpinQuant: LLM quantization with learned rotations",
+            "venue_year": "International Conference on Learning Representations 2024",
+            "bottleneck_targeted": "Outliers in weights, activations, and KV cache cause large PTQ errors; learned rotations seek a function-preserving representation that is easier to quantize."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, adapt_via_conditioning",
+        "pattern_name": "architectural_operator_substitution, adapt_via_conditioning",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.08732v2",
+            "title": "Latent Geometry Beyond Search: Amortizing Planning in World Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "每步在线 trajectory search 成本高；用 current state、goal 和 horizon 条件化的 lightweight inverse-dynamics mapping 替代搜索。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, controlled_diagnostic_design, assumption_audit_and_pivot",
+        "pattern_name": "architectural_operator_substitution, controlled_diagnostic_design, assumption_audit_and_pivot",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.11521v2",
+            "title": "Keep the Future, Drop the Rollout: RIFT for World Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "WAM iterative video rollout 增加延迟；配对 cache interventions 区分 future consumption 与 production，再用 anticipation tokens 单次构建 future K/V cache。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, heterogeneous_decomposition",
+        "pattern_name": "architectural_operator_substitution, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "openalex:W4404373453",
+            "title": "Post Training Quantization Strategies for Diffusion Models",
+            "venue_year": "arXiv 2024-09",
+            "bottleneck_targeted": "Low-resource audio diffusion deployment requires selecting quantized operations and calibrating weights and activations without quality loss"
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, structural_prior_encoding",
+        "pattern_name": "architectural_operator_substitution, structural_prior_encoding",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.09828v2",
+            "title": "Latent Spatial Memory for Video World Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "RGB-space point-cloud memory 反复 rendering 和 VAE encoding 成本高且丢失 latent 信息；用 depth-guided 3D latent cache 与直接 warping 替代。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot, heterogeneous_decomposition",
+        "pattern_name": "assumption_audit_and_pivot, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "openalex:W4416252107",
+            "title": "Breaking Static Barriers: Dynamic Post-Training Quantization for Diffusion Models",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Static calibration and zero-points ignore denoising-step importance and skewed activation distributions"
+          },
+          {
+            "paper_id": "arxiv:2606.27780v2",
+            "title": "Understanding Rollout Error in Graph World Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "向量状态和 scalar amplification 假设忽略 graph topology 与 node-edge feedback；建立 topology-aware bounds 并按 critical nodes 加权训练。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot, reframe_as_solvable_object, heterogeneous_decomposition",
+        "pattern_name": "assumption_audit_and_pivot, reframe_as_solvable_object, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "arxiv:2607.10362v1",
+            "title": "A Control Theory of Predictability in Latent World Models",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Data-averaged prediction error is assumed to predict control quality despite planner-induced off-manifold state visitation"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "pattern_name": "Design a Confound-Isolating Diagnostic",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:b9eb8ba8467d4e8d50c41d4e66f96fa6ec173193",
+            "title": "Learning from Reward-Free Offline Data: A Case for Planning with Latent Dynamics Models",
+            "venue_year": "Neural Information Processing Systems 2025",
+            "bottleneck_targeted": "Offline reward-free learning must trade off data quality, generalization to unseen layouts, and trajectory stitching."
+          },
+          {
+            "paper_id": "arxiv:2605.23993v2",
+            "title": "Nano World Models: A Minimalist Implementation of Future Video Prediction",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "不同实现混杂架构、采样与条件注入选择，妨碍可复现实验；统一实现支持控制组件变量的比较。"
+          },
+          {
+            "paper_id": "arxiv:2602.02110v1",
+            "title": "An Empirical Study of World Model Quantization",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "PTQ effects in world-model planning vary with bit-width, granularity, module, and horizon, and can break alignment between the planning objective and task succe"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design, assumption_audit_and_pivot",
+        "pattern_name": "controlled_diagnostic_design, assumption_audit_and_pivot",
+        "papers": [
+          {
+            "paper_id": "arxiv:2607.05966v1",
+            "title": "Imagined Rollouts are Kinematic, Not Dynamic: A Diagnosis of Long-Horizon World-Model Failure",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Generic compounding-error explanations do not distinguish kinematic imagination from failure to model dynamics"
+          },
+          {
+            "paper_id": "arxiv:2605.27589v1",
+            "title": "What-If World: A Causal Benchmark for General World Models in Embodied Scenarios",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "单视频 plausibility 评分掩盖对物理干预不敏感的模型；匹配 prompt pairs 只改变一个物理变量并比较结果。"
+          },
+          {
+            "paper_id": "arxiv:2608.12078v1",
+            "title": "Better Slots, Better Worlds: Representation Quality & Robustness in Object-Centric World Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "固定 slot encoder 和仅 in-distribution 评测混淆 OC bias、slot quality 与 pretrained features 的贡献；控制表征质量与分布变化进行比较。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design, reframe_as_solvable_object",
+        "pattern_name": "controlled_diagnostic_design, reframe_as_solvable_object",
+        "papers": [
+          {
+            "paper_id": "arxiv:2607.05544v2",
+            "title": "Dynamic Evaluation of Classical and Control-Aware Optimal Trajectory Planning in Robot Manipulators",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "kinematic smoothness 不保证动态执行效率；将 dynamics 与 actuator effort 纳入 finite-horizon optimization，并固定闭环条件比较 planners。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design, structural_prior_encoding",
+        "pattern_name": "controlled_diagnostic_design, structural_prior_encoding",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.23526v1",
+            "title": "Correcting a learned physical invariant improves world-model rollouts",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "A world model may encode a physical invariant yet violate it during autonomous latent rollouts"
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "pattern_name": "Decompose and Delegate to Solvers",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:996f5d92e6c6a6b88a98657e7a664bcc29cb5c14",
+            "title": "ThinkAct: Vision-Language-Action Reasoning via Reinforced Visual Latent Planning",
+            "venue_year": "Neural Information Processing Systems 2025",
+            "bottleneck_targeted": "End-to-end VLA policies lack explicit long-horizon reasoning and struggle to adapt action execution to task variation."
+          },
+          {
+            "paper_id": "semanticscholar:11c3d2fc3bd55e3d735e6f6034d94266fe530587",
+            "title": "FF-JEPA: Long-Horizon Planning in World Models with Latent Planners",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Flat latent-world-model planning is computationally expensive, goal-image dependent, and collapses over long horizons."
+          },
+          {
+            "paper_id": "semanticscholar:477e20594635eb0ced89bbf2dd9ec873278cf48d",
+            "title": "Hierarchical Planning with Latent World Models",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Long-horizon visual planning suffers from compounded prediction error and exponential search over primitive actions."
+          },
+          {
+            "paper_id": "openalex:W4415524153",
+            "title": "Physically Consistent Humanoid Loco-Manipulation Using Latent Diffusion Models",
+            "venue_year": "arXiv 2025-09",
+            "bottleneck_targeted": "Long-horizon humanoid loco-manipulation needs physically consistent contacts and whole-body trajectories."
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign, controlled_diagnostic_design",
+        "pattern_name": "generative_process_redesign, controlled_diagnostic_design",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.15156v3",
+            "title": "Low-Rank Dynamics-Effective Latent Carriers for Counterfactual Rollout in Learned World Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "需要以小型 hidden-state intervention 启动目标 counterfactual future；由训练差分学习 low-rank carrier 并用一次 patch 驱动自主 rollout。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "pattern_name": "Decompose for Differentiated Treatment",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:8a89c23591be3467eceda0b786ffb90998258136",
+            "title": "RAY-TOLD: Ray-Based Latent Dynamics for Dense Dynamic Obstacle Avoidance with TDMPC",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Reactive short-horizon control gets trapped in local minima in dense dynamic crowds."
+          },
+          {
+            "paper_id": "semanticscholar:a2782010c9e695b00d36e3ed958545917eaad030",
+            "title": "LDA-1B: Scaling Latent Dynamics Action Model via Universal Embodied Data Ingestion",
+            "venue_year": "Robotics 2026",
+            "bottleneck_targeted": "Heterogeneous embodied data vary in quality, modality, and timing, limiting scalable dynamics learning and transfer."
+          },
+          {
+            "paper_id": "arxiv:2607.09776v2",
+            "title": "HELP: Human-Efficient Large-Scale Robot Post-Training with Rollout Segmentation",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "机器人迭代 post-training 的人工监督成本高，rollout 数据质量混杂；分工监督并按 progress、idle、failure、recovery 分段筛选数据。"
+          },
+          {
+            "paper_id": "arxiv:2607.28405v1",
+            "title": "QuantWAMs: Calibrating at the Right Granularity for World Action Models",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Open-loop, homogeneous, deployment-mismatched PTQ is poorly suited to iterative denoising and closed-loop World Action Model execution."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, adapt_via_conditioning",
+        "pattern_name": "heterogeneous_decomposition, adapt_via_conditioning",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.31361v1",
+            "title": "Dreaming Of Others: Latent Teammate Modeling In World Models For Multi-Agent Reinforcement Learning",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "单智能体 world model 难以表达不可观测 teammate policy 的不确定性；分解 environment/teammate latents 并用 partner embeddings 条件化 actor/critic。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, architectural_operator_substitution",
+        "pattern_name": "heterogeneous_decomposition, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "openalex:W7126047761",
+            "title": "Sensitivity-Aware Post-training Quantization for Deep Neural Networks",
+            "venue_year": "Lecture notes in computer science 2026",
+            "bottleneck_targeted": "Uniform precision allocation wastes capacity when layers have different sensitivity to quantization error"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, self_supervised_signal_engineering",
+        "pattern_name": "heterogeneous_decomposition, self_supervised_signal_engineering",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.15725v1",
+            "title": "DiLA: Disentangled Latent Action World Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Latent-action learning trades off abstract controllable structure against high-fidelity video generation"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, structural_prior_encoding",
+        "pattern_name": "heterogeneous_decomposition, structural_prior_encoding",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.05092v2",
+            "title": "Driver-WM: A Driver-Centric Traffic-Conditioned Latent World Model for In-Cabin Dynamics Rollout",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "驾驶员建模偏重识别而缺少 traffic-conditioned 多步预测；内外场景双流由严格时间因果的 gated injection 耦合。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, targeted_self_supervised_objective",
+        "pattern_name": "heterogeneous_decomposition, targeted_self_supervised_objective",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.17165v1",
+            "title": "Factorized Latent Dynamics for Video JEPA: An Empirical Study of Auxiliary Objectives",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Video-JEPA auxiliary objectives 在 appearance 与 motion 能力间产生容量权衡；分解 appearance/dynamics subspaces，并对困难区域加权训练。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "pattern_name": "Reframe as a Solvable Object",
+        "papers": [
+          {
+            "paper_id": "openalex:W4414247051",
+            "title": "Revisiting natural selection: evolving dynamic neural networks using genetic algorithms for complex control tasks",
+            "venue_year": "Artificial Intelligence Review 2025",
+            "bottleneck_targeted": "Neural architecture and controller optimization incur excessive training and inference computation."
+          },
+          {
+            "paper_id": "openalex:W4403021210",
+            "title": "Solving Motion Planning Tasks with a Scalable Generative Model",
+            "venue_year": "Lecture notes in computer science 2024",
+            "bottleneck_targeted": "Conventional motion planning is recast as generation to improve scalability across planning tasks"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object, architectural_operator_substitution",
+        "pattern_name": "reframe_as_solvable_object, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "openalex:W4405022723",
+            "title": "Monte Carlo tree search with spectral expansion for planning with dynamical systems",
+            "venue_year": "Science Robotics 2024",
+            "bottleneck_targeted": "Discrete MCTS representations are incompatible with continuous robot dynamics and real-time planning"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object, decompose_and_delegate, architectural_operator_substitution",
+        "pattern_name": "reframe_as_solvable_object, decompose_and_delegate, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.24855v1",
+            "title": "LeFlow: Generative Latent Flow Planning for World Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "每次 replanning 重新进行 action-space optimization，无法复用规划经验；改为 latent trajectory generation、inverse dynamics 解码与 world-model 验证。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object, structural_prior_encoding",
+        "pattern_name": "reframe_as_solvable_object, structural_prior_encoding",
+        "papers": [
+          {
+            "paper_id": "arxiv:2604.21989v2",
+            "title": "Model Predictive Control of Hybrid Dynamical Systems",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "MPC must handle continuous and discrete dynamics, constraints, and stability within one predictive-control formulation"
+          }
+        ]
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous, architectural_operator_substitution",
+        "pattern_name": "relax_discrete_search_to_continuous, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "openalex:W4405121697",
+            "title": "Learning Non-uniform Step Sizes for Neural Network Quantization",
+            "venue_year": "Lecture notes in computer science 2024",
+            "bottleneck_targeted": "Uniform quantization step sizes limit representation fidelity across heterogeneous neural-network values"
+          }
+        ]
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering, decompose_and_delegate",
+        "pattern_name": "self_supervised_signal_engineering, decompose_and_delegate",
+        "papers": [
+          {
+            "paper_id": "arxiv:2605.22882v4",
+            "title": "GEM-4D: Geometry-Enhanced Video World Models for Robot Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "视觉逼真的预测缺少跨帧物理点一致性；从 geometry foundation model 蒸馏 dense correspondence，并由 inverse dynamics 将 rollout 转成动作。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering, generative_process_redesign",
+        "pattern_name": "self_supervised_signal_engineering, generative_process_redesign",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.24525v1",
+            "title": "RoG-DAgger: Rollout-Guided Post-Training for End-to-End Driving",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "DAgger 的 expert 搜索空间、takeover 时机与 privileged visibility 限制监督质量；用 kinematic rollout 生成 preventive supervision 并重设接管时机。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "pattern_name": "Encode Structure by Construction",
+        "papers": [
+          {
+            "paper_id": "openalex:W4405785811",
+            "title": "Kinematics-aware Trajectory Generation and Prediction with Latent Stochastic Differential Modeling",
+            "venue_year": "arXiv 2024-10",
+            "bottleneck_targeted": "Purely learned trajectory models can violate physical kinematics, while fixed physical models lack flexibility in complex scenes"
+          }
+        ]
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "pattern_name": "Design a Property-Targeting Pretext Objective",
+        "papers": [
+          {
+            "paper_id": "arxiv:2603.12231v3",
+            "title": "Temporal Straightening for Latent Planning",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "语义视觉表征的曲率与无关信息使 latent distance 和 planning objective 条件性变差；用 curvature regularizer 训练局部更直的轨迹。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective, assumption_audit_and_pivot",
+        "pattern_name": "targeted_self_supervised_objective, assumption_audit_and_pivot",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.25017v1",
+            "title": "Rollout-Decoded Reconstruction for Long-Horizon Prediction in Latent World Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Decoder training on observation-anchored latents mismatches free-running rollout deployment"
+          }
+        ]
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective, heterogeneous_decomposition",
+        "pattern_name": "targeted_self_supervised_objective, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.14125v1",
+            "title": "Traj-LeWM: Path-Aware World-Model Planning via Latent Trajectory Cost",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Endpoint-only planning and local transition training miss trajectory-level preferences and intermediate path quality"
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "pattern_name": "Unify Heterogeneous Inputs into One Space",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:f07f070b170faf2bf390119c08af46a0a2c27549",
+            "title": "Unifying Model-Free Efficiency and Model-Based Representations via Latent Dynamics",
+            "venue_year": "arXiv 2026-02",
+            "bottleneck_targeted": "Model-free efficiency and model-based representation or sample efficiency are difficult to obtain in one adaptable algorithm."
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation, generative_process_redesign",
+        "pattern_name": "unify_into_shared_representation, generative_process_redesign",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.20627v1",
+            "title": "Latent Goal Prediction from Language for Model-Based Planning",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "长时域预测误差累积，language goal 难以转化为可优化的局部目标；LAGO 在同一 latent space 预测并在线更新 subgoals 和 action-conditioned rollouts。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation, heterogeneous_decomposition",
+        "pattern_name": "unify_into_shared_representation, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "openalex:W4414050443",
+            "title": "Unified World Models: Coupling Video and Action Diffusion for Pretraining on Large Robotic Datasets",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Separate video and action supervision prevents scalable use of heterogeneous robot and action-free video data"
+          }
+        ]
+      }
+    ],
+    "phase0_outside_taxonomy": [
+      {
+        "paper_id": "openalex:W4414050589",
+        "title": "Learning to Act Anywhere with Task-centric Latent Actions",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "The retrieved abstract is truncated and supplies no reliable methodological evidence for a pattern assignment."
+      },
+      {
+        "paper_id": "openalex:W4414079221",
+        "title": "From Foresight to Forethought: VLM-In-the-Loop Policy Steering via Latent Alignment",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "The retrieved abstract is truncated and supplies no reliable methodological evidence for a pattern assignment."
+      },
+      {
+        "paper_id": "openalex:W4403877994",
+        "title": "Post-training Quantization with Progressive Calibration and Activation Relaxing for Text-to-Image Diffusion Models",
+        "venue_year": "Lecture notes in computer science 2024",
+        "bottleneck_targeted": "Title indicates calibration and activation treatment for diffusion-model PTQ, but the available record has no abstract"
+      },
+      {
+        "paper_id": "openalex:W7124949323",
+        "title": "Post-Training Quantization Based on Class Activation Map Calibration",
+        "venue_year": "Lecture notes in computer science 2026",
+        "bottleneck_targeted": "Title indicates CAM-guided calibration for PTQ, but the available record has no abstract"
+      },
+      {
+        "paper_id": "openalex:W4404005323",
+        "title": "MetaAug: Meta-data Augmentation for Post-training Quantization",
+        "venue_year": "Lecture notes in computer science 2024",
+        "bottleneck_targeted": "Title indicates meta-data augmentation for PTQ, but the available record has no abstract"
+      },
+      {
+        "paper_id": "dblp:journals/corr/abs-2306-00978",
+        "title": "AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration",
+        "venue_year": "arXiv 2023",
+        "bottleneck_targeted": "Low-bit weight-only compression must remain hardware-friendly while preserving generalization and avoiding overfitting to the calibration set."
+      }
+    ],
+    "phase3_collision": [
+      {
+        "paper_id": "openalex:W7148176876",
+        "title": "Let the Agent Steer: Closed-Loop Ranking Optimization via Influence Exchange",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.07304v1",
+        "title": "CAPE: Contrastive Action-conditioned Parallel Encoding for Embodied Planning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7172068766",
+        "title": "A Receding Horizon Control For General Assembly Line Balancing Problems",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7203683039",
+        "title": "Impression Share Prediction: An Offline Evaluation Task for Ranking Systems",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7159733750",
+        "title": "Application-Aware Twin-in-the-Loop Planning for Federated Split Learning over Wireless Edge Networks",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.12239v1",
+        "title": "HAMP-LIC: Hessian-Aware Mixed-Precision Post-Training Quantization for Learned Image Compression",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.06832v1",
+        "title": "Receding-Horizon Nullspace Optimization for Actuation-Aware Control Allocation in Omnidirectional UAVs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.11572v1",
+        "title": "DA-PTQ: Drift-Aware Post-Training Quantization for Efficient Vision-Language-Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.10967v2",
+        "title": "Performance Evaluation of Stabilized Corrections for Mixed Precision Runge--Kutta Methods",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7137934477",
+        "title": "InfoQ: Mixed-Precision Quantization via Global Information Flow",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.07080v1",
+        "title": "Mixed precision explicit numerical methods for ordinary differential equations",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.14369v1",
+        "title": "Mixed precision and mixed accuracy explicit two-derivative Runge--Kutta methods",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.04828v1",
+        "title": "Mixed precision Newton's method for optimization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.18717v1",
+        "title": "Adaptive Nonlinear Control with Online Identification and Receding-Horizon Optimization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.01985v2",
+        "title": "World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.07799v1",
+        "title": "MWM: Mobile World Models for Action-Conditioned Consistent Prediction",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.16871v2",
+        "title": "SADP: Subgoal-Aware Diffusion Policy for Long-Horizon Manipulation Learned from Foundation Model Generated Demonstrations",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7126058819",
+        "title": "Accuracy-Aware Mixed-Precision GPU Auto-Tuning",
+        "venue_year": "IEEE Transactions on Parallel and Distributed Systems 2026"
+      },
+      {
+        "paper_id": "openalex:W7202193593",
+        "title": "A Structural Dynamics Graph World Model: Unified Modeling, Constrained Rollout, and Interpretable Calibration",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7161576323",
+        "title": "A fuzzy DEMATEL approach to identify and mitigate barriers to consumer adoption of sustainable products",
+        "venue_year": "Heritage and Sustainable Development ISSN 2712-0554 2026"
+      },
+      {
+        "paper_id": "openalex:W4417122982",
+        "title": "A Novel Softsign Fractional-Order Controller Optimized by an Intelligent Nature-Inspired Algorithm for Magnetic Levitation Control",
+        "venue_year": "Fractal and Fractional 2025"
+      },
+      {
+        "paper_id": "openalex:W7167380867",
+        "title": "Repair the Amplifier, Not the Symptom: Stable World-Model Correction for Agent Rollouts",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7153671532",
+        "title": "FP4 Explore, BF16 Train: Diffusion Reinforcement Learning via Efficient Rollout Scaling",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7138992485",
+        "title": "Bacteriophage Therapy Against Shigella spp.: A Precision Antimicrobial Strategy",
+        "venue_year": "Antibiotics 2026"
+      },
+      {
+        "paper_id": "openalex:W7155452394",
+        "title": "SCATR: Simple Calibrated Test-Time Ranking",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7125807733",
+        "title": "Controlling Mixed Mo/MoS 2 Domains on Si by Molecular Beam Epitaxy for the Hydrogen Evolution Reaction",
+        "venue_year": "ACS Nano 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.09529v1",
+        "title": "VL-Calibration: Decoupled Confidence Calibration for Large Vision-Language Models Reasoning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2511.13710v1",
+        "title": "From Power to Precision: Learning Fine-grained Dexterity for Multi-fingered Robotic Hands",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.06486v1",
+        "title": "Beyond Attention: Signed Integrated Gradients Attribution in a BiomeGPT-Style Microbiome Transformer",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.04538v1",
+        "title": "InverseNet: Benchmarking Operator Mismatch and Calibration Across Compressive Imaging Modalities",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.01956v1",
+        "title": "Receding-Horizon Nonlinear Optimal Control With Safety Constraints Using Constrained Approximate Dynamic Programming",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.14730v1",
+        "title": "Hierarchical GRU with Input-Conditioned Slot Queries for Ball Action Anticipation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.17464v1",
+        "title": "Infinite-Horizon Sparse Optimal Control: Solution through a Finite-Horizon Subproblem and Its Receding-Horizon Implementation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.29423v1",
+        "title": "Improving Swaption Calibration in Factor HJM Stochastic Volatility Models: A First-Order Correction to Frozen Swap-Rate Loadings",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.29283v1",
+        "title": "Receding-Horizon Policy Gradient for Polytopic Controller Synthesis",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.29360v1",
+        "title": "MiraBench: Evaluating Action-Conditioned Reliability in Robotic World Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.12430v1",
+        "title": "A mixed precision algorithm for the matrix square root",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.24662v2",
+        "title": "The Invisible Editorial Layer: Formalizing Undisclosed Inference-Time Steering, Probability Placement, and the Attribution Problem in Deployed Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.11640v2",
+        "title": "Fill-Side Behavioral Concentration on Polymarket: Identification Limits under Record-Level Attribution",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.26835v1",
+        "title": "A sharp order-three obstruction to the aggregation of conditional price-of-risk attribution",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7140128959",
+        "title": "Mixed-precision numerics in scientific applications: survey and perspectives",
+        "venue_year": "The Journal of Supercomputing 2026"
+      },
+      {
+        "paper_id": "openalex:W7201885863",
+        "title": "Data-Driven Decision-Making under Uncertainty in Surgery Planning",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7147046950",
+        "title": "Optimization of Tractor Battery Temperature Control Performance Based on Piecewise Linear Model Predictive Control",
+        "venue_year": "Processes 2026"
+      },
+      {
+        "paper_id": "openalex:W4417357609",
+        "title": "Metal‒organic frameworks for on-demand drug release and precision drug delivery",
+        "venue_year": "One Health Advances 2025"
+      },
+      {
+        "paper_id": "openalex:W7161204180",
+        "title": "Rollout Cards: A Reproducibility Standard for Agent Research",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7131674698",
+        "title": "From Recommendations to Delegation: A Systematic Review Mapping Agentic AI in E-Commerce and Its Consumer Effects",
+        "venue_year": "Information 2026"
+      },
+      {
+        "paper_id": "openalex:W7124897383",
+        "title": "Governance Frameworks for Enterprise AI Systems operating in Regulated Environments",
+        "venue_year": "International Journal of Computer Applications 2026"
+      },
+      {
+        "paper_id": "openalex:W4417330996",
+        "title": "Vegetation Indices from UAV Imagery: Emerging Tools for Precision Agriculture and Forest Management",
+        "venue_year": "AgriEngineering 2025"
+      },
+      {
+        "paper_id": "openalex:W7160751592",
+        "title": "Resource allocation for large-scale phenomena",
+        "venue_year": "Dépôt institutionnel de l'Université libre de Bruxelles (Université Libre de Bruxelles) 2026"
+      },
+      {
+        "paper_id": "openalex:W7168292172",
+        "title": "Resource Allocation in Semantic Communication: A Trade-off Between Transmission and Knowledge",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W4416378548",
+        "title": "Cooperative ISAC for LAE: Joint Trajectory Planning, Power Allocation, and Dynamic Time Division",
+        "venue_year": "IEEE Transactions on Cognitive Communications and Networking 2026"
+      },
+      {
+        "paper_id": "openalex:W7155174805",
+        "title": "Recent perspectives on precision-targeting therapy against oral biofilm",
+        "venue_year": "Journal of Oral Microbiology 2026"
+      },
+      {
+        "paper_id": "openalex:W7167622353",
+        "title": "Sample-Efficient Adaptive Heuristic Selection via Offline Rollout Distillation for Dynamic Warehouse Order Dispatching",
+        "venue_year": "SSRN Electronic Journal 2026"
+      },
+      {
+        "paper_id": "openalex:W7167507847",
+        "title": "Applying Artificial Intelligence and machine learning in precision nutrition",
+        "venue_year": "Nature Communications 2026"
+      },
+      {
+        "paper_id": "openalex:W7169473292",
+        "title": "Calibration-First Reward-Component Auditing for Reinforcement Learning Control in Smart Greenhouses",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7117112714",
+        "title": "Future Circular Collider Feasibility Study Report",
+        "venue_year": "The European Physical Journal C 2025"
+      },
+      {
+        "paper_id": "openalex:W7168054249",
+        "title": "What LLM Forecasters Know but Don't Say: Probing Internal Representations for Calibration and Faithfulness",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2512.18641v3",
+        "title": "The Choice of Line Lengths in Multiline Thru-Reflect-Line Calibration",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2603.11147v3",
+        "title": "Catalogue Grounded Multimodal Attribution for Museum Video under Resource and Regulatory Constraints",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.19388v1",
+        "title": "Quantization Beyond Uniform Bit Allocation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.21076v1",
+        "title": "C-PTQ: Fisher-weighted Channel-wise Sensitivity for Post-training Quantization of MLLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.19520v2",
+        "title": "Decomposing Crowd Wisdom: Domain-Specific Calibration Dynamics in Prediction Markets",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.27149v1",
+        "title": "ConformaDecompose: Explaining Uncertainty via Calibration Localization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.17693v1",
+        "title": "A Case Study of Selected PTQ Baselines for Reasoning LLMs on Ascend NPU",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.15353v1",
+        "title": "Mixed Bourgain-Morrey spaces and their applications to boundedness of operators",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4416740529",
+        "title": "A tiny inertial transformer for human activity recognition via multimodal knowledge distillation and explainable AI",
+        "venue_year": "Scientific Reports 2025"
+      },
+      {
+        "paper_id": "openalex:W7167590280",
+        "title": "SONDE: a database for exploring the semantics of nouns derived from verbs in French",
+        "venue_year": "Morphology 2026"
+      },
+      {
+        "paper_id": "openalex:W7158680564",
+        "title": "Energy-Balanced Task Allocation and Dynamic Rescheduling for Multi-Robot Systems in Complex Environments",
+        "venue_year": "Applied Sciences 2026"
+      },
+      {
+        "paper_id": "openalex:W7154451873",
+        "title": "Multi-Strategy Improved Stellar Oscillation Optimizer for Heterogeneous UAV Task Allocation in Post-Disaster Rescue",
+        "venue_year": "Drones 2026"
+      },
+      {
+        "paper_id": "openalex:W7117120529",
+        "title": "AI-powered in silico twins: redefining precision medicine through simulation, personalization, and predictive healthcare",
+        "venue_year": "Saudi Pharmaceutical Journal 2025"
+      },
+      {
+        "paper_id": "openalex:W7126437455",
+        "title": "Smart Predictive Maintenance: A TCN-Based System for Early Fault Detection in Industrial Machinery",
+        "venue_year": "Machines 2026"
+      },
+      {
+        "paper_id": "openalex:W7117491041",
+        "title": "A Comprehensive Review of Path-Planning Algorithms for Multi-UAV Swarms",
+        "venue_year": "Drones 2025"
+      },
+      {
+        "paper_id": "openalex:W7125456182",
+        "title": "Engineering bacteriophages for gut health: precision antimicrobials and beyond",
+        "venue_year": "Journal of Nanobiotechnology 2026"
+      },
+      {
+        "paper_id": "openalex:W7127452619",
+        "title": "Bibliometric and Visualization Analysis of Path Planning and Trajectory Tracking Research for Autonomous Vehicles from 2000 to 2025",
+        "venue_year": "Sensors 2026"
+      },
+      {
+        "paper_id": "openalex:W4416280551",
+        "title": "Emerging AI- and Biomarker-Driven Precision Medicine in Autoimmune Rheumatic Diseases: From Diagnostics to Therapeutic Decision-Making",
+        "venue_year": "Rheumato 2025"
+      },
+      {
+        "paper_id": "openalex:W7134055567",
+        "title": "Research on Hierarchical Collaborative Control of Dual-Axis Drive Hybrid Electric Tractor for Hill and Mountain Terrain Considering Traction Efficiency and Energy Consumption Economy",
+        "venue_year": "World Electric Vehicle Journal 2026"
+      },
+      {
+        "paper_id": "openalex:W7169797388",
+        "title": "The Five-Year Horizon: Quantum Computing and the Philosophy of Technical Becoming",
+        "venue_year": "Philosophies 2026"
+      },
+      {
+        "paper_id": "openalex:W7136551414",
+        "title": "Adaptive Compressed Sensing Differential Privacy Federated Learning Based on Orbital Spatiotemporal Characteristics in Space–Air–Ground Networks",
+        "venue_year": "Sensors 2026"
+      },
+      {
+        "paper_id": "openalex:W7162817716",
+        "title": "Affective Music Recommendation: A Rollout-Based World Model for Offline Preference Optimization",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4416722817",
+        "title": "Precision‐Engineered Poly(GMA‐EGDMA) Microspheres for Multifunctional Applications",
+        "venue_year": "Particle & Particle Systems Characterization 2025"
+      },
+      {
+        "paper_id": "openalex:W7116771811",
+        "title": "Cancer-associated fibroblasts at the crossroads of tumor progression and therapy resistance: from heterogeneity to precision reprogramming",
+        "venue_year": "Journal of the Egyptian National Cancer Institute 2025"
+      },
+      {
+        "paper_id": "openalex:W7160161627",
+        "title": "Designing meaningful human oversight in AI",
+        "venue_year": "AI and Ethics 2026"
+      },
+      {
+        "paper_id": "openalex:W7204214391",
+        "title": "Perturb the Thought, Not the Pixels: Latent-Space Rollout Diversification for Reinforcement Learning of Vision-Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7121650478",
+        "title": "Knowledge-graph embeddings for osteoarthritis candidate prediction",
+        "venue_year": "npj Digital Medicine 2026"
+      },
+      {
+        "paper_id": "openalex:W4417517358",
+        "title": "Must Read: A Comprehensive Survey of Computational Persuasion",
+        "venue_year": "ACM Computing Surveys 2026"
+      },
+      {
+        "paper_id": "openalex:W7159649464",
+        "title": "Encouraging a move toward precision geromedicine",
+        "venue_year": "Geromedicine 2026"
+      },
+      {
+        "paper_id": "openalex:W7119467537",
+        "title": "Digital Twins for Cows and Chickens: From Hype Cycles to Hard Evidence in Precision Livestock Farming",
+        "venue_year": "Agriculture 2026"
+      },
+      {
+        "paper_id": "openalex:W7124172401",
+        "title": "Anti-Fragile Well-Being: A Cultural Systems Framework for Adaptive Public Policy",
+        "venue_year": "Wellbeing Futures Innovation Policy and Research 2025"
+      },
+      {
+        "paper_id": "openalex:W7148594679",
+        "title": "In vivo CAR-T therapy: from molecular design to precision delivery",
+        "venue_year": "Journal of Nanobiotechnology 2026"
+      },
+      {
+        "paper_id": "openalex:W4416685865",
+        "title": "Precision calculation of N eff with neutrino direct simulation Monte Carlo",
+        "venue_year": "Physical review. D/Physical review. D. 2025"
+      },
+      {
+        "paper_id": "openalex:W7131624397",
+        "title": "Genetic Algorithm-Based Dynamic Volt–VAR Control Using D-STATCOM for Voltage Profile Enhancement in Distribution Systems",
+        "venue_year": "Energies 2026"
+      },
+      {
+        "paper_id": "openalex:W4416502870",
+        "title": "Nutrigenomics meets multi-omics: integrating genetic, metabolic, and microbiome data for personalized nutrition strategies",
+        "venue_year": "Genes & Nutrition 2025"
+      },
+      {
+        "paper_id": "openalex:W7119110410",
+        "title": "Analytic regression of Feynman integrals from high-precision numerical sampling",
+        "venue_year": "Journal of High Energy Physics 2026"
+      },
+      {
+        "paper_id": "arxiv:2406.08155v2",
+        "title": "QuantMoE-Bench: Examining Post-Training Quantization for Mixture-of-Experts",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2606.04980v1",
+        "title": "AlphaQ: Calibration-Free Bit Allocation for Mixture-of-Experts Quantization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.04308v1",
+        "title": "Activation Outliers in Transformer Quantization: Reproduction, Statistical Analysis, and Deployment Tradeoffs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.00573v1",
+        "title": "LASER: Loss-Aware Singular-value Decomposition and Rank Allocation for Efficient Low-Precision Vision-Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.05902v2",
+        "title": "CoreQ: Learning-Free Mismatch Correction and Successive Rounding for Quantization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4386065704",
+        "title": "Post-Training Quantization on Diffusion Models",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4377714918",
+        "title": "Generative Data Free Model Quantization With Knowledge Matching for Classification",
+        "venue_year": "IEEE Transactions on Circuits and Systems for Video Technology 2023"
+      },
+      {
+        "paper_id": "openalex:W4402727767",
+        "title": "Hessian-Aware KV Cache Quantization for LLMs",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4402754257",
+        "title": "Enhancing Post-Training Quantization Calibration Through Contrastive Learning",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "arxiv:2505.14302v1",
+        "title": "Scaling Law for Quantization-Aware Training",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2402.14866v2",
+        "title": "APTQ: Attention-aware Post-Training Mixed-Precision Quantization for Large Language Models",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2511.19705v1",
+        "title": "CafeQ: Calibration-free Quantization via Learned Transformations and Adaptive Rounding",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.13966v1",
+        "title": "QUASAR: Lowering the Loss Floor of Quantization-Aware Training with Loss-Aware Reconstruction",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2307.00331v2",
+        "title": "Quantization Variation: A New Perspective on Training Transformers with Low-Bit Precision",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2309.05516v5",
+        "title": "Optimize Weight Rounding via Signed Gradient Descent for the Quantization of LLMs",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2310.03661v3",
+        "title": "Robustness-Guided Image Synthesis for Data-Free Quantization",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2307.00498v2",
+        "title": "Data-Free Quantization via Mixed-Precision Compensation without Fine-Tuning",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "openalex:W4412423685",
+        "title": "The counterfactual challenge: How machine learning can enhance policy evaluation",
+        "venue_year": "Journal of Policy Modeling 2025"
+      },
+      {
+        "paper_id": "openalex:W4320721392",
+        "title": "A Practical Mixed Precision Algorithm for Post-Training Quantization",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4387967981",
+        "title": "SEAM: Searching Transferable Mixed-Precision Quantization Policy through Large Margin Regularization",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4367060479",
+        "title": "DeepGEMM: Accelerated Ultra Low-Precision Inference on CPU Architectures using Lookup Tables",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4366851181",
+        "title": "Transformer-Based Autonomous Driving Models and Deployment-Oriented Compression: A Survey",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4404411631",
+        "title": "FireFly-S: Exploiting Dual-Side Sparsity for Spiking Neural Networks Acceleration With Reconfigurable Spatial Architecture",
+        "venue_year": "IEEE Transactions on Circuits and Systems I Regular Papers 2024"
+      },
+      {
+        "paper_id": "arxiv:2407.15508v3",
+        "title": "Compensate Quantization Errors+: Quantized Models Are Inquisitive Learners",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2401.03462v3",
+        "title": "Long Context Compression with Activation Beacon",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2606.29239v3",
+        "title": "QuantGuard: Learnable Rounding for Repairing Quantization-Conditioned Backdoors in LLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2505.18663v4",
+        "title": "DVD-Quant: Data-free Video Diffusion Transformers Quantization",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2307.08265v3",
+        "title": "Extreme Image Compression using Fine-tuned VQGANs",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2501.05278v1",
+        "title": "Off-Policy Evaluation and Counterfactual Methods in Dynamic Auction Environments",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2507.14481v1",
+        "title": "DFQ-ViT: Data-Free Quantization for Vision Transformers without Fine-tuning",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2401.07957v1",
+        "title": "Machine Perceptual Quality: Evaluating the Impact of Severe Lossy Compression on Audio and Image Models",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2509.16989v3",
+        "title": "PTQTP: Post-Training Quantization to Trit-Planes for Large Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2304.06745v1",
+        "title": "End-to-end codesign of Hessian-aware quantized neural networks for FPGAs and ASICs",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2606.29337v1",
+        "title": "W4A4 Quantization for Inference on Wan2.2-I2V-A14B",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2506.05664v1",
+        "title": "BAQ: Efficient Bit Allocation Quantization for Large Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2412.08052v2",
+        "title": "CANDOR: Counterfactual ANnotated DOubly Robust Off-Policy Evaluation",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2509.03054v4",
+        "title": "Calibration and Transformation-Free Weight-Only LLMs Quantization via Dynamic Grouping",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2308.07209v1",
+        "title": "Unified Data-Free Compression: Pruning and Quantization without Fine-Tuning",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2604.08874v3",
+        "title": "An Auditable Policy-Simulation Framework for Student Dropout in Intervention-Free Data",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4376455107",
+        "title": "DRL-Driven Dynamic Resource Allocation for Task-Oriented Semantic Communication",
+        "venue_year": "IEEE Transactions on Communications 2023"
+      },
+      {
+        "paper_id": "openalex:W4408267093",
+        "title": "A KWS System for Edge-Computing Applications with Analog-based Feature Extraction and Learned Step Size Quantized Classifier",
+        "venue_year": "Preprints.org 2025"
+      },
+      {
+        "paper_id": "openalex:W4396834201",
+        "title": "End-to-end codesign of Hessian-aware quantized neural networks for FPGAs",
+        "venue_year": "ACM Transactions on Reconfigurable Technology and Systems 2024"
+      },
+      {
+        "paper_id": "openalex:W4362496273",
+        "title": "Quantization Bits Allocation for Wireless Federated Learning",
+        "venue_year": "IEEE Transactions on Wireless Communications 2023"
+      },
+      {
+        "paper_id": "openalex:W4318823171",
+        "title": "Towards Feature Distribution Alignment and Diversity Enhancement for Data-Free Quantization",
+        "venue_year": "2022 IEEE International Conference on Data Mining (ICDM) 2022"
+      },
+      {
+        "paper_id": "openalex:W4360831846",
+        "title": "Mix-GEMM: An efficient HW-SW Architecture for Mixed-Precision Quantized Deep Neural Networks Inference on Edge Devices",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4398173609",
+        "title": "Variable-Rate Learned Image Compression with Multi-Objective Optimization and Quantization-Reconstruction Offsets",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4383501834",
+        "title": "LG-LSQ: Learned Gradient Linear Symmetric Quantization for Low-Precision Integer Hardware",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4384648944",
+        "title": "RL4RS: A Real-World Dataset for Reinforcement Learning based Recommender System",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4393160237",
+        "title": "MetaMix: Meta-State Precision Searcher for Mixed-Precision Activation Quantization",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4324312897",
+        "title": "User Retention-oriented Recommendation with Decision Transformer",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4385485061",
+        "title": "Light-Weight Visualvoice: Neural Network Quantization On Audio Visual Speech Separation",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "arxiv:2406.02943v1",
+        "title": "The Task-oriented Queries Benchmark (ToQB)",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2402.05964v2",
+        "title": "A Survey on Transformer Compression",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2410.05265v2",
+        "title": "PrefixQuant: Eliminating Outliers by Prefixed Tokens for Large Language Models Quantization",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2311.14110v2",
+        "title": "When is Off-Policy Evaluation (Reward Modeling) Useful in Contextual Bandits? A Data-Centric Perspective",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2309.13682v1",
+        "title": "Causal-DFQ: Causality Guided Data-free Network Quantization",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2412.09405v1",
+        "title": "Learned Compression for Compressed Learning",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2608.11045v1",
+        "title": "ReRound: Reconstructive Rounding to Resolve Midpoint Ambiguity in Calibration-Free LLM Quantization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2210.06313v2",
+        "title": "The Lazy Neuron Phenomenon: On Emergence of Activation Sparsity in Transformers",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2212.01925v1",
+        "title": "Counterfactual Learning with General Data-generating Policies",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2211.01518v1",
+        "title": "Bayesian Counterfactual Mean Embeddings and Off-Policy Evaluation",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2301.07266v2",
+        "title": "ACQ: Improving Generative Data-free Quantization Via Attention Correction",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2403.02775v1",
+        "title": "EasyQuant: An Efficient Data-free Quantization Algorithm for LLMs",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "openalex:W4386607611",
+        "title": "A Comprehensive Survey on Model Quantization for Deep Neural Networks in Image Classification",
+        "venue_year": "ACM Transactions on Intelligent Systems and Technology 2023"
+      },
+      {
+        "paper_id": "openalex:W4367319708",
+        "title": "CIRS: Bursting Filter Bubbles by Counterfactual Interactive Recommender System",
+        "venue_year": "ACM Transactions on Information Systems 2023"
+      },
+      {
+        "paper_id": "openalex:W4386598402",
+        "title": "QVRF: A Quantization-Error-Aware Variable Rate Framework for Learned Image Compression",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4391306846",
+        "title": "Variable-rate Learned Image Compression with Adaptive Quantization Step Size",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4382119781",
+        "title": "MESON: A Mobility-Aware Dependent Task Offloading Scheme for Urban Vehicular Edge Computing",
+        "venue_year": "IEEE Transactions on Mobile Computing 2023"
+      },
+      {
+        "paper_id": "openalex:W4390547417",
+        "title": "MIMO Radar Unimodular Waveform Design With Learned Complex Circle Manifold Network",
+        "venue_year": "IEEE Transactions on Aerospace and Electronic Systems 2024"
+      },
+      {
+        "paper_id": "openalex:W4393147284",
+        "title": "OWQ: Outlier-Aware Weight Quantization for Efficient Fine-Tuning and Inference of Large Language Models",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4304080501",
+        "title": "Towards Accurate Post-Training Quantization for Vision Transformer",
+        "venue_year": "Proceedings of the 30th ACM International Conference on Multimedia 2022"
+      },
+      {
+        "paper_id": "openalex:W4366828852",
+        "title": "Learning Bilateral Clipping Parametric Activation for Low-Bit Neural Networks",
+        "venue_year": "Mathematics 2023"
+      },
+      {
+        "paper_id": "openalex:W4402754051",
+        "title": "Mixed-Precision Quantization for Federated Learning on Resource-Constrained Heterogeneous Devices",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4310675596",
+        "title": "Clipping-Based Post Training 8-Bit Quantization of Convolution Neural Networks for Object Detection",
+        "venue_year": "Applied Sciences 2022"
+      },
+      {
+        "paper_id": "openalex:W4390887461",
+        "title": "Reinforced Path Reasoning for Counterfactual Explainable Recommendation",
+        "venue_year": "IEEE Transactions on Knowledge and Data Engineering 2024"
+      },
+      {
+        "paper_id": "openalex:W4323521052",
+        "title": "Training-aware Low Precision Quantization in Spiking Neural Networks",
+        "venue_year": "2022"
+      },
+      {
+        "paper_id": "openalex:W4402683730",
+        "title": "A Comprehensive Evaluation of Quantization Strategies for Large Language Models",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4382203376",
+        "title": "Rethinking Data-Free Quantization as a Zero-Sum Game",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2023"
+      },
+      {
+        "paper_id": "openalex:W4399115604",
+        "title": "SpinQuant: LLM quantization with learned rotations",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4313889239",
+        "title": "Analog nanophotonic computing going practical: silicon photonic deep learning engines for tiled optical matrix multiplication with dynamic precision",
+        "venue_year": "Nanophotonics 2023"
+      },
+      {
+        "paper_id": "openalex:W4388229123",
+        "title": "A survey of model compression strategies for object detection",
+        "venue_year": "Multimedia Tools and Applications 2023"
+      },
+      {
+        "paper_id": "openalex:W4380136239",
+        "title": "Augmenting Hessians with Inter-Layer Dependencies for Mixed-Precision Post-Training Quantization",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4389519530",
+        "title": "LLM-FP4: 4-Bit Floating-Point Quantized Transformers",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4383604976",
+        "title": "Pruning vs Quantization: Which is Better?",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4385890089",
+        "title": "A Survey on Model Compression for Large Language Models",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4404514854",
+        "title": "Image biomarkers and explainable AI: handcrafted features versus deep learned features",
+        "venue_year": "European Radiology Experimental 2024"
+      },
+      {
+        "paper_id": "openalex:W4392271601",
+        "title": "Adaptive Quantization with Mixed-Precision Based on Low-Cost Proxy",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4387686975",
+        "title": "LoftQ: LoRA-Fine-Tuning-Aware Quantization for Large Language Models",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4380714727",
+        "title": "SqueezeLLM: Dense-and-Sparse Quantization",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4402772396",
+        "title": "CrossKD: Cross-Head Knowledge Distillation for Object Detection",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4386850009",
+        "title": "Activation Redistribution Based Hybrid Asymmetric Quantization Method of Neural Networks",
+        "venue_year": "Computer Modeling in Engineering & Sciences 2023"
+      },
+      {
+        "paper_id": "openalex:W4408799708",
+        "title": "Optimising TinyML with quantization and distillation of transformer and mamba models for indoor localisation on edge devices",
+        "venue_year": "Scientific Reports 2025"
+      },
+      {
+        "paper_id": "openalex:W4306295203",
+        "title": "Q-ViT: Accurate and Fully Quantized Low-bit Vision Transformer",
+        "venue_year": "arXiv (Cornell University) 2022"
+      },
+      {
+        "paper_id": "arxiv:2404.13990v1",
+        "title": "QCore: Data-Efficient, On-Device Continual Calibration for Quantized Models -- Extended Version",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2306.14152v1",
+        "title": "Low-Rank Prune-And-Factorize for Language Model Compression",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2511.08918v1",
+        "title": "ROI-based Deep Image Compression with Implicit Bit Allocation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.21664v1",
+        "title": "Measuring Activation Control in Large Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2502.03701v3",
+        "title": "First-ish Order Methods: Hessian-aware Scalings of Gradient Descent",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2307.05213v3",
+        "title": "Score Function Gradient Estimation to Widen the Applicability of Decision-Focused Learning",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2312.08935v3",
+        "title": "Math-Shepherd: Verify and Reinforce LLMs Step-by-step without Human Annotations",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2403.20287v5",
+        "title": "Benchmarking Counterfactual Image Generation",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2308.04617v1",
+        "title": "Improved Activation Clipping for Universal Backdoor Mitigation and Test-Time Detection",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2505.05530v1",
+        "title": "Low-bit Model Quantization for Deep Neural Networks: A Survey",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2210.11431v1",
+        "title": "Counterfactual Recipe Generation: Exploring Compositional Generalization in a Realistic Scenario",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2310.17146v1",
+        "title": "Counterfactual-Augmented Importance Sampling for Semi-Offline Policy Evaluation",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2508.03332v2",
+        "title": "Exploring Layer-wise Information Effectiveness for Post-Training Quantization in Small Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2405.04144v3",
+        "title": "Task-Oriented Lossy Compression with Data, Perception, and Classification Constraints",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2506.23717v4",
+        "title": "Towards Efficient and Accurate Spiking Neural Networks via Adaptive Bit Allocation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2601.12117v1",
+        "title": "Offline Policy Learning with Weight Clipping and Heaviside Composite Optimization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2302.11669v1",
+        "title": "RNA secondary structures: from ab initio prediction to better compression, and back",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2410.18519v2",
+        "title": "Reinforcement Learning Controllers for Soft Robots using Learned Environments",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2307.01944v1",
+        "title": "Text + Sketch: Image Compression at Ultra Low Rates",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2507.03312v3",
+        "title": "MPX: Mixed Precision Training for JAX",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2411.17160v1",
+        "title": "Motion Free B-frame Coding for Neural Video Compression",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2210.14392v1",
+        "title": "Zero-Shot Learning of a Conditional Generative Adversarial Network for Data-Free Network Quantization",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2403.09605v3",
+        "title": "Counterfactual contrastive learning: robust representations via causal image synthesis",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2506.02793v2",
+        "title": "Doubly-Robust Estimation of Counterfactual Policy Mean Embeddings",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2606.01446v2",
+        "title": "Spatially Distributed Task-Oriented Compression for Multi-Emitter Localization and Characterization with Spectral Overlap",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2406.05697v3",
+        "title": "Decision-Focused Surrogate Modeling for Mixed-Integer Linear Optimization",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2406.17085v2",
+        "title": "Perturbed Decision-Focused Learning for Modeling Strategic Energy Storage",
+        "venue_year": "arXiv 2024"
+      }
+    ]
+  }
+}

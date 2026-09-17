@@ -1,0 +1,630 @@
+{
+  "review_date": "2026-09-12",
+  "review_type": "independent_pre_canonical_review",
+  "review_scope": "读取既有审查、Phase 0/1 与两分支当前草案；未运行模型、实验、集群或重 I/O；不修改候选目录。",
+  "skills_and_rules": [
+    "ponytail",
+    "idea-spark critique rubric",
+    "idea-spark implementability audit rubric",
+    "idea-spark anti-pattern guard"
+  ],
+  "inputs": [
+    "ideaspark_run/EXISTING_IDEAS_REVIEW_2026-09-12.zh.md",
+    "ideaspark_run/PRIOR_SCOUT_2026-09-12.zh.md",
+    "ideaspark_run/FEASIBILITY_AUDIT_2026-09-12.zh.md",
+    "ideaspark_run/closed-loop-quantization/TENTATIVE_MECHANISM.zh.md",
+    "ideaspark_run/closed-loop-quantization/STATUS.zh.md",
+    "ideaspark_run/closed-loop-quantization/phase1/phase1_output.json",
+    "ideaspark_run/closed-loop-quantization/phase2_select/phase2_select_output.json",
+    "ideaspark_run/vq-action-geometry/STATUS.zh.md",
+    "ideaspark_run/closed-loop-quantization/IDEA.zh.md",
+    "ideaspark_run/closed-loop-quantization/phase2_generate/frozen_residual_transport_ptq.json",
+    "ideaspark_run/closed-loop-quantization/phase0/lit_table.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/semanticscholar_e02f8a54b3bbea9fb31b1e084eefd263e26df523.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/arxiv_2607.28405v1.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/arxiv_2605.15705v1.md",
+    "ideaspark_run/closed-loop-quantization/phase0/fulltext/semanticscholar_c45e8f717cdf07690560c5eb96dbac4305236755.md"
+  ],
+  "candidate_reviews": [
+    {
+      "candidate_id": "closed-loop-quantization",
+      "name": "Signed Temporal Residual Calibration (STRC; earlier status names Temporal Residual Feedback Calibration, TRFC)",
+      "artifact_status": "phase2_generate candidate now exists; no coherence artifact at review time; TENTATIVE_MECHANISM.zh.md is non-canonical",
+      "verdict": "abandon",
+      "verdict_layer": "hard_floor_like_structural_mismatch",
+      "novelty_certified": false,
+      "novelty_status": "conditional_candidate_only",
+      "rationale": "The temporal residual direction was promising, but the current Phase 2 candidate computes A(q) from a natural q-versus-FP state-drift branch while computing A_pi(q) from a different FP-path injected shuffled-action branch; their difference cannot identify temporal order. Combined with the earlier K_r association/sign problem, the gamma=1 terminal-drift degeneracy under transition-residual readings, and a fake-quant logical-byte cost mislabeled as measured packed bytes, repairing the load-bearing estimand requires a new transport/intervention mechanism rather than a local revision.",
+      "strengths": [
+        "D_H(q) formed by a signed discounted vector sum can preserve cross-lag inner-product terms and therefore cancellation, unlike an unsigned sum of residual energies.",
+        "Re-evaluating each pre-registered joint group on the current full map could expose interaction and avoid the old independent single-site score failure.",
+        "The proposal removes the optional delta-action accumulator, avoiding a direct drift into generic observer/error-feedback or Feedback World Model territory.",
+        "The proposed downstream endpoint is physical closed-loop drift/task outcome, rather than treating the calibration score itself as success evidence."
+      ],
+      "mathematical_audit": {
+        "current_load_bearing_objects": [
+          "K_r(ell)=E[e_(t+ell) r_t^T] in STATUS.zh.md",
+          "D_H(q)=E[||sum_(ell=0)^(H-1) gamma^ell W e_(t+ell)^q||_2^2] in TENTATIVE_MECHANISM.zh.md"
+        ],
+        "blocking_findings": [
+          {
+            "finding": "K_r is a cross-covariance/association under paired trajectories, not a causal transfer kernel.",
+            "why": "Initial state, timestep, task phase, action magnitude, shared random source, and policy feedback can jointly determine r_t and later e without a transfer mechanism.",
+            "required_repair": "Remove K_r from the load-bearing score, or label it strictly predictive association and add a real residual/action intervention whose treatment and downstream target are specified."
+          },
+          {
+            "finding": "A score of sum_l ||K_r(l)||^2 discards sign and cannot support persistent-versus-canceling language.",
+            "why": "Entrywise or matrix norm squaring makes positive and negative lag covariance equally positive.",
+            "required_repair": "Use D_H as the sole signed score, with the vector-sum cross terms visible in the definition, or define another signed statistic and stop using the norm-squared K score."
+          },
+          {
+            "finding": "The current phase-shuffle description is not an executable matched control.",
+            "why": "A global e sequence shuffle changes state/action and task-phase alignment; preserving a vague per-lag marginal energy does not specify a permutation that remains matched.",
+            "required_repair": "Apply a within-trajectory residual-trace intervention that preserves per-step magnitude strata, task phase, state/action strata and action magnitude while changing only lag order; state exactly whether the trace is injected into the simulator or only rescored."
+          },
+          {
+            "finding": "A(q) and A_pi(q) are computed on different treatment paths in the Phase 2 candidate.",
+            "why": "A(q) uses natural q-versus-FP state-feature drift d_l, while A_pi(q) uses a cloned FP path with shuffled action residual injection; Delta_coh therefore mixes temporal order with model-path and controller-feedback differences.",
+            "required_repair": "Abandon the exact STRC formulation. A new candidate may use original-order and shuffled residual injection on the same FP cloned path, while reporting natural q drift as a separate endpoint."
+          },
+          {
+            "finding": "same-state simulator replay leaves future quantized calls and the meaning of e_(t+ell) unspecified.",
+            "why": "Natural FP/Q rollouts confound the initial residual with later policy responses and environment dynamics; the current prose does not state the physical coordinate or reset/hold semantics.",
+            "required_repair": "Define r_t as the common-state, common-random-source Q-minus-FP action; define e as a fixed physical state/transition coordinate difference; specify future Q execution, reset points, and the held-out split."
+          },
+          {
+            "finding": "Signed cancellation is representation-dependent.",
+            "why": "A latent coordinate sign or arbitrary orthogonal basis has no stable physical meaning; whitening alone does not make signs causal or task-semantic.",
+            "required_repair": "Use stable physical coordinates such as end-effector/object pose and gripper state, with pre-frozen units/scales; if only pixels/latent states are available, withdraw the physical sign-cancellation claim for that anchor."
+          },
+          {
+            "finding": "If e is interpreted as transition increments, gamma=1 telescopes to terminal FP/Q displacement.",
+            "why": "The proposed gamma sweep includes 1.0, and a signed sum of transition increments then carries no new temporal structure beyond the terminal displacement.",
+            "required_repair": "Keep e explicitly as state-feature differences with a justified nonterminal horizon, or remove the gamma=1 reading; do not claim a new temporal mechanism from a telescoping identity."
+          }
+        ],
+        "coherence_status": "current candidate has a load-bearing treatment-path mismatch; abandon exact STRC formulation and reassess only as a new transport-contrast mechanism"
+      },
+      "single_site_subsumption_audit": {
+        "current_reading": "The all-W4 to W4/W8 conditional swap wording is potentially joint, but the group definition and interaction evidence are absent.",
+        "risk": "If every group is scored independently from all-W4, or conditional reductions are added as independent site gains, this is old single-site scoring with a new temporal score.",
+        "required_evidence": [
+          "Graph-derived pre-registered group definitions, not post-hoc manual groups.",
+          "Each swap re-evaluates the full current map and records the conditional reduction after previous swaps.",
+          "At least one pre-registered two-group interaction diagnostic showing whether the score is non-additive; if interaction is absent and selection is additive, the method claim fails.",
+          "Matched unsigned-energy, sign-randomized, random-map and local/additive controls."
+        ],
+        "verdict": "abandon_current_formulation"
+      },
+      "near_neighbor_audit": [
+        {
+          "paper_id": "arxiv:2604.11572",
+          "name": "DA-PTQ",
+          "primary_source": "https://arxiv.org/abs/2604.11572",
+          "actual_mechanism": "Cross-space compensation plus virtual planar serial-chain Jacobian, trajectory-level motion surrogate, and gradient-based mixed-precision layer ranking.",
+          "actual_difference_required": "STRC must use measured paired FP/Q physical residual sequences and a signed lag/cancellation intervention. 'Drift-aware', trajectory motion, Jacobian, or gradient ranking alone is subsumed.",
+          "status": "adjacent_not_exact_overlap; conditional novelty only"
+        },
+        {
+          "paper_id": "arxiv:2607.28405v1",
+          "name": "QuantWAMs",
+          "primary_source": "https://arxiv.org/abs/2607.28405",
+          "actual_mechanism": "Shared-basis calibration, joint video-action empirical-Fisher saliency, FP/Q reachable-state replay, and fixed-budget denoising-step schedule repair.",
+          "actual_difference_required": "STRC must make a temporal residual mode its calibration object and choose weight/block precision conditionally on the current map. Reusing reachable-state replay as a state audit or only repairing a denoising schedule is subsumed.",
+          "status": "adjacent_not_exact_overlap; conditional novelty only"
+        },
+        {
+          "paper_id": "arxiv:2605.15705v1",
+          "name": "Feedback World Model",
+          "primary_source": "https://arxiv.org/abs/2605.15705v1",
+          "actual_mechanism": "Inference-time observed transition residual updates a lightweight latent feedback state, with action-aware guidance.",
+          "actual_difference_required": "STRC must remain an offline fixed-quantizer calibration/map procedure and must not maintain an inference-time observer. A delta-action error-feedback accumulator would be overlapping generic observer/error-feedback machinery.",
+          "status": "different object if optional accumulator remains deleted"
+        },
+        {
+          "paper_id": "arxiv:2605.17997",
+          "name": "MARR",
+          "primary_source": "https://arxiv.org/abs/2605.17997",
+          "actual_mechanism": "Module-specific residual-reconstruction scaling with PID feedback to balance cross-layer correction and Hessian-approximation bias.",
+          "actual_difference_required": "STRC must measure physical closed-loop transition residuals, not module reconstruction residuals with PID tuning.",
+          "status": "different object, still requires explicit collision comparison"
+        },
+        {
+          "paper_id": "arxiv:2510.01240",
+          "name": "RSAVQ",
+          "primary_source": "https://arxiv.org/abs/2510.01240",
+          "actual_mechanism": "Fisher/Riemannian error-direction guidance and channel sensitivity bit allocation for LLM VQ.",
+          "actual_difference_required": "Not a non-VQ closed-loop residual method; this is a VQ comparator. Do not use broad 'geometry' or 'sensitivity' vocabulary as novelty evidence.",
+          "status": "different family; relevant to VQ branch"
+        },
+        {
+          "paper_id": "openalex:W7119233972",
+          "name": "RPIQ: Residual-Projected Multi-Collaboration Closed-Loop and Single Instance Quantization",
+          "primary_source": "https://openalex.org/W7119233972",
+          "actual_mechanism": "The collision abstract reports inter-block residual accumulation, Gauss-Seidel iterative quantization, and closed-loop/single-instance calibration for large models.",
+          "actual_difference_required": "The abstract is not method-complete, so it cannot be declared exact overlap or cleared. Inspect its full objective before any novelty claim and determine whether its residual loop subsumes STRC or only addresses inter-block reconstruction.",
+          "status": "unresolved_collision_warning"
+        },
+        {
+          "paper_id": "arxiv:2409.17066",
+          "name": "VPTQ",
+          "primary_source": "https://arxiv.org/abs/2409.17066",
+          "actual_mechanism": "Second-order and channel-independent vector post-training quantization with codebook/index representations and residual/outlier extensions.",
+          "actual_difference_required": "Not a non-VQ closed-loop residual method; it is a VQ baseline. STRC cannot turn a fake W4/W8 residual score into codebook novelty.",
+          "status": "different family; relevant to VQ branch"
+        },
+        {
+          "paper_id": "arxiv:2607.24148",
+          "name": "MotionVQ / VQVLA",
+          "primary_source": "https://arxiv.org/abs/2607.24148",
+          "actual_mechanism": "Execution-state motion-aware dynamic precision, merged-centroid vectorized GEMM, centroid reuse, and custom accelerator.",
+          "actual_difference_required": "Not a non-VQ method. If the VQ branch uses action geometry, it must separate relational codebook fitting from motion-magnitude schedule and accelerator claims.",
+          "status": "different family; relevant to VQ branch"
+        }
+      ],
+      "implementation_audit": {
+        "must_define": [
+          "Physical state/transition residual e coordinate, units, and observation source.",
+          "Action residual r alignment, shared noise/seed, reset and future-Q semantics.",
+          "Whitening W source and freeze point, gamma/H selection before map fitting, and trajectory-level train/validation/test split.",
+          "A runnable phase intervention that changes temporal order without changing non-temporal distributions.",
+          "Graph-derived joint group schema and fixed bytes/latency measurement path.",
+          "Whether DINO-WM low-bit execution is real packed/native or only fake numerical emulation."
+        ],
+        "open_decisions": [
+          "Whether DINO-WM exposes stable physical state coordinates; if not, an author must choose a different anchor or withdraw physical sign semantics.",
+          "Whether the phase control is an injected simulator disturbance or only an offline score diagnostic; only the former supports a downstream mechanism test.",
+          "How group granularity is derived from the model graph and how latency is measured on the target A100 path."
+        ],
+        "recommended_minimal_protocol": [
+          "DINO-WM Wall, one fixed checkpoint/configuration and a paired common-seed FP/Q rollout split.",
+          "Physical residual trace collection from the same reset state; no model/episode leakage across fit and held-out test.",
+          "D_H as the sole signed calibration score; compare against unsigned energy, sign-randomized trace, LocalMSE, DA-PTQ-style motion, random maps, and any architecture-valid QuantWAMs schedule baseline.",
+          "Greedy conditional group swaps with a pre-declared interaction check and downstream held-out drift/success endpoint."
+        ],
+        "implementation_verdict": "revise"
+      },
+      "feasibility_4xa100": {
+        "a100_40gb": {
+          "verdict": "tight_but_plausible_for_DINO_pilot",
+          "evidence": "Existing audit reports DINO-WM Wall CEM peak about 4.06 GiB and calibration-probe sampled device memory 12,820 MB; this supports inference-only paired replay, not unmeasured backward or native low-bit claims.",
+          "limits": "Checkpoint and dataset are not local; the existing W4/W8 path is fake/emulated and native packed memory/throughput are unverified."
+        },
+        "a100_80gb": {
+          "verdict": "more headroom, still unverified",
+          "limits": "80GB does not establish native kernel support, bytes, latency, or transfer to another backbone."
+        },
+        "other_anchors": {
+          "Fast-WAM": "OSMesa plus first_frame single-card smoke is available; full idm and joint activation/backward calibration are unverified.",
+          "OpenVLA-OFT": "BF16 inference is supported by two 2xA100 references; activation/backward calibration is the main memory risk and is not evidence for this method."
+        },
+        "allocation_plan": [
+          "Use one real PBS GPU allocation for the DINO physical-residual and phase-control gate before any transfer.",
+          "Keep at most four concurrent A100 cards and separate 40GB and 80GB reports.",
+          "Before every heavy operation check nonempty PBS_JOBID, real non-login hostname and GPU allocation; never fall back to login-node I/O, loading or computation.",
+          "Report packed checkpoint bytes, Peak VRAM, synchronized throughput and FP/BF16 reference separately from fake quantization."
+        ],
+        "feasibility_verdict": "conditional"
+      },
+      "required_revision_targets": [
+        {
+          "scope": "tactical",
+          "field": "core_mechanism / estimand",
+          "issue": "K_r is presented as transfer-like although it is association; a squared norm would erase sign.",
+          "fix_direction": "Make D_H the only load-bearing signed score, or explicitly downgrade K_r to predictive association and add an executable residual intervention."
+        },
+        {
+          "scope": "tactical",
+          "field": "replay_and_residual_definition",
+          "issue": "same-state replay, e, r, state coordinate and future Q feedback are underdefined.",
+          "fix_direction": "Specify common-reset/common-random-source action residual, physical state/transition residual, reset/hold semantics, whitening, and disjoint fit/validation/test episodes."
+        },
+        {
+          "scope": "tactical",
+          "field": "phase_shuffle_control",
+          "issue": "The proposed energy-matched shuffle does not state a matched implementable intervention.",
+          "fix_direction": "Use within-trajectory residual-trace injection or a precisely matched permutation that preserves magnitude, phase, state/action strata and task distribution while changing lag order only."
+        },
+        {
+          "scope": "tactical",
+          "field": "conditional_joint_map_allocator",
+          "issue": "Conditional group swaps could still collapse to single-site/additive scoring.",
+          "fix_direction": "Pre-register graph-derived groups, re-evaluate the full current map after every swap, require an interaction diagnostic, and retain matched unsigned/random/additive controls."
+        },
+        {
+          "scope": "tactical",
+          "field": "deployment_claim",
+          "issue": "Existing DINO evidence is fake W4/W8 emulation without native bytes/latency.",
+          "fix_direction": "Scope the initial claim to numerical PTQ unless a real packed/native path is implemented and measured on the same A100 workload."
+        }
+      ],
+      "post_abandon_salvage": {
+        "candidate": "Frozen-Residual Transport PTQ",
+        "status": "pending_new_candidate_review",
+        "minimum_distinction": "The fixed Q0 history/latent slot delta and finite-difference transport contrast must be quantization-specific and must not reduce to ordinary QDrop/noisy-input reconstruction or Jacobian distillation.",
+        "required_controls": [
+          "direct two-step unroll",
+          "QDrop/noisy-input reconstruction",
+          "random same-norm delta",
+          "clean reconstruction-only PTQ"
+        ],
+        "review_rule": "Treat this as a new mechanism; do not inherit STRC's novelty or verdict."
+      },
+      "no_go_conditions": [
+        "Use of sum_l ||K_r(l)||² as evidence of signed cancellation.",
+        "Phase shuffle changes state/action alignment or has no downstream effect relative to coherent traces.",
+        "No stable physical coordinate is available for e.",
+        "Conditional swap direction is unstable across fit seeds or is equivalent to independent single-site/additive scoring.",
+        "Unsigned-energy or sign-randomized control matches STRC, or raw-action/no-memory control matches it."
+      ]
+    },
+    {
+      "candidate_id": "closed-loop-quantization/frozen-residual-transport-ptq",
+      "name": "Frozen-Residual Transport PTQ (FRT)",
+      "artifact_status": "new conditional candidate in phase2_generate plus IDEA.zh.md; reviewed as a new mechanism after STRC was abandoned",
+      "verdict": "revise",
+      "verdict_layer": "independent_soft_judgment_with_hard_no_go_gates",
+      "novelty_certified": false,
+      "novelty_status": "conditional_domain_specific_hypothesis; not search-closed and not yet separated from generic sensitivity alignment",
+      "rationale": "FRT is materially more coherent than STRC: a frozen Q0 residual is inserted into the valid newly predicted history slot and a one-step finite-difference transport contrast is matched at fixed W4 bytes. This removes the prior causal-kernel, signed-lag, phase-injection and observer problems. Its central novelty is still unproven because the objective is a directional local-response loss, adjacent to QDrop/noisy-input reconstruction, PD-Quant, Sobolev/JVP/GAD sensitivity matching and direct two-step matching. It should remain revise until a fresh-DEV Q0-direction gain survives explicit Jacobian/JVP controls and the physical interface is verified.",
+      "strengths": [
+        "The Q0-derived delta is deployment-induced and quantization-specific by construction, rather than arbitrary input noise, provided it remains distinct from the final fitted residual.",
+        "The transport term compares F_theta(x+delta,a')-F_theta(x,a') with the matched FP finite difference, so it has a concrete estimand without claiming causal transfer or exact linearization.",
+        "Fixed W4 target blocks, no bit allocator, no deployment observer and no FP teacher make the proposed deployment boundary auditable.",
+        "Fresh DEV Q0 residuals, random same-norm deltas, clean reconstruction, QDrop/input-noise and direct two-step controls provide a plausible falsification route."
+      ],
+      "mathematical_audit": {
+        "current_load_bearing_objects": [
+          "delta_i=stopgrad(F_Q0(X_i,a_i)-F_FP(X_i,a_i)) stored in the newly predicted latent slot",
+          "T_theta(x_i,delta_i,a'_i)=F_theta(x_i+delta_i,a'_i)-F_theta(x_i,a'_i)",
+          "L_FRT=clean FP/Q output term plus lambda_T times finite-difference transport mismatch"
+        ],
+        "blocking_findings": [
+          {
+            "finding": "FRT may be ordinary directional/Jacobian sensitivity matching with a Q0-chosen direction.",
+            "why": "The transport contrast is a finite difference of the quantized map around x; QDrop/noisy-input, Sobolev/JVP/GAD and related sensitivity methods already cover the broad principle of preserving local responses.",
+            "required_repair": "Add an explicit Jacobian/JVP or multi-direction finite-difference control with identical W4 parameters, calibration budget and endpoint. Retain random same-norm delta as a separate isotropic control. If Q0 direction gives no fresh-DEV/downstream gain over these controls, abandon the FRT novelty claim and the candidate."
+          },
+          {
+            "finding": "The frozen Q0 direction can become stale after scalar scales and rounding offsets are fitted.",
+            "why": "The optimized Q_theta may have a final residual delta_theta=F_theta-F_FP whose norm and direction differ from delta_Q0, so matching a stale perturbation does not establish preservation of the deployed quantizer's own residual transport.",
+            "required_repair": "On DEV report norm, cosine/alignment and transport ranking for final delta_theta versus frozen delta_Q0, without using final residuals to fit. State the intended Q0-proximal scope; if alignment is poor and fresh-Q0 transport does not transfer, abandon."
+          },
+          {
+            "finding": "The physical loss is only valid if P is a stable, fixed readout from the predictor output to physical xy/goal-relative units.",
+            "why": "DINO latent coordinates alone do not supply physical displacement semantics, and an arbitrary or fitted readout could turn the objective into a proxy unrelated to closed-loop drift.",
+            "required_repair": "Pass a light interface gate before the pilot, freeze P and W_y using CAL only, and stop the physical claim if P cannot be verified. Latent-only results must be labeled diagnostic."
+          },
+          {
+            "finding": "Injecting delta into x+delta must preserve the actual full-history state contract.",
+            "why": "Wrong slot, normalization, cache fields, temporal shift or broadcasting can create an off-manifold input and make the transport score an interface artifact.",
+            "required_repair": "Record the exact shift/concat, slot shape, normalization and cache restoration; verify x+delta is a legal runner input and keep all older slots unchanged."
+          },
+          {
+            "finding": "Joint scalar calibration can still be a collection of local losses with a transport label.",
+            "why": "If two-block interaction is zero or unstable, all-block fitting does not demonstrate coupled closed-loop quantization and may simply add parameter freedom to clean PTQ.",
+            "required_repair": "Pre-register graph groups, report I_gh across fit seeds on DEV, and compare joint versus independent fits at equal W4 bytes. Require stable nonzero interaction and downstream gain for a joint claim."
+          }
+        ],
+        "coherence_status": "coherent conditional finite-difference transport hypothesis; physical readout, valid history injection and stale-direction checks are hard gates"
+      },
+      "single_site_subsumption_audit": {
+        "risk": "Lower than STRC because there is no additive site score or bit allocator, but AdaRound-style per-block scalar/rounding fitting remains a possible reparameterized local PTQ objective.",
+        "required_test": "Use the same target-block map and bytes for clean-only, direct two-step, QDrop/noise, random-delta, JVP and FRT fits; report joint versus independent two-block interaction and held-out physical endpoint.",
+        "status": "conditional; no single-site scoring claim may be made before interaction and matched-budget tests"
+      },
+      "near_neighbor_audit": [
+        {
+          "paper_id": "arxiv:2203.05740",
+          "name": "QDrop",
+          "primary_source": "https://arxiv.org/abs/2203.05740",
+          "actual_mechanism": "PTQ reconstruction with randomly dropped activation quantization to improve flatness and robustness.",
+          "actual_difference_required": "FRT must show that a frozen Q0 deployment residual direction gives a fresh-DEV and downstream advantage over matched input-noise/drop reconstruction; otherwise it reduces to QDrop-like robustness fitting.",
+          "status": "direct adjacent baseline; difference conditional"
+        },
+        {
+          "paper_id": "arxiv:2004.10568",
+          "name": "AdaRound",
+          "primary_source": "https://arxiv.org/abs/2004.10568",
+          "actual_mechanism": "Data/task-aware layer-local rounding optimization with soft relaxation and hard materialization.",
+          "actual_difference_required": "AdaRound can supply the rounding search but does not supply FRT novelty; only the Q0 residual transport term could differentiate the objective.",
+          "status": "materialization prior; not a cleared novelty ancestor"
+        },
+        {
+          "paper_id": "arxiv:2212.07048",
+          "name": "PD-Quant",
+          "primary_source": "https://arxiv.org/abs/2212.07048",
+          "actual_mechanism": "Global FP/Q prediction-difference metric with regularization and activation-distribution correction.",
+          "actual_difference_required": "FRT must show a transport-of-x+delta gain beyond final clean prediction difference and guard against small-CAL overfit with fresh Q0 DEV residuals.",
+          "status": "direct objective neighbor; difference conditional"
+        },
+        {
+          "paper_id": "arxiv:1706.04859",
+          "name": "Sobolev Training",
+          "primary_source": "https://arxiv.org/abs/1706.04859",
+          "actual_mechanism": "Teacher derivative matching to preserve local function behavior, including compression/distillation settings.",
+          "actual_difference_required": "FRT cannot claim first sensitivity/Jacobian preservation; it must compare explicit derivative/JVP or multi-direction finite differences and narrow the claim to a frozen deployment-induced direction if it survives.",
+          "status": "principle-level collision; explicit control required"
+        },
+        {
+          "paper_id": "arxiv:2606.01651",
+          "name": "GAD",
+          "primary_source": "https://arxiv.org/abs/2606.01651",
+          "actual_mechanism": "JVP-based initial-noise sensitivity alignment in a distillation/training setting.",
+          "actual_difference_required": "Random same-norm and explicit JVP/multi-direction controls must separate FRT's Q0-induced direction from generic sensitivity alignment; no first-use JVP claim is permitted.",
+          "status": "direct sensitivity collision; novelty conditional"
+        },
+        {
+          "paper_id": "arxiv:2604.11572",
+          "name": "DA-PTQ",
+          "primary_source": "https://arxiv.org/abs/2604.11572",
+          "actual_mechanism": "Virtual Jacobian and trajectory-level motion surrogate with cross-space compensation and mixed precision.",
+          "actual_difference_required": "FRT must remain fixed-bit, no compensation, and use Q0 residual finite differences; generic Jacobian/motion drift or allocation claims are covered by DA-PTQ.",
+          "status": "closed-loop/Jacobian neighbor; bounded difference"
+        },
+        {
+          "paper_id": "arxiv:2607.28405v1",
+          "name": "QuantWAMs",
+          "primary_source": "https://arxiv.org/abs/2607.28405",
+          "actual_mechanism": "Shared-basis/Fisher and reachable-state calibration with denoising schedule repair for WAMs.",
+          "actual_difference_required": "FRT must not reuse schedule repair, Fisher allocation or shared-basis claims; DINO-WM has no denoising schedule in this pilot.",
+          "status": "different but relevant structural neighbor"
+        },
+        {
+          "paper_id": "arxiv:2605.15705v1",
+          "name": "Feedback World Model",
+          "primary_source": "https://arxiv.org/abs/2605.15705v1",
+          "actual_mechanism": "Inference-time transition-residual observer and action-aware latent feedback.",
+          "actual_difference_required": "FRT must remain offline calibration with no observer, online correction or deployment-time FP reference.",
+          "status": "different observer family; do not broaden residual claim"
+        },
+        {
+          "paper_id": "openalex:W7119233972",
+          "name": "RPIQ",
+          "primary_source": "https://openalex.org/W7119233972",
+          "actual_mechanism": "Retrieved abstract reports residual accumulation, Gauss-Seidel closed-loop/single-instance quantization and residual-projected compensation; full objective was not verified in this pass.",
+          "actual_difference_required": "Read the full method before any broad residual/closed-loop novelty claim; FRT must not implement its compensation or error-feedback arithmetic.",
+          "status": "unresolved collision warning"
+        }
+      ],
+      "implementation_audit": {
+        "must_define": [
+          "Exact DINO-WM full-history schema, newly predicted slot, normalization and cache restoration for x+delta.",
+          "Fixed physical readout P, W_y units/floor and freeze point; latent-only fallback must be diagnostic.",
+          "Q0 versus final Q_theta residual alignment metrics on fresh DEV without refitting.",
+          "Explicit Jacobian/JVP or multi-direction finite-difference baseline in addition to random same-norm, QDrop and direct two-step.",
+          "Graph-derived target groups, scalar/rounding parameter bounds, joint/independent interaction and equal W4 byte budget.",
+          "Whether the W4 map is fake numerical emulation or a measured packed/native backend."
+        ],
+        "required_experiment_gate": [
+          "Q0-derived delta must beat random same-norm and explicit JVP/multi-direction sensitivity controls on fresh DEV transport and the held-out physical endpoint.",
+          "Final Q_theta residual must retain enough alignment with frozen Q0 delta to justify the stated Q0-proximal mechanism.",
+          "Joint fitting must have stable nonzero two-block interaction and a downstream gain over independent/local controls; otherwise classify as local PTQ.",
+          "All endpoints use disjoint episode/initial-state splits, identical W4 bytes and the same fixed physical readout."
+        ],
+        "implementation_verdict": "revise"
+      },
+      "feasibility_4xa100": {
+        "a100_40gb": {
+          "verdict": "plausible_for_bounded_DINO_inference_screen; runtime unmeasured",
+          "evidence": "Existing audit reports DINO-WM Wall CEM about 4.06 GiB and a calibration probe around 12,820 MB sampled device memory, consistent with an inference-only paired replay screen.",
+          "limits": "Checkpoint/dataset and candidate-specific full-history transport interface are not verified here; no backward, native kernel, packed memory or synchronized latency evidence."
+        },
+        "a100_80gb": {
+          "verdict": "headroom only",
+          "limits": "80GB cannot turn a fake W4 map into native deployment evidence or justify exceeding the planning cap."
+        },
+        "planning_cap": "The proposed <=12 A100 GPU-hours is a planning stop, not a measured runtime or statistical guarantee; controls, startup and failure cost must be included.",
+        "allocation_plan": [
+          "Run the interface gate before requesting GPU time; then use one real PBS allocation for the first bounded screen.",
+          "Before model loading, heavy I/O or compute require nonempty PBS_JOBID, a real non-login hostname and confirmed GPU allocation; never fall back to a login node.",
+          "Keep 40GB and 80GB results separate and report logical/fake quantization independently from packed bytes, Peak VRAM and synchronized latency."
+        ],
+        "feasibility_verdict": "conditional"
+      },
+      "required_revision_targets": [
+        {
+          "scope": "blocking",
+          "field": "novelty_control",
+          "issue": "Random same-norm alone does not rule out generic directional/Jacobian sensitivity matching.",
+          "fix_direction": "Add explicit JVP or multi-direction finite-difference control with matched W4 freedom and budget; no-go if Q0 direction is equivalent on fresh DEV/downstream."
+        },
+        {
+          "scope": "blocking",
+          "field": "physical_interface",
+          "issue": "Physical xy objective depends on an unverified stable P readout and valid full-history slot injection.",
+          "fix_direction": "Pass a light interface gate, freeze P/W_y from CAL, and stop physical claims if the runner cannot validate the state contract."
+        },
+        {
+          "scope": "blocking",
+          "field": "frozen_direction_validity",
+          "issue": "Fitted Q_theta may not retain Q0's residual direction.",
+          "fix_direction": "Report final-versus-frozen residual norm/cosine and fresh-DEV transport alignment; narrow to Q0-proximal or abandon if stale."
+        },
+        {
+          "scope": "tactical",
+          "field": "joint_map_claim",
+          "issue": "Joint scalar/rounding fit may be local PTQ with added degrees of freedom.",
+          "fix_direction": "Pre-register two-block interaction, fit-seed stability and equal-byte joint/independent controls."
+        },
+        {
+          "scope": "tactical",
+          "field": "deployment_boundary",
+          "issue": "The logical W4 map and <=12 GPU-hour plan are not native/runtime measurements.",
+          "fix_direction": "Keep fake numerical claims separate and measure packed bytes, Peak VRAM and synchronized latency only with an actual backend."
+        }
+      ],
+      "no_go_conditions": [
+        "The full-history interface or fixed physical readout P cannot be verified.",
+        "Random same-norm or explicit JVP/multi-direction sensitivity controls match FRT on fresh DEV and downstream endpoints.",
+        "FRT improves CAL only, fails on fresh Q0 DEV residuals, or final Q_theta residual is badly misaligned with frozen delta without a scoped explanation.",
+        "Two-block interaction is near zero/unstable or joint gain is explained by extra local PTQ freedom.",
+        "Native speed/memory/compression is claimed from logical bits, fake quantization or inherited VPTQ/AQLM format."
+      ]
+    },
+    {
+      "candidate_id": "vq-action-geometry",
+      "name": "Trajectory-Relational Product VQ (TR-PVQ)",
+      "artifact_status": "STATUS.zh.md plus REVISION_RESPONSE.zh.md and Phase 1/selection artifacts; no completed phase2_generate candidate",
+      "verdict": "revise",
+      "verdict_layer": "independent_soft_judgment",
+      "novelty_certified": false,
+      "novelty_status": "not_search_closed",
+      "rationale": "A quantized-model-dependent action-trajectory relation objective could be a real domain-specific extension of weight VQ, but the one-paragraph sketch does not define the relation tensor, codebook optimization, block coupling, coordinate anchoring or deployment kernel. The Gram target has invariances that can preserve the relation while changing planner-critical action semantics.",
+      "strengths": [
+        "The target is potentially tied to imagined trajectory behavior rather than only weight reconstruction, which can separate it from generic VPTQ/AQLM if the target changes with the quantized model.",
+        "The proposed distinction from action tokenization is conceptually correct: VQ-VLA action tokens are not backbone weight compression.",
+        "DINO-WM is small enough for a bounded single-card pilot, subject to the existing checkpoint and fake/native boundary."
+      ],
+      "blocking_findings": [
+        {
+          "finding": "A fixed-input action Gram does not depend on the quantizer and cannot train or select a weight codebook.",
+          "required_repair": "Define the Gram from quantized-model imagined trajectories for every codebook/index candidate and state the layer/block update path; otherwise the objective is not a weight-VQ method."
+        },
+        {
+          "finding": "Gram geometry is invariant to global orthogonal action-coordinate transforms, and centered versions can remove translation.",
+          "required_repair": "Add a pre-frozen goal/coordinate/sign anchor, or prove the downstream planner is invariant; compare relational-only and relational-plus-anchor objectives under identical bytes."
+        },
+        {
+          "finding": "The relation objective and codebook fitting may be local/coordinate-descent scoring with no global coupling.",
+          "required_repair": "Specify fixed graph groups, full-map or coupled-block objective, codebook/index update, and at least one interaction or joint-map diagnostic; remove rate-allocation claims unless measured and necessary."
+        },
+        {
+          "finding": "The retrieval did not close relational knowledge distillation/task-aware VQ collision space.",
+          "required_repair": "Run primary-source collision queries for relational KD, task-aware VQ, output-geometry preservation, and action-trajectory distillation before claiming novelty. If an exact mechanism is found, abandon or reframe."
+        },
+        {
+          "finding": "VPTQ/AQLM packed lookup format does not imply a DINO-WM native kernel.",
+          "required_repair": "Separate codebook/index logical bits, packed checkpoint bytes, peak device memory and synchronized kernel throughput; fake emulation cannot support native compression/latency claims."
+        }
+      ],
+      "near_neighbor_audit": [
+        {
+          "paper_id": "arxiv:2401.06118",
+          "name": "AQLM",
+          "primary_source": "https://arxiv.org/abs/2401.06118",
+          "actual_mechanism": "Additive multi-codebook block quantization optimized with calibration outputs and practical kernels.",
+          "actual_difference_required": "TR-PVQ must add a quantized-model-dependent trajectory relation target and show why an action/goal anchor changes codebook selection; merely using packed codebooks is inherited."
+        },
+        {
+          "paper_id": "arxiv:2409.17066",
+          "name": "VPTQ",
+          "primary_source": "https://arxiv.org/abs/2409.17066",
+          "actual_mechanism": "Second-order/channel-independent vector PTQ with codebook/index storage and residual/outlier extensions.",
+          "actual_difference_required": "TR-PVQ must optimize a relation of quantized imagined trajectories, not just local weight/output reconstruction; fixed action inputs or a post-hoc Gram report is insufficient."
+        },
+        {
+          "paper_id": "arxiv:2510.01240",
+          "name": "RSAVQ",
+          "primary_source": "https://arxiv.org/abs/2510.01240",
+          "actual_mechanism": "FIM-induced Riemannian error-direction guidance plus channel sensitivity allocation.",
+          "actual_difference_required": "TR-PVQ's relation objective is distinct only if it is not a renamed sensitivity or Fisher weighting; remove generic geometry/sensitivity claims."
+        },
+        {
+          "paper_id": "arxiv:2607.24148",
+          "name": "MotionVQ/VQVLA",
+          "primary_source": "https://arxiv.org/abs/2607.24148",
+          "actual_mechanism": "Motion-aware execution-state dynamic precision and centroid-reuse accelerator for VLA inference.",
+          "actual_difference_required": "TR-PVQ must be a static trajectory-relation codebook objective, not motion-magnitude precision switching or a custom accelerator claim."
+        },
+        {
+          "paper_id": "arxiv:2604.11572",
+          "name": "DA-PTQ",
+          "primary_source": "https://arxiv.org/abs/2604.11572",
+          "actual_mechanism": "VLA Jacobian/motion drift surrogate and mixed precision.",
+          "actual_difference_required": "A VQ relation target must be clearly different from action-motion magnitude/Jacobian allocation."
+        },
+        {
+          "paper_id": "arxiv:2607.28405v1",
+          "name": "QuantWAMs",
+          "primary_source": "https://arxiv.org/abs/2607.28405",
+          "actual_mechanism": "WAM structural/distributional/objective calibration and reachable-state schedule repair.",
+          "actual_difference_required": "TR-PVQ must compress weight codebooks using a relation target, not reuse schedule auditing as its novelty."
+        },
+        {
+          "paper_id": "arxiv:2605.15705v1",
+          "name": "Feedback World Model",
+          "primary_source": "https://arxiv.org/abs/2605.15705v1",
+          "actual_mechanism": "Inference-time latent observer from real transition residuals.",
+          "actual_difference_required": "TR-PVQ is only different if it does not add an online observer or generic residual feedback."
+        }
+      ],
+      "implementation_audit": {
+        "must_define": [
+          "Action/trajectory object shape, candidate indexing, horizon, normalization and whether Gram is centered.",
+          "How every candidate codebook/index changes imagined trajectories and how codebook entries are optimized or assigned.",
+          "Layer/block group granularity, all-map coupling, fixed-byte budget and tie/update rule.",
+          "Goal/coordinate/sign anchor and relational-only ablations.",
+          "Relational knowledge distillation/task-aware VQ baselines and exact native/fake deployment path."
+        ],
+        "required_experiment_gate": [
+          "At matched bytes, TR-PVQ must improve held-out candidate-pair geometry and the final planner action/return against LocalMSE and VPTQ-like index fitting simultaneously.",
+          "Relational-only must be compared with relational-plus-anchor; a Gram-preserving action rotation that harms the planner is a direct fail case.",
+          "Report logical bits, packed bytes, Peak VRAM, synchronized throughput, action fidelity and return separately."
+        ],
+        "implementation_verdict": "revise"
+      },
+      "feasibility_4xa100": {
+        "a100_40gb": {
+          "verdict": "plausible_for_DINO_bounded_pilot",
+          "evidence": "Existing audit places DINO-WM Wall CEM around 4.06 GiB, but the candidate-specific imagined-trajectory/codebook search and native kernel are unmeasured.",
+          "limits": "Do not infer native memory or speed from nominal VQ bits or inherited VPTQ/AQLM format."
+        },
+        "a100_80gb": {
+          "verdict": "headroom_only",
+          "limits": "80GB cannot establish kernel availability, true compression, or a custom accelerator comparison."
+        },
+        "allocation_plan": [
+          "Start with one real PBS A100 allocation for a tiny codebook/index identity gate and one held-out trajectory check.",
+          "Expand only if the target depends on quantized trajectories and the goal-anchor ablation is informative.",
+          "Keep all heavy model loading, codebook search, hashing, I/O and timing inside a validated compute allocation, with PBS_JOBID/hostname/GPU checks."
+        ],
+        "feasibility_verdict": "conditional"
+      },
+      "required_revision_targets": [
+        {
+          "scope": "tactical",
+          "field": "trajectory_relation_objective",
+          "issue": "The objective may accidentally use fixed input actions and thus be independent of quantization.",
+          "fix_direction": "Define quantized-model-dependent imagined trajectories and the exact codebook/index optimization loop."
+        },
+        {
+          "scope": "tactical",
+          "field": "geometry_identifiability",
+          "issue": "Gram invariance permits planner-harmful rotations and centered translation loss.",
+          "fix_direction": "Add a frozen goal/coordinate/sign anchor and pre-register relational-only versus anchored controls."
+        },
+        {
+          "scope": "tactical",
+          "field": "novelty_surface",
+          "issue": "Relational KD/task-aware VQ collision was not searched to closure.",
+          "fix_direction": "Search and read primary sources before any novelty certification; exact overlap routes to abandon or an explicitly narrower claim."
+        },
+        {
+          "scope": "tactical",
+          "field": "deployment_boundary",
+          "issue": "Packed lookup inheritance is not native DINO-WM execution evidence.",
+          "fix_direction": "Separate fake/logical compression from native packed bytes, VRAM and latency, and withhold the latter until measured."
+        }
+      ],
+      "no_go_conditions": [
+        "The action relation is computed from fixed inputs and does not change with codebook/index choices.",
+        "Relational-only Gram matching permits a harmful rotation/translation and no coordinate/goal anchor repairs it without changing the central claim.",
+        "The method reduces to VPTQ/AQLM local fitting plus a post-hoc Gram report.",
+        "An exact relational/task-aware VQ ancestor subsumes the objective.",
+        "Native compression/latency is claimed from logical bits, fake quantization or a custom accelerator result."
+      ]
+    }
+  ],
+  "cross_branch_decision": {
+    "non_vq": "abandon_current_STRC; independently review Frozen-Residual Transport PTQ as a new mechanism",
+    "vq": "revise_only; no novelty certification until objective, invariance, relational-VQ collision and native/fake boundary are closed",
+    "release_gate": "Do not advance either branch merely to deliver two ideas; every central claim must survive its stated no-go checks."
+  },
+  "evidence_boundary": {
+    "author_reported_or_retrieved": "The listed papers' mechanisms and local feasibility records are source-grounded or locally recorded.",
+    "local_reproduction": "No new reproduction was run in this review.",
+    "fake_quantization": "Existing DINO W4/W8 screens are numerical emulation and do not establish native bytes, VRAM or latency.",
+    "native_low_bit": "Unverified for both current branches."
+  }
+}

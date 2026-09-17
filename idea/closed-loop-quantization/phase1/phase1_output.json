@@ -1,0 +1,204 @@
+{
+  "intake": {
+    "domain": "closed-loop quantization for action-conditioned world models, world action models, and VLAs",
+    "venue": "top ML and robotics venues",
+    "time": "recent 2024-2026 frontier",
+    "data": ["DINO-WM Wall closed-loop episodes", "Fast-WAM/LIBERO or RoboTwin if the exact checkpoint and replay path are available"],
+    "compute": "up to 4x A100; report A100-40GB and 80GB-class runs separately; begin with a bounded pilot and no fixed total GPU-day budget",
+    "expertise": "world models, robot control, PTQ and reproducible evaluation",
+    "preference": "both",
+    "baseline": "local reconstruction PTQ, DA-PTQ-style motion score, QuantWAMs-style reachable-state schedule, static on-policy recalibration, and FP16 reference",
+    "user_direction": "用时间序列 residual 的累积/衰减结构与闭环状态漂移来校准或分配 precision",
+    "excluded_direction": "区别于 on-policy recalibration、单 site saliency、CEM-update、one-transition consequence 和 joint video/action schedule",
+    "limitation": "Static or one-step PTQ statistics do not reveal whether quantization residuals persist, cancel, or amplify after the policy changes its own future states.",
+    "contribution_type": "method",
+    "_inferred_fields": ["venue", "time", "data", "compute", "expertise", "baseline", "limitation", "contribution_type"]
+  },
+  "bottleneck_statement": "在 action-conditioned WM/WAM/VLA 的固定低比特闭环中，quantization perturbations 会随已执行动作改变后续输入，因此下游风险取决于 residual 的时间相关、符号结构与反馈放大，而不只是某一层或某一步的误差幅度。DA-PTQ（semanticscholar:e02f8a54b3bbea9fb31b1e084eefd263e26df523）用 virtual-Jacobian 与 trajectory-level motion surrogate 排层，QuantWAMs（arxiv:2607.28405v1）用 reachable-state replay 审计 denoising-step schedule；两者都没有给出一个可在固定部署预算下区分 persistent、canceling 与 transient quantization residual，并检验该 temporal mode 是否改变后续 visited-state distribution 的量。Feedback World Model（arxiv:2605.15705v1）以 latent observer 修正一般 off-distribution model error，但没有将可观测 transition residual 分解为 quantization-specific temporal transfer。缺口是一个结构性辨识失败：现有局部、单调用或 aggregate trajectory scores 无法判断哪类 residual dynamics 才是 held-out closed-loop drift 的可重复原因。",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "is_anchor": true,
+      "summary_and_residue": "QuantWAMs 在固定 precision budget 下用 32 条 FP16 closed-loop rollouts、完整 snapshot replay 和 TopK denoising-step schedule repair，显式比较 synthetic、quantized-observed 与 FP replay 状态分布。其剩余问题是该 profile 仍是单调用的局部 discrepancy 与 schedule audit，没有估计 residual 的跨控制时刻 transfer、persistent/canceling 模式，也没有把这种模式作为量化校准量。"
+    },
+    {
+      "paper_id": "semanticscholar:e02f8a54b3bbea9fb31b1e084eefd263e26df523",
+      "is_anchor": false,
+      "summary_and_residue": "DA-PTQ 用 action-space compensation、virtual planar Jacobian 和 trajectory-level motion-driven mixed precision 来近似长期 kinematic drift。其剩余问题是 temporal accumulation 被压成几何 magnitude 与 gradient ranking，未验证实际 quantized closed-loop residual 的 lagged correlation、符号抵消或由执行反馈引起的 state-distribution shift。"
+    },
+    {
+      "paper_id": "arxiv:2605.15705v1",
+      "is_anchor": false,
+      "summary_and_residue": "Feedback World Model 在推理时读取真实 next state，维护轻量 latent feedback state，并以 action-aware guidance 修正 off-distribution prediction，不更新模型参数。其剩余问题是 observer 针对一般 model mismatch，未定义量化误差的 temporal transfer estimand、固定 bytes/latency 下的 precision decision，或将 quantizer residual 与环境误差分开归因。"
+    },
+    {
+      "paper_id": "semanticscholar:c45e8f717cdf07690560c5eb96dbac4305236755",
+      "is_anchor": false,
+      "summary_and_residue": "MARR 以 module-specific residual reconstruction strength 和 PID feedback 平衡跨层误差修正与 Hessian-approximation bias。其剩余问题是在 LLM/ViT 的重建目标上调 residual 系数，不测量 action-conditioned closed-loop transition，也不回答 temporal residual 是否导致后续控制漂移。"
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "在固定 quantizer、controller 与 deployment budget 下，是否存在跨控制时刻可重复的 residual persistence、sign correlation 或 cancellation，使后续 state/action drift 比 instantaneous residual energy 更可预测，现有 leaves 尚未把这些 temporal modes 与 held-out outcome 分离出来 — stakes: 机器人部署者可能为不导致长期漂移的瞬时误差浪费高精度，而研究者会把 aggregate trajectory correlation 误读成可迁移的量化机制。",
+    "当量化策略的动作改变其后续 visited-state distribution 时，校准统计是否仍在同一个误差机制上有效，还是只在初始 calibration states 上成立，现有 leaves 尚未在固定预算下用独立 fit、state-shift 与 downstream transfer 共同判定这一点 — stakes: 低比特策略可能在离线指标正常时于接触或长时段控制中失效，且不同 benchmark 的结论无法解释性迁移。",
+    "现有 quantization leaves 共同继承了把 residual 主要视为可加的局部或单步幅度、再由静态分数决定保护的组件；是否必须接受这种 residual independence / memory assumption，而不能把它当作闭环 PTQ 的无条件前提，仍未被检验 — stakes: 一个未检验的共享假设会使多篇 calibration 结果在 state feedback 下失去外推基础，并阻塞可审计的精度设计。"
+  ],
+  "method_lineage": {
+    "line": "open-loop reconstruction PTQ -> sensitivity-weighted mixed precision -> trajectory/state-aware closed-loop quantization",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "open-loop local reconstruction PTQ",
+        "move": "Treat layer or tensor reconstruction discrepancy on a calibration set as sufficient proxy for deployment fidelity.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "high",
+        "residual_problem": "The proxy does not specify how a recurrent controller transforms a sequence of small errors into downstream state drift.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n1",
+        "method": "second-order or sensitivity-weighted PTQ",
+        "move": "Weight local reconstruction by curvature, activation statistics, or task-side sensitivity before assigning bits.",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Sensitivity remains a static score and does not identify residual memory, sign cancellation, or feedback-induced occupancy change.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n2",
+        "method": "DA-PTQ trajectory-level drift surrogate",
+        "move": "Replace local PTQ error with a Jacobian-weighted action-space motion surrogate and rank layers by its gradient.",
+        "parent": "n1",
+        "provenance": "retrieved:semanticscholar:e02f8a54b3bbea9fb31b1e084eefd263e26df523",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "The surrogate aggregates predicted motion magnitude and leaves the temporal correlation structure of actual quantized residuals unresolved.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n3",
+        "method": "QuantWAMs fixed-intervention reachable-state schedule audit",
+        "move": "Replay unprotected interventions on reachable FP16 states and repair a fixed denoising-step protection schedule without changing precision counts.",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2607.28405v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "A one-call local profile can detect state-distribution mismatch but does not estimate whether residuals persist, cancel, or amplify over multiple control transitions.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n4",
+        "method": "Feedback World Model latent observer",
+        "move": "Use real transition residuals to update an inference-time feedback state and correct future predictions without parameter updates.",
+        "parent": "n0",
+        "provenance": "retrieved:arxiv:2605.15705v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "The general observer does not isolate quantizer-induced residuals or decide a fixed low-bit allocation from their temporal transfer.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n5",
+        "method": "MARR module-adaptive residual reconstruction",
+        "move": "Use reconstruction error as PID feedback to tune module-specific residual strength and reduce Hessian-approximation bias.",
+        "parent": "n1",
+        "provenance": "retrieved:semanticscholar:c45e8f717cdf07690560c5eb96dbac4305236755",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Module-level reconstruction feedback does not reveal how residuals propagate through a physical closed-loop state sequence.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n6",
+        "method": "error-feedback quantization in distributed optimization",
+        "move": "Feed quantization or compression residuals into later updates to reduce persistent bias in an iterative optimizer.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "medium",
+        "residual_problem": "Optimizer error feedback is not a closed-loop robot transition and does not establish an action/state residual estimand.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n7",
+        "method": "sigma-delta and predictive input quantization control",
+        "move": "Shape or accumulate input quantization error across time to preserve a controlled signal under finite resolution.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "high",
+        "residual_problem": "Classical input quantization does not determine whether neural WM/WAM internal residual modes predict task-level drift under fixed deployment bytes.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n8",
+        "method": "observer-based robust feedback control",
+        "move": "Estimate unmeasured disturbance or model mismatch from transition residuals and feed it into a stabilizing controller.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "high",
+        "residual_problem": "Robust-control observers do not separate quantization error from environment mismatch or provide a PTQ calibration and bytes-matched allocation protocol.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "Retrieved frontier nodes are grounded in the Phase 0 table and full-text cache; parametric nodes are awareness-only and are not cited as evidence of current novelty. The collateral branches prevent a direct re-proposal of classical error-feedback, sigma-delta input quantization, or generic observer control. Exact dates and names for the parametric families are intentionally not used as hard prior-art claims."
+  },
+  "domain_pattern_distribution": {
+    "n_total": 36,
+    "n_on_topic": 29,
+    "patterns": [
+      {"pattern_id": "assumption_audit_and_pivot", "count": 6, "share": 0.21, "saturation_band": "mid_frequency"},
+      {"pattern_id": "architectural_operator_substitution", "count": 9, "share": 0.31, "saturation_band": "mid_frequency"},
+      {"pattern_id": "generative_process_redesign", "count": 3, "share": 0.10, "saturation_band": "mid_frequency"},
+      {"pattern_id": "controlled_diagnostic_design", "count": 3, "share": 0.10, "saturation_band": "mid_frequency"},
+      {"pattern_id": "unify_into_shared_representation", "count": 0, "share": 0.00, "saturation_band": "untested"},
+      {"pattern_id": "reframe_as_solvable_object", "count": 3, "share": 0.10, "saturation_band": "mid_frequency"},
+      {"pattern_id": "self_supervised_signal_engineering", "count": 1, "share": 0.03, "saturation_band": "untested"},
+      {"pattern_id": "structural_prior_encoding", "count": 10, "share": 0.34, "saturation_band": "mid_frequency"},
+      {"pattern_id": "algebraic_equivalence_unification", "count": 0, "share": 0.00, "saturation_band": "untested"},
+      {"pattern_id": "heterogeneous_decomposition", "count": 7, "share": 0.24, "saturation_band": "mid_frequency"},
+      {"pattern_id": "decompose_and_delegate", "count": 2, "share": 0.07, "saturation_band": "mid_frequency"},
+      {"pattern_id": "relax_discrete_search_to_continuous", "count": 0, "share": 0.00, "saturation_band": "untested"},
+      {"pattern_id": "adapt_via_conditioning", "count": 19, "share": 0.66, "saturation_band": "saturated"},
+      {"pattern_id": "characterize_limit_then_surpass", "count": 0, "share": 0.00, "saturation_band": "untested"},
+      {"pattern_id": "targeted_self_supervised_objective", "count": 2, "share": 0.07, "saturation_band": "mid_frequency"}
+    ],
+    "saturation_threshold_saturated": 0.50,
+    "saturation_threshold_untested_count": 1,
+    "notes": "adapt_via_conditioning is saturated (19/29); the closest papers usually condition on runtime or state context but still leave quantization residual temporal transfer and fixed-budget causal attribution unresolved."
+  },
+  "anchor_rule_pinning": {
+    "paper_id": "arxiv:2607.28405v1",
+    "method_chars": 22270,
+    "pinned": [
+      "For each benchmark, the profile is estimated from 32 FP16 closed-loop rollouts that are trajectory-disjoint from the 32-trajectory PTQ calibration set.",
+      "The resulting benchmark-level schedule is evaluated on a separate schedule-validation set and frozen before final testing.",
+      "T_replay = TopK_{t in [T]} S_ref^replay(t), |T_replay| = |T_q| = K.",
+      "The repaired schedule replaces T_q by T_replay without changing the precision levels or their counts.",
+      "The fixed-intervention profile replays every recorded state under the same unprotected intervention q_0.",
+      "Profile magnitudes are not interpreted as marginal closed-loop gains."
+    ],
+    "unpinned": [
+      "The exact tie-breaking rule for TopK when denoising-step scores are equal.",
+      "A multi-round schedule-repair update rule or stopping criterion beyond the one recorded replacement.",
+      "The exact number of outer control calls and how repeated outer calls are aggregated.",
+      "A task-independent bytes or latency cost model for the protection schedule."
+    ],
+    "sufficient_for_faithful_generator": false,
+    "why": "The method fixes the one-shot TopK repair and the disjoint 32/32/validation/test split, but leaves ties, repeated repair, and outer control-call aggregation open. Any downstream proposal that uses the QuantWAMs procedure as a generator must sweep or explicitly freeze those parameters rather than claim one-point fidelity."
+  },
+  "state": "proceed"
+}

@@ -1,23 +1,22 @@
 # FYP: VLA Quantization
 
-此 repo 用于备份本地 FYP 工作：reading guides、论文 PDF、research ideas、code audits、实验脚本、配置和评估结果。
+此 repo 用于备份本地 FYP 工作：research ideas、论文 PDF、code audits、实验脚本、配置和评估结果。
 
 ## 内容入口
 
-- [WM / WAM 量化专题阅读库](literature%20review/wm-wam-quantization-reading-guide/README.md)：LeCun 相关 baseline、代表开源工作、量化 prior art 与 benchmark。
+- [WM / WAM 量化专题阅读库](papers/wam/wm-wam-quantization-reading-guide/README.md)：LeCun 相关 baseline、代表开源工作、量化 prior art 与 benchmark。
 
-- `literature review/reading-guide/`：主阅读路线。
-- `literature review/vla-quantization-literature-review-alternative/`：VLA quantization 文献整理。
-- `literature review/dan-alistarh-quantization-reading-guide/`：quantization 专题。
-- `literature review/sim-eval-vla-reading-guide/`：simulation evaluation 阅读材料。
-- `literature review/vla-ideas-reading-guide/`：研究方向与参考材料。
-- `reproduction/bitvla-code-audit-2026-09-05/`、`reproduction/qvla-code-audit-2026-09-05/`：paper/code audits。
-- `reproduction/gptq-reproduction/`、`reproduction/openvla-oft-vla-eval-libero/`：quantization 与 VLA reproduction/evaluation 工作。
+- `idea/`：现有 research ideas、IdeaSpark pipeline、prior-art review 和 idea briefs；明确的验证运行放在 `experiment/idea-validation/`。
+- `experiment/idea-validation/`：对现有 ideas 的 screen、pilot、verification 和运行产物。
+- `experiment/reproduction/`：paper/code audits、quantization reproduction、VLA evaluation 和 benchmark 运行。
+- `papers/vla/`：VLA、VLA quantization、simulation evaluation 及其阅读材料。
+- `papers/wam/`：World Action Model papers 和对应阅读材料。
+- `papers/wm/`：World Model papers 和对应阅读材料。
 - `ASPIRE2A_README.md`、`nscc-access/`：集群使用说明与脚本。
 
 ## 备份范围
 
-`.gitignore` 排除 checkpoints、模型权重、Python environments、缓存、wheelhouse、container images、压缩包、临时文件和凭据。本地文件不会被删除。论文 PDF 保留。
+`.gitignore` 排除 checkpoints、模型权重、Python environments、缓存、wheelhouse、container images、压缩包、临时文件和凭据。本次整理只删除明确的冗余总结、旧入口和生成缓存；论文 PDF 保留。
 
 第三方 repo 以实际源码快照保存，上游地址和 commit 见 `UPSTREAM_SOURCES.json`；它们的独立 Git history 不在此备份内。保留各源码中的 license。
 

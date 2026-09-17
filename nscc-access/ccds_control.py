@@ -89,7 +89,7 @@ def main():
         data = stdout.read(LIMIT)
         error = stderr.read(LIMIT)
         if args.action == 'status':
-            folder = PROJECT/'ideaspark_run/world-model-quantization/experiments/cem-update-ptq-ccds/artifacts'/args.values[0]
+            folder = PROJECT/'experiment/idea-validation/world-model-quantization/cem-update-ptq-ccds/artifacts'/args.values[0]
             folder.mkdir(parents=True, exist_ok=True)
             (folder/'slurm_status.txt').write_bytes(data)
         print(data.decode('utf-8', errors='replace'), end='')

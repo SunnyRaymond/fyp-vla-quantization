@@ -1,0 +1,82 @@
+# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)
+
+These were retrieved by a connector but the host judged them outside the research direction (cross-domain "memory-augmented" false positives, surveys, unrelated fields). They are archived here for transparency but do NOT feed Phase 1 or the deep-read pool.
+
+- **Lightweight semantic communication system for UAV maritime monitoring based on spatiotemporal-aware ** (`semanticscholar:84e11b00df81ec1f99abd49aa6b769d40f1b9d4e`)
+  - Mixed-precision diffusion for UAV maritime semantic communication; the robotics WAM setting is absent and the keyword match is cross-domain.
+- **Uncertainty-Aware Training and Computational Scaling for Hybrid Neural Pipeline Models: Heteroscedas** (`semanticscholar:9b3c0ba6598ae4bf7b9a6b16d946424e2fd6f296`)
+  - Mixed precision and uncertainty modeling concern industrial pipeline remaining-useful-life prediction, an unrelated application domain.
+- **AutoCalib-IoT: A UAV-Anchored Cross-Modal Online Calibration Framework for Roadside Sensors** (`semanticscholar:b1a079438652047569d112767f318e64f5d26d55`)
+  - UAV-anchored roadside sensor calibration in IoT is unrelated to robot WAMs and numerical model quantization.
+- **Temporal precision and accuracy of audio-visual stimuli in mixed reality systems** (`semanticscholar:ef9cd2818f568513855baa449fbc5ac2028469ed`)
+  - Temporal audiovisual stimulus timing in mixed-reality neuroscience is unrelated to robot WAMs or quantization.
+- **Challenges and solutions for ecologists adopting AI** (`openalex:W4406955102`)
+  - Review of AI adoption in ecology is a pure cross-domain review unrelated to robot WAM quantization.
+- **Vision-Language-Action Models for Robotics: A Review Towards Real-World Applications** (`openalex:W4414198610`)
+  - Comprehensive VLA review is a pure survey; it is not a primary WAM quantization study.
+- **Foundation models in robotics: Applications, challenges, and the future** (`openalex:W4402890475`)
+  - Broad foundation-models-in-robotics survey is a pure review rather than a WAM or quantization study.
+- **‘Fun Music with My Friends’: ‘Musicking-as-Play’ in the West End Theatre** (`openalex:W7125675372`)
+  - Music-theatre practice study is unrelated to robot manipulation, WAMs, and quantization.
+- **Overview of AI and communication for 6G network: fundamentals, challenges, and future research oppor** (`openalex:W4409190069`)
+  - Comprehensive AI-and-6G communications survey is outside the robot WAM direction.
+- **A Survey of Robot Intelligence with Large Language Models** (`openalex:W4403074774`)
+  - Survey of LLM/VLM robot intelligence is a broad review and does not study coupled WAM quantization.
+- **Estuary Research** (`openalex:W7137471629`)
+  - Estuary research is unrelated to robotics, world-action models, and quantization.
+- **Motion planning for robotics: A review for sampling-based planners** (`openalex:W4406079894`)
+  - Review of sampling-based motion planners is a pure survey outside the WAM quantization mechanism.
+- **Internet of Robotic Things: Current Technologies, Challenges, Applications, and Future Research Topi** (`openalex:W4406909981`)
+  - Internet-of-Robotic-Things technology review is a broad pure review unrelated to coupled WAM quantization.
+- **Review of sEMG for Exoskeleton Robots: Motion Intention Recognition Techniques and Applications** (`openalex:W4409438943`)
+  - Review of sEMG-based exoskeleton intention recognition is a different application and a pure review.
+- **Neuromorphic computing for robotic vision: algorithms to hardware advances** (`openalex:W4413118058`)
+  - Perspective on neuromorphic vision for drone navigation is a broad hardware review, not WAM numerical quantization.
+- **IoT—A Promising Solution to Energy Management in Smart Buildings: A Systematic Review, Applications,** (`openalex:W4403868321`)
+  - Systematic review of IoT energy management in smart buildings is outside robot WAMs.
+- **Wearable and Implantable Soft Robots** (`openalex:W4403332501`)
+  - Review of wearable and implantable soft robots is unrelated to WAM modeling and numerical quantization.
+- **From Nano Robotic Manipulation to Nano Manipulation Robot** (`openalex:W4413794838`)
+  - Nanorobotic manipulation review concerns a distinct nanoscale domain and is not a WAM study.
+- **Deep Reinforcement Learning for Robotics: A Survey of Real-World Successes** (`openalex:W4409348659`)
+  - Deep-RL robotics survey is a pure review and not specific to WAMs or quantization.
+- **Tackling data scarcity in machine learning-based CFRP drilling performance prediction through a broa** (`openalex:W4411122144`)
+  - CFRP drilling performance prediction is an unrelated industrial prediction problem.
+- **Tiny Language Models for Automation and Control: Overview, Potential Applications, and Future Resear** (`openalex:W4407809258`)
+  - Tiny-language-model compression survey targets LLM/IoT automation broadly and is a pure review outside robot WAMs.
+- **Agentic LLM-based robotic systems for real-world applications: a review on their agenticness and eth** (`openalex:W4413305862`)
+  - Review of agentic LLM robotic systems is a pure survey and does not study WAM quantization.
+- **A Review of Research on Fruit and Vegetable Picking Robots Based on Deep Learning** (`openalex:W4411243767`)
+  - Review of deep-learning fruit-picking robots is a pure application survey, not a WAM study.
+- **Leveraging AI for energy-efficient manufacturing systems: Review and future prospectives** (`openalex:W4404799585`)
+  - Review of AI for energy-efficient manufacturing systems is outside robot WAM quantization.
+- **Modeling and Simple Parameters Extraction of Calibration Standards for Accurate mm-Wave On-Wafer Mea** (`openalex:W4406629039`)
+  - mm-wave calibration-standard parameter extraction is unrelated to robot WAMs and quantization.
+- **Collaborative Calibration Method for Redundant Dual-Axis RINSs Based on Geometric Constraint in GNSS** (`openalex:W4405488177`)
+  - Marine inertial-navigation calibration is an unrelated navigation domain.
+- **Automated calibration of semiconductor fabrication HVAC models using energyplus–isight integration f** (`openalex:W4415717940`)
+  - Semiconductor-fabrication HVAC digital-twin calibration is unrelated to WAMs and model quantization.
+- **Analysis of sliding match offset values for calibration for broadband vector network analyzer measur** (`openalex:W4413079998`)
+  - Broadband radar VNA calibration is unrelated to robot WAMs and quantization.
+- **Addressing Calibration and Measurement Challenges of Broadband On-wafer VNA Measurements up to 220 G** (`openalex:W6887600784`)
+  - VNA calibration measurement slides are unrelated to the research direction.
+- **OPTIMIZATION OF PRECISE EDM GEODETIC CALIBRATION BASELINE** (`openalex:W7106302881`)
+  - Geodetic calibration-baseline optimization is unrelated to robot WAMs and quantization.
+- **Scheduling Mixed RL Rollouts Beyond Prefix Locality** (`arxiv:2608.11152v1`)
+  - Rollout scheduling for LLM reinforcement learning is an unrelated language-model systems problem.
+- **WAR: Workload-Aware Rollouts for Synchronous Agentic Reinforcement Learning** (`arxiv:2607.17299v1`)
+  - Workload-aware rollout optimization targets agentic LLM reinforcement learning rather than robot WAMs.
+- **EfficientRollout: System-Aware Self-Speculative Decoding for RL Rollouts** (`arxiv:2606.18967v1`)
+  - Self-speculative decoding for LLM reinforcement-learning rollouts is outside robot WAM quantization.
+- **VL-Calibration: Decoupled Confidence Calibration for Large Vision-Language Models Reasoning** (`arxiv:2604.09529v1`)
+  - Confidence calibration for large vision-language-model reasoning is unrelated to robot WAM quantization.
+- **Optimizing What Policies Learn From: Recoverability-aware Rollout Intervention Learning** (`arxiv:2608.05080v1`)
+  - Adaptive rollout intervention learning targets post-training of large language models, not robot WAMs.
+- **QaRL: Rollout-Aligned Quantization-Aware RL for Fast and Stable Training under Training--Inference M** (`arxiv:2604.07853v1`)
+  - Rollout-aligned quantization-aware RL targets low-bit LLM rollout training, not robot WAM deployment.
+- **ConformaDecompose: Explaining Uncertainty via Calibration Localization** (`arxiv:2604.27149v1`)
+  - Conformal uncertainty localization is a general regression-calibration method unrelated to robot WAMs.
+- **Trust-Aware Sequential Decision Making and Rollout Planning for Resilient Multi-Robot Systems** (`arxiv:2608.25690v1`)
+  - Trust-aware routing under GPS spoofing concerns multi-robot network planning, not robot manipulation WAMs or quantization.
+- **World Models for Robotic Manipulation: A Survey** (`arxiv:2606.00113v1`)
+  - World-models-for-manipulation survey is a pure review rather than a primary method record.

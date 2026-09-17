@@ -1,0 +1,241 @@
+{
+  "intake": {
+    "domain": "robot-manipulation World Action Models with coupled future observation/video prediction and action generation under numerical weight/activation quantization",
+    "venue": "Oral-level ML/robotics venue; exact venue not specified",
+    "time": "2026 frontier literature with a near-term small validation study",
+    "data": [
+      "public robot-manipulation WAM baselines",
+      "robot-manipulation data such as RoboTwin 2.0 and LIBERO"
+    ],
+    "compute": "small validation on NSCC ASPIRE2A A100 40GB; do not run GPU or SSH jobs and do not train a large model from scratch",
+    "expertise": "VLA/WAM modeling, post-training quantization, and robot manipulation",
+    "preference": "both",
+    "baseline": "QuantWAMs PTQ on public coupled WAMs such as Fast-WAM and LingBot-VA, with QuantWM as the latent rollout/planning reference",
+    "user_direction": "n_a",
+    "excluded_direction": "ordinary VLA-only quantization, vector-quantization/tokenizer work, and the main branch latent rollout/planning route",
+    "limitation": "Numerical PTQ for coupled WAMs can preserve local or module-level fidelity while leaving the downstream action-conditioned closed-loop consequence of a perturbation unresolved.",
+    "contribution_type": "method",
+    "_inferred_fields": [
+      "venue",
+      "time",
+      "expertise",
+      "preference",
+      "baseline",
+      "contribution_type"
+    ]
+  },
+  "bottleneck_statement": "In a robot-manipulation WAM that jointly denoises future observations and actions, a weight or activation perturbation can have a small local discrepancy yet change an action chunk, alter the next observation, and thereby change the inputs to later coupled predictions; the needed downstream consequence is not identified by current numerical calibration. QuantWM (arxiv:2602.02110v1) shows that iterative world-model inference can accumulate quantization error and decouple a planning objective from task success, but its DINO-WM setting is latent rollout/planning rather than a coupled video/action WAM. QuantWAMs (arxiv:2607.28405v1) extends PTQ to coupled WAMs with coordinate-aware activation calibration, joint video-action empirical-Fisher saliency, and fixed-intervention denoising-step auditing, yet explicitly uses its local discrepancy profile as a schedule-audit signal rather than as a marginal closed-loop task-gain estimate. The unresolved structural failure is therefore that precision decisions cannot yet produce a validated action-level consequence of numerical error across the coupled denoising and subsequent observation/action loop, allowing local calibration fidelity to remain decoupled from contact-critical control reliability.",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "is_anchor": true,
+      "summary_and_residue": "QuantWAMs calibrates a coupled WAM with coordinate-admissible activation pooling, joint video-action empirical-Fisher layer saliency, and replay of full-precision closed-loop snapshots to choose a fixed-count denoising-step protection set. Its method explicitly treats the replay profile as a schedule-audit signal rather than a marginal closed-loop task-gain estimate, and does not establish which local perturbation changes the final action chunk or later observations."
+    },
+    {
+      "paper_id": "arxiv:2602.02110v1",
+      "is_anchor": false,
+      "summary_and_residue": "QuantWM measures weight/activation PTQ, bit width, granularity, and long-horizon effects in DINO-WM, finding error accumulation and a mismatch between planning loss and task success at aggressive precision. It does not study coupled video/action WAM denoising or determine how a numerical perturbation in a WAM branch changes action generation and subsequent observations."
+    },
+    {
+      "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+      "is_anchor": false,
+      "summary_and_residue": "Fast-WAM separates video co-training from explicit future generation and shows that video supervision can remain useful when test-time future synthesis is removed. Its controlled study omits numerical weight/activation quantization and the outer autoregressive loop, so it does not determine how low-bit perturbations affect a coupled future/action denoising loop."
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "additive: No retrieved WAM-quantization leaf establishes the downstream consequence of a numerical perturbation at a module or denoising step for the final action chunk and the next closed-loop observation in contact-critical manipulation; this is the unresolved residue of QuantWAMs (arxiv:2607.28405v1), not a request for a particular remedy. — stakes: practitioners may deploy a memory- and latency-efficient WAM that preserves local calibration metrics but fails on contact-sensitive actions, while researchers may mistake local fidelity for transferable closed-loop reliability.",
+    "subtractive: No retrieved WAM-quantization leaf tests whether the local numerical-fidelity surrogate inherited from layer-local PTQ is actually sufficient for precision selection in the coupled video/action setting, rather than an assumed proxy for downstream task impact; this questions the inherited assumption and leaves the replacement open. — stakes: precision-allocation conclusions can rest on an unexamined surrogate and invalidate comparisons across WAMs or tasks, while deployment teams cannot tell whether an apparent speed or memory gain preserves the action behavior they require."
+  ],
+  "method_lineage": {
+    "line": "deployment-time numerical post-training quantization for coupled video/action World Action Models",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "Full-precision neural-network inference",
+        "move": "Base formulation: execute the learned model with floating-point weights and activations.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "high",
+        "residual_problem": "Model size and repeated forward passes make deployment costly; no numerical compression is used.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n1",
+        "method": "Post-training quantization with layer-local calibration",
+        "move": "Replaces floating-point values with low-bit weights or activations and chooses scales or rounding from calibration to control local layer error without full retraining.",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "A local reconstruction or activation-error surrogate need not predict downstream behavior when inference is iterated or coupled to environment feedback.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n2",
+        "method": "Sensitivity-aware mixed-precision allocation",
+        "move": "Spends a fixed precision budget on sensitivity-ranked layers or channels while quantizing the remainder more aggressively instead of using uniform bits.",
+        "parent": "n1",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "Static sensitivity rankings are not guaranteed to match deployment states or the downstream consequence of an error in an iterated policy.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n3",
+        "method": "Iterative latent-world-model PTQ (QuantWM)",
+        "move": "Evaluates weight/activation bits and granularity across repeated latent rollouts and separates encoder and predictor sensitivity from planning-horizon behavior.",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2602.02110v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "The latent rollout/planning setting does not specify the action-level consequence of numerical perturbations in a WAM whose future and action streams are coupled.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n4",
+        "method": "Coupled video/action WAM PTQ (QuantWAMs)",
+        "move": "Adds coordinate-admissible activation pooling, joint video-action saliency, and fixed-intervention replay for denoising-step protection under a fixed precision count.",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2607.28405v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "A local quantization discrepancy and fixed protection schedule are not validated as the marginal consequence of a perturbation on the final action chunk and later closed-loop observations, so action-critical state dependence remains unresolved.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n5",
+        "method": "Quantization-aware training against task loss (PACT/LSQ-style family)",
+        "move": "Optimizes a quantized forward pass, scales, or clipping parameters against a task objective instead of relying only on post-hoc local calibration.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Task-loss alignment during training does not by itself identify deployment-state coverage or the resource allocation needed for a coupled WAM.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n6",
+        "method": "Uncertainty-aware model-based control and robust MPC (PETS/tube-MPC family)",
+        "move": "Propagates model-error or uncertainty information through multi-step predictions to select actions that are robust to future state deviations.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "high",
+        "residual_problem": "Trajectory-level robustness machinery does not specify how neural weight/activation quantization creates a calibrated uncertainty or consequence signal inside a coupled WAM denoiser.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n7",
+        "method": "Teacher-student behavior distillation for quantized policies",
+        "move": "Matches full-precision outputs or intermediate behavior with a quantized student to preserve task-relevant responses.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Behavior matching on calibration states does not expose state-conditional error propagation through later observations or allocate bits across coupled video and action paths.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "Retrieved frontier nodes n3 and n4 are the direct prior-art branches: QuantWM covers latent rollout/planning and QuantWAMs covers coupled WAM PTQ. Parametric nodes reconstruct established ancestry and collateral alternatives only; they are awareness-only and do not support a hard novelty claim. The 2-4y ancestry band is marked medium confidence, and the legal gap sites are the residuals of retrieved frontier leaves rather than the interior nodes."
+  },
+  "domain_pattern_distribution": {
+    "n_total": 89,
+    "n_on_topic": 84,
+    "patterns": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 7,
+        "share": 0.08,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 16,
+        "share": 0.19,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 23,
+        "share": 0.27,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 6,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 15,
+        "share": 0.18,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 38,
+        "share": 0.45,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 13,
+        "share": 0.15,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 5,
+        "share": 0.06,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 22,
+        "share": 0.26,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 8,
+        "share": 0.1,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 17,
+        "share": 0.2,
+        "saturation_band": "mid_frequency"
+      }
+    ],
+    "saturation_threshold_saturated": 0.5,
+    "saturation_threshold_untested_count": 1,
+    "notes": "heterogeneous_decomposition is the most-used pattern (38/84); its closest WAM and quantization papers tend to leave whether fixed module or context partitions remain valid under deployment-state, task, or embodiment shifts unresolved."
+  },
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

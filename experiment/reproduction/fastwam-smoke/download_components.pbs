@@ -1,0 +1,105 @@
+#!/bin/bash
+#PBS -N fw_components_dl
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -l walltime=08:00:00
+#PBS -j oe
+
+set -eo pipefail
+
+case "${PBS_JOBID:-}" in
+  '') echo 'Refusing component download: PBS_JOBID is missing.' >&2; exit 64 ;;
+esac
+case "$(hostname -s)" in
+  *login*|asp2a-login*) echo 'Refusing component download: login node is not a compute allocation.' >&2; exit 64 ;;
+esac
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-smoke
+MODEL_BASE="$ROOT/model-cache"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+source /etc/profile
+
+EXPECTED_VAE_SIZE=1409401152
+EXPECTED_VAE_SHA256=0e913a2ca571c75fcb63385a8edadcca73454af5842596cb1ad11e4142590996
+EXPECTED_T5_SIZE=11361845432
+EXPECTED_T5_SHA256=d92de679881d38af9c89eff7bb1b6d6c9d96cb2b69831e4027e9ecabdd38eb23
+EXPECTED_SPIECE_SIZE=4548313
+EXPECTED_SPIECE_SHA256=e3909a67b780650b35cf529ac782ad2b6b26e6d1f849d3fbb6a872905f452458
+EXPECTED_TOKENIZER_SIZE=16837417
+EXPECTED_TOKENIZER_SHA256=6e197b4d3dbd71da14b4eb255f4fa91c9c1f2068b20a2de2472967ca3d22602b
+
+download_one() {
+  local url="$1" dir="$2" out="$3"
+  mkdir -p "$dir"
+  if [ -x /usr/bin/aria2c ]; then
+    /usr/bin/aria2c --continue=true --allow-overwrite=true \
+      --auto-file-renaming=false --max-connection-per-server=8 --split=8 \
+      --min-split-size=16M --file-allocation=none --max-tries=0 \
+      --retry-wait=10 --timeout=60 --summary-interval=30 \
+      --dir="$dir" --out="$out" "$url"
+  elif [ -x /usr/bin/wget ]; then
+    /usr/bin/wget --continue --tries=0 --timeout=60 --waitretry=10 \
+      --retry-connrefused --output-document="$dir/$out" "$url"
+  else
+    echo 'No supported downloader on compute node' >&2
+    exit 1
+  fi
+}
+
+verify_large() {
+  local path="$1" expected_size="$2" expected_sha="$3"
+  test -f "$path"
+  actual_size=$(stat -c %s "$path")
+  printf 'size path=%s actual=%s expected=%s\n' "$path" "$actual_size" "$expected_size"
+  test "$actual_size" = "$expected_size"
+  digest=$(sha256sum "$path" | awk '{print $1}')
+  printf 'sha256 path=%s actual=%s expected=%s\n' "$path" "$digest" "$expected_sha"
+  test "$digest" = "$expected_sha"
+}
+
+date
+printf 'host='; hostname
+mkdir -p "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors" \
+  "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl"
+
+download_one \
+  'https://huggingface.co/noodlepop/Wan-Series-Converted-Safetensors/resolve/main/Wan2.2_VAE.safetensors' \
+  "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors" \
+  'Wan2.2_VAE.safetensors'
+verify_large "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors/Wan2.2_VAE.safetensors" \
+  "$EXPECTED_VAE_SIZE" "$EXPECTED_VAE_SHA256"
+
+download_one \
+  'https://huggingface.co/noodlepop/Wan-Series-Converted-Safetensors/resolve/main/models_t5_umt5-xxl-enc-bf16.safetensors' \
+  "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors" \
+  'models_t5_umt5-xxl-enc-bf16.safetensors'
+verify_large "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors/models_t5_umt5-xxl-enc-bf16.safetensors" \
+  "$EXPECTED_T5_SIZE" "$EXPECTED_T5_SHA256"
+
+download_one \
+  'https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B/resolve/main/google/umt5-xxl/special_tokens_map.json' \
+  "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl" 'special_tokens_map.json'
+download_one \
+  'https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B/resolve/main/google/umt5-xxl/spiece.model' \
+  "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl" 'spiece.model'
+verify_large "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl/spiece.model" \
+  "$EXPECTED_SPIECE_SIZE" "$EXPECTED_SPIECE_SHA256"
+download_one \
+  'https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B/resolve/main/google/umt5-xxl/tokenizer.json' \
+  "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl" 'tokenizer.json'
+verify_large "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl/tokenizer.json" \
+  "$EXPECTED_TOKENIZER_SIZE" "$EXPECTED_TOKENIZER_SHA256"
+download_one \
+  'https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B/resolve/main/google/umt5-xxl/tokenizer_config.json' \
+  "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl" 'tokenizer_config.json'
+
+printf 'small_file_sizes\n'
+stat -c '%s %n' "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl/special_tokens_map.json" \
+  "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl/tokenizer_config.json"
+find "$MODEL_BASE" -maxdepth 5 -type f -printf '%P\t%s bytes\n' | sort \
+  | tee "$ARTIFACTS/model-cache-manifest.tsv"
+touch "$ARTIFACTS/SUCCESS"
+date

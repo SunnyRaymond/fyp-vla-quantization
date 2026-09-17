@@ -1,0 +1,94 @@
+#!/bin/bash
+#PBS -N oft_libero_smoke
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=06:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero
+SRC="$ROOT/vla-evaluation-harness"
+BOOTSTRAP="$ROOT/venvs/bootstrap"
+SIF="$ROOT/containers/libero-latest.sif"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+
+mkdir -p "$ROOT/containers" "$ROOT/cache/apptainer" "$ROOT/cache/apptainer-tmp" \
+  "$ROOT/cache/huggingface" "$ROOT/cache/torch" "$ROOT/cache/uv" \
+  "$ROOT/venvs" "$ARTIFACTS"
+cp "$PBS_O_WORKDIR/smoke_test.pbs" "$ARTIFACTS/"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+export APPTAINER_CACHEDIR="$ROOT/cache/apptainer"
+export APPTAINER_TMPDIR="$ROOT/cache/apptainer-tmp"
+export HF_HOME="$ROOT/cache/huggingface"
+export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
+export TORCH_HOME="$ROOT/cache/torch"
+export UV_CACHE_DIR="$ROOT/cache/uv"
+export PYTHONUNBUFFERED=1
+
+module purge
+module load gcc/11.4.0-nscc
+module load python/3.11.7-gcc11
+module load apptainer/1.5.0 cuda/12.2.2
+export PATH="/usr/bin:/bin:$PATH"
+
+cleanup() {
+  if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+    kill "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+date
+hostname
+nvidia-smi | tee "$ARTIFACTS/nvidia-smi.txt"
+module list 2>&1 | tee "$ARTIFACTS/modules.txt"
+
+if [[ ! -d "$SRC/.git" ]]; then
+  git clone --depth 1 https://github.com/allenai/vla-evaluation-harness.git "$SRC"
+fi
+git -C "$SRC" rev-parse HEAD | tee "$ARTIFACTS/vla-eval-commit.txt"
+
+if [[ ! -x "$BOOTSTRAP/bin/uv" ]]; then
+  python -m venv "$BOOTSTRAP"
+  "$BOOTSTRAP/bin/python" -m pip install --upgrade pip uv
+fi
+
+if [[ ! -f "$SIF" ]]; then
+  apptainer pull "$SIF.partial" docker://ghcr.io/allenai/vla-evaluation-harness/libero:latest
+  mv "$SIF.partial" "$SIF"
+fi
+apptainer inspect "$SIF" > "$ARTIFACTS/container-inspect.txt"
+
+cd "$SRC"
+"$BOOTSTRAP/bin/uv" sync --python 3.11
+CUDA_VISIBLE_DEVICES=0 "$BOOTSTRAP/bin/uv" run vla-eval serve \
+  --config configs/model_servers/oft/libero_spatial.yaml \
+  > "$ARTIFACTS/model-server.log" 2>&1 &
+SERVER_PID=$!
+
+for _ in $(seq 1 180); do
+  if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
+    break
+  fi
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    tail -200 "$ARTIFACTS/model-server.log"
+    exit 1
+  fi
+  sleep 10
+done
+curl --fail http://127.0.0.1:8000/health | tee "$ARTIFACTS/model-server-health.json"
+
+cd "$ARTIFACTS"
+apptainer exec --bind "$ROOT:$ROOT" "$SIF" \
+  vla-eval run --no-docker \
+  --config "$SRC/configs/benchmarks/libero/smoke_test.yaml" \
+  --render cpu --record-video --yes \
+  2>&1 | tee "$ARTIFACTS/benchmark.log"
+
+find "$ARTIFACTS" -type f -printf '%P\t%s bytes\n' | sort > "$ARTIFACTS/manifest.tsv"
+touch "$ARTIFACTS/SUCCESS"
+date

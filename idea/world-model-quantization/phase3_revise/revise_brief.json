@@ -1,0 +1,61 @@
+{
+  "recipe_application_check": {
+    "entries": [
+      {
+        "gap": "For the setting studied by arxiv:2602.02110v1, and more generally for action-conditioned latent world models, no retrieved leaf establishes whether a low-bit perturbation preserves the ranking of candidate action sequences as the imagined-rollout horizon and visited latent states change — stakes: practitioners can deploy a model that looks acceptable on local or short-horizon metrics but selects systematically worse actions, wasting the single-GPU pilot and blocking reliable closed-loop control; intellectually, PTQ conclusions do not transfer from visual-goal planning to model-based control.",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "tactical_pattern_quoted": "This cluster recasts an opaque transparency question about an already-trained model or dataset — which feature/datum/internal component is responsible, how uncertain a prediction is, what a hidden representation encodes — as a concrete measurement over a well-studied object: a manifold-constrained counterfactual optimization, a submodular subset selection, an expectation/estimator over marginal statistics, an additive decomposition into a (often sparse) basis, or an influence/Shapley score accumulated along the optimization trajectory. The decisive move is choosing the right unit of analysis and the right faithfulness constraint so the resulting scores reflect the model's actual computation rather than an off-distribution or post-hoc artifact — e.g., searching counterfactuals only on the learned data manifold, decomposing into monosemantic sparse directions before causal tracing, or embedding the explanatory predictors as the primary decision representation.",
+        "instantiation_in_core_mechanism": "core_mechanism_steps 1 and 4 pin down the candidate-order disagreement and the finite-sample I_g,c(b) and I_g quantities over fixed candidate sets; step 2 fixes native Linear/Conv site units and an FP16 no-op faithfulness check; step 5 uses finite accumulators without silently changing the estimand; steps 6–8 retain full profile vectors, solve a measured PeakBytes-constrained assignment, evaluate downstream closed-loop outcomes, and run a matched randomized intervention. This performs the C00 measurement, unit/faithfulness, tractability, and causal-validation moves rather than only repeating the parent reframe label.",
+        "verdict": "applied"
+      }
+    ],
+    "verdict": "applied",
+    "reasoning": "The C00 entry is applied because the candidate formalizes a fixed-model counterfactual influence object, binds it to native site units and planner computation, computes it with a finite accumulator, and tests its downstream use with matched intervention controls."
+  },
+  "anti_pattern_check": {
+    "composition_set": [
+      "reframe_as_solvable_object",
+      "heterogeneous_decomposition"
+    ],
+    "matched_pattern_id": null,
+    "required_mitigation_quoted": null,
+    "mitigation_substantively_delivered": "n/a",
+    "reasoning": "The composition is reframe_as_solvable_object plus heterogeneous_decomposition, whereas the three documented reject-favored matches pair heterogeneous_decomposition with architectural_operator_substitution, structural_prior_encoding, or self_supervised_signal_engineering; the weaker reframe pairing is only a watchlist note, not a matched hard-floor composition."
+  },
+  "paper_pointed_threat": {
+    "threat_paper_id": "arxiv:2602.02110v1",
+    "threat_source": "lit_table",
+    "threat_channel": null,
+    "subsumption_argument": "arxiv:2602.02110v1 is the strongest run-pool threat: lit_table marks it host_recall, and the candidate identifies connector-verified H/html_arxiv full text; it already varies weight-only and joint W/A PTQ by module, granularity, and horizon and reports planning-objective/task-success mismatch. The supplemental review also supplies the exact identity and title arxiv:2602.11882v1, Where Bits Matter in World-Model Planning, with official-HTML sections 4–6 evidence of paired mixed-bit/planner-budget comparisons and planning-success allocation, so it is not dropped because of a failed title lookup; it also records arxiv:2607.28405v1 as connector-verified host_recall, while this run's candidate evidence is abstract-only with no fulltext cache entry (the supplemental review separately reports official-HTML section/equation checks). These priors threaten the broad decision-aware and mixed-precision framing, but the supplied evidence does not show the same imagined action-sequence latent-dynamics branch, frozen-model all-other-FP16 site-only candidate-order estimand, measured end-to-end PeakBytes-constrained mixed W/A assignment, or exact histogram-plus-bytes permutation; QuantWAMs remains a WAM joint future/action-denoising prior, not an exact branch match. The threat is therefore addressable differentiation, not exact-mechanism overlap or novelty certification.",
+    "addressable_via": "Append a differentiation_from_lit item for arxiv:2602.11882v1 / Where Bits Matter in World-Model Planning, explicitly contrasting its paired mixed-bit/planner-budget planning-success allocation with RankCal's site-only candidate-order estimand and measured end-to-end PeakBytes plus histogram-matched permutation.",
+    "parametric_family_concern": "value-aware and value-gradient-weighted model-learning objectives; query phrases such as 'value-aware model-based RL loss' and 'value-gradient weighted model learning' before treating decision-aware error as a novelty claim."
+  },
+  "falsification_structure_check": {
+    "minimal_experiment_named": "yes",
+    "outcome_metric_named": "yes",
+    "load_bearing_variable": "I_g(b), the site-only rollout-ranking influence profile",
+    "negative_control_target": "outcome_metric",
+    "numeric_bar_provenance": "none",
+    "verdict": "sound",
+    "reasoning": "The paragraph names a one-checkpoint/one-task setup, compares RankCal with uniform-bit and local-reconstruction allocations at matched peak memory, and gives downstream success and ranking-direction predictions. Randomizing I_g(b) while preserving the stated resources predicts return of downstream task success to baseline, so the control is non-tautological; the six-axis cell count and 12 GPU-day figure are design/resource estimates outside this paragraph's outcome-bar test."
+  },
+  "blocking_findings_disposition": [],
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "Revise on soft judgment: paper_pointed_threat.addressable_via names a missing differentiation_from_lit comparison to exact arxiv:2602.11882v1, and the current DINO/QuantWAM entries do not cover that paired mixed-bit/planner-budget prior. gap_closure_reject_check.entries[0].reject_lessons_evaluated[2] is borderline because the C00 causal/ground-truth lesson meets a site-only all-other-FP16 estimand with joint-quantization interactions; add the two-site interaction control, while recipe_application_check.entries[0].verdict is applied, anti_pattern_check.mitigation_substantively_delivered is n/a, falsification_structure_check.verdict is sound, and paper_pointed_threat.subsumption_argument keeps the WAM branch boundary explicit. The torch.ao versus deployable-kernel boundary, measured PeakBytes, and exact permutation limits are conditional in the candidate; up to 324 deduplicated grid cells and the 12 GPU-day figure remain unmeasured estimates, not evidence of feasibility or novelty.",
+  "revision_targets": [
+    {
+      "scope": "tactical",
+      "field": "differentiation_from_lit",
+      "issue": "paper_pointed_threat identifies the exact supplemental prior arxiv:2602.11882v1, Where Bits Matter in World-Model Planning, but the candidate's differentiation_from_lit list omits it.",
+      "fix_direction": "Append one differentiation_from_lit item naming arxiv:2602.11882v1 and the official title, then state the concrete delta: its paired mixed-bit/planner-budget planning-success comparison is distinct from RankCal's frozen action-conditioned latent-dynamics site-only candidate-order estimand, measured system-level PeakBytes constraint, and exact histogram-plus-bytes permutation; retain the WAM future/action-denoising boundary and the run's fulltext-versus-abstract evidence labels."
+    },
+    {
+      "scope": "tactical",
+      "field": "core_mechanism_reasoning",
+      "issue": "The C00 two-site interaction item is retained as a non-load-bearing diagnostic limitation; falsification_structure_check is sound, so no guarded falsification rewrite is authorized.",
+      "fix_direction": "Keep falsification_prediction byte-identical. If a prose diagnostic is needed, place it in core_mechanism_reasoning without adding an experiment arm or changing the falsification claim, metric, load-bearing variable, or controls."
+    }
+  ],
+  "_brief_note": "gap_closure_reject_check details omitted for context economy — full report at D:\\Downloads\\Final Year Project\\ideaspark_run\\world-model-quantization\\phase3_critique\\phase3_critique_output.json; read it ONLY if a revision_target's `issue` cites a specific reject lesson you need verbatim."
+}

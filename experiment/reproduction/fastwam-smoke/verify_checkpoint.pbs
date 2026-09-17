@@ -1,0 +1,50 @@
+#!/bin/bash
+#PBS -N fw_ckpt_verify
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=4gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -eo pipefail
+
+case "${PBS_JOBID:-}" in
+  '') echo 'Refusing verification: PBS_JOBID is missing.' >&2; exit 64 ;;
+esac
+case "$(hostname -s)" in
+  *login*|asp2a-login*) echo 'Refusing verification: login node is not a compute allocation.' >&2; exit 64 ;;
+esac
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-smoke
+CHECKPOINT="$ROOT/checkpoints/libero_optional_idm_2cam224.clean.pt"
+LOG="$ROOT/logs/checkpoint_verify_${PBS_JOBID}.log"
+EXPECTED_BYTES=12041735545
+EXPECTED_SHA256=26b4efffded221b9a303ca8f2cddb9999c8b7524e2751c855c74a986242ce8b4
+HF_API=https://huggingface.co/api/models/yuanty/fastwam/tree/main?recursive=true
+
+mkdir -p "$ROOT/logs"
+exec > >(tee -a "$LOG") 2>&1
+source /etc/profile
+printf 'date='; date
+printf 'host='; hostname
+printf 'checkpoint=%s\n' "$CHECKPOINT"
+
+test -f "$CHECKPOINT"
+actual=$(stat -c %s "$CHECKPOINT")
+printf 'actual_bytes=%s expected_bytes=%s\n' "$actual" "$EXPECTED_BYTES"
+test "$actual" = "$EXPECTED_BYTES"
+
+if [ -x /usr/bin/curl ]; then
+  /usr/bin/curl --fail --silent --show-error --location "$HF_API" \
+    | python3 -c 'import json,sys; rows=json.load(sys.stdin); row=next(x for x in rows if x.get("path")=="libero_optional_idm_2cam224.pt"); lfs=row.get("lfs") or {}; print("hf_path="+row["path"]); print("hf_size="+str(lfs.get("size",row.get("size")))); print("hf_lfs_oid="+str(lfs.get("oid"))); assert lfs.get("size")==12041735545; assert lfs.get("oid")=="26b4efffded221b9a303ca8f2cddb9999c8b7524e2751c855c74a986242ce8b4"'
+else
+  echo 'curl is required for live HF metadata verification' >&2
+  exit 1
+fi
+
+printf 'sha256_start='; date
+digest=$(sha256sum "$CHECKPOINT" | awk '{print $1}')
+printf 'sha256=%s expected_sha256=%s\n' "$digest" "$EXPECTED_SHA256"
+test "$digest" = "$EXPECTED_SHA256"
+touch "$ROOT/checkpoints/libero_optional_idm_2cam224.clean.VERIFIED"
+printf 'checkpoint_verified=%s\n' "$CHECKPOINT"

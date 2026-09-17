@@ -1,1 +1,0 @@
-"""RoboDojo benchmark integration."""

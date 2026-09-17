@@ -1,1 +1,0 @@
-2026-09-13，CPU新输入/GPU未运行。Root独立检查 pinned tdmpc2.py line117 发现 termination=zeros(cfg.num_samples,1) 不受episodic条件控制，故原设计“episodic=false即支持batch1”不成立。协议在数据前改为仅 μ scorer proxy使用浅拷贝num_samples=1；原model.cfg和512候选pool配置不变。这是scratch shape适配，不是修改候选数或门槛。输出[1,1]必须断言。来源：https://raw.githubusercontent.com/nicklashansen/tdmpc2/e9f59321933cbc8e11a002b842adc7d4ffae8ff1/tdmpc2/tdmpc2.py

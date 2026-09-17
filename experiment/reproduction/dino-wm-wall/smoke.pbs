@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N dino_wall_smoke
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+OUT="$ROOT/artifacts/$PBS_JOBID"
+WORK=${TMPDIR:-/tmp}/dino-wall-smoke-$PBS_JOBID
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+test -f "$ROOT/ASSETS_READY"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+export PYTHONPATH="$ROOT/source"
+nvidia-smi
+timeout --signal=TERM 18m "$WORK/runtime/venv/bin/python" "$ROOT/control/evaluate_wall.py" --root "$ROOT" --output "$OUT" --n-evals 2 --max-mpc 1
+"$WORK/runtime/venv/bin/python" "$ROOT/control/verify_results.py" "$OUT" --expected 2
