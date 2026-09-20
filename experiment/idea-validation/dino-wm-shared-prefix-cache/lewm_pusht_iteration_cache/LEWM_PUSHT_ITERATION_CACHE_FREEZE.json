@@ -1,0 +1,90 @@
+{
+  "schema": "dino-wm-shared-prefix-cache.lewm-pusht-iteration-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "lewm-pusht-iteration-cache",
+  "purpose": "Measure cross-CEM-iteration reuse of the fixed initial-observation and goal embeddings on the official LeWorldModel PushT CEM path.",
+  "source": {
+    "lewm_repository": "https://github.com/lucas-maes/le-wm",
+    "lewm_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel_cem_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "official_files": [
+      "jepa.py",
+      "config/eval/pusht.yaml",
+      "config/eval/solver/cem.yaml",
+      "stable_worldmodel/solver/cem.py"
+    ]
+  },
+  "assets": {
+    "source": "official LeWM PushT checkpoint and official PushT HDF5 dataset, pre-staged by the user or a CPU PBS preparation job",
+    "cache_root_env": "STABLEWM_HOME",
+    "checkpoint_relative": "pusht/lewm",
+    "dataset_name": "pusht_expert_train",
+    "required_checkpoint_files": [
+      "pusht/lewm/config.json",
+      "pusht/lewm/weights.pt"
+    ],
+    "required_dataset_file": "pusht_expert_train.h5",
+    "no_download_in_runner": true
+  },
+  "official_pusht": {
+    "seed": 42,
+    "plan_config": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "action_block": 5
+    },
+    "cem_solver": {
+      "batch_size": 1,
+      "num_samples": 300,
+      "var_scale": 1.0,
+      "n_steps": 30,
+      "topk": 30,
+      "device": "cuda"
+    },
+    "eval": {
+      "img_size": 224,
+      "goal_offset_steps": 25,
+      "observation_ids": ["pusht_obs_00", "pusht_obs_01"]
+    }
+  },
+  "cache_contract": {
+    "scope": "one CEMSolver.solve call and one internal batch",
+    "cached_tensors": ["initial_embedding", "goal_embedding"],
+    "cache_build": "encode fixed initial observation and fixed goal once before the first CEM iteration",
+    "preserved": [
+      "native B,S candidate-axis expansion",
+      "candidate RNG and first candidate replacement",
+      "action_encoder",
+      "predictor rollout",
+      "criterion",
+      "topk selection",
+      "mean and variance updates"
+    ],
+    "not_cached": ["action embeddings", "predicted embeddings", "mutable info_dict", "CEM distribution state"]
+  },
+  "timing": {
+    "warmup_repeats": 5,
+    "technical_repeats": 10,
+    "paths": ["baseline", "iteration_cache"],
+    "full_unit": "one complete official CEMSolver.solve call for one fixed PushT info/goal batch and one paired solver RNG seed",
+    "full_boundary": "before solve entry through returned output, including info expansion, cache build or baseline repeated encodes, all CEM iterations, topk/update, and solver overhead",
+    "inner_unit": "sum of synchronized model.get_cost intervals over the same solve call; includes the first-call cache build and all candidate rollout/criterion work, excludes CEM sampling/topk/update and solve setup",
+    "device_synchronization": "torch.cuda.synchronize immediately before and after each full solve; CUDA events around each get_cost section",
+    "includes_environment_interaction": false,
+    "path_order_policy": "interleaved_seeded",
+    "peak_memory": "torch.cuda.max_memory_allocated after each synchronized solve"
+  },
+  "decision_gate": {
+    "priority": "bitwise_exact",
+    "fallback": "If not bitwise exact, every final action, first action, per-iteration topk indices, topk values, mean, variance, and cost trace must have max-abs difference <= 1e-5.",
+    "max_abs_threshold": 1e-5,
+    "trace": "final actions plus callback traces from all 30 CEM iterations"
+  },
+  "system_gate": {
+    "minimum_paired_median_full_solve_latency_reduction": 0.10,
+    "maximum_peak_memory_ratio": 1.10,
+    "statistic": "median technical-repeat reduction across paired rows and then median over the two observations",
+    "reduction": "1 - iteration_cache / baseline"
+  }
+}

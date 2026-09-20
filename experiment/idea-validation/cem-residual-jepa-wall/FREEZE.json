@@ -1,0 +1,81 @@
+{
+  "schema": "dino-wm-wall.cem-residual-jepa.stage-a-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "purpose": "Predict a candidate's dense teacher latent residual from one exact CEM-mean rollout.",
+  "scope": {
+    "backend": "official DINO-WM Wall",
+    "horizon": 5,
+    "frameskip": 5,
+    "workload": "rankcal-wall-screen-workload-v1",
+    "pools": "episode pools.npz; mu_before and sigma_before are required",
+    "planner_integration": false,
+    "closed_loop": false,
+    "environment_interaction": false,
+    "dense_latent_teacher_rollout": true,
+    "candidate_is_replicate": false
+  },
+  "data": {
+    "episodes": 8,
+    "pools": 26,
+    "candidate_shape": [300, 5, 10],
+    "train_episodes": ["development:000", "development:001", "development:002", "development:003", "development:004"],
+    "heldout_episodes": ["development:005", "development:006", "development:007"],
+    "split_unit": "complete episode; no pool or candidate crosses split"
+  },
+  "student": {
+    "architecture": "one-layer causal Transformer residual predictor",
+    "input": "base future visual/proprio latent + epsilon=(action-mu)/sigma + sigma",
+    "output": "dense visual/proprio latent residual; prediction is base+residual",
+    "hidden_dim": 64,
+    "heads": 4,
+    "layers": 1,
+    "dropout": 0.0,
+    "goal_input": false,
+    "teacher_target": "candidate dense teacher rollout minus exact teacher rollout at mu"
+  },
+  "training": {
+    "passes": 4,
+    "chunk_size": 32,
+    "learning_rate": 0.0003,
+    "optimizer": "AdamW",
+    "seed": 20260920,
+    "teacher_targets_detached": true
+  },
+  "evaluation": {
+    "arms": ["mean_only_base_repeat", "trained_residual", "shuffled_epsilon_negative_control"],
+    "candidates_per_pool": 300,
+    "topk": 30,
+    "causality_tolerance": 0.000001,
+    "latency": {
+      "boundary": "300 teacher rollouts versus one teacher base rollout plus student batch",
+      "warmup": 3,
+      "repeats": 10,
+      "cuda_synchronize": true,
+      "excludes": ["encoder", "full CEM", "objective", "environment", "closed loop"]
+    }
+  },
+  "gates": {
+    "finite_and_causal": true,
+    "residual_spearman_median_min": 0.95,
+    "residual_top30_median_min": 0.80,
+    "paired_spearman_delta_residual_minus_base_min": 0.05,
+    "paired_spearman_delta_residual_minus_shuffled_min": 0.05,
+    "paired_top30_delta_residual_minus_base_min": 0.10,
+    "paired_top30_delta_residual_minus_shuffled_min": 0.10,
+    "latency_reduction_min": 0.20,
+    "aggregation": "median over heldout pools; candidates are not replicates",
+    "decision": "GO iff absolute ranking, paired mechanism, finite/causal, and predictor-boundary latency gates all pass"
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_PBS_JOBID": true,
+    "require_PBS_NODEFILE": true,
+    "reject_host_tokens": ["login", "head", "submit"],
+    "gpu_telemetry_seconds": 30,
+    "download": false,
+    "install": false,
+    "hash": false,
+    "environment_and_full_mpc": false
+  }
+}

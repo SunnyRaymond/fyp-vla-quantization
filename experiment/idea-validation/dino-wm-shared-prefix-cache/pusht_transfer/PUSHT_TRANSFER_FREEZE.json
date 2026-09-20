@@ -1,0 +1,136 @@
+{
+  "schema": "dino-wm-shared-prefix-cache.pusht-transfer-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "pusht-cem-factorized-prefix-transfer",
+  "purpose": "Transfer the planner-call observation-prefix reuse test to the official DINO-WM PushT checkpoint without changing CEM semantics or running closed-loop control.",
+  "source": {
+    "reproduction_root": "experiment/reproduction/dino-wm-wall",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "official_config": "source/conf/plan_pusht.yaml",
+    "planner_source": "source/planning/cem.py",
+    "cache_helper": "experiment/idea-validation/dino-wm-shared-prefix-cache/cache_core.py",
+    "asset_preparer": "experiment/idea-validation/dino-wm-shared-prefix-cache/pusht_transfer/pusht_assets_prep.pbs",
+    "dependency_preparer": "experiment/idea-validation/dino-wm-shared-prefix-cache/pusht_transfer/pusht_deps_prep.pbs",
+    "historical_asset_preparer": "experiment/idea-validation/dino-wm-shared-prefix-cache/pusht_transfer/prepare_pusht_assets.py"
+  },
+  "official_pushT": {
+    "config_name": "plan_pusht.yaml",
+    "mainline": "MPCPlanner with CEM sub_planner",
+    "mpc_max_iter": null,
+    "mpc_n_taken_actions": 5,
+    "cem_settings": {
+      "horizon": 5,
+      "topk": 30,
+      "num_samples": 300,
+      "var_scale": 1,
+      "opt_steps": 30,
+      "eval_every": 1
+    },
+    "seed": 99,
+    "goal_source": "dset",
+    "goal_H": 5,
+    "objective": {
+      "alpha": 1,
+      "base": 2,
+      "mode": "last"
+    }
+  },
+  "model": {
+    "model_name": "pusht",
+    "checkpoint": "outputs/pusht/checkpoints/model_latest.pth",
+    "dtype": "torch.float32",
+    "evaluation_mode": true,
+    "model_parameters_requires_grad": false,
+    "decoder_unused": true
+  },
+  "assets": {
+    "checkpoint_config": "checkpoints/outputs/pusht/hydra.yaml",
+    "checkpoint_file": "checkpoints/outputs/pusht/checkpoints/model_latest.pth",
+    "dataset_root": "data/pusht_noise",
+    "dataset_splits": ["train", "val"],
+    "required_dataset_files": [
+      "states.pth",
+      "rel_actions.pth",
+      "seq_lengths.pkl",
+      "velocities.pth",
+      "obses/episode_000.mp4"
+    ],
+    "official_checkpoint_source": "https://osf.io/download/xvzs4/",
+    "official_dataset_source": "https://osf.io/download/k2d8w/",
+    "staging_policy": "CPU-only PBS preparation reuses two read-only archives from pusht-assets-23952308.pbs101 and directly unzips to stable ROOT/checkpoints and ROOT/data; a separate CPU-only dependency prep publishes the pinned pymunk overlay; one later A100 PBS job only reads these stable results",
+    "archive_policy": "CPU preparation uses system unzip with outputs/pusht/* and pusht_noise/*; target directories must not exist before preparation and frozen required files are tested before marker publication",
+    "missing_assets_policy": "the CPU-only prep job requires both prior-job ZIPs and fails closed if either is missing; the A100 job requires the stable directories and marker and does not call the historical Python preparer",
+    "hash_policy": "no checksum or hash is computed"
+  },
+  "runtime_dependencies": {
+    "prep_job": "pusht_deps_prep.pbs",
+    "overlay": "artifacts/pusht-python-overlay-pusht-v5",
+    "marker": "ROOT/PUSHT_DEPS_READY_V5",
+    "pymunk": "6.8.0",
+    "pygame": "2.5.2",
+    "shapely": "2.0.3",
+    "scikit_image": "0.21.0 binary-wheel compatibility version for Python 3.11; official 0.19.3 has no CPython 3.11 wheel",
+    "numpy": "<2",
+    "smoke_imports": ["pymunk", "pygame", "shapely", "cv2", "skimage"],
+    "gpu_dependency": "A100 job must be submitted with afterok dependencies on both successful CPU-only asset and dependency prep jobs",
+    "install_policy": "only-binary pip install in CPU allocation; no login-node install, compile, or hash"
+  },
+  "protocol": {
+    "n_observations": 2,
+    "observation_ids": ["pusht_obs_00", "pusht_obs_01"],
+    "target_preparation": "official PlanWorkspace dset path with seed=99 and goal_H=5, including PushTEnv replay before the timed direct CEM calls",
+    "environment_dependency": "official PushTEnv requires pymunk, pygame, shapely and skimage for target preparation; the CPU-only dependency prep job bootstraps pip in the extracted temporary runtime and installs binary wheels pymunk==6.8.0, pygame==2.5.2, shapely==2.0.3, numpy<2 and Python-3.11-compatible scikit-image==0.21.0 into the versioned stable PYTHONPATH overlay",
+    "closed_loop": false,
+    "timed_planner": "direct CEMPlanner.plan only; no MPC outer loop or environment action execution"
+  },
+  "cache_boundary": {
+    "name": "factorized_cache",
+    "prefix": "VWorldModel.encode_obs(transformed_obs_0)",
+    "suffix": "encode_act, predictor, replace_actions_from_z, objective and candidate-specific CEM updates",
+    "scope": "one complete CEMPlanner.plan call; one prefix per fixed observation, expanded as a read-only view to each candidate batch",
+    "baseline": "official wm.rollout on the candidate-repeated observation",
+    "cached_path": "cache_core.rollout_with_cache(mode=factorized_cache)"
+  },
+  "timing": {
+    "warmup_repeats": 5,
+    "technical_repeats": 10,
+    "paths": ["baseline", "factorized_cache"],
+    "measurement_unit": "one complete direct CEMPlanner.plan call for one fixed PushT observation/goal pair and one paired RNG seed",
+    "technical_repeat_unit": "the observation/planner call, not an individual candidate or CEM iteration",
+    "timing_boundary": "planner.plan entry through returned actions, including preprocessing, goal encoding, start-prefix encoding/cache setup, all CEM iterations and trace logging",
+    "includes_preprocessing": true,
+    "includes_environment_interaction": false,
+    "device_synchronization": "torch.cuda.synchronize immediately before and after each timed call",
+    "peak_memory": "torch.cuda.max_memory_allocated after each synchronized call",
+    "path_order_policy": "interleaved_seeded"
+  },
+  "decision_gate": {
+    "priority": "bitwise_exact",
+    "fallback": "If any trace is not bitwise exact, accept only when every final action, final first action, per-iteration elite/topk trace, mu, sigma and best-loss value differs by at most 1e-5.",
+    "max_abs_threshold": 1e-5,
+    "decision_trace": "final actions, final first actions, one best-loss value per CEM iteration, and each iteration's elite indices/losses/mu/sigma/first action",
+    "action_conditioning_requirement": "factorized start prefix is detached; action encoding, predictor calls, action replacement and CEM ranking/update remain on the official path"
+  },
+  "progression_gate": {
+    "purpose": "Authorize a later LeWorldModel PushT test only when the bounded DINO-WM PushT transfer is numerically safe and materially useful.",
+    "decision_required": "decision gate PASS (bitwise exact or every frozen max-abs comparison <= 1e-5)",
+    "minimum_paired_median_full_plan_latency_reduction": 0.1,
+    "maximum_peak_memory_ratio": 1.1,
+    "timing_statistic": "median technical-repeat latency per observation, then median of the two paired reductions; reduction = 1 - factorized_cache / baseline",
+    "rule": "PASS only when decision gate passes, paired median full-plan latency reduction >= 0.10, and maximum cached-to-baseline peak-memory ratio <= 1.10; otherwise stop and do not begin LeWorldModel PushT."
+  },
+  "outputs": {
+    "summary": "system_summary.json",
+    "verifier": "verifier.json",
+    "observation_manifest": "observation_manifest.json",
+    "asset_marker": "ROOT/PUSHT_ASSETS_READY",
+    "job_log": "job.log"
+  },
+  "prohibited": [
+    "Do not change the official PushT checkpoint/config, objective, CEM settings or paired RNG seeds between paths.",
+    "Do not include MPC outer-loop environment action execution or closed-loop success in this validation.",
+    "Do not tune the numerical threshold or progression gates after observing results.",
+    "Do not download, extract, install, compile or hash assets/dependencies on a login node; stable asset preparation and the pinned pymunk overlay are permitted only through guarded CPU-only PBS prep allocations, and the later guarded A100 job must only read their results."
+  ]
+}

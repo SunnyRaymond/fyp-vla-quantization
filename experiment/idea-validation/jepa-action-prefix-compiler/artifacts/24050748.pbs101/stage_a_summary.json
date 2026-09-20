@@ -1,0 +1,279 @@
+{
+  "schema": "jepa-action-prefix-compiler.dino-pusht-stage-a-summary",
+  "schema_version": 1,
+  "model": {
+    "model_name": "pusht",
+    "checkpoint": "outputs/pusht/checkpoints/model_latest.pth",
+    "dtype": "torch.float32",
+    "evaluation_mode": true,
+    "model_parameters_requires_grad": false,
+    "decoder_unused": true
+  },
+  "source": {
+    "reproduction_root": "/scratch/users/ntu/yguo017/dino-wm-wall",
+    "official_loader": "plan.load_model + PlanWorkspace dset target path",
+    "cache_helper": "cache_core.rollout_from_encoded_obs",
+    "protocol": "/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/jepa-action-prefix-compiler/STAGE_A_FREEZE.json"
+  },
+  "contracts": {
+    "anchors": 2,
+    "anchor_ids": [
+      "pusht_obs_00",
+      "pusht_obs_01"
+    ],
+    "horizon": 5,
+    "action_input": [
+      "B",
+      5,
+      10
+    ],
+    "context_visual": [
+      2,
+      1,
+      196,
+      384
+    ],
+    "context_proprio": [
+      2,
+      1,
+      10
+    ],
+    "student_visual_output": [
+      "B",
+      5,
+      196,
+      384
+    ],
+    "student_proprio_output": [
+      "B",
+      5,
+      10
+    ],
+    "action_dims_in_student_output": false
+  },
+  "train": {
+    "steps": 500,
+    "batch": 32,
+    "seed": 20260919,
+    "eval_seeds": [
+      20261920,
+      20261921
+    ],
+    "loss_first": 0.24347944557666779,
+    "loss_last": 0.05595250055193901,
+    "loss_median_last_10": 0.054722338914871216,
+    "last10_to_first_loss_ratio": 0.2247513698138434
+  },
+  "future_action_leakage": {
+    "tolerance": 1e-06,
+    "passed": true,
+    "cases": [
+      {
+        "unchanged_prefix_length": 1,
+        "max_abs_delta": 0.0,
+        "passed": true
+      },
+      {
+        "unchanged_prefix_length": 2,
+        "max_abs_delta": 0.0,
+        "passed": true
+      },
+      {
+        "unchanged_prefix_length": 3,
+        "max_abs_delta": 0.0,
+        "passed": true
+      },
+      {
+        "unchanged_prefix_length": 4,
+        "max_abs_delta": 0.0,
+        "passed": true
+      }
+    ]
+  },
+  "evaluation": {
+    "per_horizon": {
+      "relative_mse": [
+        0.008718619908904657,
+        0.01399625139310956,
+        0.017090730485506356,
+        0.024865650571882725,
+        0.03326212277170271
+      ],
+      "cosine": [
+        0.9961683377623558,
+        0.9920494332909584,
+        0.9908126145601273,
+        0.9869200512766838,
+        0.9827333092689514
+      ]
+    },
+    "per_case": [
+      {
+        "relative_mse": [
+          0.010924695059657097,
+          0.01775073679164052,
+          0.023176356218755245,
+          0.0357347559183836,
+          0.04696612432599068
+        ],
+        "cosine": [
+          0.9955665767192841,
+          0.9893819391727448,
+          0.9870707392692566,
+          0.9814236760139465,
+          0.9758487045764923
+        ],
+        "seed": 20261920,
+        "anchor": 0
+      },
+      {
+        "relative_mse": [
+          0.006664281710982323,
+          0.008820270886644721,
+          0.011103406548500061,
+          0.015226010698825121,
+          0.019398370292037725
+        ],
+        "cosine": [
+          0.9967825412750244,
+          0.9959209859371185,
+          0.9949604868888855,
+          0.9930206537246704,
+          0.9909014105796814
+        ],
+        "seed": 20261920,
+        "anchor": 1
+      },
+      {
+        "relative_mse": [
+          0.010565501637756824,
+          0.020357635337859392,
+          0.022550096735358238,
+          0.03345487639307976,
+          0.04638334829360247
+        ],
+        "cosine": [
+          0.9955833256244659,
+          0.9871480166912079,
+          0.9864282011985779,
+          0.9801391363143921,
+          0.9733453094959259
+        ],
+        "seed": 20261921,
+        "anchor": 0
+      },
+      {
+        "relative_mse": [
+          0.006720001227222383,
+          0.009056362556293607,
+          0.011533062439411879,
+          0.015046959277242422,
+          0.02030064817517996
+        ],
+        "cosine": [
+          0.9967409074306488,
+          0.9957467913627625,
+          0.9947910308837891,
+          0.9930967390537262,
+          0.990837812423706
+        ],
+        "seed": 20261921,
+        "anchor": 1
+      }
+    ],
+    "terminal_ranking": {
+      "spearman_mean": 0.8691086620092392,
+      "top30_overlap_mean": 0.5333333333333333,
+      "per_case": [
+        {
+          "seed": 20261920,
+          "anchor": 0,
+          "spearman": 0.7735299468040466,
+          "top30_overlap": 0.3333333333333333
+        },
+        {
+          "seed": 20261920,
+          "anchor": 1,
+          "spearman": 0.9714325666427612,
+          "top30_overlap": 0.8333333333333334
+        },
+        {
+          "seed": 20261921,
+          "anchor": 0,
+          "spearman": 0.765307605266571,
+          "top30_overlap": 0.36666666666666664
+        },
+        {
+          "seed": 20261921,
+          "anchor": 1,
+          "spearman": 0.9661645293235779,
+          "top30_overlap": 0.6
+        }
+      ]
+    }
+  },
+  "latency": {
+    "batch": 300,
+    "horizon": 5,
+    "warmup": 3,
+    "repeats": 10,
+    "teacher_ms": [
+      3499.3706850800663,
+      3499.2147020529956,
+      3501.4010779559612,
+      3498.725462006405,
+      3499.869894934818,
+      3500.4780960734934,
+      3499.902477953583,
+      3499.9931941274554,
+      3500.8523871656507,
+      3502.24823015742
+    ],
+    "student_ms": [
+      9.6847009845078,
+      9.615585906431079,
+      9.585428051650524,
+      9.589055087417364,
+      9.644561912864447,
+      9.641196113079786,
+      9.583062957972288,
+      9.639526018872857,
+      9.82224103063345,
+      9.586874162778258
+    ],
+    "teacher_median_ms": 3499.9931941274554,
+    "student_median_ms": 9.639526018872857,
+    "median_speedup": 363.0876857715777,
+    "median_reduction": 0.9972458443533414
+  },
+  "timing_boundary": "predictor-level: cached native observation latent + normalized action prefix through frozen teacher rollout or one student forward; excludes encoder, CEM, environment interaction, and closed-loop execution",
+  "gates": {
+    "capacity": {
+      "status": "PASS",
+      "future_action_leakage": true,
+      "finite_training_trace": true,
+      "finite_heldout_metrics": true,
+      "last10_to_first_loss_ratio": 0.2247513698138434,
+      "maximum_loss_ratio": 0.8
+    },
+    "fidelity": {
+      "status": "FAIL",
+      "spearman_mean": 0.8691086620092392,
+      "spearman_minimum": 0.99,
+      "top30_overlap_mean": 0.5333333333333333,
+      "top30_overlap_minimum": 0.95
+    },
+    "predictor_latency": {
+      "status": "PASS",
+      "median_reduction": 0.9972458443533414,
+      "minimum_reduction": 0.2,
+      "full_plan_latency": "NOT_EVALUATED"
+    },
+    "overall": "FAIL"
+  },
+  "unverified": [
+    "No closed-loop CEM or environment execution is included in Stage-A.",
+    "Student quality on LeWM compact-vector latents is not tested by this DINO-only runner.",
+    "Teacher/student ranking agreement does not establish closed-loop task success."
+  ]
+}

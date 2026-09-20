@@ -1,0 +1,103 @@
+#!/bin/bash
+#PBS -N dino_pusht_grounded_prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+# CPU-only preparation of a small manifest.  The job reads only staged metadata
+# and observation filenames; it never downloads, extracts, builds, hashes, or
+# copies the trajectory dataset.
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+IDEA_ROOT=${DINO_APC_ROOT:-$ROOT/idea-validation/jepa-action-prefix-compiler}
+RUNNER=${DINO_PUSHT_GROUNDED_PREP_RUNNER:-$IDEA_ROOT/prepare_grounded_prefix_assets.py}
+DATA_ROOT=${DINO_PUSHT_DATA_ROOT:-$ROOT/data/pusht_noise}
+DEPS_ROOT=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+DEPS_MARKER=${DINO_PUSHT_DEPS_MARKER:-$ROOT/PUSHT_DEPS_READY_V5}
+JOB_ID=${PBS_JOBID:-unassigned}
+OUT_ROOT=${DINO_PUSHT_GROUNDED_PREP_OUT_ROOT:-$ROOT/artifacts}
+OUT="$OUT_ROOT/jepa-action-prefix-dino-pusht-grounded-prepare-$JOB_ID"
+MANIFEST=${DINO_PUSHT_GROUNDED_MANIFEST:-$OUT/grounded_prefix_manifest.json}
+
+# Refuse accidental execution on a login/head/submit node before reading any
+# staged data.  PBS_NODEFILE is a lightweight allocation guard, not a compute
+# substitute; the selected CPU allocation is where all metadata reads happen.
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+write_fallback_status() {
+  local rc=$?
+  if [ ! -s "$OUT/job_status.txt" ]; then
+    printf '%s\n' "job_id=$JOB_ID" > "$OUT/job_status.txt"
+    printf '%s\n' "status=wrapper_failed" >> "$OUT/job_status.txt"
+    printf '%s\n' "exit_code=$rc" >> "$OUT/job_status.txt"
+    printf '%s\n' "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT/job_status.txt"
+  fi
+}
+trap write_fallback_status EXIT
+
+test -f "$RUNNER"
+test -d "$DATA_ROOT"
+test -d "$DEPS_ROOT"
+test -f "$DEPS_MARKER"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+PYTHON=${DINO_PREP_PYTHON:-python}
+command -v "$PYTHON" >/dev/null 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$DEPS_ROOT:$IDEA_ROOT:$ROOT/source${PYTHONPATH:+:$PYTHONPATH}"
+
+"$PYTHON" -c 'import importlib.util, sys; print("python=" + sys.executable); print("python_version=" + sys.version.split()[0]); print("numpy_available=" + str(importlib.util.find_spec("numpy") is not None)); print("torch_available=" + str(importlib.util.find_spec("torch") is not None))'
+
+set +e
+"$PYTHON" "$RUNNER" \
+  --data-root "$DATA_ROOT" \
+  --output "$MANIFEST" \
+  --deps-root "$DEPS_ROOT" \
+  --deps-marker "$DEPS_MARKER"
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$MANIFEST" ]; then
+  STATUS=completed
+  touch "$OUT/DINO_PUSHT_GROUNDED_PREP_COMPLETE"
+else
+  STATUS=failed
+  touch "$OUT/DINO_PUSHT_GROUNDED_PREP_FAILED"
+fi
+
+printf '%s\n' "$RUNNER_RC" > "$OUT/runner_exit_status.txt"
+printf '%s\n' "job_id=$JOB_ID" > "$OUT/job_status.txt"
+printf '%s\n' "status=$STATUS" >> "$OUT/job_status.txt"
+printf '%s\n' "manifest=$MANIFEST" >> "$OUT/job_status.txt"
+printf '%s\n' "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT/job_status.txt"
+
+if [ "$STATUS" = completed ]; then
+  FINAL_RC=0
+else
+  FINAL_RC=$RUNNER_RC
+  if [ "$FINAL_RC" -eq 0 ]; then
+    FINAL_RC=1
+  fi
+fi
+printf '%s\n' "$FINAL_RC" > "$OUT/final_exit_status.txt"
+printf '%s\n' "final_exit_code=$FINAL_RC" >> "$OUT/job_status.txt"
+trap - EXIT
+exit "$FINAL_RC"

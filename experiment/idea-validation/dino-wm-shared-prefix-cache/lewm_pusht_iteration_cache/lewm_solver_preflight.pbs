@@ -1,0 +1,116 @@
+#!/bin/bash
+#PBS -N lewm_solver_preflight
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+OUT=${LEWM_PREFLIGHT_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -d "$LEWM_ROOT"
+test -f "$CONTROL/run_lewm_pusht_iteration.py"
+test -f "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+"$PYTHON_BIN" - "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json" "$OUT/solver_preflight.json" <<'PY'
+import json
+import inspect
+import math
+import sys
+from pathlib import Path
+
+import torch
+
+import stable_worldmodel as swm
+import run_lewm_pusht_iteration as runner
+from run_lewm_pusht_iteration import TraceCallback, make_solver
+from stable_worldmodel.policy import PlanConfig
+
+freeze = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+output = Path(sys.argv[2])
+config = PlanConfig(**freeze["official_pusht"]["plan_config"])
+settings = dict(freeze["official_pusht"]["cem_solver"])
+frozen_device = str(settings["device"])
+if frozen_device != "cuda":
+    raise RuntimeError(f"unexpected frozen CEM device: {frozen_device}")
+if 'settings.pop("device", None)' in inspect.getsource(runner.main):
+    raise RuntimeError("runner drops frozen CEM device")
+settings["device"] = "cpu"
+
+
+class DummyCostModel:
+    def parameters(self):
+        return iter(())
+
+    def get_cost(self, info_dict, action_candidates):
+        del info_dict
+        return torch.zeros(action_candidates.shape[:2], dtype=torch.float32)
+
+
+world = swm.World("swm/PushT-v1", num_envs=1, image_shape=(224, 224))
+try:
+    action_space = world.envs.action_space
+    solver = make_solver(
+        DummyCostModel(), settings, seed=42, trace=TraceCallback(),
+        action_space=action_space, config=config,
+    )
+    expected_action_dim = int(math.prod(action_space.shape[1:])) * config.action_block
+    mean, variance = solver.init_action_distrib(1)
+    if not hasattr(solver, "_config"):
+        raise RuntimeError("solver was not configured")
+    if solver.horizon != config.horizon:
+        raise RuntimeError(f"unexpected horizon: {solver.horizon}")
+    if solver.n_envs != 1:
+        raise RuntimeError(f"unexpected n_envs: {solver.n_envs}")
+    if solver.action_dim != expected_action_dim:
+        raise RuntimeError(
+            f"unexpected action_dim: {solver.action_dim} != {expected_action_dim}"
+        )
+    expected_shape = [1, config.horizon, expected_action_dim]
+    if list(mean.shape) != expected_shape or list(variance.shape) != expected_shape:
+        raise RuntimeError(
+            f"unexpected candidate shapes: mean={list(mean.shape)} variance={list(variance.shape)}"
+        )
+    payload = {
+        "status": "PASS",
+        "solver_class": type(solver).__name__,
+        "frozen_device": frozen_device,
+        "cpu_preflight_device": str(settings["device"]),
+        "device_forwarding_check": "PASS",
+        "action_space_shape": list(action_space.shape),
+        "config": {
+            "horizon": config.horizon,
+            "receding_horizon": config.receding_horizon,
+            "action_block": config.action_block,
+        },
+        "n_envs": solver.n_envs,
+        "action_dim": solver.action_dim,
+        "initial_candidate_shape": expected_shape,
+    }
+    output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(json.dumps(payload))
+finally:
+    world.close()
+PY
+test -s "$OUT/solver_preflight.json"
+printf 'LEWM_SOLVER_PREFLIGHT_PASS\n'

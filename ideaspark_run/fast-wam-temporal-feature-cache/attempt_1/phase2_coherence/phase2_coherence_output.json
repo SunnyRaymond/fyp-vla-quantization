@@ -1,0 +1,415 @@
+{
+  "likely_fatal_step": {
+    "step": "S2",
+    "why": "S2 creates the load-bearing influence table. Its stated normalization has no positive floor for a zero full-branch output norm, and an empty calibration split makes the mean undefined; either defect reaches every later score and gate decision."
+  },
+  "trace_report": {
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "quote": "1. Freeze the existing Fast-WAM checkpoint and validated Optional-IDM path; collect a calibration split and a held-out split of receding-observation rollouts from LIBERO and RoboTwin, recording the cached unit ids, source tensors, action vectors, and predicted-observation clips.",
+        "consumes": [
+          "existing Fast-WAM checkpoint",
+          "validated Optional-IDM path",
+          "LIBERO and RoboTwin receding-observation rollouts"
+        ],
+        "produces": [
+          "frozen inference graph",
+          "calibration traces",
+          "held-out traces",
+          "per-trace unit ids (b,k)",
+          "source tensors h_{u,s}",
+          "action vectors and predicted-observation clips"
+        ],
+        "note": "The original text does not require either split to be non-empty. A zero-size calibration split makes the S2 means undefined; the applied patch adds a non-empty precondition."
+      },
+      {
+        "step": "S2",
+        "quote": "2. For each unit u=(b,k), replay the calibration traces with the unit replaced by its stale cached value while all other inputs stay fixed, then compute I^a_u and I^v_u as the mean normalized action and predicted-observation changes; output one influence table keyed by (b,k).",
+        "consumes": [
+          "calibration traces",
+          "unit stale cached values",
+          "frozen Optional-IDM graph",
+          "full-branch action and predicted-observation outputs"
+        ],
+        "produces": [
+          "I^a_u and I^v_u for every (b,k)",
+          "influence table keyed by unit id"
+        ],
+        "note": "The intended scalar formalization is I^a_u=mean(||delta action||_2/(||action_full||_2+eta)) and I^v_u=mean(||delta video||_2/(||video_full||_2+eta)). In the original wording the denominator floor is specified only for d, not for I, and eta has no default/selection rule."
+      },
+      {
+        "step": "S3",
+        "quote": "3. Set lambda_a=lambda_v=1 as the default normalized branch weights, set epsilon_joint=0.01 as the default joint-discrepancy tolerance, and choose tau_joint and H_max on the held-out calibration split as the largest threshold and age that satisfy the tolerance; sweep these named parameters rather than hiding fixed gates.",
+        "consumes": [
+          "influence table",
+          "held-out calibration traces",
+          "paired downstream discrepancy"
+        ],
+        "produces": [
+          "branch weights lambda_a and lambda_v",
+          "epsilon_joint",
+          "tau_joint",
+          "H_max"
+        ],
+        "note": "The original text names defaults but does not define the finite candidate grids or the selection rule for the lambda defaults. The applied patch fixes equal weighting a priori and selects tau/H from observed finite grids."
+      },
+      {
+        "step": "S4",
+        "quote": "4. In each new receding-observation inference, run the unchanged prefix needed to form h_{u,t} at every candidate cache unit and compare it with the source h_{u,s}; output the normalized context change d_{u,t}.",
+        "consumes": [
+          "current receding observation and action context",
+          "unchanged prefix",
+          "current tensor h_{u,t}",
+          "source tensor h_{u,s}"
+        ],
+        "produces": [
+          "d_{u,t}=||mean(h_{u,t})-mean(h_{u,s})||_2/(||mean(h_{u,s})||_2+eta)"
+        ],
+        "note": "Mean pooling is a defined scalarization, but it can cancel equal-and-opposite feature changes; that is an empirical risk to be tested, not an algebraic execution failure."
+      },
+      {
+        "step": "S5",
+        "quote": "5. Compute S_{u,t}=lambda_a I^a_u d_{u,t}+lambda_v I^v_u d_{u,t} and test the explicit validity rule: reuse only when S_{u,t}<=tau_joint, cache age<=H_max, and the Optional-IDM mode is unchanged.",
+        "consumes": [
+          "I^a_u and I^v_u",
+          "d_{u,t}",
+          "lambda_a and lambda_v",
+          "tau_joint and H_max",
+          "cache age",
+          "source/current Optional-IDM mode"
+        ],
+        "produces": [
+          "reuse or recompute decision for each unit"
+        ],
+        "note": "The candidate's core_mechanism says age is 'below H_max' while this quoted step uses '<= H_max'. At age=H_max the two readings disagree; the applied patch uses the explicit inclusive rule consistently."
+      },
+      {
+        "step": "S6",
+        "quote": "6. For a failed test, recompute u using the current observation and action context, replace its cached tensor and source fingerprint, and emit the updated intermediate to the original downstream action/video graph; no auxiliary predictor or retraining is introduced.",
+        "consumes": [
+          "current observation/action context",
+          "failed S5 decision",
+          "original downstream graph"
+        ],
+        "produces": [
+          "fresh tensor for u",
+          "updated cache entry and source fingerprint",
+          "updated downstream graph input"
+        ],
+        "note": "The no-retraining claim is directly realized by this step."
+      },
+      {
+        "step": "S7",
+        "quote": "7. Mark every descendant cache unit that consumes a recomputed output dirty, and force a fresh computation at reset or mode change; this propagates invalidation to the final action and predicted-observation outputs instead of allowing stale residual chains.",
+        "consumes": [
+          "recomputed output",
+          "Optional-IDM dependency graph",
+          "dirty-unit state"
+        ],
+        "produces": [
+          "dirty descendant set",
+          "fresh final action/video outputs after dirty descendants are recomputed"
+        ],
+        "note": "The original sentence explicitly marks descendants dirty but does not say that they must be recomputed before the current inference reads their outputs. The applied patch makes same-inference topological recomputation explicit."
+      },
+      {
+        "step": "S8",
+        "quote": "8. Measure uncached Fast-WAM Optional-IDM, a periodic C3ache-style cache, and the proposed cache at matched skip rates on the held-out rollouts using native GPU event timing and wall-clock traces, together with action MSE, predicted-observation MSE, and closed-loop task success.",
+        "consumes": [
+          "held-out rollouts",
+          "uncached baseline",
+          "periodic cache baseline",
+          "proposed cache"
+        ],
+        "produces": [
+          "native latency and wall-clock measurements",
+          "action MSE",
+          "predicted-observation MSE",
+          "closed-loop task success",
+          "rank-correlation comparison"
+        ],
+        "note": "This is evaluation output. It does not prove the score is safe; it tests the empirical prediction."
+      }
+    ],
+    "dry_run": {
+      "instance": "Two scalarized cache units u_low and u_high share d=0.05, lambda_a=lambda_v=1, age=H_max=1, and matching mode. Their calibrated influences are (I_a,I_v)=(0.05,0.05) and (1.0,1.0), respectively. Their paired normalized downstream discrepancies when reused are D_joint=0.004 and 0.16, obtained from (D_a,D_v)=(0.002,0.002) and (0.08,0.08). The observed threshold grid is {0,0.005,0.01,0.1}; epsilon_joint=0.01. A separate edge probe sets a full-branch norm to zero, an empty calibration set, and h_s=(1,-1), h_t=(-1,1).",
+      "execution": {
+        "mode": "executed",
+        "script": "import math\n\neta = 1e-6\nlambda_a = lambda_v = 1.0\nepsilon_joint = 0.01\nH_max = 1\nage = 1\nmode_matches = True\nunits = [\n    {'id':'u_low', 'I_a':0.05, 'I_v':0.05, 'd':0.05, 'D_a':0.002, 'D_v':0.002},\n    {'id':'u_high', 'I_a':1.0, 'I_v':1.0, 'd':0.05, 'D_a':0.08, 'D_v':0.08},\n]\nfor u in units:\n    u['S'] = lambda_a*u['I_a']*u['d'] + lambda_v*u['I_v']*u['d']\n    u['D_joint'] = lambda_a*u['D_a'] + lambda_v*u['D_v']\nprint('eta=', eta, 'lambda_a=', lambda_a, 'lambda_v=', lambda_v)\nfor u in units:\n    s = u['S']; dj = u['D_joint']\n    print(u['id'], 'S=', f'{s:.6f}', 'D_joint=', f'{dj:.6f}')\nthresholds = [0.0, 0.005, 0.01, 0.1]\nfor tau in thresholds:\n    kept = [u for u in units if u['S'] <= tau and age <= H_max and mode_matches]\n    heldout = sum(0.0 if u not in kept else u['D_joint'] for u in units) / len(units)\n    print('tau', tau, 'reused', [u['id'] for u in kept], 'heldout_D_joint=', f'{heldout:.6f}')\nchosen_tau = 0.01\nkept = [u for u in units if u['S'] <= chosen_tau and age <= H_max and mode_matches]\nmechanism_error = sum(0.0 if u not in kept else u['D_joint'] for u in units) / len(units)\nnaive_threshold = 0.05\nnaive_kept = [u for u in units if u['d'] <= naive_threshold and age <= H_max and mode_matches]\nnaive_error = sum(u['D_joint'] for u in naive_kept) / len(units)\nprint('chosen', chosen_tau, 'mechanism_reused', [u['id'] for u in kept], 'mechanism_error=', f'{mechanism_error:.6f}')\nprint('naive_reused', [u['id'] for u in naive_kept], 'naive_error=', f'{naive_error:.6f}')\nprint('age_strict', age < H_max, 'age_inclusive', age <= H_max)\ntry:\n    print('zero_norm_ratio', 0.1 / 0.0)\nexcept ZeroDivisionError as e:\n    print('zero_norm_ratio', type(e).__name__)\nprint('empty_calibration_mean', 'undefined (0/0)')\nh_s = [1.0, -1.0]\nh_t = [-1.0, 1.0]\nd = math.sqrt((sum(h_t)/len(h_t) - sum(h_s)/len(h_s))**2) / (abs(sum(h_s)/len(h_s)) + eta)\nprint('mean_cancellation_d', f'{d:.6f}')",
+        "output": "eta= 1e-06 lambda_a= 1.0 lambda_v= 1.0\nu_low S= 0.005000 D_joint= 0.004000\nu_high S= 0.100000 D_joint= 0.160000\ntau 0.0 reused [] heldout_D_joint= 0.000000\ntau 0.005 reused [] heldout_D_joint= 0.000000\ntau 0.01 reused ['u_low'] heldout_D_joint= 0.002000\ntau 0.1 reused ['u_low', 'u_high'] heldout_D_joint= 0.082000\nchosen 0.01 mechanism_reused ['u_low'] mechanism_error= 0.002000\nnaive_reused ['u_low', 'u_high'] naive_error= 0.082000\nage_strict False age_inclusive True\nzero_norm_ratio ZeroDivisionError\nempty_calibration_mean undefined (0/0)\nmean_cancellation_d 0.000000\n"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "u_low score",
+          "value": "0.005",
+          "arithmetic": "1*0.05*0.05 + 1*0.05*0.05 = 0.005"
+        },
+        {
+          "quantity": "u_high score",
+          "value": "0.1",
+          "arithmetic": "1*1.0*0.05 + 1*1.0*0.05 = 0.1"
+        },
+        {
+          "quantity": "D_joint at tau=0.01",
+          "value": "0.002",
+          "arithmetic": "(0.004 + 0)/2 = 0.002 <= epsilon_joint=0.01"
+        },
+        {
+          "quantity": "D_joint at tau=0.1",
+          "value": "0.082",
+          "arithmetic": "(0.004 + 0.16)/2 = 0.082 > epsilon_joint=0.01"
+        },
+        {
+          "quantity": "mechanism reuse/error at tau=0.01",
+          "value": "reuse u_low; mean error 0.002",
+          "arithmetic": "u_low is reused and u_high is recomputed, so (0.004+0)/2=0.002"
+        },
+        {
+          "quantity": "local-drift naive reuse/error",
+          "value": "reuse both; mean error 0.082",
+          "arithmetic": "both d values equal 0.05, so (0.004+0.16)/2=0.082"
+        },
+        {
+          "quantity": "age boundary",
+          "value": "strict=false, inclusive=true",
+          "arithmetic": "1 < 1 is false, whereas 1 <= 1 is true"
+        },
+        {
+          "quantity": "zero full-branch norm",
+          "value": "ZeroDivisionError",
+          "arithmetic": "0.1 / ||y_full||_2 with ||y_full||_2=0 gives 0.1/0"
+        },
+        {
+          "quantity": "empty calibration mean",
+          "value": "undefined",
+          "arithmetic": "sum of zero samples / zero samples = 0/0"
+        },
+        {
+          "quantity": "mean-pooled context change",
+          "value": "0",
+          "arithmetic": "mean(h_s)=0 and mean(h_t)=0, so |0-0|/(|0|+1e-6)=0"
+        }
+      ],
+      "anomalies": [
+        {
+          "anomaly": "The original S5 core description says age is below H_max while the quoted S5 step says age<=H_max; the concrete age=H_max case gives opposite decisions.",
+          "kind": "structural",
+          "why": "The two inequalities are algebraically different for every boundary case; the computed instance exposes the disagreement."
+        },
+        {
+          "anomaly": "Normalizing a nonzero branch change by a zero full-branch output norm is undefined.",
+          "kind": "structural",
+          "why": "The division-by-zero follows directly from the stated normalization whenever a valid action/video output has zero norm; the original I normalization has no eta floor."
+        },
+        {
+          "anomaly": "An empty calibration split makes I^a_u and I^v_u means undefined.",
+          "kind": "structural",
+          "why": "No finite sample mean exists for zero calibration traces, independently of the chosen values."
+        },
+        {
+          "anomaly": "Mean pooling can produce d=0 after a nonzero feature change, as h_s=(1,-1) and h_t=(-1,1) show.",
+          "kind": "structural",
+          "why": "Equal-and-opposite coordinate changes cancel under mean(h); this is inherent to the specified scalarization. It is an empirical sufficiency risk, not a proof that every deployment fails."
+        },
+        {
+          "anomaly": "The local-drift naive reuses both units with D_joint=0.082, while the calibrated score reuses only u_low with D_joint=0.002.",
+          "kind": "instance_contingent",
+          "why": "The divergence depends on the explicitly constructed influence and downstream-error values, so it supports the declared obstacle on this diagnostic instance but is not a real-system measurement."
+        }
+      ]
+    },
+    "degenerate_probes": [
+      {
+        "probe": "empty calibration split",
+        "behavior": "S2 has no samples over which to average branch changes; I^a_u and I^v_u are undefined.",
+        "finding": "Add a non-empty calibration precondition before constructing the influence table."
+      },
+      {
+        "probe": "k=0 denoising index",
+        "behavior": "Valid if the checkpoint indexes denoising steps from zero; no arithmetic failure is introduced.",
+        "finding": null
+      },
+      {
+        "probe": "all-identical h_t and h_s",
+        "behavior": "d=0, hence S=0; the unit is reused if age and mode also pass.",
+        "finding": null
+      },
+      {
+        "probe": "ties at tau_joint",
+        "behavior": "The explicit S<=tau rule reuses tied units; the original core wording did not state a conflicting score inequality.",
+        "finding": null
+      },
+      {
+        "probe": "single-element branch output with zero norm",
+        "behavior": "Influence normalization is undefined unless the denominator has a positive floor.",
+        "finding": "Use the named eta floor for both branch influence denominators and context denominators."
+      },
+      {
+        "probe": "maximum cache age allowed by the implementation",
+        "behavior": "No maximum is specified beyond the selected H_max; the finite observed-age selection grid must define the admissible candidates.",
+        "finding": "The applied S3 wording selects H_max from the finite observed age grid."
+      },
+      {
+        "probe": "equal-and-opposite feature coordinates",
+        "behavior": "Nonzero h_t-h_s can yield d=0 under mean pooling.",
+        "finding": "Record as an empirical limitation for the falsification experiment; repairing it would change the score representation."
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "The observation-conditioned joint score should rank unsafe reuses better than local feature drift.",
+        "established_by": "S2 and S5 define the score; no step establishes predictive superiority.",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "proof-obligations",
+        "measured": null
+      },
+      {
+        "claim": "A stale upstream residual cannot contaminate the action or predicted-observation branch.",
+        "established_by": "S7",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "the dependency graph is complete",
+          "every dirty descendant is recomputed in topological order before its output is consumed in the same inference"
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The high-impact partition receives full computation and the low-impact partition uses the cache operator.",
+        "established_by": "S5 and S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The method introduces no auxiliary predictor or retraining.",
+        "established_by": "S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The score yields lower action/video error at the same skip rate and preserves closed-loop success.",
+        "established_by": "S8 only measures this prediction.",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "proof-obligations",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "(i) false-premise",
+      "naive_version": "Reuse a unit when the local mean-pooled drift d is at most 0.05, with the same age and mode checks, but without calibrated branch influence or descendant dirty propagation.",
+      "naive_fairness": "It uses the same current/source tensors, one inference pass, cache-age bound, mode constraint, and deployment graph; it is simpler because it has no calibration influence table, branch coupling, or dependency invalidation state.",
+      "instance_behavior": {
+        "naive": "Reuses u_low and u_high; mean D_joint=0.082.",
+        "mechanism": "Reuses u_low and recomputes u_high; mean D_joint=0.002.",
+        "divergence": "0.080 mean D_joint; the high unit contributes 0.16 when naively reused and 0 after recomputation.",
+        "kind": "instance_contingent"
+      },
+      "verdict": "confronts_obstacle",
+      "reasoning": "On the same bounded diagnostic instance, local drift ties the low- and high-influence units and reuses both, while the joint score separates them and recomputes the high-impact unit. This is the candidate's declared false-premise branch, although the result remains an empirical hypothesis rather than real-system evidence."
+    }
+  },
+  "verdict": "patched",
+  "unrepaired": [
+    {
+      "finding": "Mean-pooled context change can be zero for a nonzero feature change, so local context similarity can miss a downstream-relevant direction.",
+      "severity": "note",
+      "why_not_repaired": "The executed probe establishes a structural limitation of the chosen mean scalarization, but repairing it would replace the proposed score representation rather than make the written procedure internally executable. The candidate does not claim that d is a sufficient invariant; it makes this an empirical falsification target.",
+      "verbatim_step_quote": "In each new receding-observation inference, run the unchanged prefix needed to form h_{u,t} at every candidate cache unit and compare it with the source h_{u,s}; output the normalized context change d_{u,t}.",
+      "executed_evidence": "Executed probe used h_s=(1,-1), h_t=(-1,1), eta=1e-6. mean(h_s)=0 and mean(h_t)=0, so d=|0-0|/(|0|+1e-6)=0 despite h_t-h_s=(-2,2) being nonzero. This shows cancellation in the specified scalarization; it does not by itself establish real-task failure.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "applied_revisions": [
+    {
+      "scope": "coherence",
+      "op": "replace",
+      "field": "core_mechanism_steps",
+      "value": "1. Freeze the existing Fast-WAM checkpoint and validated Optional-IDM path; collect non-empty calibration and held-out splits of receding-observation rollouts from LIBERO and RoboTwin, recording cached unit ids, source tensors, action vectors, and predicted-observation clips.\n2. For each unit u=(b,k), replay the calibration traces with the unit replaced by its stale cached value while all other inputs stay fixed, then compute I^a_u and I^v_u as means of ||delta action||_2/(||action_full||_2+eta) and ||delta video||_2/(||video_full||_2+eta), respectively; eta is the positive machine-precision floor selected for the active output dtype. Output one influence table keyed by (b,k).\n3. Set lambda_a=lambda_v=1 as fixed a priori equal branch weights (the selection rule is equal weighting; do not tune them), set epsilon_joint=0.01 as the default joint-discrepancy tolerance, and construct finite candidate grids G_tau={0} union observed S values and G_H={1} union observed nonnegative integer cache ages. Choose tau_joint and H_max as the largest values in those grids whose held-out calibration discrepancy satisfies epsilon_joint.\n4. In each new receding-observation inference, run the unchanged prefix needed to form h_{u,t} at every candidate cache unit and compare it with the source h_{u,s}; output d_{u,t}=||mean(h_{u,t})-mean(h_{u,s})||_2/(||mean(h_{u,s})||_2+eta).\n5. Compute S_{u,t}=lambda_a I^a_u d_{u,t}+lambda_v I^v_u d_{u,t} and test the explicit validity rule: reuse only when S_{u,t}<=tau_joint, cache age<=H_max, and the Optional-IDM mode is unchanged.\n6. For a failed test, recompute u using the current observation and action context, replace its cached tensor and source fingerprint, and emit the updated intermediate to the original downstream action/video graph; no auxiliary predictor or retraining is introduced.\n7. Mark every descendant cache unit that consumes a recomputed output dirty immediately; before any downstream output is read in the current inference, recompute all dirty descendants in topological order and update their cache entries and source fingerprints. A reset or mode change forces fresh computation for every dirty unit, so stale residual chains cannot reach either final output.\n8. Measure uncached Fast-WAM Optional-IDM, a periodic C3ache-style cache, and the proposed cache at matched skip rates on the held-out rollouts using native GPU event timing and wall-clock traces, together with branch-normalized and raw action MSE, predicted-observation MSE, and closed-loop task success.",
+      "outcome": "applied",
+      "delta_summary": "Repairs the T1/T2/T3 findings by requiring non-empty calibration, binding eta and equal weights, defining finite tau/H selection grids, reconciling the inclusive age boundary, and making same-inference dirty-descendant recomputation explicit."
+    },
+    {
+      "scope": "coherence",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "Set eta to the positive machine-precision floor of the active dtype and use it in both branch-influence normalizers and the context-change denominator; define the normalized branch discrepancies used for threshold selection with the same positive-floor convention.",
+      "outcome": "applied",
+      "delta_summary": "Repairs the S2 zero-output-norm division finding and aligns the score's normalization convention with threshold selection."
+    },
+    {
+      "scope": "coherence",
+      "op": "append_sentence",
+      "field": "core_mechanism_reasoning",
+      "value": "For estimand alignment, D_a and D_v in the declared D_joint are the branch-normalized MSEs (with the same positive output-scale floors used in S2), and S8 reports these normalized quantities alongside raw MSE; lambda_a=lambda_v=1 is fixed a priori by equal weighting rather than tuned after seeing held-out outcomes.",
+      "outcome": "applied",
+      "delta_summary": "Repairs the T1 estimand/normalization ambiguity and makes the lambda default's selection rule explicit without changing the mechanism."
+    }
+  ],
+  "final_candidate": {
+    "title": "Joint Output-Sensitivity Invalidation for Fast-WAM Optional IDM",
+    "hook": "At matched cache-skip rates, a small change in the shared denoising feature can be more dangerous to the action output than a larger feature drift because the Optional-IDM video and action branches have different sensitivities; an observation-conditioned joint score should therefore rank unsafe reuses better than local feature drift. The predicted direction is higher rank correlation between this score and paired downstream action/video error, with lower error at the same skip rate.",
+    "hook_shape_rationale": "This uses the surprising-empirical-reveal shape: the falsification metric is the rank correlation between the joint score and paired downstream error, directly challenging C3ache/WorldCache-style local-drift validity. A structural-reframe hook was viable, but it would merely rename an implicit cache assumption without establishing that the reframe changes closed-loop action and predicted-observation outcomes.",
+    "gap_closure": [
+      {
+        "gap": "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+        "main_pattern": "heterogeneous_decomposition",
+        "sub_pattern": "C04 (Decompose for Differentiated Treatment)",
+        "companion_pattern": "architectural_operator_substitution",
+        "how_closed": "The C04 move partitions cached block-timestep units by calibrated joint action/video influence, and the companion operator substitutes reuse for full recomputation only for the low-influence partition while invalidating the high-influence partition after an observation change."
+      }
+    ],
+    "core_mechanism": "For each cached unit u=(b,k), where b is a Fast-WAM block and k is a denoising step, run a short calibration replay on the existing Optional-IDM checkpoint and compute branch influences I^a_u and I^v_u from the normalized action and predicted-observation changes caused by replacing u with its stale cached value under the same input. At a new receding observation, use the existing tensor h_{u,t} entering u and the cached source tensor h_{u,s} to compute the dimensionless context change d_{u,t}=||mean(h_{u,t})-mean(h_{u,s})||_2/(||mean(h_{u,s})||_2+eta), with eta only a numerical floor. The central object is the joint risk score S_{u,t}=lambda_a I^a_u d_{u,t}+lambda_v I^v_u d_{u,t}; I^a_u and I^v_u are normalized by their full-branch output norms, while lambda_a and lambda_v are named dimensionless weights. Reuse u only when S_{u,t} is at most the calibrated threshold tau_joint, the cache age is below H_max, and the Optional-IDM mode matches the source; otherwise invalidate u and recompute it from the current input. tau_joint is the largest held-out calibration threshold whose normalized joint discrepancy stays below epsilon_joint, with epsilon_joint=0.01 as the default tolerance and a held-out sweep as its selection rule; H_max defaults to one receding-observation interval and is increased only when the same held-out constraint remains satisfied. When a unit is recomputed, all downstream cached units that consume its output are marked dirty, so a stale upstream residual cannot contaminate the action or predicted-observation branch. The heterogeneous partition therefore preserves full computation for a small high-impact set and substitutes the cheaper cache operator only for units whose measured downstream influence and current context change jointly predict safe reuse. Unlike periodic cross-chunk reuse or video-only drift gating, the decision variable is tied to the two outputs that the validated Fast-WAM Optional-IDM path actually exposes. Set eta to the positive machine-precision floor of the active dtype and use it in both branch-influence normalizers and the context-change denominator; define the normalized branch discrepancies used for threshold selection with the same positive-floor convention.",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger:\nP1. The shared tensor at each cached Fast-WAM block-timestep is the information path through which a changed observation can affect both Optional-IDM outputs; this is true because the action and predicted-observation branches consume the same denoising computation.\nP2. Per-unit branch influence measured by stale-value replacement is sufficiently stable between calibration and deployment for a context-change score to rank safe versus unsafe reuse; untested — falsification target.\nP3. Action and predicted-observation branches can assign unequal downstream importance to the same feature change; untested — falsification target, and this is why a single local feature-drift statistic is not assumed sufficient.\nP4. Recomputing an upstream unit changes the inputs of its descendants, so descendant caches must be invalidated rather than independently trusted; untested — falsification target.\nOBSERVATION-MODEL: inputs are policy-generated, receding robot observations from LIBERO and RoboTwin rollouts, with contact and motion changes selected by the deployed controller rather than IID random samples; calibration is stratified over nominal and change regimes and makes no unbiased-sampling claim.\nESTIMAND: the held-out expectation of normalized paired downstream discrepancy D_joint=lambda_a D_a+lambda_v D_v over one receding-observation transition, where D_a is action-vector MSE relative to uncached inference and D_v is pixel MSE of the predicted-observation clip relative to uncached inference.\nThe design explicitly avoids the method-lineage regression to local denoising-feature dynamics as a sufficient validity proxy; that proxy is measured only as a comparator.\nBLOCK 2 — NAIVE-BASELINE AUDIT: the naive version is a periodic one-full-plus-cached-chunks schedule gated by local feature drift, as in the C3ache/WorldCache family. It fails under branch (i): policy-selected observation changes can leave local feature drift small while the action and predicted-observation readouts respond differently, so the naive statistic is a false sufficiency premise; the proposed mechanism confronts that failure by calibrating branch-specific influence and enforcing descendant invalidation. The standard-tool follow-up is that influence estimation or a JVP is not itself the contribution: the domain-specific structure is a shared Fast-WAM Optional-IDM action/video computation graph with receding feedback, a coupled downstream fidelity target, and no full pretraining or new labels.\nBLOCK 3 — DESIGN RATIONALE: C04 was chosen because it makes the heterogeneity of cache-unit influence the load-bearing artifact, while architectural_operator_substitution turns that partition into a runnable reuse operator. Periodic schedules, video-only motion/saliency scores, and a learned cache policy were rejected because they either do not couple action fidelity to predicted-observation fidelity, require an additional training resource, or do not supply an explicit observation-triggered invalidation rule; the existing Fast-WAM checkpoint, validated Optional-IDM path, PyTorch runtime, and LIBERO/RoboTwin traces are sufficient resources. For estimand alignment, D_a and D_v in the declared D_joint are the branch-normalized MSEs (with the same positive output-scale floors used in S2), and S8 reports these normalized quantities alongside raw MSE; lambda_a=lambda_v=1 is fixed a priori by equal weighting rather than tuned after seeing held-out outcomes.",
+    "core_mechanism_steps": "1. Freeze the existing Fast-WAM checkpoint and validated Optional-IDM path; collect non-empty calibration and held-out splits of receding-observation rollouts from LIBERO and RoboTwin, recording cached unit ids, source tensors, action vectors, and predicted-observation clips.\n2. For each unit u=(b,k), replay the calibration traces with the unit replaced by its stale cached value while all other inputs stay fixed, then compute I^a_u and I^v_u as means of ||delta action||_2/(||action_full||_2+eta) and ||delta video||_2/(||video_full||_2+eta), respectively; eta is the positive machine-precision floor selected for the active output dtype. Output one influence table keyed by (b,k).\n3. Set lambda_a=lambda_v=1 as fixed a priori equal branch weights (the selection rule is equal weighting; do not tune them), set epsilon_joint=0.01 as the default joint-discrepancy tolerance, and construct finite candidate grids G_tau={0} union observed S values and G_H={1} union observed nonnegative integer cache ages. Choose tau_joint and H_max as the largest values in those grids whose held-out calibration discrepancy satisfies epsilon_joint.\n4. In each new receding-observation inference, run the unchanged prefix needed to form h_{u,t} at every candidate cache unit and compare it with the source h_{u,s}; output d_{u,t}=||mean(h_{u,t})-mean(h_{u,s})||_2/(||mean(h_{u,s})||_2+eta).\n5. Compute S_{u,t}=lambda_a I^a_u d_{u,t}+lambda_v I^v_u d_{u,t} and test the explicit validity rule: reuse only when S_{u,t}<=tau_joint, cache age<=H_max, and the Optional-IDM mode is unchanged.\n6. For a failed test, recompute u using the current observation and action context, replace its cached tensor and source fingerprint, and emit the updated intermediate to the original downstream action/video graph; no auxiliary predictor or retraining is introduced.\n7. Mark every descendant cache unit that consumes a recomputed output dirty immediately; before any downstream output is read in the current inference, recompute all dirty descendants in topological order and update their cache entries and source fingerprints. A reset or mode change forces fresh computation for every dirty unit, so stale residual chains cannot reach either final output.\n8. Measure uncached Fast-WAM Optional-IDM, a periodic C3ache-style cache, and the proposed cache at matched skip rates on the held-out rollouts using native GPU event timing and wall-clock traces, together with branch-normalized and raw action MSE, predicted-observation MSE, and closed-loop task success.",
+    "falsification_prediction": "Run the same existing Fast-WAM Optional-IDM checkpoint on held-out LIBERO and RoboTwin receding-observation rollouts, comparing uncached inference, a periodic cross-chunk cache, and the proposed cache at matched skip rates while recording native GPU latency. If the mechanism is correct, the rank correlation between S_{u,t} and paired downstream discrepancy D_joint will be higher than the local-drift comparator, and the proposed cache will lower both action MSE and predicted-observation MSE relative to the periodic cache without lowering closed-loop task success. The single load-bearing variable is S_{u,t}; a negative control permutes the calibrated influence vectors I^a_u,I^v_u across cache units while preserving the threshold and observed skip rate, and should remove the proposed advantage in downstream task success and D_joint rather than merely changing S_{u,t} itself. Failure of the score to predict downstream error, or failure of the joint invalidation rule to preserve both outputs at matched reuse, falsifies the candidate's validity claim even if a latency reduction remains.",
+    "compute_budget": "2-4 A100 GPUs; approximately 8 A100-GPU-days total for calibration, native latency profiling, and held-out LIBERO/RoboTwin evaluation using the existing checkpoint, with no full pretraining; $0 API because all inference and evaluation are local.",
+    "differentiation_from_lit": [
+      {
+        "paper_id": "arxiv:2606.08962v1",
+        "delta": "C3ache reuses same-denoising-step action-expert residuals on a periodic cross-chunk cadence, whereas this candidate derives a per-unit observation-conditioned invalidation decision from paired action and predicted-observation influence and propagates dirty states through the Optional-IDM graph."
+      },
+      {
+        "paper_id": "arxiv:2506.10100v1",
+        "delta": "EfficientVLA caches intermediate attention/MLP outputs inside a CogACT diffusion action head, whereas this candidate tests changed receding observations on Fast-WAM Optional IDM and preserves a jointly measured action-plus-predicted-observation output rather than only action success."
+      },
+      {
+        "paper_id": "arxiv:2603.06331v2",
+        "delta": "The heterogeneous-token WorldCache uses curvature-guided token prediction and video rollout quality, whereas this candidate partitions Fast-WAM cache units by calibrated downstream branch influence and invalidates from a coupled control/video risk score."
+      },
+      {
+        "paper_id": "arxiv:2603.22286v1",
+        "delta": "The content-aware WorldCache uses motion, saliency, blending, and phase scheduling for video-world-model fidelity, whereas this candidate's validity target is the paired action and predicted-observation error after a receding observation changes, with native closed-loop evaluation."
+      },
+      {
+        "paper_id": "arxiv:2502.02175",
+        "delta": "VLA-Cache reuses adjacent-frame visual KV tokens using visual stability and task-region selection, whereas this candidate reuses Fast-WAM Optional-IDM denoising units only after an output-coupled invalidation test that includes the action branch and descendant cache dependencies."
+      }
+    ],
+    "almost_prior_paper_id": "arxiv:2606.08962v1",
+    "what_step_was_missed": "C3ache would need to replace its periodic cross-chunk cadence with a per-unit score whose input is the changed receding observation, calibrate separate action and predicted-observation influence, and propagate invalidation from a recomputed unit through dependent Optional-IDM blocks; without this step, same-denoising-step residual reuse cannot distinguish a benign motion change from a control-critical one.",
+    "signature_terms": [
+      "joint output sensitivity cache invalidation",
+      "action video fidelity coupled reuse",
+      "observation conditioned cross chunk residual cache",
+      "Fast-WAM Optional IDM native latency"
+    ],
+    "alias_terms": [
+      "intermediate attention MLP caching",
+      "adjacent frame visual KV reuse",
+      "evolutionary global refresh scheduling",
+      "learned error corrected diffusion caching",
+      "event triggered model predictive refresh",
+      "change point state recomputation"
+    ],
+    "composition_note": ""
+  },
+  "falsification_rewritten": false
+}

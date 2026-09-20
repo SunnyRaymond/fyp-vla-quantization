@@ -1,0 +1,131 @@
+{
+  "schema": "dino-wm-shared-prefix-cache.experiment-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-shared-prefix-cache",
+  "method": "RankSafe Exact-Prefix Cache (RankSafe-EPC)",
+  "purpose": "Test exact shared-prefix reuse in the DINO-WM Wall CEM planner while preserving candidate ranking and selected first action.",
+  "scope": {
+    "task": "DINO-WM Wall",
+    "checkpoint": "official wall_single checkpoint selected by the reproduction run; record the concrete checkpoint identifier in each result manifest",
+    "evaluation_mode": "eval",
+    "fixed_settings": {
+      "seed": 99,
+      "candidate_count": 300,
+      "horizon": 5,
+      "topk": 30,
+      "cem_opt_steps": 10,
+      "outer_mpc_rounds_for_confirmation": 7,
+      "n_evals_for_confirmation": 50,
+      "objective_mode": "last",
+      "objective_alpha": 1,
+      "objective": "mean MSE on the final predicted visual embedding plus alpha times mean MSE on the final predicted proprio embedding",
+      "tie_break": "stable ascending candidate index"
+    }
+  },
+  "paths": {
+    "baseline": {
+      "definition": "Recompute encode_obs, action encoding, rollout, and objective for every candidate population and CEM iteration.",
+      "cache_hit": false
+    },
+    "iteration_cache": {
+      "definition": "Within one planner call, compute the observation prefix for the first CEM iteration and reuse it in later CEM iterations; keep every action-conditioned suffix and objective computation unchanged.",
+      "cache_hit": true
+    },
+    "factorized_cache": {
+      "definition": "Within one planner call, compute encode_obs once per real observation and broadcast the resulting prefix to the 300 candidate suffix evaluations; keep every action-conditioned suffix and objective computation unchanged.",
+      "cache_hit": true
+    }
+  },
+  "boundary": {
+    "boundary_id": "encode_obs",
+    "action_independence_basis": "structural input separation: encode_obs consumes only transformed observation visual/proprio tensors; action enters through encode_act after this boundary",
+    "required_metadata": ["shape", "dtype", "device"],
+    "jacobian_search": "not required for this frozen first implementation; do not substitute a local-Jacobian-only certificate for the structural boundary"
+  },
+  "mechanism_gate": {
+    "input_file": "mechanism.jsonl",
+    "unit": "one fixed observation, CEM iteration, and candidate population",
+    "population_reuse": "The exact same pre-generated candidate tensors and candidate population seed must be used by all three paths for each record.",
+    "minimum_population_records": 1,
+    "record_schema": {
+      "required_top_level": [
+        "population_id",
+        "observation_id",
+        "cem_iteration",
+        "candidate_population_seed",
+        "candidate_count",
+        "horizon",
+        "topk",
+        "paths",
+        "negative_controls"
+      ],
+      "paths": {
+        "required_names": ["baseline", "iteration_cache", "factorized_cache"],
+        "required_fields": {
+          "baseline": ["cache_hit", "prefix", "rollout", "objective", "full_order", "topk30", "mu", "sigma", "first_action"],
+          "cached": ["cache_hit", "canary", "prefix", "rollout", "objective", "full_order", "topk30", "mu", "sigma", "first_action"]
+        },
+        "prefix_and_rollout": "Each is an object with equal_to_baseline (boolean), shape (array), dtype (string), and device (string). The comparison must be the bitwise tensor equality used by the implementation; no tolerance is accepted.",
+        "decision_values": "objective has exactly 300 finite numeric values; full_order is a permutation of 0..299; topk30 has exactly 30 indices and equals full_order[:30]; mu, sigma, and first_action are JSON numeric arrays. Cached-path values must equal baseline values exactly after JSON parsing.",
+        "canary": "For each cached path, canary.executed=true and canary.fallback_triggered=false. A valid cache record must not silently fall back."
+      },
+      "required_comparisons": ["prefix", "rollout", "objective", "full_order", "topk30", "mu", "sigma", "first_action"],
+      "fail_fast": "Any cached-path first_action mismatch, or any missing/false required comparison, fails the mechanism gate. A single failing population is sufficient for failure."
+    },
+    "negative_controls": {
+      "required_names": ["wrong_boundary", "stale_observation"],
+      "forbidden_legacy_control": "randomized-mask, randomized_mask, or all-zero-mask permutation control",
+      "required_fields": ["fallback_disabled", "mismatch_detected", "downstream_mismatch"],
+      "required_values": "All three required fields are true for both controls. downstream_mismatch means at least one candidate objective, complete order, or selected first action differs from the valid baseline under the deliberately corrupted control.",
+      "purpose": "Show that the canary/control catches an unsafe boundary or an observation-identity collision; these controls are not evidence for the valid cache path."
+    },
+    "pass_rule": "PASS only when every record has the three paths, all eight required comparisons agree exactly, every cached canary is executed without fallback, and both negative controls report the required mismatch."
+  },
+  "system_gate": {
+    "input_file": "system_summary.json",
+    "unit": "observation/planner call",
+    "technical_repeats_note": "Technical repeats are measurement repeats, not independent observations.",
+    "paths": ["baseline", "iteration_cache", "factorized_cache"],
+    "warmup_repeats": 5,
+    "minimum_technical_repeats": 10,
+    "pairing": "Each planner_call_id must contain the same technical_repeat labels for all three paths.",
+    "timing_boundary": "CEMPlanner.plan entry through returned first action",
+    "includes_preprocessing": true,
+    "includes_environment_interaction": false,
+    "device_synchronization": "synchronize immediately before starting and immediately after stopping each timed call",
+    "latency_statistic": "For each planner call and path, take the median technical-repeat latency; report the median of paired per-call reductions, reduction = 1 - median(cache_latency)/median(baseline_latency).",
+    "latency_gate": {
+      "minimum_paired_median_reduction": 0.2,
+      "rule": "For both cache paths, paired median reduction must be at least 0.20."
+    },
+    "memory_statistic": "For each planner call and path, take the maximum technical-repeat peak_memory_mib; compare the maximum cached-to-baseline ratio across calls.",
+    "memory_gate": {
+      "maximum_peak_memory_ratio": 1.1,
+      "rule": "For both cache paths, maximum peak-memory ratio must be at most 1.10."
+    },
+    "record_fields": ["observation_id", "planner_call_id", "path", "warmup", "technical_repeat", "latency_ms", "peak_memory_mib"],
+    "pass_rule": "PASS only when metadata, pairing, finite positive timings, both latency reductions, and both memory ratios satisfy the frozen rules."
+  },
+  "closed_loop_gate": {
+    "input_file": "closed_loop.jsonl",
+    "authorization": "Run and verify only after mechanism_gate and system_gate pass.",
+    "unit": "case and MPC round from identical initial state, goal, checkpoint, preprocessing, seed, and candidate tensors",
+    "record_fields": ["case_id", "initial_state_id", "goal_id", "mpc_round", "paths"],
+    "path_result_fields": ["first_action", "success", "final_goal_distance"],
+    "pass_rule": "For every case and MPC round, both cache paths must have exactly the same first_action and success as baseline. Any first-action mismatch fails."
+  },
+  "result_files": {
+    "mechanism": "JSONL; one record per fixed population",
+    "system": "JSON summary containing the records array and timing metadata",
+    "closed_loop": "JSONL; only produced after the two pre-gates pass",
+    "verifier": "verify_results.py"
+  },
+  "prohibited": [
+    "Do not alter candidate tensors, random seeds, checkpoint, objective, tie-breaking, or action-conditioned suffix between paths.",
+    "Do not report approximate equality as exact equality.",
+    "Do not use a randomized-mask or all-zero-mask permutation control.",
+    "Do not use hashes as a substitute for the recorded comparisons.",
+    "Do not claim closed-loop validation when the pre-gates have not passed."
+  ]
+}

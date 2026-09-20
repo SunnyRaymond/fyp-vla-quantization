@@ -1,0 +1,123 @@
+{
+  "method_name": "Causal Risk-Envelope Cache (CREC)",
+  "abstract_draft": "Fast-WAM Optional-IDM must repeatedly process receding observations, yet caching an intermediate is risky because hidden-state change does not determine how much paired action and predicted-video output error reaches downstream descendants. C3ache shows that periodic cross-chunk reuse can reduce computation, but its cadence and task-success aggregate do not identify which cached units carry the downstream error. We propose Causal Risk-Envelope Caching (CREC), a training-free operator that replays stale-value interventions with the remaining Fast-WAM graph fixed, estimates a per-unit paired-output risk envelope conditioned on observation change, tests its heterogeneity against a unit-label permutation null, and refreshes the high-risk tail while reusing the bulk under a downstream error budget. The falsifiable prediction is lower held-out D_joint, action MSE, and predicted-observation MSE than periodic C3ache and a global local-drift gate at matched skip rates, without lowering closed-loop task success; envelope permutation should reverse this benefit. A minimum 2-A100 campaign, expandable to 4 A100, can test the claim on held-out LIBERO and RoboTwin with native GPU timing and the existing checkpoint. This is a validation target, not an observed result: if the heterogeneity gate or permutation control fails, latency alone does not support the causal risk-allocation claim.",
+  "motivation.problem_framing": "The Phase 1 bottleneck is not simply redundant computation. In Fast-WAM Optional-IDM, a changed receding observation can alter the influence of a cached unit through action and predicted-video branches, while units with similar hidden-state drift can have very different downstream consequences. A global local-drift threshold therefore treats the cache as exchangeable even when a small high-risk tail dominates paired error.
+
+The proposed setting keeps the existing model and graph fixed and turns that asymmetry into a measurable object. C3ache supplies a useful periodic reuse reference, EfficientVLA supplies a feature-similarity reuse reference, and WorldCache and X-Cache show that heterogeneous or structure-aware caching can preserve rollout quality; none of these references, as represented in the scaffold, establishes a unit-level stale-value intervention whose paired action/video risk determines dependency-complete refresh. The question is consequently whether causal risk allocation, rather than another similarity score or cadence, is the missing operation.",
+  "motivation.why_now": "Recent caching work makes the required measurement stack timely: C3ache provides a World-Action caching baseline, WorldCache exposes heterogeneous temporal behavior, and X-Cache provides structure- and action-aware reuse guards. DriveCache is an important boundary case because it already combines a scene-level dynamic-programming schedule, an action-aware response budget, and causal drift-triggered refresh/replan; CREC therefore makes no broad claim for action-aware budgeted caching. The remaining bounded question is whether Fast-WAM Optional-IDM has a distinct per-unit paired action/video risk envelope, a testable heterogeneity gate, and descendant-complete invalidation that can be evaluated with the existing checkpoint and native GPU timing.",
+  "motivation.why_prior_stopped[0].what_they_did": "C3ache reuses same-denoising-step action-expert residuals on a periodic cross-chunk cadence to accelerate World-Action inference.",
+  "motivation.why_prior_stopped[0].what_they_did_not_do": "It did not estimate a per-unit paired action/video downstream-risk envelope from stale-value interventions or use that envelope to allocate refreshes.",
+  "motivation.why_prior_stopped[0].structural_reason_they_stopped": "Its fixed cadence and aggregate task-success evaluation omit the causal intervention, heterogeneity test, and error-budgeted descendant recomputation needed for unit-level risk allocation.",
+  "motivation.why_prior_stopped[1].what_they_did": "Fast-WAM studies whether test-time future imagination is needed for reliable world-action control with an Optional-IDM configuration.",
+  "motivation.why_prior_stopped[1].what_they_did_not_do": "It did not turn the fixed Fast-WAM graph into a cache-unit intervention platform with paired action/video risk estimates.",
+  "motivation.why_prior_stopped[1].structural_reason_they_stopped": "Its question concerns the necessity of future imagination, not the missing measurement of stale intermediate influence under receding observations.",
+  "motivation.why_prior_stopped[2].what_they_did": "EfficientVLA reuses attention and MLP intermediates in a CogACT action head using feature-similarity criteria without retraining.",
+  "motivation.why_prior_stopped[2].what_they_did_not_do": "It did not condition a paired action/video downstream-risk envelope on Fast-WAM receding-observation changes or validate a unit-label heterogeneity null.",
+  "motivation.why_prior_stopped[2].structural_reason_they_stopped": "Feature similarity is an input-side proxy, whereas the candidate requires intervention-based downstream measurement and dependency-aware refresh.",
+  "motivation.why_prior_stopped[3].what_they_did": "The heterogeneous-token WorldCache uses curvature and accumulated drift to preserve video rollout quality while reusing non-uniform tokens.",
+  "motivation.why_prior_stopped[3].what_they_did_not_do": "It did not establish a paired action/video risk envelope for Fast-WAM units or test its tail against a unit-permutation control.",
+  "motivation.why_prior_stopped[3].structural_reason_they_stopped": "Its quality-preserving object is heterogeneous video-token dynamics, not causal paired-output influence with an action branch and descendant invalidation.",
+  "motivation.why_prior_stopped[4].what_they_did": "WorldCache uses content-aware reuse to accelerate video world-model rollouts while accounting for temporal variation.",
+  "motivation.why_prior_stopped[4].what_they_did_not_do": "It did not solve a Fast-WAM paired action/video error budget whose refresh decisions are indexed by intervened cache units.",
+  "motivation.why_prior_stopped[4].structural_reason_they_stopped": "The video-rollout objective does not supply the action-coupled downstream measurement and dependency-complete recomputation required here.",
+  "motivation.why_prior_stopped[5].what_they_did": "X-Cache gates cross-chunk block reuse with structure- and action-aware input fingerprints and KV-update guards.",
+  "motivation.why_prior_stopped[5].what_they_did_not_do": "It did not calibrate a causal per-unit risk envelope or allocate refreshes under a paired downstream error budget with descendant invalidation.",
+  "motivation.why_prior_stopped[5].structural_reason_they_stopped": "Its guard is a fingerprint and update rule, not an intervention that distinguishes heterogeneous causal influence from exchangeable drift.",
+  "motivation.what_changes_when_gap_closes": "Fast-WAM caching would gain an explicit allocation object: refresh decisions could protect the empirically demonstrated high-risk tail while reusing the bulk at a fixed skip rate, instead of treating local drift as a sufficient proxy. This would make paired action/video error and closed-loop task success part of the cache validity boundary, complementing the reuse mechanisms of C3ache, EfficientVLA, and WorldCache without claiming to subsume DriveCache's scene-level controller. A successful gate would also provide a reusable causal diagnostic for deciding when a latency gain is mechanistically meaningful.",
+  "core_claim": "A unit-specific causal risk envelope can identify a high-risk cache tail whose selective refresh lowers paired downstream action/video error at matched skip rate while preserving closed-loop task success.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "Stale-value replay reveals a non-exchangeable per-unit paired action/video risk tail after conditioning on receding-observation change.",
+      "supports_which_aspect": "Closes the bottleneck that hidden-state drift alone cannot identify which cache units control downstream influence."
+    },
+    {
+      "id": "c2",
+      "statement": "Refreshing the risk-ranked tail and reusing the bulk under a downstream error budget reduces D_joint, action MSE, and predicted-observation MSE at matched skip rate.",
+      "supports_which_aspect": "Closes the gap between a heterogeneous risk measurement and an actionable cache allocation rule."
+    },
+    {
+      "id": "c3",
+      "statement": "Permuting complete risk envelopes across cache units while preserving the risk budget and dependency logic degrades downstream outcomes, distinguishing causal allocation from a mere risk-score reshuffle.",
+      "supports_which_aspect": "Closes the evidence gap between correlation with drift and a mechanism-specific refresh decision."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "E1",
+      "linked_step_id": "S1",
+      "latex": "r_u(d)=\\mathbb{E}\\left[\\lambda_a\\Delta_a+\\lambda_v\\Delta_v\\mid u,d\\right]",
+      "description": "The unit-specific envelope combines paired action and predicted-video downstream deviations at an observation-change level.",
+      "description_zh": "单位级风险包络把动作分支与预测视频分支的下游偏差，按观测变化幅度联合起来。"
+    },
+    {
+      "id": "E2",
+      "linked_step_id": "S3",
+      "latex": "\\min_{\\mathbf{z}}\\sum_{u=1}^{U}z_uc_u\\quad\\text{s.t.}\\quad\\sum_{u=1}^{U}(1-z_u)r_u(d)\\leq B,\\quad z_u\\in\\{0,1\\}",
+      "description": "The refresh indicator minimizes recomputation cost while keeping the risk of reused units below the downstream budget.",
+      "description_zh": "刷新指示变量在满足下游风险预算的同时，最小化重新计算的代价。"
+    },
+    {
+      "id": "E3",
+      "linked_step_id": "S4",
+      "latex": "\\mathcal{I}(\\mathcal{R})=\\{v\\mid \\exists u\\in\\mathcal{R}:u\\prec v\\}",
+      "description": "The invalidation set contains every graph descendant of a refreshed unit so stale dependencies are not silently reused.",
+      "description_zh": "失效集合覆盖所有被刷新单位的图后继，避免旧依赖在刷新后继续被静默复用。"
+    }
+  ],
+  "method_flow.high_level_pipeline": "CREC starts from held-out receding-observation replays of the existing Fast-WAM Optional-IDM graph and replaces one cached unit-timestep with its stale value while holding the remaining graph fixed. It aggregates the paired action and predicted-video deviations into a unit-specific risk envelope, then requires the envelope distribution to reject a unit-label permutation null before using it for allocation. A binary refresh decision protects the high-risk tail under a downstream error budget and reuses the bulk at the requested skip rate. Every refresh invalidates graph descendants before the paired outputs are evaluated for error, native latency, and closed-loop task success.",
+  "method_flow.steps": [
+    {
+      "step_id": "S1",
+      "title": "Replay stale units",
+      "what_changes": "For each cache unit and changed receding observation, substitute its cached value while keeping the remaining Fast-WAM Optional-IDM graph fixed, and record paired action and predicted-video deviations.",
+      "why_this_step": "This closes the missing causal intervention: local hidden-state change is held separate from the downstream effect of one stale unit.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Held-out receding-observation rollouts, cache-unit graph, and uncached reference outputs.",
+      "output": "Per-unit paired deviation samples indexed by observation-change level d."
+    },
+    {
+      "step_id": "S2",
+      "title": "Gate on heterogeneity",
+      "what_changes": "Aggregate the paired samples into r_u(d) and compare the observed unit distribution with a unit-label permutation null that preserves the risk values and change levels.",
+      "why_this_step": "The proposal needs evidence that risk is genuinely heterogeneous; without this gate, a global drift rule and the proposed tail are not mechanistically distinguishable.",
+      "linked_component": "theory",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Per-unit paired deviation samples from S1.",
+      "output": "Calibrated risk envelopes and a pass/fail heterogeneity evidence gate."
+    },
+    {
+      "step_id": "S3",
+      "title": "Allocate the error budget",
+      "what_changes": "Solve the refresh-versus-reuse selection under a downstream error budget, refreshing the calibrated high-risk tail and reusing the remaining units at the matched skip rate.",
+      "why_this_step": "This converts the heterogeneous measurement into the candidate's load-bearing operation rather than another descriptive cache score.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "Passed risk envelopes, unit costs, dependency graph, and target risk budget or skip rate.",
+      "output": "Unit refresh indicators and a risk-budgeted cache schedule."
+    },
+    {
+      "step_id": "S4",
+      "title": "Invalidate descendants",
+      "what_changes": "Refresh selected units, invalidate every graph descendant, recompute the paired action/video outputs, and measure downstream error, native GPU latency, and task success.",
+      "why_this_step": "Dependency-complete recomputation tests whether the allocation survives the actual Fast-WAM graph instead of only improving an isolated intermediate metric.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "Refresh indicators and dependency graph from S3, plus matched uncached and control rollouts.",
+      "output": "Paired downstream metrics, timing, task-success outcomes, and the envelope-permutation control result."
+    }
+  ],
+  "method_flow.design_reasoning_echo": "The design treats caching as a causal allocation problem because the proposed failure mode is not uniform drift but concentrated downstream influence. Stale-value replay supplies the missing intervention while preserving the existing graph, the heterogeneity null prevents a convenient tail story from being accepted without evidence, and dependency-complete invalidation prevents an apparent local gain from hiding stale descendants. This is deliberately narrower than replacing the cache operator or training a learned policy: the contribution is a training-free risk object and its falsifiable refresh rule, with latency interpreted only together with paired error and task-success outcomes.",
+  "feasibility_validation.data.verdict": "feasible",
+  "feasibility_validation.data.rationale": "The existing Fast-WAM Optional-IDM checkpoint can be evaluated on public held-out LIBERO and RoboTwin receding-observation rollouts, with no private data required.",
+  "feasibility_validation.theoretical.verdict": "n/a",
+  "feasibility_validation.theoretical.rationale": "The proposal defines operational risk envelopes and null tests but does not require a new formal theorem or unverified theoretical prerequisite.",
+  "feasibility_validation.engineering.verdict": "tight",
+  "feasibility_validation.engineering.rationale": "Per-unit stale-value replays, dependency-complete invalidation, and native GPU timing are implementable but bind the campaign to the existing 2-A100 minimum and up to 4-A100 parallel allocation.",
+  "feasibility_validation.falsification.verdict": "feasible",
+  "feasibility_validation.falsification.rationale": "The 2-A100 minimum campaign, expandable to 4 A100, has concrete matched-skip controls, a unit-label heterogeneity gate, and an envelope-permutation intervention that can be run with the existing checkpoint and native tooling.",
+  "feasibility_validation.overall": "tight",
+  "reviewer_concerns_and_responses[0].response": "DriveCache is explicitly treated as the closest collision: its scene-level dynamic-programming controller already combines an action-aware response budget with causal drift-triggered refresh and replan. The bounded claim in `hook`, `falsification_prediction`, and `differentiation_from_lit` is narrower—stale-value, per-unit paired action/video risk envelopes, a unit-label heterogeneity gate, and dependency-complete descendant invalidation—so the Phase 3.2 rationale blocks broad novelty for action-aware budgeted caching but does not establish exact-mechanism overlap.",
+  "domain_landscape.position_note": "The candidate's `reframe_as_solvable_object` pattern is mid-frequency in this landscape, while architectural operator substitution is saturated; its distinctive placement is to make the risk envelope and heterogeneity gate the testable object around existing caching machinery."
+}

@@ -1,0 +1,271 @@
+{
+  "intake": {
+    "domain": "DINO-WM Wall latent visual world-model inference with CEM planning and training-free shared-prefix caching",
+    "venue": "top-tier ML/robotics venue with Oral-level reviewer standard (inferred)",
+    "time": "2026 research cycle (inferred)",
+    "data": [
+      "existing DINO-WM Wall checkpoint",
+      "existing Wall trajectories",
+      "CEM candidate-rollout traces",
+      "closed-loop task-success evaluations",
+      "native A100 latency measurements"
+    ],
+    "compute": "2-4 A100 budget and no full pretraining",
+    "expertise": "familiar with DINO-WM, CEM/MPC, and VLA/WAM inference systems (inferred)",
+    "preference": "empirical",
+    "baseline": "the existing DINO-WM Wall checkpoint, trajectories, and CEM planner, with comparisons against VLA-Cache, EfficientVLA, and both WorldCache variants",
+    "user_direction": "reuse exact observation/history encoder or latent-prefix computation across CEM candidate rollouts",
+    "excluded_direction": "n_a",
+    "limitation": "CEM repeatedly evaluates counterfactual candidates from the same observation/history, so identical encoder or latent-prefix work can dominate planner latency; any reuse must preserve planner action selection and closed-loop success, and speed claims require native latency evidence.",
+    "contribution_type": "method",
+    "_inferred_fields": [
+      "venue",
+      "time",
+      "expertise",
+      "preference",
+      "contribution_type"
+    ]
+  },
+  "bottleneck_statement": "For goal-conditioned CEM/MPC that evaluates counterfactual action sequences from a common observation/history, cache-local proxies such as temporal similarity, token drift, or residual correlation do not identify whether two computations share the same planner-relevant prefix or merely look similar under different action conditioning; permitted reuse can therefore perturb relative candidate costs while leaving average latent or rollout error small. C^3ache (arxiv:2606.08962v1) exploits residual correlation across consecutive WAM chunks and X-Cache (arxiv:2604.20289v2) gates cross-chunk block reuse with action-aware fingerprints, while WorldCache (dblp:journals/corr/abs-2603-06331) controls token-level rollout drift; these mechanisms reduce forward work but do not establish a condition tying reuse to preservation of CEM ranking and closed-loop success in the DINO-WM Wall instance. The structural gap is a missing planner-level invariance criterion for shared-prefix reuse, not merely a missing cache operator.",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "is_anchor": true,
+      "summary_and_residue": "C^3ache caches each action-expert residual at a denoising step across successive WAM inference chunks, refreshing on a fixed schedule and reporting up to 2.5x wall-clock speedup with negligible task-success degradation. Its residue is that the reuse decision assumes smooth executed behavior and never handles multiple counterfactual CEM branches sharing a prefix, so it does not test preservation of candidate ordering or closed-loop success under action divergence."
+    },
+    {
+      "paper_id": "arxiv:2604.20289v2",
+      "is_anchor": false,
+      "summary_and_residue": "X-Cache reuses cross-chunk DiT block residuals when structure- and action-aware fingerprints pass cosine and deviation gates, with anchor blocks, KV-update full recomputation, and maximum-staleness protection. Its residue is that the method is validated on sequential autonomous-driving world generation rather than counterfactual CEM branches, so its gates do not specify how to preserve planner candidate ordering or DINO-WM-style closed-loop success."
+    },
+    {
+      "paper_id": "dblp:journals/corr/abs-2603-06331",
+      "is_anchor": false,
+      "summary_and_residue": "WorldCache partitions heterogeneous world-model tokens by curvature and combines heterogeneous prediction with chaotic-token-prioritized adaptive skipping to control rollout drift. Its residue is that the quality target is token or multimodal rollout fidelity under denoising, not the downstream invariance of action-sequence ranking when a planner reuses a shared prefix across counterfactual candidates."
+    },
+    {
+      "paper_id": "arxiv:2506.10100v1",
+      "is_anchor": false,
+      "summary_and_residue": "EfficientVLA combines layer pruning, task-aware visual-token selection, and temporal caching in a diffusion action head, reporting 1.93x inference speedup with a 0.6% SIMPLER success-rate drop. Its residue is that the method targets CogACT VLA module redundancy and does not isolate exact observation-history prefix reuse or planner-level candidate-order preservation in a latent DINO-WM CEM loop."
+    },
+    {
+      "paper_id": "arxiv:2411.04983v2",
+      "is_anchor": false,
+      "summary_and_residue": "DINO-WM predicts pretrained DINOv2 patch features and performs test-time action-sequence optimization toward visual goals, enabling task-agnostic planning from offline trajectories. Its residue is that the planning formulation leaves repeated shared observation/history encoding across CEM candidates as unexamined computation, and it does not provide a cache-validity condition tied to action selection or native latency."
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "Across counterfactual candidate rollouts that share an observation/history prefix but diverge in actions, no retrieved leaf establishes a condition under which reuse preserves the ordering of CEM candidate costs and the resulting selected action, rather than only average latent or rollout quality — stakes: DINO-WM Wall users can obtain a lower forward-pass count yet choose a different action and lose closed-loop success, wasting A100 evaluation and invalidating a speedup claim.",
+    "No retrieved leaf tests whether its local similarity, curvature, or drift signal is sufficient to certify planner-level invariance, instead of being treated as an assumed proxy for the downstream decision quantity — stakes: practitioners may deploy a cache that looks stable on feature or rollout metrics but changes task decisions, while researchers may overgeneralize cache-quality results to planning without evidence.",
+    "No retrieved leaf reports native latency and end-to-end closed-loop success for the same fixed DINO-WM Wall checkpoint, CEM controller, and trajectory set, so the speed-selection-fidelity tradeoff remains unmeasured in the target system — stakes: teams cannot tell whether the reported optimization transfers to their real bottleneck and may spend GPU time on a non-deployable cache; the field lacks a reproducible boundary between forward acceleration and planner benefit."
+  ],
+  "method_lineage": {
+    "line": "training-free computation reuse in sequential latent world-model inference under changing action conditioning",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "full recomputation of a learned dynamics or planning rollout",
+        "move": "root formulation: evaluate each sequential latent-model call independently",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "high",
+        "residual_problem": "Repeated computation of unchanged conditioning and shared state consumes the planner's latency budget.",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n1",
+        "method": "training-free intermediate-feature reuse across adjacent denoising steps",
+        "move": "reuses block or layer activations when denoising states are locally similar",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "A local similarity proxy does not identify which downstream control quantity must remain invariant.",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n2",
+        "method": "token- and block-adaptive cache scheduling",
+        "move": "selects cache granularity and refreshes only parts of the denoiser from token or block dynamics",
+        "parent": "n1",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "Cache decisions remain tied to representation drift or rollout fidelity rather than planner candidate-order invariance.",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n3",
+        "method": "C^3ache cross-inference chunk residual cache",
+        "move": "caches same-denoising-step residuals across consecutive WAM inference chunks with periodic refresh",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2606.08962v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "It assumes smooth executed behavior and does not specify branch-aware reuse or preservation of CEM ranking under counterfactual action divergence.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n4",
+        "method": "X-Cache cross-chunk block cache with dual-metric gating",
+        "move": "adds structure- and action-aware fingerprints, adaptive thresholds, anchor blocks, and KV-update full recomputation",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2604.20289v2",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "It protects sequential autoregressive world generation but does not establish candidate-order or closed-loop invariance for CEM branches.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n5",
+        "method": "WorldCache heterogeneous token caching",
+        "move": "partitions token trajectories by curvature and schedules full computation from chaotic-token drift",
+        "parent": "n2",
+        "provenance": "retrieved:dblp:journals/corr/abs-2603-06331",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "It controls token-level rollout drift but not the planner-level action ranking produced by counterfactual candidates sharing a prefix.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n6",
+        "method": "WorldCache content-aware motion and saliency caching",
+        "move": "adapts reuse to motion and saliency and approximates intermediate features with blending or warping across diffusion steps",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2603.22286v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "It improves visual rollout fidelity but has no exact shared-prefix semantics or downstream action-selection criterion.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n7",
+        "method": "DINO-WM latent visual dynamics with test-time CEM planning",
+        "move": "predicts DINOv2 patch features and optimizes action sequences toward visual goals",
+        "parent": null,
+        "provenance": "retrieved:arxiv:2411.04983v2",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "CEM repeatedly evaluates candidates from the same observation/history, but the prefix is not treated as a planner-level reusable object.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n8",
+        "method": "EfficientVLA multi-module training-free acceleration",
+        "move": "prunes layers and visual tokens and caches temporal action-head features",
+        "parent": null,
+        "provenance": "retrieved:arxiv:2506.10100v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "VLA module redundancy is addressed without testing latent world-model CEM branch identity or planner ranking.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n9",
+        "method": "VLA-Cache adaptive visual-token KV reuse",
+        "move": "filters static visual tokens by decoder attention and adapts layer reuse using attention entropy",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "0-2y",
+        "confidence": "medium",
+        "residual_problem": "Adjacent-frame VLA token reuse does not establish DINO-WM CEM counterfactual prefix equivalence.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n10",
+        "method": "Fast-WAM one-pass world encoder after video co-training",
+        "move": "drops explicit future generation at inference while retaining the video-prediction training objective",
+        "parent": null,
+        "provenance": "retrieved:arxiv:2603.16666v2",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Removing future rollout does not address safe computation reuse across CEM candidates that still require planner evaluation.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "Retrieved nodes are grounded frontier or collateral evidence; parametric nodes are awareness-only and are not hard novelty claims. The ancestry walks from full recomputation through training-free local feature reuse to token or block scheduling, then to the retrieved cross-chunk and heterogeneous-cache leaves. The collateral DINO-WM, EfficientVLA, VLA-Cache, and Fast-WAM nodes expose adjacent families without making them gap sites. The shared inherited assumption is that local representation similarity or drift is an adequate proxy for the downstream quantity that matters; the gaps therefore remain at frontier-leaf residuals and leave the cure open."
+  },
+  "domain_pattern_distribution": {
+    "n_total": 72,
+    "n_on_topic": 72,
+    "patterns": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 40,
+        "share": 0.56,
+        "saturation_band": "saturated"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 29,
+        "share": 0.4,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 22,
+        "share": 0.31,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 16,
+        "share": 0.22,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 11,
+        "share": 0.15,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 8,
+        "share": 0.11,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 7,
+        "share": 0.1,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 6,
+        "share": 0.08,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 2,
+        "share": 0.03,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      }
+    ],
+    "saturation_threshold_saturated": 0.5,
+    "saturation_threshold_untested_count": 1,
+    "notes": "architectural_operator_substitution is the most-used pattern, but caching papers using it still leave planner-level branch fidelity and closed-loop task-success preservation unresolved."
+  },
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -N cem_residual_wall_a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+
+# Existing prepared DINO-WM root.  Runtime extraction happens only after the
+# compute-node guard; this script never downloads, installs, compiles, or hashes.
+ROOT="${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}"
+CONTROL="${CONTROL:-$ROOT/idea-validation/cem-residual-jepa-wall}"
+WALL_ROOT="${WALL_ROOT:-$ROOT}"
+WORKLOAD="${WORKLOAD:-$ROOT/rankcal_screen/artifacts/16176810.pbs101/evaluation/development/FP32/workload.pkl}"
+POOLS_ROOT="${POOLS_ROOT:-$(dirname "$WORKLOAD")}"
+SMOKE_RUNNER="${SMOKE_RUNNER:-$ROOT/rankcal_screen/control/smoke_runner.py}"
+RUNTIME_ARCHIVE="${RUNTIME_ARCHIVE:-$ROOT/runtime-complete.tar}"
+WORK="${TMPDIR:?TMPDIR missing}/cem-residual-wall-$PBS_JOBID"
+PYTHON_BIN="$WORK/runtime/venv/bin/python"
+OUT="${OUT:-$ROOT/artifacts/cem-residual-jepa-wall-$PBS_JOBID}"
+
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}" && test -s "$PBS_NODEFILE"
+HOST=$(hostname | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing login/head/submit host: $HOST" >&2; exit 2;; esac
+command -v nvidia-smi >/dev/null
+test -f "$RUNTIME_ARCHIVE"
+test -f "$CONTROL/run_stage_a.py"
+test -f "$CONTROL/FREEZE.json"
+test -f "$SMOKE_RUNNER"
+test -f "$WORKLOAD"
+test -d "$POOLS_ROOT/episodes"
+mkdir -p "$OUT"
+mkdir -p "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+date -Is
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$RUNTIME_ARCHIVE" -C "$WORK"
+test -x "$PYTHON_BIN"
+nvidia-smi
+nvidia-smi --query-gpu=timestamp,index,uuid,utilization.gpu,memory.used,memory.total --format=csv -l 30 > "$OUT/gpu_telemetry.csv" &
+MONITOR_PID=$!
+trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT
+
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 WANDB_MODE=disabled
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg PYTHONPATH="$ROOT/source"
+"$PYTHON_BIN" "$CONTROL/run_stage_a.py" \
+  --wall-root "$WALL_ROOT" \
+  --workload "$WORKLOAD" \
+  --pools-root "$POOLS_ROOT" \
+  --smoke-runner "$SMOKE_RUNNER" \
+  --output "$OUT" \
+  --freeze "$CONTROL/FREEZE.json"
+date -Is

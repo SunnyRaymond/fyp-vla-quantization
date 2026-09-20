@@ -1,0 +1,102 @@
+{
+  "schema": "jepa-action-prefix-compiler.rankdistill-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-pusht-planner-aware-rankdistill",
+  "question": "Does planner-aware listwise teacher distillation repair candidate ranking without changing the action-prefix inference interface?",
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "horizon": 5,
+    "anchors": ["pusht_obs_00", "pusht_obs_01"],
+    "predictor_level_only": true,
+    "cem": false,
+    "closed_loop": false,
+    "source_model_frozen": true,
+    "student_receives_goal": false
+  },
+  "design": {
+    "type": "concurrent paired blocked comparison",
+    "arms": {
+      "latent_only": "dense native-latent MSE",
+      "rankdistill": "the same dense native-latent MSE plus planner-score listwise KL"
+    },
+    "pairing": "same initial weights, anchor, action prefixes, frozen-teacher targets and step schedule",
+    "blocks": "official anchor x fresh heldout action seed",
+    "independent_block_count": 4,
+    "nested_not_independent": "300 candidates within a block",
+    "update_order": "alternate arm order by training step"
+  },
+  "training": {
+    "seed": 20260920,
+    "steps": 500,
+    "batch_size": 32,
+    "learning_rate": 0.0003,
+    "hidden_dim": 128,
+    "anchor_schedule": "alternate pusht_obs_00 and pusht_obs_01 by step",
+    "teacher_target": "frozen autoregressive dense native latents",
+    "rank_loss": {
+      "type": "KL between teacher and student candidate-score distributions",
+      "score_standardization": "within-anchor batch z-score with std floor 1e-6",
+      "logits": "negative standardized official terminal objective divided by temperature",
+      "temperature": 1.0,
+      "weight": 0.1
+    }
+  },
+  "heldout": {
+    "action_prefix_seeds": [20262920, 20262921],
+    "candidates_per_block": 300,
+    "topk": 30,
+    "seeds_seen_in_stage_a": false
+  },
+  "timing": {
+    "action_prefix_seed": 20270921,
+    "batch_size": 300,
+    "warmup_repeats": 3,
+    "technical_repeats": 10,
+    "boundary": "cached native observation latent and normalized actions through frozen teacher rollout or one student forward",
+    "cuda_synchronize_before_after": true,
+    "includes_encoder_cem_environment": false
+  },
+  "gates": {
+    "capacity": {
+      "future_action_leakage_max_abs": 0.000001,
+      "finite_outputs_and_training": true,
+      "latent_last10_to_first_ratio_max": 0.8
+    },
+    "absolute_fidelity": {
+      "rankdistill_objective_spearman_min": 0.99,
+      "rankdistill_top30_overlap_min": 0.95,
+      "minimum_block_spearman_min": 0.95,
+      "minimum_block_top30_overlap_min": 0.80
+    },
+    "paired_improvement": {
+      "median_spearman_delta_min": 0.05,
+      "median_top30_overlap_delta_min": 0.10,
+      "positive_spearman_blocks_min": 3,
+      "positive_top30_blocks_min": 3
+    },
+    "latent_noninferiority": {
+      "rankdistill_to_latent_only_mean_relative_mse_ratio_max": 1.25
+    },
+    "latency": {
+      "rankdistill_predictor_reduction_vs_teacher_min": 0.20
+    },
+    "go": "all gates pass",
+    "no_go": "any gate fails; do not enter CEM integration or change thresholds after results"
+  },
+  "claim_boundary": {
+    "allowed_if_go": "planner-aware supervision improves predictor-level decision fidelity on two fixed PushT anchors",
+    "forbidden": [
+      "full planner or closed-loop speedup",
+      "observation-prefix composition",
+      "LeWM transfer",
+      "all-JEPA universality",
+      "statistical population inference from four blocks"
+    ]
+  },
+  "execution": {
+    "pbs_compute_node_only": true,
+    "gpu_telemetry_seconds": 30,
+    "download_install_hash": false
+  }
+}

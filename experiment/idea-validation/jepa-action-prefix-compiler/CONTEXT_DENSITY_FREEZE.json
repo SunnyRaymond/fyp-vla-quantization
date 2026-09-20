@@ -1,0 +1,346 @@
+{
+  "schema": "jepa-action-prefix-compiler.context-support-density-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-action-prefix-compiler-context-support-density-h256",
+  "purpose": "Test context-support density for fixed h256 while preserving the low-density h256 predictor, query mixture, seeds, targets, held-out blocks, and predictor-level gates.",
+  "research_question": {
+    "primary": "At fixed NativeDinoPrefixStudent hidden_dim=256 and fixed 1500-update WIDE+QUERY training, does increasing support from 128 to 256 contexts by adding four disjoint starts per episode materially improve held-out planner-candidate ranking?",
+    "secondary": "Does high-density h256 satisfy existing absolute ranking, logged-action MSE non-inferiority, causality, and predictor-only latency boundaries?",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; candidates within a block are repeated measurements",
+    "primary_comparison": "high-density h256 step1500 minus read-only low-density h256 step1500 from job 24456882.pbs101",
+    "density_definition": "context-support density only",
+    "query_density_claim": "forbidden; logged/Gaussian/CEM action-query mixture is unchanged"
+  },
+  "entry_gate": {
+    "prior_job_id": "24456882.pbs101",
+    "prior_capacity_effect": "FAIL",
+    "prior_capacity_effect_metrics": {
+      "comparison": "h256 step1500 - h128 step1500",
+      "median_spearman_delta": -0.012570112943649292,
+      "median_top30_delta": -0.016666666666666663,
+      "spearman_positive_blocks": 5,
+      "top30_positive_blocks": 7,
+      "paired_blocks": 16
+    },
+    "prior_full_replacement": "NO-GO",
+    "authorization": "The prior capacity effect failed and full replacement was NO-GO; this separate density contrast is authorized.",
+    "do_not_reinterpret": "Prior metrics authorize the next axis only; they are not the density result."
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_hidden_dim": 256,
+    "student_width_change": false,
+    "closed_loop": false,
+    "cem_execution": false,
+    "planner_integration": false,
+    "environment_interaction": false,
+    "lewm_transfer": false,
+    "trajectory_count_change": 0,
+    "only_new_treatment": "same 32 train episodes, four additional contexts per episode, 128 existing plus 128 appended contexts"
+  },
+  "parent_protocol": {
+    "capacity_freeze": "CAPACITY_CONTRAST_FREEZE.json",
+    "optimization_length_freeze": "OPTIMIZATION_LENGTH_FREEZE.json",
+    "query_coverage_freeze": "QUERY_COVERAGE_FREEZE.json",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "official_config": "experiment/reproduction/dino-wm-wall/source/conf/plan_pusht.yaml",
+    "manifest_policy": "Preserve existing 128 rows exactly and append only the specified 128 disjoint rows."
+  },
+  "baseline": {
+    "role": "read_only_authoritative_reference",
+    "remote_job_id": "24456882.pbs101",
+    "expected_local_artifact": "artifacts/24456882.pbs101/capacity_contrast_summary.json",
+    "artifact_resolution": "Resolve the remote job first, then read the expected local artifact; absent or incomplete low-density h256 data invalidates the contrast.",
+    "summary_selector": {
+      "student_hidden_dim": 256,
+      "context_support_density": "low",
+      "train_contexts": 128,
+      "train_episodes": 32,
+      "contexts_per_episode": 4,
+      "arm": "WIDE-QUERY",
+      "snapshot": "step_1500",
+      "paired_block_key": "(seed, context_index)"
+    },
+    "summary_schema": "jepa-action-prefix-compiler.dino-pusht-capacity-contrast-summary",
+    "read_only_rules": {
+      "rerun_low_density_h256": false,
+      "rerun_h128": false,
+      "load_baseline_checkpoint": false,
+      "mutate_baseline_summary": false,
+      "subtract_h128_for_primary_density_effect": false,
+      "baseline_per_block_metrics_are_authoritative": true,
+      "align_by": "(seed, context_index)"
+    }
+  },
+  "treatment": {
+    "arm": "WIDE-QUERY",
+    "student_class": "NativeDinoPrefixStudent",
+    "hidden_dim": 256,
+    "architecture_change": "none",
+    "capacity_change": "none",
+    "context_support_change": "128 to 256 train contexts",
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "horizon": 5,
+    "frameskip": 5,
+    "transformer_depth": 2,
+    "transformer_nhead": 4,
+    "dim_feedforward": "4 * hidden_dim = 1024",
+    "dropout": 0.0,
+    "activation": "gelu",
+    "norm_first": true,
+    "future_action_leakage": false,
+    "goal_in_student_input": false,
+    "target_loss": "dense native-latent MSE only",
+    "forbidden_training_losses": ["rank loss", "listwise KL", "goal loss", "self-consistency loss", "ground-truth future-frame target"]
+  },
+  "context_support_density": {
+    "source_episodes": 32,
+    "source_episode_set": "exactly the same 32 train episodes as low-density h256",
+    "baseline_contexts": 128,
+    "baseline_contexts_per_episode": 4,
+    "added_contexts": 128,
+    "added_contexts_per_episode": 4,
+    "treatment_contexts": 256,
+    "treatment_contexts_per_episode": 8,
+    "old_rows": {
+      "preserve": true,
+      "count": 128,
+      "order": "exactly the low-density manifest order",
+      "episode_ids": "unchanged",
+      "ordinals": "unchanged",
+      "start_indices": "unchanged",
+      "feature_and_target_rows": "unchanged"
+    },
+    "new_rows": {
+      "count": 128,
+      "per_episode": 4,
+      "append_after_old_rows": true,
+      "episode_order": "same 32-episode order",
+      "ordinal_policy": "next available ordinal per existing episode; never renumber old rows",
+      "start_policy": "additional valid starts from the same episodes, excluding every old start index",
+      "selection_seed_policy": "selection_seed = 20260928 + episode_id, applied independently per existing episode",
+      "exclude_old_start_indices": true,
+      "new_trajectory_count": 0,
+      "new_episode_count": 0
+    },
+    "manifest_invariants": {
+      "treatment_rows_are_old_prefix_plus_append": true,
+      "old_row_identity_and_order_preserved": true,
+      "new_start_indices_disjoint_from_old": true,
+      "each_episode_has_exactly_8_contexts": true,
+      "total_contexts_exactly_256": true,
+      "train_episode_set_equal_baseline": true,
+      "selection_seed_rule_fixed": true,
+      "no_context_reuse_as_new_row": true,
+      "no_new_trajectory_generation": true
+    },
+    "validation_split": {
+      "change": "none",
+      "reuse_exact_rows_and_order": true,
+      "add_contexts": false,
+      "reorder": false,
+      "resample": false
+    },
+    "heldout_split": {
+      "change": "none",
+      "reuse_exact_contexts_candidates_and_order": true,
+      "add_contexts": false,
+      "reorder": false,
+      "resample": false
+    },
+    "interpretation_boundary": "This is support/context density, not query density, query coverage, trajectory diversity, or full-dataset coverage."
+  },
+  "frozen_training_bank": {
+    "context_coverage": "WIDE",
+    "train_contexts": 256,
+    "train_episodes": 32,
+    "contexts_per_episode": 8,
+    "old_contexts_retained": 128,
+    "new_contexts_appended": 128,
+    "heldout_exclusion": "No held-out episode, context, observation, action, seed, or evaluation candidate may enter training.",
+    "action_query_distribution": {
+      "logged": 0.5,
+      "gaussian_planner_init": 0.25,
+      "one_step_cem_resample": 0.25,
+      "rows_per_batch": {"logged": 16, "gaussian_planner_init": 8, "one_step_cem_resample": 8},
+      "unchanged_from_low_density": true,
+      "query_density_change": false
+    },
+    "one_step_cem_resample": {
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "variance_floor": 0.05,
+      "candidate_distribution": "independent Normal(0,1) per primitive-action coordinate",
+      "scoring": "frozen teacher terminal objective for the same training context",
+      "precompute": "one deterministic CPU-generated bank before first update",
+      "student_result_used": false,
+      "bank_mutation": false,
+      "query_density_change": false
+    },
+    "target_pairing": "Every logged, Gaussian, and CEM-resampled prefix uses the same frozen teacher rollout for detached dense targets."
+  },
+  "training": {
+    "steps": 1500,
+    "batch_size": 32,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "scheduler": null,
+    "optimizer_reinitialized": true,
+    "context_pool": "exact old 128-row prefix plus appended 128 rows",
+    "teacher_targets_detached": true,
+    "student_encode_obs_calls": false,
+    "student_goal_calls": false,
+    "early_stop": false,
+    "retune_after_observation": false,
+    "training_budget_change": false,
+    "loss_change": false
+  },
+  "randomness_and_schedule": {
+    "training_seed": 20260925,
+    "context_schedule_seed": 20260925,
+    "action_query_seed": 20260926,
+    "role_schedule_seed": 20260927,
+    "initialization_seed_observed": 99,
+    "context_selection_seed_base": 20260928,
+    "heldout_action_prefix_seeds": [20264925, 20264926],
+    "timing_action_prefix_seed": 20270925,
+    "historical_steps": 500,
+    "narrow_burn_in_draws": 16000,
+    "wide_schedule_steps": 1500,
+    "manifest_seed_policy": "Preserve old rows and append deterministic four-new-row-per-episode selection with selection_seed = 20260928 + episode_id.",
+    "context_density_schedule": {
+      "low_density_schedule_preserved": true,
+      "low_density_contexts": 128,
+      "high_density_contexts": 256,
+      "historical_steps": 500,
+      "support_rows_per_batch": 16,
+      "support_schedule_seed": 20260929,
+      "support_position_policy": "random_without_replacement",
+      "support_index_policy": "random_with_replacement",
+      "support_index_range": [128, 255],
+      "construction": "For each batch, first generate the authoritative low-density 32-row schedule; then use seed 20260929 to select 16 positions without replacement from the 32 positions and replace them with append-support indices sampled with replacement from indices 128..255; the other 16 positions retain their low-density index unchanged.",
+      "low_schedule_row_count": 32,
+      "high_schedule_row_count": 32,
+      "support_exposure_fraction": 0.5,
+      "old_exposure_fraction": 0.5,
+      "role_schedule_independent_and_unchanged": true,
+      "position_schedule_independent_of_role_schedule": true,
+      "exposure_note": "Total batch rows per update remain 32. The treatment fixes 50% newly appended support exposure; the corresponding halving of old-support exposure is the density treatment itself."
+    },
+    "rng_policy": "Generate context indices, roles, action proposals, held-out candidates, and timing candidates on CPU with explicit generators before GPU transfer.",
+    "all_inherited_seeds_unchanged": true
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "heldout_contexts": 8,
+      "fresh_action_prefix_seeds": [20264925, 20264926],
+      "block_count": 16,
+      "candidates_per_block": 300,
+      "topk": 30,
+      "candidate_bank": "One shared CPU bank; align high/low h256 by exact (seed, context_index).",
+      "paired_comparison": "Same frozen teacher costs, candidate actions, context, and goal.",
+      "primary_unit": "block, not candidate",
+      "unchanged_from_low_density": true
+    },
+    "paired_metrics": {
+      "per_block": ["Spearman_high_density_h256 - Spearman_low_density_h256", "top30_high_density_h256 - top30_low_density_h256", "teacher_relative_latent_MSE_high_density_h256 - teacher_relative_latent_MSE_low_density_h256"],
+      "aggregation": "Median of 16 paired deltas and strict-positive block counts; never subtract arm-level medians.",
+      "alignment_key": "(seed, context_index)",
+      "primary_effect": "context-support density, not capacity and not query density"
+    },
+    "logged_action_fidelity": {
+      "contexts": 8,
+      "target": "frozen teacher rollout",
+      "statistic": "mean across horizons and contexts of dense relative native-latent MSE",
+      "comparison": "high-density h256 / low-density h256"
+    },
+    "causality": {"metric": "maximum output difference after changing only future action tokens", "gate": "<= 0.000001"},
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through predictor versus five-step frozen teacher",
+      "batch_size": 300,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "reduction_definition": "1 - median(high_density_h256_ms) / median(teacher_ms)",
+      "high_low_ratio": "diagnostic only"
+    },
+    "telemetry": "During GPU execution append utilization and VRAM every 30 seconds to job log."
+  },
+  "gates": {
+    "context_manifest_integrity": {
+      "all_outputs_finite": true,
+      "final_training_finite": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "hidden_encode_obs": false,
+      "source_encoder_reference": false,
+      "old_context_rows_preserved": true,
+      "old_context_order_preserved": true,
+      "new_contexts_exclude_old_starts": true,
+      "train_episode_set_unchanged": true,
+      "validation_split_unchanged": true,
+      "heldout_split_unchanged": true,
+      "new_trajectory_count": 0,
+      "shape_dtype_device_match": true,
+      "oom_nan_or_silent_fallback": false
+    },
+    "density_effect": {
+      "comparison": "high-density h256 step1500 - read-only low-density h256 step1500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "context_support_density_effect_established",
+      "decision_label_if_fail": "context_support_density_effect_not_established"
+    },
+    "absolute_fidelity": {
+      "snapshot": 1500,
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "logged_fidelity_noninferiority": {
+      "comparison": "high-density h256 / read-only low-density h256 teacher-relative MSE",
+      "ratio_max": 1.25
+    },
+    "causality": {"snapshot": 1500, "maximum_future_action_leakage_abs": 0.000001},
+    "latency": {"snapshot": 1500, "predictor_only_reduction_min": 0.2},
+    "decision_levels": {
+      "density_effect": "PASS iff all four density_effect thresholds pass; report independently.",
+      "full_replacement": "GO iff integrity, absolute fidelity, MSE ratio, causality, and latency all pass.",
+      "density_supported_replacement": "GO iff density_effect PASS and full_replacement GO.",
+      "non_equivalence": "density_effect PASS does not imply replacement GO; replacement GO does not require density_effect PASS.",
+      "query_density_boundary": "Never describe the result as query-density improvement because WIDE+QUERY mixture is unchanged.",
+      "invalidity": "If manifest, baseline artifact, pairing, or integrity is invalid, report NO-GO and do not interpret deltas."
+    },
+    "overall_decision": "Report context_support_density_effect, full_replacement, and their conjunction separately; do not retune."
+  },
+  "claim_boundary": {
+    "allowed_if_density_effect_pass": "Under this frozen predictor-level contract, increasing context-support from 128 to 256 contexts across the same 32 train episodes at fixed h256 WIDE+QUERY 1500-step budget materially improves paired held-out ranking under the stated thresholds.",
+    "allowed_if_full_replacement_go": "High-density h256 meets the frozen predictor-level replacement gates against the teacher, including absolute ranking, low-density h256 MSE non-inferiority, causality, and predictor-only latency.",
+    "one_step_cem_qualification": "WIDE+QUERY remains a training-only M=64/K=8 one-step CEM elite-resample mixture; no full multi-step CEM claim.",
+    "forbidden": ["query-density or query-coverage claim", "data-diversity or full-dataset claim", "new-trajectory/new-episode claim", "closed-loop task success", "multi-step CEM or full-plan latency", "LeWM transfer", "population-level inference", "native low-bit deployment claim", "causal claims beyond paired blocks", "parameter or high/low latency ratios as success evidence"]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "model_loading_inference_benchmark_on_login": false,
+    "gpu_telemetry_seconds": 30,
+    "hash": false,
+    "do_not_run_during_freeze_creation": true,
+    "primary_artifacts": ["context-density summary JSON", "job log", "job status", "GPU telemetry"],
+    "checkpoint_return": "No checkpoint retrieval is required as primary result."
+  }
+}

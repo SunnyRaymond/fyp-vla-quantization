@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -N dino_cem_residual_jepa_a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -j oe
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+EXP=${CEM_RESIDUAL_ROOT:-$ROOT/idea-validation/cem-residual-jepa}
+MANIFEST=${CEM_RESIDUAL_MANIFEST:-$ROOT/artifacts/jepa-action-prefix-dino-pusht-query-coverage-prepare/query_coverage_manifest.json}
+OUT=${CEM_RESIDUAL_OUT:-$ROOT/artifacts/cem-residual-jepa-stage-a-$PBS_JOBID}
+RUNTIME=${DINO_RUNTIME:-$ROOT/runtime/venv/bin/python}
+
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing non-compute host: $HOST" >&2; exit 2;; esac
+command -v nvidia-smi >/dev/null
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+test -f "$EXP/run_stage_a.py"; test -f "$EXP/FREEZE.json"; test -f "$MANIFEST"; test -x "$RUNTIME"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+telemetry() {
+  while true; do
+    nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits \
+      | awk -v ts="$(date +%s)" '{print "{\"time\":" ts ",\"row\":\"" $0 "\"}"}' >> "$OUT/gpu_telemetry.jsonl" || true
+    sleep 30
+  done
+}
+telemetry & TELEMETRY_PID=$!
+trap 'kill "$TELEMETRY_PID" 2>/dev/null || true' EXIT
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$EXP:$ROOT/source:$ROOT/idea-validation/jepa-action-prefix-compiler"
+timeout --signal=TERM 714m "$RUNTIME" "$EXP/run_stage_a.py" \
+  --root "$ROOT" --asset-root "$ROOT" --manifest "$MANIFEST" --output "$OUT" --freeze "$EXP/FREEZE.json"
+test -s "$OUT/summary.json"
+test -s "$OUT/student_checkpoint.pt"
+date

@@ -1,0 +1,113 @@
+{
+  "schema": "dino-wm-pusht.cem-residual-jepa.stage-a-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-pusht-cem-residual-jepa-stage-a",
+  "purpose": "Predictor-level test of a causal residual student around a frozen CEM mean rollout.",
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "horizon": 5,
+    "frameskip": 5,
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "planner_integration": false,
+    "closed_loop": false,
+    "environment_interaction": false,
+    "student_calls_encode_obs": false,
+    "manifest_schema": "jepa-action-prefix-compiler.query-coverage-manifest",
+    "helper_source": "experiment/idea-validation/jepa-action-prefix-compiler"
+  },
+  "assets": {
+    "checkpoint_config": "checkpoints/outputs/pusht/hydra.yaml",
+    "checkpoint_file": "checkpoints/outputs/pusht/checkpoints/model_latest.pth",
+    "dataset_root": "data/pusht_noise",
+    "dataset_splits": ["train", "val"],
+    "required_dataset_files": ["states.pth", "rel_actions.pth", "seq_lengths.pkl", "velocities.pth", "obses/episode_000.mp4"]
+  },
+  "model": {"model_name": "pusht"},
+  "official_pushT": {
+    "seed": 99,
+    "goal_source": "dset",
+    "goal_H": 5,
+    "objective": {"alpha": 1, "base": 2, "mode": "last"},
+    "cem_settings": {"horizon": 5, "topk": 30, "num_samples": 300, "var_scale": 1, "opt_steps": 30, "eval_every": 1}
+  },
+  "student": {
+    "architecture": "one-layer causal residual MLP/Transformer",
+    "input": "base future native visual/proprio latents + normalized epsilon + sigma + candidate-independent context summary",
+    "output": "native future latent residual delta; prediction is base + delta",
+    "hidden_dim": 64,
+    "layers": 1,
+    "heads": 4,
+    "dropout": 0.0,
+    "loss": "dense native latent residual MSE",
+    "goal_input": false
+  },
+  "training": {
+    "steps": 500,
+    "batch_size": 32,
+    "learning_rate": 0.0003,
+    "optimizer": "AdamW",
+    "train_contexts": 128,
+    "distributions": ["initial", "refined"],
+    "distribution_schedule": "step parity: initial then refined",
+    "teacher_target": "candidate teacher future latent minus frozen teacher rollout at that distribution mean",
+    "refined_cem": {"candidates_M": 64, "elite_K": 8, "variance_floor": 0.05},
+    "teacher_targets_detached": true
+  },
+  "randomness": {
+    "training_seed": 20260920,
+    "refined_cem_seed": 20260921,
+    "heldout_seeds": [20261920, 20261921],
+    "timing_seed": 20270920,
+    "candidate_generation": "CPU torch.Generator before device transfer",
+    "seeds_fixed_before_output": true
+  },
+  "evaluation": {
+    "heldout_contexts": 8,
+    "fresh_seeds": 2,
+    "candidates_per_block": 300,
+    "block_unit": "context x seed; candidates are not replicates",
+    "evaluation_distribution": "refined one-step teacher-elite distribution",
+    "topk": 30,
+    "arms": ["mean_only_base_repeat", "trained_residual", "shuffled_epsilon_negative_control"],
+    "causality_tolerance": 0.000001,
+    "latency": {
+      "boundary": "one base teacher rollout plus residual batch versus 300 teacher rollouts",
+      "batch": 300,
+      "warmup": 3,
+      "repeats": 10,
+      "cuda_synchronize": true,
+      "excludes": ["encoder", "full CEM", "environment", "closed loop"]
+    }
+  },
+  "gates": {
+    "mechanism": {
+      "finite_and_causal": true,
+      "paired_spearman_delta_residual_minus_base_min": 0.05,
+      "paired_spearman_delta_residual_minus_shuffled_min": 0.05,
+      "paired_top30_delta_residual_minus_base_min": 0.10,
+      "paired_top30_delta_residual_minus_shuffled_min": 0.10,
+      "aggregation": "median over 16 blocks"
+    },
+    "replacement": {
+      "strict": true,
+      "residual_spearman_median_gt": 0.99,
+      "residual_spearman_min_gt": 0.95,
+      "residual_top30_median_gt": 0.95,
+      "residual_top30_min_gt": 0.80
+    },
+    "latency": {"diagnostic_only": true},
+    "decision": "GO iff mechanism and strict replacement gates pass; otherwise NO-GO"
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_PBS_JOBID": true,
+    "require_PBS_NODEFILE": true,
+    "reject_host_tokens": ["login", "head", "submit"],
+    "gpu_telemetry_seconds": 30,
+    "download": false,
+    "install": false,
+    "hash": false
+  }
+}

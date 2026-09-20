@@ -22,7 +22,7 @@ PDF pp.4–6：模型、loss 和 planning；Figure 6 / p.7：四个环境。作�
 
 ## 边界与对量化选题的意义
 
-作者报告约 15M parameters、单 GPU 数小时训练；这是原文条件，不是本地 ASPIRE2A 实测预算。LeWM 在 Two-Room 与 OGBench-Cube 并非所有方法中最优，不能称为全领域 SOTA。原文“单一有效超参数”指 λ 的调参，仍有 projection count、optimizer、architecture 和 planner 配置。Gaussian latent prior 不保证量化友好，也不保证 action ranking 保持。请配套读 #18：独立复现指出 TwoRoom 的协议差异，但该文只覆盖一个诊断环境和单 seed，不构成对整篇工作的否定。
+作者报告约 15M parameters、单 GPU 数小时训练；这是原文条件，不是本地 ASPIRE2A 实测预算。LeWM 在 Two-Room 与 OGBench-Cube 并非所有方法中最优，不能称为全领域 SOTA。原文“单一有效超参数”指 λ 的调参，仍有 projection count、optimizer、architecture 和 planner 配置。Gaussian latent prior 不保证量化友好，也不保证 action ranking 保持。PLDM baseline 的原始论文与方法边界见 [#022](../022-pldm/README.md)。请配套读 #18：独立复现指出 TwoRoom 的协议差异，但该文只覆盖一个诊断环境和单 seed，不构成对整篇工作的否定。
 
 ## 分时阅读路线
 

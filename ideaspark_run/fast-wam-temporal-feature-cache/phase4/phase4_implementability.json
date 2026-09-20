@@ -1,0 +1,67 @@
+{
+  "underspecified_points": [
+    {
+      "step_id": "S1",
+      "hole": "The method does not define the boundary of a cache unit or the registry that identifies one unit at one receding-observation timestep.",
+      "fill": "The authors must choose whether a unit is a whole intermediate tensor, a graph-node output, or a finer tensor block, and must freeze a registry with stable unit_id, producer node, shape, dtype, timestep, and parent/descendant links before the replay study.",
+      "severity": "open"
+    },
+    {
+      "step_id": "S1",
+      "hole": "The observation-change level d is used for conditioning but its representation, normalization, and strata are unspecified.",
+      "fill": "The authors must choose the observation representation, distance or norm, normalization, and fixed binning rule (or an unbinned estimator), and use that mapping unchanged for calibration and held-out evaluation.",
+      "severity": "open"
+    },
+    {
+      "step_id": "S1",
+      "hole": "The free action/video weighting in the unit-specific envelope has no value or provenance.",
+      "fill": "The authors must set and document the action and predicted-video weights, including whether they are equal, task-unit normalized, or selected on a separate calibration split, and freeze them before held-out replay.",
+      "severity": "open"
+    },
+    {
+      "step_id": "S2",
+      "hole": "The heterogeneity gate does not specify the envelope calibration rule, test statistic, significance threshold, or number of unit-label permutations.",
+      "fill": "The authors must predeclare how envelopes are calibrated, which statistic is compared with the permutation null, the decision threshold, and the permutation count; the same choices must be applied to every unit and change level.",
+      "severity": "open"
+    },
+    {
+      "step_id": "S3",
+      "hole": "The selector does not specify how conditional envelopes across observation-change levels become one operational constraint, or how the downstream error limit and matched skip rate are fixed.",
+      "fill": "The authors must choose per-level constraints, a distribution-weighted aggregate, or a worst-case aggregate, then state whether the error limit or the skip rate is primary and how the other is matched and frozen before selection.",
+      "severity": "open"
+    },
+    {
+      "step_id": "S4",
+      "hole": "The downstream joint error, output horizon and episode aggregation, task-success predicate, and native GPU timing boundary are not defined.",
+      "fill": "The authors must define the joint action/video error composition, output horizon, episode-level aggregation, success predicate, and exact synchronized native GPU timing scope, and use the same definitions for uncached, allocated, and envelope-permutation controls.",
+      "severity": "open"
+    }
+  ],
+  "enriched_steps": [
+    {
+      "step_id": "S1",
+      "what_changes": "Start from held-out receding-observation replay records keyed by episode, time, and observation. Use the cache-unit registry to load each unit's stable `unit_id`, producer node, tensor shape and dtype, cached tensor, and uncached reference tensor. For one unit at one observation change, replace only that cached tensor and keep the same receding observation, model parameters, random-number state, and all other parts of the Fast-WAM Optional Inverse Dynamics Model (IDM) graph fixed. 【author decision: choose whether a cache unit is a whole intermediate tensor, a graph-node output, or a finer tensor block, and freeze its registry and stable identifier before replay】 Run the action and predicted-video heads and save both uncached and stale outputs together with the episode, timestep, unit, and intervention metadata. Compute paired action and predicted-video deviations over matching output elements, then group the records by observation-change level `d`. 【author decision: define the representation, normalization, distance or norm, and fixed strata for `d` before calibration】 Use the S1 equation-defined estimator as an empirical conditional mean of the weighted paired deviations to produce `r_u(d)`, retaining `unit_id`, `d`, sample count, both component deviations, and the envelope estimate in the per-unit sample table. 【author decision: set and provenance the action and predicted-video weights, including whether they are equal, task-unit normalized, or selected on a separate calibration split】",
+      "what_to_do_en": "Start with held-out replay records keyed by episode, time, and observation. Use the cache-unit registry to load each unit's stable `unit_id`, producer node, tensor shape and type, cached tensor, and uncached reference tensor. For one unit at one observation change, replace only that cached tensor and keep the same receding observation, model parameters, random-number state, and all other parts of the Fast-WAM Optional Inverse Dynamics Model (IDM) graph fixed. 【author decision: choose whether a cache unit is a whole intermediate tensor, a graph-node output, or a finer tensor block, and freeze its registry and stable identifier before replay】 Run the action and predicted-video heads and save both outputs together with the episode, time, unit, and intervention metadata. Compute paired action and predicted-video deviations over matching output elements, then group the records by observation-change level `d`. 【author decision: define the representation, normalization, distance or norm, and fixed strata for `d` before calibration】 Use the estimator defined for S1 as an empirical conditional mean of the weighted paired deviations to produce `r_u(d)`. Save one row per unit and change level with the unit ID, change level, sample count, both component deviations, and the envelope estimate. 【author decision: set and provenance the action and predicted-video weights, including whether they are equal, task-unit normalized, or selected on a separate calibration split】",
+      "what_to_do_zh": "从按 episode、时间和 observation 编号的 held-out replay 记录开始。通过 cache-unit registry 读取每个单位稳定的 `unit_id`、产生它的节点、tensor 形状与 dtype、缓存 tensor 和 uncached reference tensor。对一个单位在一个观测变化上的样本，只替换该时间点的缓存 tensor，同时固定相同的 receding observation、模型参数、随机数状态，以及 Fast-WAM Optional Inverse Dynamics Model (IDM) 计算图的其余部分。 【作者需决定：缓存单位究竟是完整的中间 tensor、图节点输出，还是更细的 tensor block，并在 replay 前固定 registry 和稳定标识】运行 action head 和 predicted-video head，把 uncached 与 stale 两组输出连同 episode、时间、单位和干预元数据一起保存。对匹配的输出元素计算动作偏差和预测视频偏差，再按观测变化幅度 `d` 分组。 【作者需决定：在校准前固定 `d` 的表示、归一化方式、距离或范数，以及分层规则】使用 S1 定义的估计量，把加权的配对偏差求条件经验均值，得到 `r_u(d)`；每行保存 `unit_id`、变化幅度、样本数、两种分量偏差和风险包络估计。 【作者需决定：确定动作与预测视频的权重及其来源，包括等权、按任务单位归一化，还是在独立校准集上选择】"
+    },
+    {
+      "step_id": "S2",
+      "what_changes": "Group the S1 rows by (`unit_id`, `d`) and recompute the unit-specific risk envelope with the same paired-deviation estimator. Construct the unit-label permutation null by shuffling complete unit labels while keeping each risk value attached to its change level, recomputing the predeclared heterogeneity statistic for every permutation. Compare the observed statistic with that null and emit a pass/fail gate, calibrated envelopes, the observed and null summaries, and the decision record. 【author decision: predeclare the envelope calibration rule, heterogeneity statistic, decision threshold, and permutation count】",
+      "what_to_do_en": "Group the S1 rows by unit ID and change level, and recompute each unit's envelope with the same paired-deviation estimator. Build the unit-label permutation null by shuffling whole unit labels while keeping each risk value attached to its change level; recompute the chosen heterogeneity statistic for every shuffle. Compare the observed statistic with the null distribution and save the pass/fail gate, calibrated envelopes, the observed statistic, the null summary, and the decision record. 【author decision: predeclare how envelopes are calibrated, which heterogeneity statistic is used, the decision threshold, and the number of permutations】",
+      "what_to_do_zh": "按 `unit_id` 和观测变化幅度分组，用与 S1 相同的配对偏差估计量重新计算单位级风险包络。构造单位标签置换零分布(unit-label permutation null)：重新分配完整的单位标签，同时让每个风险值继续绑定自己的变化幅度；每次置换都重新计算选定的异质性统计量。将观测统计量与零分布比较，保存通过/失败门、校准后的风险包络、观测统计量、零分布摘要和判定记录。 【作者需决定：预先固定风险包络的校准规则、异质性统计量、判定阈值和置换次数】"
+    },
+    {
+      "step_id": "S3",
+      "what_changes": "Load the passed envelope table, the cache-unit dependency graph, and a per-unit recomputation-weight table keyed by `unit_id`. Represent each candidate schedule with a refresh flag `z_u`, where 1 means refresh and 0 means reuse, and pass the selected observation-change scope from S2 to the binary selector. Solve the S3 equation-defined selection so the envelope risk left in reused units stays below the downstream error limit while total recomputation weight is minimized. 【author decision: choose per-level constraints, a distribution-weighted aggregate, or a worst-case aggregate across `d`, and specify how the error limit and matched skip rate are fixed】 Emit one schedule row per unit containing `unit_id`, `z_u`, the selected change-level scope, the applied envelope value, and the recomputation weight, together with the matched skip fraction and selector diagnostics.",
+      "what_to_do_en": "Load the passed envelope table, the cache-unit dependency graph, and a per-unit recomputation-weight table keyed by `unit_id`. Use a refresh flag `z_u`: 1 means refresh and 0 means reuse. Pass the S2 change-level scope to the binary selector. Solve the stated selector so the risk left in reused units stays below the chosen downstream error limit while total recomputation weight is minimized. 【author decision: choose per-level constraints, a distribution-weighted aggregate, or a worst-case aggregate across `d`, and specify how the error limit and matched skip rate are fixed】 Save one row for every unit with its unit ID, refresh flag, selected change-level scope, applied envelope value, and recomputation weight, plus the matched skip fraction and selector diagnostics.",
+      "what_to_do_zh": "载入通过检验的风险包络、cache-unit dependency graph，以及按 `unit_id` 编号的单位重算权重表。使用刷新标志 `z_u`：1 表示刷新，0 表示复用；把 S2 确定的观测变化幅度范围交给二元选择器。求解 S3 定义的选择问题，使复用单位留下的风险低于指定的下游误差上限，同时最小化总重算权重。 【作者需决定：确定跨 `d` 的约束方式，是逐幅度约束、按分布加权的汇总，还是最坏情况汇总，并说明误差上限与匹配 skip rate 如何固定】为每个单位保存 `unit_id`、刷新标志、选定的变化幅度范围、采用的风险值和重算权重，并附上匹配的 skip fraction 与选择器诊断信息。"
+    },
+    {
+      "step_id": "S4",
+      "title": "Invalidate descendants",
+      "what_changes": "Build the refresh set from the S3 rows whose refresh flag is 1. Using the dependency graph's producer-to-consumer adjacency, compute the S4 equation-defined descendant invalidation set, clear every selected and descendant cache entry, refresh selected units, and recompute invalidated nodes in topological order before evaluating either output head. For every intervention schedule, run matched uncached and control rollouts from identical episode, observation, and random-number states. Record paired downstream action mean squared error, predicted-video mean squared error, the joint downstream error, synchronized native graphics processing unit (GPU) latency, and per-episode task success. Repeat the same selector and matched skip fraction after applying a bijective permutation of complete risk envelopes across unit IDs, and store the paired aggregates, raw assignments, and control result. 【author decision: define the joint error composition, output horizon, episode aggregation, task-success predicate, and exact synchronized native GPU timing boundary】",
+      "what_to_do_en": "Take the units whose S3 refresh flag is 1 as the refresh set. Follow the producer-to-consumer edges in the dependency graph to compute the descendant set defined for S4; clear every selected and descendant cache entry, refresh the selected units, and recompute invalidated nodes in topological order before running either output head. For each schedule, use matched uncached and control rollouts with the same episode, observation, and random-number states. Measure paired downstream action mean squared error, predicted-video mean squared error, the joint downstream error, synchronized native graphics processing unit (GPU) latency, and task success for each episode. Then apply a bijective permutation of the complete risk envelopes across unit IDs, run the same selector at the same skip fraction, and save the paired aggregates, raw assignments, and permutation-control result. 【author decision: define the joint error composition, output horizon, episode aggregation, task-success predicate, and exact synchronized native GPU timing boundary】",
+      "what_to_do_zh": "把 S3 中刷新标志为 1 的单位组成刷新集合。沿 dependency graph 的 producer-to-consumer 边，计算 S4 定义的后继失效集合；清除选中单位及其后继的所有缓存条目，刷新选中单位，再按拓扑顺序重算失效节点，之后才运行两个输出 head。对每个 schedule，使用 episode、观测和随机数状态完全匹配的 uncached rollout 与 control rollout。按每个 episode 记录配对的下游动作均方误差、预测视频均方误差、联合下游误差、同步的 native graphics processing unit (GPU) 延迟和 task success。随后把完整风险包络双射置换到不同的 `unit_id` 上，用相同的选择器和相同的 skip fraction 重跑，并保存配对汇总、原始分配和置换 control 结果。 【作者需决定：定义联合误差如何组合、输出时间范围、episode 汇总方式、task-success 判定，以及同步 native GPU 计时的精确边界】"
+    }
+  ]
+}

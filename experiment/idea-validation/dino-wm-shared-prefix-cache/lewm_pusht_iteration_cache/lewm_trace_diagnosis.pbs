@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N lewm_trace_diagnosis
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+SOURCE_JOB_ID=${LEWM_TRACE_SOURCE_JOB_ID:-24382364.pbs101}
+OUT=${LEWM_ITERATION_OUT:-$CONTROL/artifacts/$SOURCE_JOB_ID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python}
+
+test -f "$CONTROL/lewm_trace_diagnosis.py"
+test -s "$OUT/system_summary.json"
+exec > >(tee -a "$OUT/trace_diagnosis_job.log") 2>&1
+export PYTHONUNBUFFERED=1
+
+"$PYTHON_BIN" "$CONTROL/lewm_trace_diagnosis.py" \
+  --summary "$OUT/system_summary.json" \
+  --output "$OUT/trace_diagnosis.json"
+test -s "$OUT/trace_diagnosis.json"
+printf 'LEWM_TRACE_DIAGNOSIS_PASS\n'

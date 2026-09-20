@@ -1,0 +1,42 @@
+{
+  "selected_gaps": [
+    {
+      "gap": "Across counterfactual candidate rollouts that share an observation/history prefix but diverge in actions, no retrieved leaf establishes a condition under which reuse preserves the ordering of CEM candidate costs and the resulting selected action, rather than only average latent or rollout quality — stakes: DINO-WM Wall users can obtain a lower forward-pass count yet choose a different action and lose closed-loop success, wasting A100 evaluation and invalidating a speedup claim.",
+      "chosen_pattern_id": "assumption_audit_and_pivot",
+      "anchor_alternates": [],
+      "companion_pattern": "architectural_operator_substitution",
+      "companion_rationale": "The audit/pivot identifies the planner-level selection assumption that local latent similarity or drift is a sufficient reuse criterion, but that framing alone does not ship a runnable method; architectural_operator_substitution owns the committed method deliverable by replacing repeated action-independent prefix computation with an exact cached prefix whose downstream candidate scores remain unchanged under the stated dependency condition.",
+      "selection_rationale": "This is the most load-bearing gap because it is the missing condition linking any computation reuse to the user's required CEM action selection and closed-loop success, while matching the method contribution type. The assumption-audit move replaces a representation-quality proxy with a planner-level prefix-dependency/ranking criterion, and the attested operator-substitution companion turns that criterion into a training-free cache."
+    }
+  ],
+  "coherence_thread_type": "n_a",
+  "deliverable_coverage": "method — the anchor gap is framed by assumption_audit_and_pivot's planner-selection pivot, while architectural_operator_substitution supplies the runnable exact observation/history or latent-prefix cache.",
+  "user_direction_disposition": {
+    "verdict": "adopted",
+    "user_wanted": "reuse exact observation/history encoder or latent-prefix computation across CEM candidate rollouts",
+    "chosen": "an exact action-independent prefix cache for DINO-WM Wall CEM candidates, guarded by a planner-level dependency and candidate-order preservation contract"
+  },
+  "composition_note": "",
+  "pattern_saturation": {
+    "assumption_audit_and_pivot": {
+      "share": 0.0,
+      "saturation_band": "untested",
+      "selection_note": "untested lane — differentiation_from_lit must substantively defend the choice"
+    },
+    "architectural_operator_substitution": {
+      "share": 0.56,
+      "saturation_band": "saturated",
+      "selection_note": "saturated lane — differentiation_from_lit must substantively defend the choice"
+    }
+  },
+  "deferred_gaps": [
+    {
+      "gap": "No retrieved leaf tests whether its local similarity, curvature, or drift signal is sufficient to certify planner-level invariance, instead of being treated as an assumed proxy for the downstream decision quantity — stakes: practitioners may deploy a cache that looks stable on feature or rollout metrics but changes task decisions, while researchers may overgeneralize cache-quality results to planning without evidence.",
+      "reason": "fails removal test — anchor stands without it"
+    },
+    {
+      "gap": "No retrieved leaf reports native latency and end-to-end closed-loop success for the same fixed DINO-WM Wall checkpoint, CEM controller, and trajectory set, so the speed-selection-fidelity tradeoff remains unmeasured in the target system — stakes: teams cannot tell whether the reported optimization transfers to their real bottleneck and may spend GPU time on a non-deployable cache; the field lacks a reproducible boundary between forward acceleration and planner benefit.",
+      "reason": "fails removal test — anchor stands without it"
+    }
+  ]
+}

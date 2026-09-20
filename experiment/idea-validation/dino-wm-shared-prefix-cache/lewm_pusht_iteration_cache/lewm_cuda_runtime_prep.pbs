@@ -1,0 +1,57 @@
+#!/bin/bash
+#PBS -N lewm_cuda_prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2;; esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+OUT=${LEWM_CUDA_PREP_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+
+"$PYTHON_BIN" -m pip install --force-reinstall \
+  torch==2.8.0 torchvision==0.23.0 \
+  --index-url https://download.pytorch.org/whl/cu128
+
+export PYTHONPATH="$STAGE_ROOT/le-wm:$STAGE_ROOT/stable-worldmodel:${PYTHONPATH:-}"
+"$PYTHON_BIN" - "$STAGE_ROOT/stablewm_home/pusht/lewm_object.ckpt" "$OUT/runtime_validation.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import torch
+import torchvision
+import stable_pretraining
+
+checkpoint = Path(sys.argv[1])
+output = Path(sys.argv[2])
+model = torch.load(checkpoint, map_location="cpu", weights_only=False)
+if not hasattr(model, "get_cost"):
+    raise TypeError(f"checkpoint is not a LeWM cost model: {checkpoint}")
+payload = {
+    "status": "PASS",
+    "torch": torch.__version__,
+    "torch_cuda": torch.version.cuda,
+    "torchvision": torchvision.__version__,
+    "model_class": f"{type(model).__module__}.{type(model).__name__}",
+}
+if torch.version.cuda != "12.8":
+    raise RuntimeError(f"expected CUDA 12.8 wheel, got {torch.version.cuda}")
+output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+print(json.dumps(payload))
+PY
+test -s "$OUT/runtime_validation.json"
+printf 'LEWM_CUDA_RUNTIME_READY\n'

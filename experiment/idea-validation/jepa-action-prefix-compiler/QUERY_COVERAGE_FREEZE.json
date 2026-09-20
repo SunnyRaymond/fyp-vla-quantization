@@ -1,0 +1,306 @@
+{
+  "schema": "jepa-action-prefix-compiler.query-coverage-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-action-prefix-compiler-query-coverage-2x2",
+  "purpose": "Separate context coverage from planner-query action coverage for a post-hoc NativeDinoPrefixStudent on a frozen DINO-WM PushT teacher.",
+  "research_question": {
+    "primary": "Does exposing the student to planner-query-like action prefixes improve held-out candidate ranking beyond logged action prefixes, when context coverage is held fixed?",
+    "secondary": "How much of the gain is attributable to widening the training context pool, and is there an interaction between context coverage and action-query coverage?",
+    "unit_of_analysis": "one held-out context x one fresh candidate seed block; candidates within a block are repeated measurements, not independent replicates",
+    "primary_comparison": "WIDE-QUERY minus WIDE-LOGGED"
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "teacher_targets": "frozen teacher rollout for every sampled action prefix",
+    "student_receives_goal": false,
+    "goal_used_for_training_only_cem_and_heldout_planner_objective": true,
+    "closed_loop": false,
+    "cem_execution": false,
+    "training_only_one_step_cem_proposal_generation": true,
+    "planner_integration": false,
+    "environment_interaction": false,
+    "lewm_transfer": false,
+    "native_latent_geometry_preserved": true,
+    "checkpoint_update": false,
+    "planner_update": false
+  },
+  "factors": {
+    "A_context_coverage": {
+      "name": "context coverage",
+      "NARROW": {
+        "manifest_split": "train",
+        "selection_rule": "the first two train episode IDs in manifest order",
+        "expected_episode_count": 2,
+        "expected_context_count": 8,
+        "expected_examples_per_episode": 4
+      },
+      "WIDE": {
+        "manifest_split": "train",
+        "selection_rule": "all train examples in the frozen CPU manifest",
+        "expected_episode_count": 32,
+        "expected_context_count": 128,
+        "expected_examples_per_episode": 4
+      },
+      "heldout_exclusion": "No held-out episode, context, observation, action, seed, or evaluation candidate may enter either training pool."
+    },
+    "B_action_distribution": {
+      "name": "training action-prefix distribution",
+      "LOGGED": {
+        "mixture": {"logged": 1.0, "gaussian_planner_init": 0.0, "one_step_cem_resample": 0.0},
+        "definition": "Use the real five-token action prefix paired with the selected manifest context."
+      },
+      "QUERY": {
+        "mixture": {"logged": 0.5, "gaussian_planner_init": 0.25, "one_step_cem_resample": 0.25},
+        "definition": "Use exactly 16 logged, 8 Gaussian planner-init, and 8 one-step CEM elite-resample rows in every batch of 32."
+      }
+    }
+  },
+  "arms": {
+    "NARROW-LOGGED": {
+      "context_level": "NARROW",
+      "action_level": "LOGGED",
+      "training_pool_contexts": 8,
+      "target": "frozen teacher rollout"
+    },
+    "WIDE-LOGGED": {
+      "context_level": "WIDE",
+      "action_level": "LOGGED",
+      "training_pool_contexts": 128,
+      "target": "frozen teacher rollout"
+    },
+    "NARROW-QUERY": {
+      "context_level": "NARROW",
+      "action_level": "QUERY",
+      "training_pool_contexts": 8,
+      "target": "frozen teacher rollout"
+    },
+    "WIDE-QUERY": {
+      "context_level": "WIDE",
+      "action_level": "QUERY",
+      "training_pool_contexts": 128,
+      "target": "frozen teacher rollout"
+    }
+  },
+  "source_and_manifest": {
+    "reproduction_root": "experiment/reproduction/dino-wm-wall",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "official_config": "source/conf/plan_pusht.yaml",
+    "manifest_schema": "jepa-action-prefix-compiler.query-coverage-manifest",
+    "manifest_preparer": "experiment/idea-validation/jepa-action-prefix-compiler/prepare_query_coverage_assets.py",
+    "manifest_contract": {
+      "train_contexts": 128,
+      "heldout_contexts": 8,
+      "train_heldout_episode_overlap": false,
+      "narrow_rule": "first two train episode IDs in manifest order, preserving their eight train contexts"
+    },
+    "manifest_path_policy": "Use the staged CPU-prepared manifest supplied at run time; do not regenerate, reorder, subsample, or replace it after the freeze."
+  },
+  "model_contract": {
+    "student_class": "NativeDinoPrefixStudent",
+    "hidden_dim": 128,
+    "horizon": 5,
+    "frameskip": 5,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "anchor_input": "cached native DINO observation latent z_t",
+    "action_input": "five normalized action tokens, each packing five primitive actions",
+    "output": "five future native observation latents z[t+1:t+5]",
+    "future_action_leakage": false,
+    "goal_in_student_input": false,
+    "architecture_change": false,
+    "target_loss": "dense native-latent MSE only",
+    "forbidden_training_losses": ["rank loss", "listwise KL", "goal loss", "self-consistency loss", "ground-truth future-frame target"]
+  },
+  "action_query_generation": {
+    "coordinate_system": "the same normalized primitive-action coordinate system consumed by the existing NativeDinoPrefixStudent and official predictor",
+    "prefix_shape": "[batch, horizon=5, primitive_action_dim=2]",
+    "context_action_pairing": "For every update, the NARROW-LOGGED and NARROW-QUERY arms share the exact same NARROW context-index schedule; WIDE-LOGGED and WIDE-QUERY share the exact same WIDE schedule. Only the action distribution changes within a coverage level.",
+    "role_schedule": {
+      "rows_per_batch": {"logged": 16, "gaussian_planner_init": 8, "one_step_cem_resample": 8},
+      "sampling": "At every update, permute a fixed role multiset with a CPU RNG. Reuse the resulting role permutation for NARROW-QUERY and WIDE-QUERY.",
+      "no_result_adaptation": true
+    },
+    "logged": {
+      "source": "the selected train manifest example's real five-token action prefix",
+      "preserve_values_exactly": true,
+      "heldout_or_anchor_source_allowed": false
+    },
+    "gaussian_planner_init": {
+      "distribution": "independent Normal(0, 1) per primitive action coordinate",
+      "shape": "[8, 5, 2] per batch",
+      "rng": "CPU torch.Generator; no CUDA RNG dependence",
+      "goal_or_teacher_score": false,
+      "relation_to_existing_baseline": "same standard-normal normalized action proposal used by the existing predictor-level smoke evaluation"
+    },
+    "one_step_cem_resample": {
+      "status": "frozen primary implementation",
+      "proposal_scope": "training-only, per-context, one-step elite-resample; no iterative planner loop",
+      "per_training_context_precompute": {
+        "candidate_count_M": 64,
+        "candidate_distribution": "independent Normal(0, 1) per coordinate, shape [64, 5, 2]",
+        "scoring": "roll out every candidate through the frozen teacher from that context's z_t and score the terminal prediction with the frozen official terminal goal objective for that same training context",
+        "elite_count_K": 8,
+        "elite_rule": "select the K lowest-cost candidates",
+        "elite_statistics": "compute per-coordinate mean and variance over the [8, 5, 2] elite tensor",
+        "variance_floor": 0.05,
+        "resample": "sample exactly one prefix from the diagonal Normal with the elite mean and per-coordinate variance max(variance, 0.05)",
+        "cache_policy": "precompute and freeze one resampled prefix for every training context before the first student update; use lookup during training",
+        "student_result_used": false,
+        "heldout_or_anchor_source_allowed": false
+      },
+      "goal_source": "the terminal goal objective stored for the same training context in the query-coverage manifest",
+      "teacher_score_direction": "lower terminal objective cost is better",
+      "interpretation": "a genuine one-step CEM elite-resample approximation to planner-query action coverage, with M, K, objective, seed, and variance floor fixed before training",
+      "not_claimed_as": "full multi-step CEM integration or closed-loop planning"
+    },
+    "action_target_pairing": "Every training prefix, including Gaussian and one-step CEM-resampled prefixes, is passed through the same frozen teacher rollout to produce dense targets. The M=64 proposal-scoring rollouts are only for frozen training-only action generation; no real future frame is claimed for generated counterfactual prefixes."
+  },
+  "randomness_and_schedule": {
+    "training_seed": 20260925,
+    "context_schedule_seed": 20260925,
+    "action_query_seed": 20260926,
+    "role_schedule_seed": 20260927,
+    "cem_context_seed_formula": "action_query_seed + 1009 * zero_based_train_context_ordinal",
+    "heldout_action_prefix_seeds": [20264925, 20264926],
+    "timing_action_prefix_seed": 20270925,
+    "seed_policy": "All seeds are fixed before execution; no result-dependent seed replacement or additional tuning run is permitted.",
+    "rng_policy": "Generate context indices, role permutations, Gaussian proposals, and all per-context CEM candidate/resample tensors on CPU with explicit generators; transfer tensors to the selected GPU after generation.",
+    "update_order": {
+      "even_steps": ["NARROW-LOGGED", "WIDE-LOGGED", "NARROW-QUERY", "WIDE-QUERY"],
+      "odd_steps": ["WIDE-QUERY", "NARROW-QUERY", "WIDE-LOGGED", "NARROW-LOGGED"],
+      "purpose": "counterbalance same-GPU update-order effects while retaining a fixed four-arm schedule"
+    }
+  },
+  "training": {
+    "steps": 500,
+    "batch_size": 32,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "same_initial_state_dict": true,
+    "initialization": "Create one NativeDinoPrefixStudent template and clone its initial state dictionary into all four arms before any optimizer step.",
+    "per_update": "Sample the pre-registered context pool, create the arm-specific action batch, run the frozen teacher rollout, compute dense native-latent MSE, and update according to the frozen alternating order.",
+    "teacher_targets_detached": true,
+    "student_encode_obs_calls": false,
+    "student_goal_calls": false
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "heldout_context_rule": "Use all eight held-out logged contexts in the frozen query-coverage manifest, preserving manifest order.",
+      "block_count": 16,
+      "block_definition": "8 held-out contexts x 2 fresh action-prefix seeds",
+      "candidates_per_block": 300,
+      "candidate_distribution": "independent Normal(0, 1) normalized primitive actions with the existing frozen predictor-level sampler",
+      "topk": 30,
+      "paired_comparison": "Within each block, every arm and the frozen teacher use the identical candidate action tensor and goal.",
+      "primary_unit": "block, not candidate"
+    },
+    "latent_noninferiority": {
+      "contexts": "all 8 held-out manifest contexts",
+      "actions": "each context's real logged action prefix",
+      "target": "frozen teacher rollout on those real prefixes",
+      "statistic": "mean across horizons and the 8 held-out contexts of each student's dense relative native-latent MSE, then ratio WIDE-QUERY / WIDE-LOGGED",
+      "gate": "ratio <= 1.25",
+      "not_substitutable_by": "ranking metrics or training loss"
+    },
+    "causality": {
+      "procedure": "For each arm and each prefix horizon k, change only action tokens after k while keeping z_t and the first k tokens fixed.",
+      "metric": "maximum absolute difference in the output at horizon k",
+      "gate": "<= 0.000001"
+    },
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through either five-step frozen teacher rollout or one student forward",
+      "batch_size": 300,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "primary_arm": "WIDE-QUERY",
+      "reduction_definition": "1 - median(student_ms) / median(teacher_ms)"
+    },
+    "telemetry": "During GPU execution, append utilization and VRAM samples every 30 seconds to the job artifact log."
+  },
+  "metrics_and_diagnostics": {
+    "per_block": ["objective Spearman", "top-30 overlap", "teacher-relative latent MSE", "per-horizon cosine"],
+    "primary_effect": {
+      "comparison": "WIDE-QUERY - WIDE-LOGGED",
+      "required_median_spearman_delta": 0.05,
+      "required_median_top30_delta": 0.1,
+      "required_positive_spearman_blocks": 12,
+      "required_positive_top30_blocks": 12
+    },
+    "context_effect_diagnostic": {
+      "comparison": "WIDE-LOGGED - NARROW-LOGGED",
+      "report": ["median Spearman delta", "median top-30 delta", "positive block counts", "per-block paired deltas"],
+      "descriptive_reference_thresholds": {"median_spearman_delta": 0.05, "median_top30_delta": 0.1, "positive_blocks": 12},
+      "gating": "diagnostic_only"
+    },
+    "interaction_diagnostic": {
+      "comparison": "(WIDE-QUERY - NARROW-QUERY) - (WIDE-LOGGED - NARROW-LOGGED)",
+      "report": ["median interaction delta for Spearman", "median interaction delta for top-30", "per-block paired interaction"],
+      "gating": "diagnostic_only"
+    }
+  },
+  "gates": {
+    "capacity": {
+      "all_arms_finite": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "hidden_encode_obs": false,
+      "shape_dtype_device_match": true,
+      "oom_nan_or_silent_fallback": false
+    },
+    "absolute_fidelity": {
+      "primary_arm": "WIDE-QUERY",
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "action_query_effect": {
+      "comparison": "WIDE-QUERY - WIDE-LOGGED",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12
+    },
+    "latent_noninferiority": {
+      "comparison": "WIDE-QUERY / WIDE-LOGGED on all 8 held-out logged contexts",
+      "mean_relative_mse_ratio_max": 1.25
+    },
+    "latency": {
+      "primary_arm": "WIDE-QUERY",
+      "predictor_only_reduction_min": 0.2
+    },
+    "context_effect_and_interaction": "diagnostic_only",
+    "overall_decision": "GO only if capacity, WIDE-QUERY absolute fidelity, action-query effect, latent non-inferiority, and predictor-only latency all pass; otherwise NO-GO. Do not retune after observing results."
+  },
+  "claim_boundary": {
+    "allowed_if_go": "On the frozen DINO-WM PushT predictor contract and the frozen manifest, planner-query-like action-prefix coverage improves held-out candidate ranking over logged-prefix coverage under the stated block-level gates.",
+    "one_step_cem_qualification": "Because QUERY uses a training-only one-step CEM elite-resample bank, the result is a claim about this frozen M=64/K=8 proposal mixture, not proof of full multi-step goal-conditioned CEM integration.",
+    "forbidden": [
+      "closed-loop task success",
+      "multi-step CEM integration or full-plan latency",
+      "closed-loop planner success",
+      "LeWM transfer",
+      "all-JEPA universality",
+      "population-level inference",
+      "full-dataset training claim",
+      "causal claims beyond the frozen 2x2 comparison"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "hash": false,
+    "do_not_run_during_freeze_creation": true,
+    "artifacts": ["summary JSON", "job log", "job status", "GPU info/usage/telemetry"],
+    "checkpoint_return": "do not retrieve a student checkpoint as the primary result artifact"
+  }
+}

@@ -1,0 +1,338 @@
+{
+  "schema": "jepa-action-prefix-compiler.spatial-mixer-recurrent-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-spatial-mixer-recurrent",
+  "purpose": "Test whether one shared lightweight spatial token mixer closes the remaining patch-interaction gap of the best horizon-weighted recurrent action-conditioned predictor.",
+  "research_question": {
+    "primary": "At identical data, query slates, teacher targets, seeds, schedule, loss, and 1500-update budget, does adding one shared pre-norm token-mixing attention block improve held-out planner-candidate ranking over the read-only horizon-weighted recurrent predictor?",
+    "mechanism": "The current recurrent student summarizes projected visual patches by an independent mean. The frozen teacher can mix visual tokens before producing the next native latent. A single shared self-attention residual tests this spatial/token interaction hypothesis without adding per-horizon capacity or changing action conditioning.",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; 300 candidates inside a block are nested measurements, not independent replicates",
+    "primary_comparison": "spatial-mixer treatment minus read-only horizon-weighted recurrent baseline at step 1500",
+    "scope": "action-conditioned predictor only"
+  },
+  "entry_evidence": {
+    "read_only_baseline_job_id": "24510395.pbs101",
+    "baseline_result": "Horizon weighting was stable and slightly positive, but its ranking-effect gate failed; recurrent snapshots plateaued by step1000-1500.",
+    "remaining_gap": "The recurrent cell uses projected visual-token mean pooling and has no token-to-token interaction. This experiment isolates that structural gap.",
+    "authorization": "Use one shared token-mixer architecture cell; do not alter recurrent feedback, horizon weights, data, schedule, seeds, held-out protocol, or thresholds."
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "horizon": 5,
+    "frameskip": 5,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "student_hidden_dim": 256,
+    "student_class": "SpatialMixerRecurrentNativeLatentTransitionStudent",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_receives_goal": false,
+    "student_encode_obs_calls": false,
+    "student_contains_teacher_or_source_parameters": false,
+    "closed_loop": false,
+    "cem_execution": false,
+    "environment_interaction": false,
+    "observation_encoder_scope": "out of scope; use cached native observation latents",
+    "predictor_scope": "action-conditioned predictor only",
+    "architecture_change": true,
+    "inference_interface_change": false
+  },
+  "baseline": {
+    "role": "read_only_authoritative_horizon_weighted_recurrent_reference",
+    "remote_job_id": "24510395.pbs101",
+    "local_summary": "artifacts/24510395.pbs101/horizon_weighted_summary.json",
+    "local_result": "RESULT_HORIZON_WEIGHTED.zh.md",
+    "arm": "horizon_weighted_recurrent_control",
+    "snapshot": "step_1500",
+    "architecture": "RecurrentNativeLatentTransitionStudent, h256, shared residual transition, linear horizon weights",
+    "loss": "(1/5) * sum_h ((h+1)/3) * 0.5 * (visual MSE_h + proprio MSE_h)",
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "read_only": true,
+    "rerun": false,
+    "checkpoint_load": false,
+    "summary_mutation": false,
+    "pairing_key": "(action_prefix_seed, heldout_context_index)",
+    "reference_metrics": {
+      "spearman_median": 0.970596,
+      "spearman_minimum": 0.894798,
+      "top30_median": 0.833333,
+      "top30_minimum": 0.6
+    },
+    "initialization_pairing": "Use initialization seed 99 and the same initialization procedure; the historical baseline remains read-only and is not rerun or loaded."
+  },
+  "treatment": {
+    "name": "spatial_mixer_recurrent",
+    "class": "SpatialMixerRecurrentNativeLatentTransitionStudent",
+    "hidden_dim": 256,
+    "architecture": "The horizon-weighted recurrent student plus one shared 4-head pre-norm MultiheadAttention residual over projected visual patch tokens; the same mixer, transition, and output heads are reused at k=0..4.",
+    "only_changed_factor": "shared projected-visual token mixer",
+    "token_mixer": {
+      "type": "MultiheadAttention",
+      "embed_dim": 256,
+      "num_heads": 4,
+      "dropout": 0.0,
+      "batch_first": true,
+      "shared_across_horizon": true,
+      "feed_forward_subblock": false,
+      "normalization": "pre-norm LayerNorm before q/k/v",
+      "residual": true,
+      "attention_weights_returned": false,
+      "token_axis": "visual patch axis only",
+      "compact_vector_behavior": "A one-token input is a degenerate identity-like mixer; compact-vector and LeWM transfer remain unverified mechanism hypotheses."
+    },
+    "inputs": {
+      "initial_visual": "cached native context[visual][:,-1] with shape [B, patches, 384]",
+      "initial_proprio": "cached native context[proprio][:,-1] with shape [B, 10]",
+      "current_action": "one normalized packed action token a_k with shape [B, 10]",
+      "history": "only the current predicted native visual/proprio state; no teacher-forced future latent",
+      "goal": "never passed to the student"
+    },
+    "cell_equations": {
+      "visual_projection": "v_k = visual_in(visual_k), shape [B,P,256]",
+      "pre_norm_attention": "m_k = v_k + MHA(LN(v_k), LN(v_k), LN(v_k)), with one shared 4-head module",
+      "conditioning": "s_k = mean(m_k, dim=patch) + proprio_in(proprio_k) + action_proj(a_k)",
+      "transition": "r_k = Linear(1024,256)(GELU(Linear(256,1024)(LayerNorm(s_k))))",
+      "visual_feedback": "visual_{k+1} = visual_k + visual_out(LayerNorm(m_k + r_k[:,None,:]))",
+      "proprio_feedback": "proprio_{k+1} = proprio_k + proprio_out(LayerNorm(proprio_in(proprio_k) + r_k))",
+      "feedback": "Predicted visual_{k+1} and proprio_{k+1}, without detach, are fed to k+1 during training and evaluation."
+    },
+    "loss": {
+      "base": "dense native-latent MSE",
+      "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+      "weight_formula": "w_h=(h+1)/3 for h=0..4",
+      "mean_weight": 1.0,
+      "reduction": "For each horizon h compute 0.5 * (visual MSE + proprio MSE); total loss = (1/5) * sum_h w_h * mse_h.",
+      "teacher_targets": "detached dense future native visual/proprio latents from the frozen official teacher",
+      "teacher_forcing": false,
+      "rank_loss": false,
+      "goal_loss": false,
+      "self_consistency_loss": false
+    },
+    "forbidden": [
+      "planner-aware rank loss",
+      "listwise KL",
+      "goal input",
+      "encode_obs call",
+      "teacher forcing",
+      "ground-truth future-frame input",
+      "teacher or source predictor module inside the student",
+      "per-horizon mixer or cell copies",
+      "second attention layer or FFN subblock",
+      "hyperparameter sweep",
+      "result-dependent snapshot selection"
+    ]
+  },
+  "shared_data_and_schedule": {
+    "parent_freeze": "HORIZON_WEIGHTED_FREEZE.json",
+    "parent_protocol": "PROTOCOL_HORIZON_WEIGHTED.zh.md",
+    "train_context_pool": {
+      "contexts": 256,
+      "episodes": 32,
+      "contexts_per_episode": 8,
+      "reuse_exact_manifest": true,
+      "mutation": false
+    },
+    "action_query_slate": {
+      "queries_per_context": 4,
+      "rows": 1024,
+      "slots": ["primary_logged", "gaussian_planner_init_a", "gaussian_planner_init_b", "one_step_cem_resample"],
+      "primitive_action_shape": [5, 2],
+      "packed_action_token_shape": [5, 10],
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "variance_floor": 0.05,
+      "reuse_exact_bank": true,
+      "pairwise_distinct_required": true,
+      "student_output_not_used_to_generate_bank": true
+    },
+    "context_schedule": {
+      "pool_size": 256,
+      "contexts_per_update": 8,
+      "updates": 1500,
+      "schedule_seed": 20260931,
+      "generation": "CPU permutation of 0..255 every 32 updates; consume eight consecutive ordinals",
+      "precomputed_before_training": true,
+      "same_as_baseline": true,
+      "no_within_update_duplicates": true
+    },
+    "teacher_targets": {
+      "teacher": "frozen official DINO-WM autoregressive predictor",
+      "target": "detached dense future native visual/proprio latents for the exact four-query slate rows",
+      "rows": 1024,
+      "student_target_gradients": false,
+      "student_inference_teacher_dependency": false,
+      "same_as_baseline": true
+    },
+    "seeds": {
+      "initialization": 99,
+      "training": 20260930,
+      "context_schedule": 20260931,
+      "action_slate": 20260932,
+      "cem": 20260933,
+      "heldout_action_prefix": [20264925, 20264926],
+      "timing_action_prefix": 20270925,
+      "cpu_generator_policy": "Generate schedules, slates, held-out candidates, and timing candidates with explicit CPU generators before GPU transfer."
+    },
+    "training": {
+      "steps": 1500,
+      "snapshot_steps": [500, 1000, 1500],
+      "batch_contexts": 8,
+      "effective_query_rows": 32,
+      "microbatch_query_rows": 32,
+      "gradient_accumulation_steps": 1,
+      "optimizer": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.01,
+      "betas": [0.9, 0.999],
+      "eps": 1e-8,
+      "scheduler": null,
+      "early_stop": false,
+      "loss_change_only": true,
+      "retune_after_observation": false,
+      "baseline_rerun": false
+    }
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "contexts": 8,
+      "fresh_action_prefix_seeds": [20264925, 20264926],
+      "blocks": 16,
+      "candidates_per_block": 300,
+      "topk": 30,
+      "candidate_bank": "reuse the exact held-out candidate bank and order from the recurrent/query-slate freeze",
+      "pairing_key": "(action_prefix_seed, heldout_context_index)",
+      "primary_unit": "block, not candidate",
+      "formal_snapshot": "step_1500",
+      "descriptive_snapshots": [500, 1000, 1500],
+      "metrics": ["objective Spearman", "top-30 overlap", "teacher-relative native-latent MSE", "per-horizon relative MSE", "per-horizon cosine"]
+    },
+    "logged_action_fidelity": {
+      "contexts": 8,
+      "action": "each held-out context's logged action prefix",
+      "target": "frozen teacher rollout",
+      "statistic": "mean dense relative native-latent MSE",
+      "comparison": "spatial-mixer treatment / read-only horizon-weighted recurrent baseline",
+      "ratio_max": 1.25
+    },
+    "causality": {
+      "procedure": "For unchanged prefix lengths 1,2,3,4, change only later action tokens and compare outputs through the unchanged prefix.",
+      "threshold": 1e-6,
+      "all_horizons_required": true
+    },
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through the predictor",
+      "batch_size": 300,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "reduction": "1 - median(spatial-mixer student ms) / median(frozen teacher ms)",
+      "baseline_ratio": "Report treatment ms / read-only horizon-weighted recurrent ms as an engineering diagnostic only"
+    },
+    "telemetry": "During GPU execution append utilization and VRAM samples every 30 seconds to the job log."
+  },
+  "gates": {
+    "integrity": {
+      "treatment_outputs_finite": true,
+      "treatment_training_finite": true,
+      "future_action_leakage_max_abs": 1e-6,
+      "student_encode_obs_hidden": true,
+      "student_goal_input_hidden": true,
+      "student_source_or_teacher_parameters_absent": true,
+      "single_shared_token_mixer": true,
+      "same_hidden_dim": true,
+      "same_horizon_weights": true,
+      "same_context_schedule": true,
+      "same_action_slate_bank": true,
+      "same_teacher_target_rows": true,
+      "same_heldout_candidate_bank": true,
+      "same_seed_values": true,
+      "baseline_summary_read_only": true,
+      "heldout_split_unchanged": true,
+      "no_oom_nan_or_silent_fallback": true
+    },
+    "convergence": {
+      "last10_to_first_training_loss_ratio_max": 0.8,
+      "uses": "horizon-weighted training loss",
+      "no_early_stop": true
+    },
+    "architecture_effect": {
+      "comparison": "spatial-mixer treatment step1500 - read-only horizon-weighted recurrent baseline step1500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "spatial_mixer_effect_established",
+      "decision_label_if_fail": "spatial_mixer_effect_not_established"
+    },
+    "absolute_fidelity": {
+      "primary_arm": "spatial-mixer treatment",
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "logged_mse_noninferiority": {
+      "comparison": "spatial-mixer treatment / read-only horizon-weighted recurrent baseline on held-out logged-action teacher-relative MSE",
+      "ratio_max": 1.25
+    },
+    "causality": {
+      "maximum_future_action_leakage_abs": 1e-6
+    },
+    "latency": {
+      "predictor_only_reduction_min": 0.2
+    },
+    "decision_levels": {
+      "integrity": "PASS iff all integrity fields pass.",
+      "convergence": "PASS iff the treatment last10/first loss ratio is at most 0.8 and training is finite.",
+      "architecture_effect": "PASS iff integrity, convergence, and all four architecture_effect thresholds pass.",
+      "full_replacement": "GO iff integrity, convergence, treatment absolute fidelity, logged MSE non-inferiority, causality, and predictor-only latency pass. This is independent of relative architecture effect.",
+      "spatial_mixer_supported_replacement": "GO iff architecture_effect PASS and full_replacement GO.",
+      "invalidity": "If the read-only baseline, shared banks, held-out pairing, integrity, convergence, or causality contract is invalid, report NO-GO and do not interpret ranking deltas.",
+      "no_retuning": "Do not change mixer structure, hidden size, horizon weights, seeds, schedule, loss scale, steps, snapshots, or thresholds after observing results; do not select step1000 post hoc."
+    }
+  },
+  "required_summary_fields": {
+    "baseline": ["job_id", "arm", "summary_path", "per_block_metrics", "read_only_confirmed"],
+    "treatment": ["class", "architecture", "mixer_config", "trainable_parameter_count", "teacher_or_source_parameters_absent", "teacher_forcing_disabled", "horizon_weights"],
+    "pairing": ["initialization_seed", "context_schedule_equal", "slate_bank_equal", "teacher_target_bank_equal", "heldout_candidate_bank_equal", "paired_block_ids"],
+    "training": ["per_step_weighted_latent_mse", "last10_to_first_ratio", "snapshot_steps", "finite_and_no_fallback"],
+    "evaluation": ["per_block_treatment", "per_block_baseline", "paired_deltas", "absolute_treatment", "per_horizon_relative_mse", "logged_mse_ratio", "causality", "latency", "parameter_tradeoff"],
+    "decisions": ["integrity", "convergence", "architecture_effect", "full_replacement", "spatial_mixer_supported_replacement", "claim_boundary"]
+  },
+  "claim_boundary": {
+    "allowed_if_architecture_effect_pass": "在冻结的 DINO-WM PushT predictor-level contract 下，指定的一个 shared 4-head pre-norm visual-token mixer 相比 read-only horizon-weighted recurrent predictor，在 held-out action-candidate ranking 上达到预先指定的 paired improvement。",
+    "allowed_if_full_replacement_go": "Spatial-mixer recurrent student 在本协议的 absolute fidelity、MSE non-inferiority、causality 和 predictor-only latency 边界内可作为 predictor candidate。",
+    "parameter_latency_sentence": "参数量和 predictor-only latency 只能作为工程 tradeoff 报告；attention 增加的成本与 ranking 变化应分别测量，不能仅由参数量推断收益。",
+    "mechanism_boundary": "本实验只验证 patch-token interaction 在 DINO-WM PushT predictor 上的一个 architecture cell；compact-vector latent、LeWM、Fast-LeWM 和其他 JEPA-style WM 仅是待验证的机制假设。",
+    "forbidden": [
+      "encode_obs speedup or observation encoder claim",
+      "full planner or closed-loop task success",
+      "multi-step CEM integration claim",
+      "LeWM or Fast-LeWM empirical transfer",
+      "all-JEPA universality",
+      "population-level inference from 16 nested blocks",
+      "claim that attention proves token mixing is the sole causal mechanism",
+      "claim that a one-token compact-vector case has been empirically validated",
+      "native low-bit deployment claim"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "hash": false,
+    "gpu_telemetry_seconds": 30,
+    "do_not_submit_during_freeze_creation": true,
+    "baseline_rerun": false,
+    "checkpoint_return": "No checkpoint retrieval is required as the primary result artifact.",
+    "primary_artifacts": ["spatial-mixer summary JSON", "job log", "job status", "GPU telemetry"]
+  }
+}

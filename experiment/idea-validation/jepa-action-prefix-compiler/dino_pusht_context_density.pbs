@@ -1,0 +1,138 @@
+#!/bin/bash
+#PBS -N dino_pusht_context_density_h256
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=08:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+# Guarded compute-node wrapper for the frozen h256 Dhigh-vs-Dlow contrast.
+# No download, installation, compilation, hashing, or login-node heavy work.
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+IDEA_ROOT=${DINO_APC_ROOT:-$ROOT/idea-validation/jepa-action-prefix-compiler}
+RUNNER=${DINO_PUSHT_DENSITY_RUNNER:-$IDEA_ROOT/run_dino_pusht_context_density.py}
+FREEZE=${DINO_PUSHT_DENSITY_FREEZE:-$IDEA_ROOT/CONTEXT_DENSITY_FREEZE.json}
+MANIFEST=${DINO_PUSHT_DENSITY_MANIFEST:?set DINO_PUSHT_DENSITY_MANIFEST to the CPU-prepared 256-context manifest}
+LEGACY_MANIFEST=${DINO_PUSHT_DENSITY_LEGACY_MANIFEST:?set DINO_PUSHT_DENSITY_LEGACY_MANIFEST to the immutable 128-context manifest}
+BASELINE_SUMMARY=${DINO_PUSHT_DENSITY_BASELINE_SUMMARY:-$ROOT/artifacts/24456882.pbs101/capacity_contrast_summary.json}
+CHECKPOINT=${DINO_PUSHT_CHECKPOINT:-$ROOT/checkpoints/outputs/pusht/checkpoints/model_latest.pth}
+CHECKPOINT_CONFIG=${DINO_PUSHT_CHECKPOINT_CONFIG:-$ROOT/checkpoints/outputs/pusht/hydra.yaml}
+DATA_ROOT=${DINO_PUSHT_DATA_ROOT:-$ROOT/data/pusht_noise}
+DEPS_ROOT=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+DEPS_MARKER=${DINO_PUSHT_DEPS_MARKER:-$ROOT/PUSHT_DEPS_READY_V5}
+ASSET_ROOT=${DINO_PUSHT_ASSET_ROOT:-$ROOT}
+RUNTIME_ARCHIVE=${DINO_RUNTIME_ARCHIVE:-$ROOT/runtime-complete.tar}
+JOB_ID=${PBS_JOBID:-unassigned}
+OUT_ROOT=${DINO_PUSHT_DENSITY_OUT_ROOT:-$ROOT/artifacts}
+OUT="$OUT_ROOT/jepa-action-prefix-dino-pusht-context-density-h256-$JOB_ID"
+WORK=${TMPDIR:-/tmp}/dino-pusht-context-density-h256-$JOB_ID
+RUNTIME_ROOT="$WORK/runtime"
+PYTHON="$RUNTIME_ROOT/venv/bin/python"
+TIMEOUT_SECONDS=${DINO_PUSHT_DENSITY_TIMEOUT_SECONDS:-25200}
+
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+
+test ! -e "$OUT"
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+write_fallback_status() {
+  local rc=$?
+  stop_gpu_monitor
+  if [ ! -s "$OUT/job_status.txt" ]; then
+    printf '%s\n' "job_id=$JOB_ID" "status=wrapper_failed" "runner_exit_code=$rc" \
+      "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/job_status.txt"
+    touch "$OUT/DINO_PUSHT_CONTEXT_DENSITY_H256_FAILED"
+  fi
+}
+trap write_fallback_status EXIT
+
+test -f "$RUNTIME_ARCHIVE"
+test -f "$RUNNER"
+test -f "$FREEZE"
+test -f "$MANIFEST"
+test -f "$LEGACY_MANIFEST"
+test -f "$BASELINE_SUMMARY"
+test -f "$CHECKPOINT"
+test -f "$CHECKPOINT_CONFIG"
+test -d "$DATA_ROOT"
+test -d "$DEPS_ROOT"
+test -f "$DEPS_MARKER"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$RUNTIME_ARCHIVE" -C "$WORK"
+test -x "$PYTHON"
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export MPLBACKEND=Agg
+export TORCH_HOME="$WORK/runtime/torch"
+export PYTHONPATH="$DEPS_ROOT:$IDEA_ROOT:$ROOT/source${PYTHONPATH:+:$PYTHONPATH}"
+
+"$PYTHON" - <<'PY'
+import torch
+if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+    raise SystemExit("CUDA is unavailable in the staged runtime")
+print(f"cuda_device_count={torch.cuda.device_count()}")
+print(f"cuda_device_name={torch.cuda.get_device_name(0)}")
+PY
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total \
+  --format=csv -l 30 > "$OUT/gpu_usage.csv" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s "$TIMEOUT_SECONDS" \
+  "$PYTHON" "$RUNNER" \
+  --root "$ROOT" --asset-root "$ASSET_ROOT" --output "$OUT" \
+  --freeze "$FREEZE" --manifest "$MANIFEST" --legacy-manifest "$LEGACY_MANIFEST" \
+  --baseline-summary "$BASELINE_SUMMARY" \
+  --checkpoint "$CHECKPOINT" --checkpoint-config "$CHECKPOINT_CONFIG" \
+  --data-root "$DATA_ROOT" --deps-root "$DEPS_ROOT" \
+  --summary "$OUT/context_density_summary.json"
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 124 ] || [ "$RUNNER_RC" -eq 137 ] || [ "$RUNNER_RC" -eq 143 ]; then
+  STATUS=timeout
+elif [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/context_density_summary.json" ]; then
+  STATUS=completed
+else
+  STATUS=failed
+fi
+
+printf '%s\n' "$RUNNER_RC" > "$OUT/runner_exit_status.txt"
+printf '%s\n' "job_id=$JOB_ID" "status=$STATUS" \
+  "summary=$OUT/context_density_summary.json" \
+  "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/job_status.txt"
+
+if [ "$STATUS" = completed ]; then
+  FINAL_RC=0
+  touch "$OUT/DINO_PUSHT_CONTEXT_DENSITY_H256_COMPLETE"
+else
+  FINAL_RC=$RUNNER_RC
+  [ "$FINAL_RC" -ne 0 ] || FINAL_RC=1
+  touch "$OUT/DINO_PUSHT_CONTEXT_DENSITY_H256_FAILED"
+fi
+printf '%s\n' "$FINAL_RC" > "$OUT/final_exit_status.txt"
+printf '%s\n' "final_exit_code=$FINAL_RC" >> "$OUT/job_status.txt"
+stop_gpu_monitor
+trap - EXIT
+exit "$FINAL_RC"

@@ -1,0 +1,301 @@
+{
+  "schema": "jepa-action-prefix-compiler.capacity-contrast-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-action-prefix-compiler-capacity-h256",
+  "purpose": "Test one student-width increase while keeping the validated WIDE+QUERY action-conditioned predictor protocol, optimization budget, targets, seeds, and held-out ranking blocks fixed.",
+  "research_question": {
+    "primary": "Does changing only NativeDinoPrefixStudent hidden_dim from 128 to 256 materially improve held-out planner-candidate ranking at the same 1500-update WIDE+QUERY training budget?",
+    "secondary": "Does the h256 student meet the existing predictor-level absolute replacement gates without losing logged-action latent fidelity, causality, or predictor-only speedup?",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; candidates within a block are repeated measurements, not independent replicates",
+    "primary_comparison": "h256 WIDE-QUERY step1500 minus the read-only authoritative h128 WIDE-QUERY step1500 baseline"
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "teacher_targets": "the same frozen teacher rollout contract used by the optimization-length baseline",
+    "student_receives_goal": false,
+    "goal_used_for_training_only_cem_and_heldout_planner_objective": true,
+    "closed_loop": false,
+    "cem_execution": false,
+    "planner_integration": false,
+    "environment_interaction": false,
+    "lewm_transfer": false,
+    "native_latent_geometry_preserved": true,
+    "checkpoint_update": false,
+    "planner_update": false,
+    "only_new_treatment": "hidden_dim=256"
+  },
+  "parent_protocol": {
+    "query_coverage_freeze": "QUERY_COVERAGE_FREEZE.json",
+    "optimization_length_freeze": "OPTIMIZATION_LENGTH_FREEZE.json",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "official_config": "experiment/reproduction/dino-wm-wall/source/conf/plan_pusht.yaml",
+    "manifest_policy": "Use the staged CPU-prepared query-coverage manifest supplied at run time; do not regenerate, reorder, subsample, or replace it."
+  },
+  "baseline": {
+    "role": "read_only_authoritative_reference",
+    "artifact": "artifacts/24440788.pbs101/optimization_length_summary.json",
+    "job_id": "24440788.pbs101",
+    "arm": "WIDE-QUERY",
+    "snapshot": "step_1500",
+    "hidden_dim": 128,
+    "training_steps": 1500,
+    "summary_schema": "jepa-action-prefix-compiler.dino-pusht-optimization-length-summary",
+    "expected_metrics": {
+      "spearman_median": 0.882433146238327,
+      "spearman_minimum": 0.7763445973396301,
+      "top30_overlap_median": 0.6,
+      "top30_overlap_minimum": 0.4666666666666667,
+      "logged_teacher_relative_mse": 0.06669161587778945,
+      "predictor_only_student_median_ms": 9.818021964747459,
+      "predictor_only_teacher_median_ms": 3504.479833005462,
+      "predictor_only_reduction": 0.9971984367345246
+    },
+    "reuse": {
+      "rerun_h128": false,
+      "load_h128_checkpoint": false,
+      "mutate_baseline_summary": false,
+      "baseline_block_key": "(seed, context_index)",
+      "baseline_per_block_metrics_are_authoritative": true
+    }
+  },
+  "treatment": {
+    "arm": "WIDE-QUERY",
+    "student_class": "NativeDinoPrefixStudent",
+    "hidden_dim": 256,
+    "architecture_change": "hidden_dim only",
+    "same_procedure_not_same_state_dict": true,
+    "initialization": "Instantiate a fresh h256 NativeDinoPrefixStudent with the same constructor/RNG procedure and training seed as the baseline; do not copy, reshape, interpolate, or load the h128 state_dict.",
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "horizon": 5,
+    "frameskip": 5,
+    "anchor_input": "cached native DINO observation latent z_t",
+    "action_input": "five normalized action tokens, each packing five primitive actions",
+    "output": "five future native observation latents z[t+1:t+5]",
+    "transformer_depth": 2,
+    "transformer_nhead": 4,
+    "dim_feedforward": "4 * hidden_dim = 1024",
+    "dropout": 0.0,
+    "activation": "gelu",
+    "norm_first": true,
+    "future_action_leakage": false,
+    "goal_in_student_input": false,
+    "target_loss": "dense native-latent MSE only",
+    "forbidden_training_losses": [
+      "rank loss",
+      "listwise KL",
+      "goal loss",
+      "self-consistency loss",
+      "ground-truth future-frame target"
+    ]
+  },
+  "frozen_training_bank": {
+    "context_coverage": "WIDE",
+    "train_contexts": 128,
+    "train_episodes": 32,
+    "contexts_per_episode": 4,
+    "heldout_exclusion": "No held-out episode, context, observation, action, seed, or evaluation candidate may enter training.",
+    "action_query_distribution": {
+      "logged": 0.5,
+      "gaussian_planner_init": 0.25,
+      "one_step_cem_resample": 0.25,
+      "rows_per_batch": {
+        "logged": 16,
+        "gaussian_planner_init": 8,
+        "one_step_cem_resample": 8
+      }
+    },
+    "one_step_cem_resample": {
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "variance_floor": 0.05,
+      "candidate_distribution": "independent Normal(0, 1) per primitive-action coordinate",
+      "scoring": "frozen teacher terminal objective for the same training context",
+      "precompute": "one deterministic CPU-generated bank before the first student update",
+      "student_result_used": false,
+      "bank_mutation": false,
+      "bank_identity": "same deterministic WIDE+QUERY bank contract, seeds, context order, call order, M, K, objective, and variance floor as the h128 baseline; no new mixture or resampling policy"
+    },
+    "target_pairing": "Every logged, Gaussian, and CEM-resampled prefix is passed through the same frozen teacher rollout to produce detached dense targets."
+  },
+  "training": {
+    "steps": 1500,
+    "batch_size": 32,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "scheduler": null,
+    "optimizer_reinitialized": false,
+    "context_pool": "the frozen WIDE 128-context pool",
+    "per_update": "Use the frozen context schedule and frozen 16/8/8 role schedule, materialize the frozen WIDE+QUERY bank rows, run the frozen teacher rollout, compute dense native-latent MSE, and update the h256 student.",
+    "teacher_targets_detached": true,
+    "student_encode_obs_calls": false,
+    "student_goal_calls": false,
+    "early_stop": false,
+    "retune_after_observation": false
+  },
+  "randomness_and_schedule": {
+    "training_seed": 20260925,
+    "context_schedule_seed": 20260925,
+    "action_query_seed": 20260926,
+    "role_schedule_seed": 20260927,
+    "heldout_action_prefix_seeds": [
+      20264925,
+      20264926
+    ],
+    "timing_action_prefix_seed": 20270925,
+    "context_schedule_compatibility": {
+      "historical_steps": 500,
+      "narrow_burn_in_draws": 16000,
+      "wide_schedule_steps": 1500,
+      "purpose": "Preserve the exact h128 baseline WIDE context-index schedule after the old 500-step NARROW RNG burn-in."
+    },
+    "rng_policy": "Generate context indices, role permutations, Gaussian proposals, CEM candidates/resamples, held-out candidates, and timing candidates on CPU with explicit generators before transfer to the selected GPU.",
+    "seed_policy": "All seeds and call order are fixed before execution; no result-dependent seed replacement or additional tuning run is permitted."
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "heldout_contexts": 8,
+      "fresh_action_prefix_seeds": [
+        20264925,
+        20264926
+      ],
+      "block_count": 16,
+      "block_definition": "8 held-out contexts x 2 fresh action-prefix seeds",
+      "candidates_per_block": 300,
+      "candidate_distribution": "independent Normal(0, 1) normalized primitive actions with the existing frozen predictor-level sampler",
+      "topk": 30,
+      "candidate_bank": "Generate one shared CPU candidate bank; evaluate h256 and align it to the h128 baseline by exact (seed, context_index) block key.",
+      "paired_comparison": "Within each aligned block, h256 and the read-only h128 baseline are compared against the same frozen teacher costs, candidate action tensor, context, and goal.",
+      "primary_unit": "block, not candidate"
+    },
+    "paired_metrics": {
+      "per_block": [
+        "Spearman_h256 - Spearman_h128",
+        "top30_overlap_h256 - top30_overlap_h128",
+        "teacher_relative_latent_MSE_h256 - teacher_relative_latent_MSE_h128"
+      ],
+      "aggregation": "Compute the median of the 16 paired block deltas and count strict positive deltas; do not subtract arm-level medians.",
+      "alignment_key": "(seed, context_index)",
+      "capacity_primary": "median paired Spearman delta, median paired top-30 delta, and their positive-block counts"
+    },
+    "logged_action_fidelity": {
+      "contexts": 8,
+      "actions": "each held-out context's real logged action prefix",
+      "target": "frozen teacher rollout",
+      "statistic": "mean across horizons and contexts of dense relative native-latent MSE",
+      "comparison": "h256 / h128"
+    },
+    "causality": {
+      "procedure": "For each prefix horizon k, change only action tokens after k while keeping z_t and the first k tokens fixed.",
+      "metric": "maximum absolute difference in output at horizon k",
+      "gate": "<= 0.000001"
+    },
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through one h256 predictor forward or the five-step frozen teacher rollout",
+      "batch_size": 300,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "reduction_definition": "1 - median(h256_ms) / median(teacher_ms)",
+      "h128_latency_ratio": "median(h256_ms) / baseline h128 step1500 median_ms; diagnostic_only"
+    },
+    "telemetry": "During GPU execution, append utilization and VRAM samples every 30 seconds to the job artifact log."
+  },
+  "gates": {
+    "capacity_and_integrity": {
+      "all_outputs_finite": true,
+      "final_training_finite": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "hidden_encode_obs": false,
+      "source_encoder_reference": false,
+      "shape_dtype_device_match": true,
+      "oom_nan_or_silent_fallback": false
+    },
+    "capacity_effect": {
+      "comparison": "h256 step1500 - authoritative h128 WIDE-QUERY step1500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "capacity_effect_established",
+      "decision_label_if_fail": "capacity_effect_not_established"
+    },
+    "absolute_fidelity": {
+      "snapshot": 1500,
+      "primary_arm": "WIDE-QUERY",
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "logged_fidelity_noninferiority": {
+      "comparison": "h256 / h128 teacher-relative MSE on all 8 held-out logged contexts",
+      "ratio_max": 1.25
+    },
+    "causality": {
+      "snapshot": 1500,
+      "maximum_future_action_leakage_abs": 0.000001
+    },
+    "latency": {
+      "snapshot": 1500,
+      "predictor_only_reduction_min": 0.2
+    },
+    "diagnostics_only": {
+      "parameter_count_h256_to_h128_ratio": "report actual ratio; no gate",
+      "predictor_latency_h256_to_h128_ratio": "report actual ratio; no gate",
+      "training_loss_curve": "report; no result-dependent early stop"
+    },
+    "decision_levels": {
+      "capacity_effect": "PASS iff the four capacity_effect thresholds all pass; report independently of replacement readiness.",
+      "full_replacement": "GO iff capacity_and_integrity, h256 absolute fidelity, logged-fidelity ratio, final causality, and predictor-only latency all pass.",
+      "non_equivalence": "capacity_effect PASS does not imply full_replacement GO; full_replacement GO does not require capacity_effect PASS.",
+      "density_contrast_entry": "Only if this cell is valid, full_replacement is NO-GO, and capacity_effect is FAIL; then freeze a separate coverage/density contrast while holding h256, 1500 steps, loss, seeds, held-out blocks, and latency boundary fixed.",
+      "density_contrast_stop": "If capacity_effect PASS, do not enter data/query density contrast in this campaign; capacity remains the active explanation. If the cell is invalid, do not use it to select the next axis."
+    },
+    "overall_decision": "Report capacity_effect and full_replacement separately. Do not retune after observing results."
+  },
+  "claim_boundary": {
+    "allowed_if_capacity_effect_pass": "Under the frozen DINO-WM PushT predictor-level contract, increasing NativeDinoPrefixStudent width from 128 to 256 at the fixed WIDE+QUERY 1500-step budget materially improves paired held-out candidate ranking under the stated block-level thresholds.",
+    "allowed_if_full_replacement_go": "The h256 student meets the frozen predictor-level replacement gates against the teacher, including absolute ranking fidelity, logged-action latent-MSE non-inferiority, causality, and predictor-only latency.",
+    "one_step_cem_qualification": "The WIDE+QUERY bank remains a training-only M=64/K=8 one-step CEM elite-resample mixture; no claim about full multi-step goal-conditioned CEM integration is permitted.",
+    "forbidden": [
+      "closed-loop task success",
+      "multi-step CEM integration or full-plan latency",
+      "closed-loop planner success",
+      "LeWM transfer",
+      "all-JEPA universality",
+      "population-level inference",
+      "full-dataset training claim",
+      "causal claims beyond the frozen schedule and paired block comparison",
+      "native low-bit deployment claim",
+      "parameter-count or h256/h128 latency ratios as success evidence"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "model_loading_inference_benchmark_on_login": false,
+    "gpu_telemetry_seconds": 30,
+    "hash": false,
+    "do_not_run_during_freeze_creation": true,
+    "primary_artifacts": [
+      "capacity contrast summary JSON",
+      "job log",
+      "job status",
+      "GPU info/usage/telemetry"
+    ],
+    "checkpoint_return": "No checkpoint retrieval is required as a primary result; any local snapshot is an audit artifact only."
+  }
+}

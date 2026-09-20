@@ -1,0 +1,92 @@
+{
+  "gap_closure_reject_check": {
+    "entries": [
+      {
+        "gap": "Across counterfactual candidate rollouts that share an observation/history prefix but diverge in actions, no retrieved leaf establishes a condition under which reuse preserves the ordering of CEM candidate costs and the resulting selected action, rather than only average latent or rollout quality — stakes: DINO-WM Wall users can obtain a lower forward-pass count yet choose a different action and lose closed-loop success, wasting A100 evaluation and invalidating a speedup claim.",
+        "main_pattern": "assumption_audit_and_pivot",
+        "sub_pattern": "C11 (Audit and Pivot an Assumption)",
+        "tactical_failure_mode_quoted": "The dominant failure is substituting one selection rule for another that performs better empirically while omitting the theorem that explains when and why it wins — reviewers read this as a straightforward engineering combination without structural insight, even when the empirical gains are real. A second shape is pivoting an assumption the community regards as a reasonable modeling choice rather than a genuine restriction (removing an anchor or a repeated-query requirement that practitioners consider natural, or predicting an unmotivated quantity), which leaves both motivation and novelty in doubt.",
+        "reject_lessons_evaluated": [
+          {
+            "lesson_quoted": "Substituting one selection heuristic for another without a theorem stating when and why it wins reads as an engineering combination, not a contribution, no matter how clean the empirical gain.",
+            "candidate_match": "no",
+            "reasoning": "The `core_mechanism` replaces similarity gating with dependency-derived exact factorization and an explicit planner-order equality certificate, rather than swapping one empirical heuristic for another."
+          },
+          {
+            "lesson_quoted": "Pivoting an assumption the community treats as a reasonable modeling choice — rather than first proving it a genuine restriction — leaves both motivation and novelty in doubt.",
+            "candidate_match": "no",
+            "reasoning": "The candidate identifies representation proximity as an insufficient proxy because action-dependent suffixes can change CEM ordering, and makes that restriction concrete through the dependency trace and counterfactual candidates."
+          },
+          {
+            "lesson_quoted": "A re-derived guarantee whose binding constant is dataset-dependent and cannot be controlled by the practitioner is vacuous in the worst case and fails to convince.",
+            "candidate_match": "no",
+            "reasoning": "No dataset-dependent binding constant is claimed; the certificate is exact under keyed, practitioner-visible state and deterministic-evaluation conditions."
+          },
+          {
+            "lesson_quoted": "Building the entire analysis on a regularity condition (such as continuity or a Lipschitz bound) that the selection mechanism provably violates contradicts and undermines the formal claims.",
+            "candidate_match": "no",
+            "reasoning": "The stated determinism, fixed operator order, precision, and normalization/RNG conditions are enforced as invalidation and canary requirements, not violated regularity assumptions."
+          },
+          {
+            "lesson_quoted": "Improving a bound by a marginal factor with no matching lower bound fails to demonstrate that the improvement is significant or near-optimal enough to clear the bar.",
+            "candidate_match": "no",
+            "reasoning": "The candidate claims exact candidate-cost and selected-action preservation plus measured native latency, not a marginal bound improvement or near-optimality result."
+          },
+          {
+            "lesson_quoted": "Unlocking a new capability by violating an assumption while ignoring a protective property it guarded — detectability, validity, identifiability — invites rejection on the overlooked side effect rather than the headline result.",
+            "candidate_match": "no",
+            "reasoning": "The canary, fallback, invalidation contract, first-action agreement, and closed-loop-success evaluation explicitly preserve the planner property that the cache is meant to protect."
+          }
+        ],
+        "verdict": "clear"
+      }
+    ],
+    "verdict": "clear",
+    "reasoning": "The single gap under `assumption_audit_and_pivot` is implemented as a dependency-conditioned planner certificate, not a heuristic replacement. The first Reject lesson therefore does not apply: the candidate states when CEM ranking is preserved and tests the protective downstream action property."
+  },
+  "recipe_application_check": {
+    "entries": [
+      {
+        "gap": "Across counterfactual candidate rollouts that share an observation/history prefix but diverge in actions, no retrieved leaf establishes a condition under which reuse preserves the ordering of CEM candidate costs and the resulting selected action, rather than only average latent or rollout quality — stakes: DINO-WM Wall users can obtain a lower forward-pass count yet choose a different action and lose closed-loop success, wasting A100 evaluation and invalidating a speedup claim.",
+        "sub_pattern": "C11 (Audit and Pivot an Assumption)",
+        "tactical_pattern_quoted": "Every paper here centers on a selection / acquisition / query rule — which instance to keep, which candidate to query, which subset to retain, which component to route to, or when to stop buying information — and pivots the single assumption baked into that rule's criterion or its required structure. The pivot takes one of two concrete forms: relax the structural crutch to a weaker condition and re-prove the guarantee, or reframe the selection task as a different and more tractable problem class and import that class's machinery.",
+        "instantiation_in_core_mechanism": "Step 1 marks the candidate action tensor as the only varying input, rejects similarity as the safety criterion, and selects an earliest boundary with no action dependency or mutable state. The core mechanism then reframes reuse as a planner-level candidate-order certificate, with exact factorization, unchanged CEM ranking, and a full-recompute canary/fallback in Step 5.",
+        "verdict": "applied"
+      }
+    ],
+    "verdict": "applied",
+    "reasoning": "The entry performs C11's signature move: it pivots the CEM reuse criterion from representation similarity to an action-dependency condition and re-derives an exact downstream selection certificate."
+  },
+  "anti_pattern_check": {
+    "composition_set": [
+      "assumption_audit_and_pivot",
+      "architectural_operator_substitution"
+    ],
+    "matched_pattern_id": null,
+    "required_mitigation_quoted": null,
+    "mitigation_substantively_delivered": "n/a",
+    "reasoning": "The composition contains neither `heterogeneous_decomposition` nor any of the three documented reject-favored pairs, so no anti-pattern mitigation is required."
+  },
+  "paper_pointed_threat": {
+    "threat_paper_id": "openalex:W7172558534",
+    "threat_source": "collision_hits",
+    "threat_channel": "alias",
+    "subsumption_argument": "The Gate, Not the Cache reports that at skip ratio 0.9 on LIBERO-Object, reuse and deletion fall to 0.68 and 0.31 respectively versus dense 1.00 when the next gate is harvested from the model's own accelerated forward; the collapse is invisible to the evaluated action-level detectors. This threatens any cache whose validity signal is self-contaminated across control steps. RankSafe instead computes a full candidate canary under the deterministic contract, falls back on mismatch, and directly measures first-action agreement and closed-loop success, so the hit is a provenance threat already covered by the candidate's guard rather than exact-mechanism overlap.",
+    "addressable_via": "not_needed",
+    "parametric_family_concern": null
+  },
+  "falsification_structure_check": {
+    "minimal_experiment_named": "yes",
+    "outcome_metric_named": "yes",
+    "load_bearing_variable": "`M_b`, the binary action-dependency mask for the cached prefix",
+    "negative_control_target": "outcome_metric",
+    "numeric_bar_provenance": "none",
+    "verdict": "sound",
+    "reasoning": "The falsification paragraph names a matched full/cached/randomized-mask experiment, downstream first-action agreement and closed-loop-success directions, and `M_b` as the load-bearing variable. Randomizing `M_b` is predicted to degrade downstream outcomes rather than merely changing the mask, and it contains no unsourced numeric outcome bar."
+  },
+  "blocking_findings_disposition": [],
+  "verdict": "advance",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "The C11 Reject lesson against heuristic substitution is clear because the candidate gives an exact dependency-conditioned planner certificate, and `recipe_application_check` is applied; the anti-pattern set has no documented reject pair. The OpenAlex alias threat's `subsumption_argument` is already handled by clean canary/fallback and closed-loop checks, while `falsification_structure_check` is sound; arXiv 406, Semantic Scholar 429, and missing OpenReview mean collision no-hits are not novelty proof.",
+  "revision_targets": []
+}

@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -N lewm_ckpt_validate
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2;; esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+OUT=${LEWM_VALIDATE_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$STAGE_ROOT/le-wm:$STAGE_ROOT/stable-worldmodel:${PYTHONPATH:-}"
+
+CHECKPOINT="$STABLEWM_HOME/pusht/lewm_object.ckpt"
+test -f "$CHECKPOINT"
+"$PYTHON_BIN" - "$CHECKPOINT" "$OUT/checkpoint_validation.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+checkpoint = Path(sys.argv[1])
+output = Path(sys.argv[2])
+model = torch.load(checkpoint, map_location="cpu", weights_only=False)
+if not hasattr(model, "get_cost"):
+    raise TypeError(f"checkpoint is not a LeWM cost model: {checkpoint}")
+model.eval()
+model.requires_grad_(False)
+parameter_count = sum(parameter.numel() for parameter in model.parameters())
+payload = {
+    "status": "PASS",
+    "checkpoint": str(checkpoint),
+    "model_class": f"{type(model).__module__}.{type(model).__name__}",
+    "parameter_count": int(parameter_count),
+}
+output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+print(json.dumps(payload))
+PY
+test -s "$OUT/checkpoint_validation.json"
+printf 'CHECKPOINT_VALIDATION_PASS\n'

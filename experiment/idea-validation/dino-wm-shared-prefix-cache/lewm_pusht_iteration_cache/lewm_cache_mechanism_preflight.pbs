@@ -1,0 +1,143 @@
+#!/bin/bash
+#PBS -N lewm_cache_mech_preflight
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=4gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+OUT=${LEWM_PREFLIGHT_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -f "$CONTROL/iteration_cache.py"
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$CONTROL:${PYTHONPATH:-}"
+
+"$PYTHON_BIN" - "$OUT/cache_mechanism_preflight.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+from iteration_cache import (
+    _goal_info,
+    _initial_info,
+    rollout_with_cached_initial,
+)
+
+
+class DummyModel:
+    def __init__(self):
+        self.encode_keys = []
+        self.action_widths = []
+
+    def encode(self, info):
+        self.encode_keys.append(sorted(info))
+        pixels = info["pixels"].float()
+        batch, steps = pixels.shape[:2]
+        emb = pixels.reshape(batch, steps, -1).mean(dim=-1, keepdim=True)
+        info["emb"] = emb.expand(-1, -1, 2).clone()
+        return info
+
+    def action_encoder(self, actions):
+        self.action_widths.append(int(actions.shape[-1]))
+        return actions[..., :2]
+
+    def predict(self, emb, act_emb):
+        return emb + act_emb
+
+    def criterion(self, info):
+        predicted = info["predicted_emb"]
+        goal = info["goal_emb"][..., -1:, :].expand_as(predicted)
+        return ((predicted[..., -1:, :] - goal[..., -1:, :]) ** 2).sum(dim=(2, 3))
+
+
+def baseline_rollout(model, info, action_candidates, history_size=3):
+    info = dict(info)
+    pixels = info["pixels"]
+    prefix = pixels.size(2)
+    batch, samples, horizon = action_candidates.shape[:3]
+    act_0, act_future = torch.split(action_candidates, [prefix, horizon - prefix], dim=2)
+    info["action"] = act_0
+    initial = {key: value[:, 0] for key, value in info.items() if torch.is_tensor(value)}
+    initial = model.encode(initial)
+    emb = info["emb"] = initial["emb"].unsqueeze(1).expand(batch, samples, -1, -1)
+    emb = emb.reshape((batch * samples,) + tuple(emb.shape[2:])).clone()
+    act = act_0.reshape((batch * samples,) + tuple(act_0.shape[2:]))
+    act_future = act_future.reshape((batch * samples,) + tuple(act_future.shape[2:]))
+    for step in range(horizon - prefix):
+        act_emb = model.action_encoder(act)
+        pred = model.predict(emb[:, -history_size:], act_emb[:, -history_size:])[:, -1:]
+        emb = torch.cat([emb, pred], dim=1)
+        act = torch.cat([act, act_future[:, step : step + 1]], dim=1)
+    act_emb = model.action_encoder(act)
+    pred = model.predict(emb[:, -history_size:], act_emb[:, -history_size:])[:, -1:]
+    emb = torch.cat([emb, pred], dim=1)
+    info["predicted_emb"] = emb.reshape((batch, samples) + tuple(emb.shape[1:]))
+    return info
+
+
+output = Path(sys.argv[1])
+batch, samples, prefix, horizon, action_width = 1, 3, 1, 5, 10
+info = {
+    "pixels": torch.arange(batch * samples * prefix * 2, dtype=torch.float32).reshape(
+        batch, samples, prefix, 2
+    ),
+    "goal": torch.ones(batch, samples, prefix, 2),
+    "action": torch.full((batch, samples, prefix, 2), float("nan")),
+    "reward": torch.full((batch, samples, prefix), float("nan")),
+}
+actions = torch.arange(batch * samples * horizon * action_width, dtype=torch.float32).reshape(
+    batch, samples, horizon, action_width
+)
+
+cached_model = DummyModel()
+initial = cached_model.encode(_initial_info(info))["emb"]
+goal = cached_model.encode(_goal_info(info))["emb"]
+cached = rollout_with_cached_initial(cached_model, info, actions, initial)
+cached["goal_emb"] = goal
+cached_cost = cached_model.criterion(cached)
+
+baseline_model = DummyModel()
+baseline_goal = baseline_model.encode(_goal_info(info))["emb"]
+baseline = baseline_rollout(baseline_model, info, actions)
+baseline["goal_emb"] = baseline_goal
+baseline_cost = baseline_model.criterion(baseline)
+
+if cached_model.encode_keys != [["pixels"], ["pixels"]]:
+    raise RuntimeError(f"cached encode inputs were {cached_model.encode_keys}")
+if any(width != action_width for width in cached_model.action_widths):
+    raise RuntimeError(f"cached action widths were {cached_model.action_widths}")
+if not torch.equal(cached["predicted_emb"], baseline["predicted_emb"]):
+    raise RuntimeError("cached and baseline predicted embeddings differ")
+if not torch.equal(cached_cost, baseline_cost):
+    raise RuntimeError("cached and baseline dummy costs differ")
+
+payload = {
+    "status": "PASS",
+    "cached_initial_encode_keys": cached_model.encode_keys[0],
+    "cached_goal_encode_keys": cached_model.encode_keys[1],
+    "cached_action_encode_widths": cached_model.action_widths,
+    "baseline_encode_keys": baseline_model.encode_keys,
+    "cached_baseline_predicted_exact": True,
+    "cached_baseline_cost_exact": True,
+}
+output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+print(json.dumps(payload))
+PY
+test -s "$OUT/cache_mechanism_preflight.json"
+printf 'LEWM_CACHE_MECHANISM_PREFLIGHT_PASS\n'

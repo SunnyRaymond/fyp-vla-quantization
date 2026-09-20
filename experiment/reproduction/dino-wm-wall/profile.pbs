@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -N dino_wall_latency
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+CONTROL="$ROOT/latency_profile/control"
+OUT="$ROOT/latency_profile/artifacts/$PBS_JOBID"
+WORK="${TMPDIR:?TMPDIR missing}/dino-wall-latency-$PBS_JOBID"
+
+test -n "${PBS_JOBID:-}"
+case "$(hostname -s | tr '[:upper:]' '[:lower:]')" in
+  *login*|*head*|*submit*) echo "Refusing non-compute host" >&2; exit 64 ;;
+esac
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+test -f "$ROOT/ASSETS_READY"
+test -f "$ROOT/runtime-complete.tar"
+test -f "$ROOT/checkpoints/outputs/wall_single/checkpoints/model_latest.pth"
+
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+export PYTHONPATH="$ROOT/source"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu.txt"
+
+"$WORK/runtime/venv/bin/python" "$CONTROL/profile_wall_latency.py" \
+  --root "$ROOT" \
+  --output "$OUT" \
+  --n-evals 2 \
+  --max-mpc 12
+"$WORK/runtime/venv/bin/python" "$CONTROL/summarize_latency_profile.py" "$OUT"
+touch "$OUT/SUCCESS"

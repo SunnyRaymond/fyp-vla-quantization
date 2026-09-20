@@ -1,0 +1,1542 @@
+{
+  "title": "RankSafe Prefix Cache for DINO-WM CEM Planning",
+  "title_zh": "用于 DINO-WM CEM 规划的 RankSafe 前缀缓存",
+  "method_name": "RankSafe Exact-Prefix Cache (RankSafe-EPC)",
+  "hook": "C$^3$ache and X-Cache use residual similarity or action-aware fingerprints as evidence that reused computation is safe, but neither makes CEM candidate ordering the target of that decision. RankSafe reframes shared-prefix caching as a planner-selection problem and reuses only an exact action-independent prefix whose downstream candidate costs are invariant by construction.",
+  "abstract_draft": "Counterfactual action-sequence evaluation is the main cost in DINO-WM's CEM planner: many candidates share the same observation and history computation, yet the planner repeatedly recomputes it before applying different action-conditioned suffixes. Recent reuse methods such as C³ache (arxiv:2606.08962v1) and X-Cache (arxiv:2604.20289v2) use residual similarity or action-aware fingerprints, but they do not make preservation of CEM candidate ordering the validity target. RankSafe-EPC instruments the forward graph, identifies an exact prefix whose outputs are independent of the candidate action, computes that prefix once, and reuses it while retaining every action-conditioned suffix and a mismatch fallback. The load-bearing prediction is that a correct action-dependency mask will preserve candidate costs, CEM first-action choices, and closed-loop Wall success while reducing native end-to-end planner latency; a randomized mask should instead induce rank inversions and lower action agreement. The expected outcome is a bounded planner-level cache with an explicit invariance contract, not a claim that approximate cache similarity is safe in general. Failure to reduce native latency or failure of the randomized-mask control to affect downstream decisions would falsify the proposed mechanism.",
+  "motivation": {
+    "problem_framing": "DINO-WM's test-time CEM planner evaluates multiple counterfactual action sequences from one observed history. The visual/history prefix before the action-conditioned dynamics suffix is shared across those candidates, but a naive implementation recomputes it for every branch. The bottleneck is therefore not merely model inference time: any reuse rule must preserve the ordering of candidate costs that determines the selected first action. A cache that saves FLOPs while silently changing that ordering can alter closed-loop behavior even when individual predictions look close.\n\nC³ache and X-Cache make reuse decisions from residual similarity or action-aware fingerprints, and WorldCache uses curvature and drift to trade rollout fidelity for speed. These works establish that computation reuse is useful, but their validity signals are not an exact graph-level statement about which computation is independent of counterfactual actions. RankSafe-EPC treats the DINO-WM Wall planner as the primary instance of this gap: it isolates an action-independent prefix, leaves the suffix untouched, and tests the resulting candidate-order and first-action invariance directly.",
+    "why_now": "Recent cache systems such as C³ache, X-Cache, and WorldCache make reuse practical but stop short of planner-selection invariance. The existing DINO-WM Wall checkpoint and local trajectories provide a fixed, reproducible setting in which graph instrumentation, exact-prefix reuse, native latency, and first-action agreement can be measured without retraining; 2–4 A100s are sufficient for the bounded implementation and matched evaluation. This makes the missing contract testable now, while keeping the claim explicitly provisional until native end-to-end and closed-loop evidence is obtained.",
+    "why_prior_stopped": [
+      {
+        "paper_id": "arxiv:2606.08962v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "C³ache reuses same-denoising-step residuals across smooth consecutive WAM chunks and reports task-success degradation as its main safety signal.",
+        "what_they_did_not_do": "It did not identify an exact observation/history prefix shared by counterfactual CEM branches or test preservation of their candidate-cost ordering.",
+        "structural_reason_they_stopped": "Its residual-similarity construction is tied to smooth executed chunks, not an action-independence analysis of the planner's forward graph."
+      },
+      {
+        "paper_id": "arxiv:2604.20289v2",
+        "venue_year": "arXiv 2026-04",
+        "what_they_did": "X-Cache gates cross-chunk residual reuse with structure- and action-aware fingerprints while protecting persistent KV updates.",
+        "what_they_did_not_do": "It did not certify equality of the planner-relevant prefix across a CEM candidate set or selected-action preservation under exact reuse.",
+        "structural_reason_they_stopped": "Fingerprint gating supplies an approximate similarity test, whereas the missing mechanism is a graph-level action-independence contract with a planner-level consequence."
+      },
+      {
+        "paper_id": "dblp:journals/corr/abs-2603-06331",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "WorldCache adapts token skipping from curvature and drift to maintain video-rollout fidelity.",
+        "what_they_did_not_do": "It did not retain all action-conditioned suffix computation while targeting CEM candidate ranking and first-action selection.",
+        "structural_reason_they_stopped": "Its fidelity proxy is defined for rollout content, not for the ordering statistic that a sampling-based planner uses to select an action."
+      },
+      {
+        "paper_id": "arxiv:2506.10100v1",
+        "venue_year": "arXiv 2025",
+        "what_they_did": "EfficientVLA combines layer pruning, visual-token selection, and temporal action-head feature caching in CogACT.",
+        "what_they_did_not_do": "It did not define an exact shared-prefix object or validity condition for DINO-WM's counterfactual CEM branches.",
+        "structural_reason_they_stopped": "Its compression changes the represented computation, so it does not isolate planner-preserving reuse by an action-dependency boundary."
+      },
+      {
+        "paper_id": "arxiv:2411.04983v2",
+        "venue_year": "arXiv 2024",
+        "what_they_did": "DINO-WM uses pretrained visual features and test-time action-sequence optimization for zero-shot planning.",
+        "what_they_did_not_do": "It did not expose a reusable prefix object or a cache-validity test tied to candidate-cost and selected-action invariance.",
+        "structural_reason_they_stopped": "The original planner evaluates each counterfactual branch directly and provides no graph instrumentation for separating action-independent from action-dependent computation."
+      }
+    ],
+    "what_changes_when_gap_closes": "A successful result would turn shared-prefix reuse into a planner-level operation with an explicit condition for preserving CEM candidate ordering and the selected first action, rather than a similarity heuristic whose downstream effect is unknown. It would also give systems such as C³ache and X-Cache a concrete diagnostic boundary for separating safe exact reuse from approximate cross-chunk reuse, while making native latency and closed-loop agreement jointly measurable."
+  },
+  "core_claim": "Caching an exactly action-independent DINO-WM prefix across CEM candidates preserves candidate-cost ordering and the selected first action, whereas corrupting its action-dependency mask causes rank inversions.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "A graph-derived binary mask can identify a DINO-WM prefix whose outputs are identical for all counterfactual CEM candidates.",
+      "supports_which_aspect": "Closes the bottleneck's missing action-independence contract for shared observation/history computation."
+    },
+    {
+      "id": "c2",
+      "statement": "Reusing that exact prefix while recomputing every action-conditioned suffix preserves candidate costs, their ordering, and the CEM first-action choice.",
+      "supports_which_aspect": "Closes the gap between computation reuse and the planner-selection quantity that controls downstream behavior."
+    },
+    {
+      "id": "c3",
+      "statement": "A randomized action-dependency mask produces candidate-cost rank inversions and lower first-action agreement or closed-loop success under a matched cache opportunity.",
+      "supports_which_aspect": "Distinguishes the causal invariance mechanism from a generic cache path or latency effect."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "e1",
+      "linked_step_id": "S1",
+      "latex": "M_b = \\mathbf{1}\\{\\partial h_b / \\partial a \\neq 0\\}",
+      "description": "The binary mask marks graph nodes at boundary b whose representation depends on the candidate action.",
+      "description_zh": "二值 mask 标记边界 b 处依赖候选 action 的图节点。"
+    },
+    {
+      "id": "e2",
+      "linked_step_id": "S2",
+      "latex": "M_b=0 \\Longrightarrow h_b^{(j)} = h_b^{\\mathrm{cache}} \\quad \\forall j \\in \\{1,\\ldots,K\\}",
+      "description": "When the boundary is action-independent, one cached prefix representation is valid for every candidate j.",
+      "description_zh": "当边界与 action 无关时，一个 cached prefix 表示可供全部候选 j 使用。"
+    },
+    {
+      "id": "e3",
+      "linked_step_id": "S3",
+      "latex": "J_j = \\sum_{\\tau=1}^{H} \\ell(\\hat{o}_{j,\\tau}, o_{t+\\tau}), \\qquad \\pi = \\operatorname{argsort}(J_{1:K})",
+      "description": "CEM ranks candidates by their rollout cost after the shared prefix and candidate-specific suffix are evaluated.",
+      "description_zh": "CEM 根据共享 prefix 与候选专属 suffix 得到的 rollout cost 对候选排序。"
+    },
+    {
+      "id": "e4",
+      "linked_step_id": "S4",
+      "latex": "\\Delta_{\\mathrm{rank}} = \\mathbf{1}[\\pi_{\\mathrm{cache}} \\neq \\pi_{\\mathrm{full}}], \\qquad a^*_{\\mathrm{cache}} = a^*_{\\mathrm{full}}",
+      "description": "The mechanism check records rank disagreement and requires the selected first action to match the full recomputation.",
+      "description_zh": "机制检查记录排序是否不一致，并要求 cached 与 full recomputation 的首 action 相同。"
+    }
+  ],
+  "method_flow": {
+    "high_level_pipeline": "Given one DINO-WM Wall observation and a CEM candidate population, instrument the forward graph to locate the boundary before action-dependent computation and record its binary mask. Compute the observation/history prefix once and reuse it only when the mask certifies candidate independence; evaluate every action-conditioned suffix normally. Compare the cached and full candidate costs, ordering, first action, closed-loop outcome, and native end-to-end latency, with a canary mismatch fallback for the valid cache path. A matched randomized-mask control tests whether any downstream change is caused by violating the proposed invariance rather than by caching alone.",
+    "steps": [
+      {
+        "step_id": "S1",
+        "title": "Trace the action boundary",
+        "what_changes": "Instrument the DINO-WM CEM forward graph and construct `M_b`, marking which boundary outputs depend on candidate actions.",
+        "why_this_step": "The bottleneck is repeated shared-prefix work, and an explicit dependency mask supplies the missing exact validity condition.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "DINO-WM Wall checkpoint, observation/history input, and CEM forward graph",
+        "output": "Candidate-independent boundary and binary action-dependency mask `M_b`"
+      },
+      {
+        "step_id": "S2",
+        "title": "Cache the invariant prefix",
+        "what_changes": "Compute the prefix through the certified boundary once per observation/history and feed the same cached representation to all candidate-specific suffixes.",
+        "why_this_step": "Exact reuse removes duplicated computation without altering the action-conditioned part that determines counterfactual outcomes.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Boundary mask `M_b` and current observation/history",
+        "output": "Reusable prefix representation plus a cache-hit path"
+      },
+      {
+        "step_id": "S3",
+        "title": "Guard candidate evaluation",
+        "what_changes": "Run each action-conditioned suffix, compare a deterministic canary against the full path, and fall back on mismatch while retaining a randomized-mask negative control with fallback disabled.",
+        "why_this_step": "The provenance threat is that a self-contaminated gate can hide errors; an explicit canary and a matched corrupted-mask control expose that failure mode.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Cached prefix and candidate-specific action suffixes",
+        "output": "Guarded cached candidate costs and negative-control costs"
+      },
+      {
+        "step_id": "S4",
+        "title": "Test planner invariance",
+        "what_changes": "Measure candidate-cost rank disagreement, first-action agreement, closed-loop success, and native end-to-end latency against matched full recomputation.",
+        "why_this_step": "The proposal is about preserving the planner's selection quantity, so speed without ordering and action agreement is insufficient evidence.",
+        "linked_component": "theory",
+        "linked_falsification": "metric_specification",
+        "input": "Full, RankSafe, and randomized-mask candidate evaluations under identical CEM settings",
+        "output": "Planner-level invariance and latency verdict"
+      }
+    ],
+    "design_reasoning_echo": "The design chooses exact action-independence over residual similarity because the downstream object that matters is CEM's candidate ordering, not a local feature distance. It removes only the prefix provably shared by counterfactual branches and leaves the action-conditioned suffix intact, limiting the mechanism claim to a graph boundary that can be inspected. The canary fallback addresses gate provenance, while the randomized-mask arm tests whether rank changes follow the proposed dependency violation; this separates a planner-preserving cache from generic acceleration or self-contaminated reuse."
+  },
+  "plain_motivation_en": "DINO-WM's test-time CEM planner evaluates several alternative action sequences from the same observed history. The visual and history computation before the action-dependent dynamics part is shared by these alternatives, but a straightforward implementation recomputes it for every branch. The challenge is therefore not only inference speed. Any reuse rule must keep the candidate-cost ordering unchanged, because that ordering determines the first action selected by the planner. A cache can save computation while silently changing that ordering and consequently changing closed-loop behavior, even when individual predictions appear close.\n\nC³ache and X-Cache decide when to reuse computation using residual similarity or action-aware fingerprints, while WorldCache uses curvature and drift to trade rollout fidelity for speed. These methods show that computation reuse can be useful, but their validity signals do not state exactly which graph computation is independent of alternative actions. RankSafe-EPC addresses this gap in the DINO-WM Wall planner by isolating a prefix that is independent of the action, leaving the suffix unchanged, and directly testing whether candidate ordering and the first selected action stay the same.\n\nRecent cache systems such as C³ache, X-Cache, and WorldCache make reuse practical but do not establish invariance of planner selection. The existing DINO-WM Wall checkpoint and local trajectories provide a fixed, reproducible setting for measuring graph instrumentation, exact-prefix reuse, native latency, and first-action agreement without retraining. A bounded implementation and matched evaluation fit within 2–4 A100s. The missing contract can therefore be tested now, while the claim remains provisional until native end-to-end and closed-loop evidence is obtained.\n\nEarlier work stopped short for structural reasons. C³ache reuses residuals across smooth consecutive WAM chunks, rather than analyzing action independence in a planner graph. X-Cache uses approximate structure- and action-aware fingerprint gating, rather than certifying equality of a planner-relevant prefix across CEM candidates and preservation of the selected action. WorldCache targets rollout content fidelity, rather than the candidate ordering used by a sampling-based planner. EfficientVLA changes the represented computation through pruning, token selection, and feature caching, rather than isolating planner-preserving reuse at an action-dependency boundary. DINO-WM itself performs each counterfactual branch directly and does not expose a reusable prefix or a cache-validity test tied to candidate-cost and selected-action invariance.\n\nIf the gap is closed, shared-prefix reuse becomes a planner-level operation with an explicit condition for preserving CEM candidate ordering and the selected first action, instead of a similarity heuristic with an unknown downstream effect. It also gives systems such as C³ache and X-Cache a concrete boundary for distinguishing safe exact reuse from approximate cross-chunk reuse, while allowing native latency and closed-loop agreement to be measured together.",
+  "plain_motivation_zh": "DINO-WM 的 test-time CEM planner 会从同一段观测历史出发，评估多条可能的 action sequence。这些候选共享 action-conditioned dynamics 之前的 visual/history 计算，但直接实现时会为每条分支重复计算。因此，问题不只是 inference 速度：任何复用规则都必须保持候选 cost 的排序不变，因为 planner 根据这个排序决定首个 action。即使单步 prediction 看起来接近，缓存若悄悄改变了排序，closed-loop 行为也可能随之改变。\n\nC³ache 和 X-Cache 根据 residual similarity 或 action-aware fingerprint 决定何时复用计算，WorldCache 则利用 curvature 和 drift 在 rollout fidelity 与速度之间取舍。这些工作说明复用计算是有用的，但它们的 validity signal 没有精确说明：forward graph 中哪些计算与候选 action 无关。RankSafe-EPC 在 DINO-WM Wall planner 中处理这个缺口：找出与 action 无关的 prefix，保持 suffix 不变，并直接检查 candidate ordering 和首个 selected action 是否保持不变。\n\n近来的 cache system（如 C³ache、X-Cache 和 WorldCache）让复用更实用，但还没有建立 planner selection invariance。现有的 DINO-WM Wall checkpoint 和 local trajectories 提供了固定且可复现的环境，可以在不 retraining 的情况下测量 graph instrumentation、exact-prefix reuse、native latency 和 first-action agreement。一个受限的实现和匹配评估可以在 2–4 张 A100 上完成。因此，这个缺失的 contract 现在可以检验；不过，在取得 native end-to-end 和 closed-loop evidence 以前，结论仍是 provisional。\n\n已有工作停在这里有结构性原因。C³ache 在平滑的连续 WAM chunk 之间复用 residual，但没有分析 planner graph 中的 action independence。X-Cache 用近似的 structure- and action-aware fingerprint gate，而没有证明 CEM 候选之间 planner-relevant prefix 相等并保持 selected action。WorldCache 针对 rollout content fidelity，而不是 sampling-based planner 用来选择 action 的候选排序。EfficientVLA 通过 pruning、token selection 和 feature caching 改变所表示的计算，并没有在 action-dependency boundary 处隔离 planner-preserving reuse。DINO-WM 本身直接计算每条 counterfactual branch，也没有提供与 candidate-cost 和 selected-action invariance 绑定的 reusable prefix 或 cache-validity test。\n\n如果这个缺口被补上，shared-prefix reuse 就会成为一种 planner-level operation，并有明确条件来保持 CEM candidate ordering 和 selected first action，而不再只是下游影响未知的 similarity heuristic。它也会给 C³ache 和 X-Cache 这样的 system 一个具体的 diagnostic boundary，用来区分 safe exact reuse 与 approximate cross-chunk reuse，同时共同测量 native latency 和 closed-loop agreement。",
+  "plain_method_steps_en": [
+    {
+      "step_id": "S1",
+      "what_to_do": "Instrument the DINO-WM CEM forward graph using the Wall checkpoint, observation/history input, and CEM graph. Build `M_b` to mark which outputs at the chosen boundary depend on candidate actions. The result is a candidate-independent boundary and a binary action-dependency mask `M_b`.",
+      "why_this_makes_sense": "The repeated work is the shared prefix, so an explicit dependency mask provides the exact condition for deciding whether that prefix can be reused."
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "For each observation/history, compute the prefix through the certified boundary once, then send the same cached representation to every candidate-specific action-conditioned suffix. Produce a reusable prefix representation and a cache-hit path.",
+      "why_this_makes_sense": "Exact reuse removes duplicated computation while leaving the action-conditioned part that determines counterfactual outcomes unchanged."
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "Run every action-conditioned suffix. Compare a deterministic canary with the full path and fall back on a mismatch. In parallel, retain a randomized-mask negative control with fallback disabled; use the cached prefix and candidate-specific suffixes to obtain guarded cached costs and negative-control costs.",
+      "why_this_makes_sense": "A gate could hide an error if it is contaminated by the result it is meant to protect. The canary and the matched corrupted-mask control expose that failure mode."
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "Under identical CEM settings, compare full, RankSafe, and randomized-mask candidate evaluations. Measure candidate-cost rank disagreement, first-action agreement, closed-loop success, and native end-to-end latency, and report a planner-level invariance and latency verdict.",
+      "why_this_makes_sense": "The proposal concerns the planner's selection quantity, so speed alone is not enough; ordering and action agreement must also be preserved."
+    }
+  ],
+  "plain_method_steps_zh": [
+    {
+      "step_id": "S1",
+      "what_to_do": "使用 Wall checkpoint、observation/history input 和 CEM forward graph，对 DINO-WM CEM forward graph 做 instrumentation。在选定 boundary 处构造 `M_b`，标记哪些 output 依赖候选 action。结果是 candidate-independent boundary 和 binary action-dependency mask `M_b`。",
+      "why_this_makes_sense": "重复发生的计算是 shared prefix，因此显式 dependency mask 能提供判断这个 prefix 是否可复用的精确条件。"
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "对于每个 observation/history，只计算一次通过已认证 boundary 的 prefix，然后把同一个 cached representation 送入每个 candidate-specific action-conditioned suffix。得到 reusable prefix representation 和 cache-hit path。",
+      "why_this_makes_sense": "Exact reuse 去掉重复计算，同时保持决定 counterfactual outcome 的 action-conditioned 部分不变。"
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "运行每个 action-conditioned suffix。把 deterministic canary 与 full path 比较，出现 mismatch 时回退。与此同时保留一个关闭 fallback 的 randomized-mask negative control；使用 cached prefix 和 candidate-specific suffixes，得到 guarded cached costs 与 negative-control costs。",
+      "why_this_makes_sense": "如果 gate 被它本应保护的结果污染，它可能掩盖错误。canary 和匹配的 corrupted-mask control 可以暴露这种 failure mode。"
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "在相同的 CEM settings 下比较 full、RankSafe 和 randomized-mask candidate evaluations。测量 candidate-cost rank disagreement、first-action agreement、closed-loop success 以及 native end-to-end latency，并给出 planner-level invariance 和 latency verdict。",
+      "why_this_makes_sense": "这个 proposal 关注的是 planner 的 selection quantity，因此只有速度还不够；还必须保持排序和 action agreement。"
+    }
+  ],
+  "plain_method_modules_en": [
+    {
+      "module_id": "M1_mechanism",
+      "purpose_oneline": "Identify the exact action-independent boundary and reuse the shared prefix while preserving each action-conditioned suffix.",
+      "step_ids": [
+        "S1",
+        "S2"
+      ]
+    },
+    {
+      "module_id": "M2_validation",
+      "purpose_oneline": "Guard candidate evaluation and test planner invariance, downstream decisions, and native latency.",
+      "step_ids": [
+        "S3",
+        "S4"
+      ]
+    }
+  ],
+  "plain_method_modules_zh": [
+    {
+      "module_id": "M1_mechanism",
+      "purpose_oneline": "找出精确的 action-independent boundary，复用 shared prefix，同时保留每个 action-conditioned suffix。",
+      "step_ids": [
+        "S1",
+        "S2"
+      ]
+    },
+    {
+      "module_id": "M2_validation",
+      "purpose_oneline": "保护 candidate evaluation，并检验 planner invariance、下游 decision 和 native latency。",
+      "step_ids": [
+        "S3",
+        "S4"
+      ]
+    }
+  ],
+  "falsification_prediction": "The minimal experiment uses the existing DINO-WM Wall checkpoint and trajectories with identical CEM seeds, candidate population, horizon, and controller settings to compare full recomputation, RankSafe exact-prefix caching, and a negative-control cache that forcibly randomizes the action-dependency mask at the chosen boundary with fallback disabled for that control arm. The load-bearing variable is M_b, the binary action-dependency mask for the cached prefix: when M_b is correct, the cached and full runs should make the same CEM first-action choices and retain closed-loop success while native end-to-end planner latency decreases. Randomizing M_b while keeping the cache path and hit opportunity comparable should create candidate-cost rank inversions and lower first-action agreement and closed-loop success, rather than merely changing M_b itself. If exact prefix caching does not reduce native end-to-end latency, or if the randomized-mask control does not degrade downstream decisions, the planner-level invariance mechanism is falsified.",
+  "compute_budget": "2–4 A100 allocation, 12 A100-GPU-days total for graph instrumentation, CPU preparation, smoke checks, matched native latency, and closed-loop Wall evaluation; $0 API cost because the existing checkpoint and local trajectories are used; no full pretraining.",
+  "almost_prior_paper_id": "arxiv:2606.08962v1",
+  "almost_prior_venue_year": "arXiv 2026",
+  "what_step_was_missed": "C$^3$ache would have needed to identify and factor out the observation/history computation that is invariant across counterfactual CEM branches, then connect that exact reuse to a candidate-cost ordering and selected-action preservation test in the DINO-WM planner; its cross-chunk residual construction instead assumes smooth executed behavior and stops at task-success degradation.",
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "feasible",
+      "rationale": "API line ≈ $0 vs $10000 (0%) → feasible. Overall (worse line) → feasible."
+    },
+    "data": {
+      "verdict": "feasible",
+      "rationale": "The existing DINO-WM Wall checkpoint and local trajectories provide the required inputs, with the public DINO-WM Wall setup as a reproducible substitute if traces must be regenerated."
+    },
+    "theoretical": {
+      "verdict": "feasible",
+      "rationale": "The theoretical burden is a graph-level action-independence and ordering-invariance condition that can be checked directly from the instrumented forward path without a new training theorem."
+    },
+    "engineering": {
+      "verdict": "tight",
+      "rationale": "Native graph instrumentation, canary fallback, and matched end-to-end latency measurement are implementable but are the binding cost within the stated 2–4 A100 and 12 GPU-day budget."
+    },
+    "falsification": {
+      "verdict": "feasible",
+      "rationale": "The existing checkpoint, fixed CEM settings, randomized-mask intervention, rank and first-action metrics, and native latency path form a concrete runnable falsification test."
+    },
+    "overall": "tight"
+  },
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "venue_year": "arXiv 2026",
+      "delta": "C$^3$ache reuses same-denoising-step residuals across smooth consecutive WAM chunks with negligible task-success degradation, whereas RankSafe factorizes the DINO-WM CEM forward graph at an exact action-independent observation/history prefix and certifies preservation of counterfactual candidate ordering and the selected action."
+    },
+    {
+      "paper_id": "arxiv:2604.20289v2",
+      "venue_year": "arXiv 2026-04",
+      "delta": "X-Cache gates cross-chunk block residual reuse with structure- and action-aware fingerprints and protects persistent KV updates, whereas RankSafe's reusable object is the exact shared prefix within one CEM candidate set and its acceptance condition is equality of planner-relevant computation, not a similarity threshold."
+    },
+    {
+      "paper_id": "dblp:journals/corr/abs-2603-06331",
+      "venue_year": "arXiv 2026",
+      "delta": "WorldCache adapts token skipping from curvature and drift to maintain rollout fidelity, whereas RankSafe leaves all action-conditioned suffix rollout computation intact and targets the distinct downstream quantity of CEM cost ordering and closed-loop first-action selection."
+    },
+    {
+      "paper_id": "arxiv:2506.10100v1",
+      "venue_year": "arXiv 2025",
+      "delta": "EfficientVLA combines layer pruning, visual-token selection, and temporal action-head feature caching in CogACT, whereas RankSafe changes no DINO-WM parameters or visual tokens and reuses only the exact observation/history prefix shared by counterfactual Wall-planning candidates."
+    },
+    {
+      "paper_id": "arxiv:2411.04983v2",
+      "venue_year": "arXiv 2024",
+      "delta": "DINO-WM supplies the latent visual dynamics and test-time action-sequence optimization but does not define a reusable prefix object or a planner-level cache-validity condition, which RankSafe makes explicit and tests with native latency and closed-loop action agreement."
+    }
+  ],
+  "reviewer_concerns_and_responses": [
+    {
+      "attack": "Paper-pointed threat: openalex:W7172558534 (collision_hits). The Gate, Not the Cache reports that at skip ratio 0.9 on LIBERO-Object, reuse and deletion fall to 0.68 and 0.31 respectively versus dense 1.00 when the next gate is harvested from the model's own accelerated forward; the collapse is invisible to the evaluated action-level detectors. This threatens any cache whose validity signal is self-contaminated across control steps. RankSafe instead computes a full candidate canary under the deterministic contract, falls back on mismatch, and directly measures first-action agreement and closed-loop success, so the hit is a provenance threat already covered by the candidate's guard rather than exact-mechanism overlap.",
+      "severity": "non_blocking",
+      "response": "The provenance concern is addressed in `method_flow.steps` S3: the valid cache path uses a deterministic canary and falls back on mismatch, while the randomized-mask control disables fallback so gate contamination cannot be hidden. The `falsification_prediction` and `sub_claims.c3` fields make the required evidence downstream—rank inversions, first-action agreement, and closed-loop success—not merely a change in the gate itself, matching the Phase 3.2 verdict_rationale.",
+      "fields_changed_to_address": []
+    }
+  ],
+  "domain_landscape": {
+    "n_papers": 72,
+    "pattern_distribution": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 40,
+        "share": 0.56,
+        "saturation_band": "saturated"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 29,
+        "share": 0.4,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 22,
+        "share": 0.31,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 16,
+        "share": 0.22,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 11,
+        "share": 0.15,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 8,
+        "share": 0.11,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 7,
+        "share": 0.1,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 6,
+        "share": 0.08,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 2,
+        "share": 0.03,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      }
+    ],
+    "candidate_uses": [
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "role": "closes Gap 1",
+        "sub_pattern_id": "C11 (Audit and Pivot an Assumption)",
+        "saturation_in_domain": "untested"
+      }
+    ],
+    "position_note": "The candidate's assumption-audit-and-pivot pattern is untested in this corpus, while nearby cache proposals cluster around saturated architectural operator substitution and mid-frequency controlled diagnostics."
+  },
+  "literature_breakdown": {
+    "summary": {
+      "n_phase0_total": 72,
+      "n_phase0_on_topic": 72,
+      "n_phase0_outside_taxonomy": 0,
+      "n_phase3_collision": 135
+    },
+    "phase0_by_pattern": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "pattern_name": "Adapt by Conditioning, Not Retraining",
+        "papers": [
+          {
+            "paper_id": "openalex:W4404261152",
+            "title": "CoPS: Empowering LLM Agents with Provable Cross-Task Experience Sharing",
+            "venue_year": "arXiv (Cornell University) 2024",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in CoPS: Empowering LLM Agents with Provable Cross-Task Experience Sharing"
+          },
+          {
+            "paper_id": "openalex:W4415331407",
+            "title": "Train Once, Reuse Everywhere: Generalizable Implicit In-Context Learning by Routing Attention",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Train Once, Reuse Everywhere: Generalizable Implicit In-Context Learning by Routing Attention"
+          },
+          {
+            "paper_id": "arxiv:2608.01418v1",
+            "title": "Reusing Rollouts under Policy Lag: Prefix-Normalized Policy Optimization for LLM Reinforcement Learning",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Reusing Rollouts under Policy Lag: Prefix-Normalized Policy Optimization for LLM Reinforcement Learning"
+          },
+          {
+            "paper_id": "arxiv:2607.19214v2",
+            "title": "Keeping the Cache Warm Pays: Keepalive Economics for Agentic Workloads",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Keeping the Cache Warm Pays: Keepalive Economics for Agentic Workloads"
+          },
+          {
+            "paper_id": "arxiv:2606.07571v4",
+            "title": "Enabling KV Caching of Shared Prefix for Diffusion Language Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Enabling KV Caching of Shared Prefix for Diffusion Language Models"
+          },
+          {
+            "paper_id": "arxiv:2603.22286v1",
+            "title": "WorldCache: Content-Aware Caching for Accelerated Video World Models",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in WorldCache: Content-Aware Caching for Accelerated Video World Models"
+          },
+          {
+            "paper_id": "arxiv:2609.00243v1",
+            "title": "Invalidation Contracts for Cross-Episode Agent Memory",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Invalidation Contracts for Cross-Episode Agent Memory"
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "pattern_name": "Substitute the Operator or Representation",
+        "papers": [
+          {
+            "paper_id": "openalex:W4411403197",
+            "title": "Cache-Craft: Managing Chunk-Caches for Efficient Retrieval-Augmented Generation",
+            "venue_year": "Proceedings of the ACM on Management of Data 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Cache-Craft: Managing Chunk-Caches for Efficient Retrieval-Augmented Generation"
+          },
+          {
+            "paper_id": "openalex:W4389627470",
+            "title": "ProxDDP: Proximal Constrained Trajectory Optimization",
+            "venue_year": "IEEE Transactions on Robotics 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in ProxDDP: Proximal Constrained Trajectory Optimization"
+          },
+          {
+            "paper_id": "openalex:W7104183605",
+            "title": "Agentic World Modeling for 6G: Near-Real-Time Generative State-Space Reasoning",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Agentic World Modeling for 6G: Near-Real-Time Generative State-Space Reasoning"
+          },
+          {
+            "paper_id": "openalex:W4404370763",
+            "title": "Distributionally Robust Model Predictive Control: Closed-Loop Guarantees and Scalable Algorithms",
+            "venue_year": "IEEE Transactions on Automatic Control 2024",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Distributionally Robust Model Predictive Control: Closed-Loop Guarantees and Scalable Algorithms"
+          },
+          {
+            "paper_id": "arxiv:2609.13692v1",
+            "title": "Prefix Sharing Is a Sorting Problem",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Prefix Sharing Is a Sorting Problem"
+          },
+          {
+            "paper_id": "arxiv:2604.21989v2",
+            "title": "Model Predictive Control of Hybrid Dynamical Systems",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Model Predictive Control of Hybrid Dynamical Systems"
+          },
+          {
+            "paper_id": "arxiv:2606.01143v3",
+            "title": "Schedule-Level Shared-Prefix Reuse for LLM RL Training",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Schedule-Level Shared-Prefix Reuse for LLM RL Training"
+          },
+          {
+            "paper_id": "arxiv:2605.13220v1",
+            "title": "Real-time Gaussian Process based Approximate Model Predictive Trajectory Tracking Control for Autonomous Vehicles",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Real-time Gaussian Process based Approximate Model Predictive Trajectory Tracking Control for Autonomous V"
+          },
+          {
+            "paper_id": "arxiv:2608.25753v1",
+            "title": "Model predictive traction control system based on the Koopman operator",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Model predictive traction control system based on the Koopman operator"
+          },
+          {
+            "paper_id": "arxiv:2606.19719v4",
+            "title": "Closing the Operational Gap in Semantic Caching",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Closing the Operational Gap in Semantic Caching"
+          },
+          {
+            "paper_id": "arxiv:2609.17109v1",
+            "title": "Shared-Prefix KV Reuse Across Standard LoRA Adapters: Quality and Serving Tradeoffs",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Shared-Prefix KV Reuse Across Standard LoRA Adapters: Quality and Serving Tradeoffs"
+          },
+          {
+            "paper_id": "arxiv:2603.29499v2",
+            "title": "Model Predictive Path Integral PID Control for Learning-Based Path Following",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Model Predictive Path Integral PID Control for Learning-Based Path Following"
+          },
+          {
+            "paper_id": "arxiv:2608.00412v1",
+            "title": "C2P-Cache: Scalable GPU L1 Cache Sharing via Concurrent Candidate Pruning",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in C2P-Cache: Scalable GPU L1 Cache Sharing via Concurrent Candidate Pruning"
+          },
+          {
+            "paper_id": "arxiv:2604.11501v2",
+            "title": "Attention-Weighted Value Projection for KV-Cache Compression",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Attention-Weighted Value Projection for KV-Cache Compression"
+          },
+          {
+            "paper_id": "arxiv:2607.15487v1",
+            "title": "Environment Design for Reliable Shared Autonomy with Probabilistic Guarantees",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Environment Design for Reliable Shared Autonomy with Probabilistic Guarantees"
+          },
+          {
+            "paper_id": "arxiv:2604.20289v2",
+            "title": "X-Cache: Cross-Chunk Block Caching for Few-Step Autoregressive World Models Inference",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in X-Cache: Cross-Chunk Block Caching for Few-Step Autoregressive World Models Inference"
+          },
+          {
+            "paper_id": "arxiv:2606.08962v1",
+            "title": "C$^3$ache: Accelerating World Action Models with Cross Inference Chunk Cache",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in C$^3$ache: Accelerating World Action Models with Cross Inference Chunk Cache"
+          },
+          {
+            "paper_id": "dblp:journals/corr/abs-2606-10040",
+            "title": "Efficient-WAM: A 1B-Parameter World-Action Model with Low-Cost Future Imagination",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Efficient-WAM: A 1B-Parameter World-Action Model with Low-Cost Future Imagination"
+          },
+          {
+            "paper_id": "arxiv:2506.10100v1",
+            "title": "EfficientVLA: Training-Free Acceleration and Compression for Vision-Language-Action Models",
+            "venue_year": "arXiv 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in EfficientVLA: Training-Free Acceleration and Compression for Vision-Language-Action Models"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "pattern_name": "Design a Confound-Isolating Diagnostic",
+        "papers": [
+          {
+            "paper_id": "openalex:W7130681088",
+            "title": "Suppressing echo cascades in language-model agents with multi-critic plan selection",
+            "venue_year": "Research Square 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Suppressing echo cascades in language-model agents with multi-critic plan selection"
+          },
+          {
+            "paper_id": "openalex:W7166878126",
+            "title": "Efficient Agent Evaluation via Diversity-Guided User Simulation",
+            "venue_year": "arXiv 2026-01",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Efficient Agent Evaluation via Diversity-Guided User Simulation"
+          },
+          {
+            "paper_id": "openalex:W7124521861",
+            "title": "Multimodal explanations for explainable AI: an empirical study of text-video combinations on end-user understandability",
+            "venue_year": "UPCommons institutional repository (Universitat Politècnica de Catalunya) 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Multimodal explanations for explainable AI: an empirical study of text-video combinations on end-user unde"
+          },
+          {
+            "paper_id": "openalex:W4413468817",
+            "title": "A New Performance Analysis Method for Semantic Caching for Large Language Models",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in A New Performance Analysis Method for Semantic Caching for Large Language Models"
+          },
+          {
+            "paper_id": "openalex:W4413014966",
+            "title": "EMPIRIC: Exploring Missing Pieces in KV Cache Compression for Reducing Computation, Storage, and Latency in Long-Context LLM Inference",
+            "venue_year": "ACM SIGOPS Operating Systems Review 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in EMPIRIC: Exploring Missing Pieces in KV Cache Compression for Reducing Computation, Storage, and Latency i"
+          },
+          {
+            "paper_id": "arxiv:2605.27589v1",
+            "title": "What-If World: A Causal Benchmark for General World Models in Embodied Scenarios",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in What-If World: A Causal Benchmark for General World Models in Embodied Scenarios"
+          },
+          {
+            "paper_id": "arxiv:2605.27494v1",
+            "title": "Grounded Cache Routing for Retrieval-Augmented Generation: When Is It Safe to Reuse an Answer?",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Grounded Cache Routing for Retrieval-Augmented Generation: When Is It Safe to Reuse an Answer?"
+          },
+          {
+            "paper_id": "arxiv:2605.23993v2",
+            "title": "Nano World Models: A Minimalist Implementation of Future Video Prediction",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Nano World Models: A Minimalist Implementation of Future Video Prediction"
+          },
+          {
+            "paper_id": "arxiv:2608.12078v1",
+            "title": "Better Slots, Better Worlds: Representation Quality & Robustness in Object-Centric World Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Better Slots, Better Worlds: Representation Quality & Robustness in Object-Centric World Models"
+          },
+          {
+            "paper_id": "arxiv:2604.07225v3",
+            "title": "A Trajectory-Based Approach to Controlled Invariance and Recursively Feasible MPC",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in A Trajectory-Based Approach to Controlled Invariance and Recursively Feasible MPC"
+          },
+          {
+            "paper_id": "arxiv:2608.11521v2",
+            "title": "Keep the Future, Drop the Rollout: RIFT for World Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Keep the Future, Drop the Rollout: RIFT for World Action Models"
+          },
+          {
+            "paper_id": "arxiv:2607.23844v1",
+            "title": "OmniCache: Multidimensional Hierarchical Feature Caching For Diffusion Models",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in OmniCache: Multidimensional Hierarchical Feature Caching For Diffusion Models"
+          },
+          {
+            "paper_id": "arxiv:2605.31490v2",
+            "title": "Are Full Rollouts Necessary for On-Policy Distillation?",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Are Full Rollouts Necessary for On-Policy Distillation?"
+          },
+          {
+            "paper_id": "arxiv:2608.15584v2",
+            "title": "GraniKV: Asymmetric Granularity KV-Cache Paging for Multi-Agent Systems with Long Shared Prefix",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in GraniKV: Asymmetric Granularity KV-Cache Paging for Multi-Agent Systems with Long Shared Prefix"
+          },
+          {
+            "paper_id": "arxiv:2607.05966v1",
+            "title": "Imagined Rollouts are Kinematic, Not Dynamic: A Diagnosis of Long-Horizon World-Model Failure",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Imagined Rollouts are Kinematic, Not Dynamic: A Diagnosis of Long-Horizon World-Model Failure"
+          },
+          {
+            "paper_id": "arxiv:2605.12131v1",
+            "title": "Rollout Cards: A Reproducibility Standard for Agent Research",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Rollout Cards: A Reproducibility Standard for Agent Research"
+          },
+          {
+            "paper_id": "arxiv:2603.16666v2",
+            "title": "Fast-WAM: Do World Action Models Need Test-time Future Imagination?",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Fast-WAM: Do World Action Models Need Test-time Future Imagination?"
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "pattern_name": "Decompose and Delegate to Solvers",
+        "papers": [
+          {
+            "paper_id": "openalex:W7124468336",
+            "title": "Robot Planning via LLM Proposals and Symbolic Verification",
+            "venue_year": "Machine Learning and Knowledge Extraction 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Robot Planning via LLM Proposals and Symbolic Verification"
+          },
+          {
+            "paper_id": "arxiv:2605.10431v1",
+            "title": "Hierarchical 2-degree-of-freedom control combining Youla-Kucera parameterization and model predictive control",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Hierarchical 2-degree-of-freedom control combining Youla-Kucera parameterization and model predictive cont"
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "pattern_name": "Liberate a Fixed Generative Component",
+        "papers": [
+          {
+            "paper_id": "openalex:W7140238625",
+            "title": "PhyGile: Physics-Prefix Guided Motion Generation for Agile General Humanoid Motion Tracking",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in PhyGile: Physics-Prefix Guided Motion Generation for Agile General Humanoid Motion Tracking"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "pattern_name": "Decompose for Differentiated Treatment",
+        "papers": [
+          {
+            "paper_id": "openalex:W7133570898",
+            "title": "Neural Paging: Learning Context Management Policies for Turing-Complete Agents",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Neural Paging: Learning Context Management Policies for Turing-Complete Agents"
+          },
+          {
+            "paper_id": "openalex:W7128745816",
+            "title": "TVCACHE: A Stateful Tool-Value Cache for Post-Training LLM Agents",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in TVCACHE: A Stateful Tool-Value Cache for Post-Training LLM Agents"
+          },
+          {
+            "paper_id": "openalex:W7106207728",
+            "title": "Seer: Online Context Learning for Fast Synchronous LLM Reinforcement Learning",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Seer: Online Context Learning for Fast Synchronous LLM Reinforcement Learning"
+          },
+          {
+            "paper_id": "openalex:W4408354123",
+            "title": "Enhancing Large Language Model Inference Efficiency via Lookahead Cache Filtering",
+            "venue_year": "arXiv 2025-03",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Enhancing Large Language Model Inference Efficiency via Lookahead Cache Filtering"
+          },
+          {
+            "paper_id": "openalex:W4414197699",
+            "title": "ClusterKV: Manipulating LLM KV Cache in Semantic Space for Recallable Compression",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in ClusterKV: Manipulating LLM KV Cache in Semantic Space for Recallable Compression"
+          },
+          {
+            "paper_id": "openalex:W4404576594",
+            "title": "Cafe-Mpc: A Cascaded-Fidelity Model Predictive Control Framework With Tuning-Free Whole-Body Control",
+            "venue_year": "IEEE Transactions on Robotics 2024",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Cafe-Mpc: A Cascaded-Fidelity Model Predictive Control Framework With Tuning-Free Whole-Body Control"
+          },
+          {
+            "paper_id": "arxiv:2607.29398v1",
+            "title": "OnlineCache: Learning Dynamic Caching Policies with Error Correction for Efficient Diffusion Inference",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in OnlineCache: Learning Dynamic Caching Policies with Error Correction for Efficient Diffusion Inference"
+          },
+          {
+            "paper_id": "arxiv:2608.11152v1",
+            "title": "Scheduling Mixed RL Rollouts Beyond Prefix Locality",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Scheduling Mixed RL Rollouts Beyond Prefix Locality"
+          },
+          {
+            "paper_id": "arxiv:2606.21994v2",
+            "title": "Prefix-Guided On-Policy Distillation: Mining Golden Trajectories from Rollouts",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Prefix-Guided On-Policy Distillation: Mining Golden Trajectories from Rollouts"
+          },
+          {
+            "paper_id": "arxiv:2608.25683v1",
+            "title": "psRL: Efficient Training for Agentic AI via Training-Time Prefix Sharing",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in psRL: Efficient Training for Agentic AI via Training-Time Prefix Sharing"
+          },
+          {
+            "paper_id": "arxiv:2607.17299v1",
+            "title": "WAR: Workload-Aware Rollouts for Synchronous Agentic Reinforcement Learning",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in WAR: Workload-Aware Rollouts for Synchronous Agentic Reinforcement Learning"
+          },
+          {
+            "paper_id": "arxiv:2608.23526v1",
+            "title": "Correcting a learned physical invariant improves world-model rollouts",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Correcting a learned physical invariant improves world-model rollouts"
+          },
+          {
+            "paper_id": "arxiv:2608.04896v1",
+            "title": "When Shared Rollouts Fail in Defensive Driving Evaluation: A NAVSIM Score Basis Audit",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in When Shared Rollouts Fail in Defensive Driving Evaluation: A NAVSIM Score Basis Audit"
+          },
+          {
+            "paper_id": "arxiv:2606.20083v3",
+            "title": "Holo-World: Unified Camera, Object and Weather Control for Video World Model",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Holo-World: Unified Camera, Object and Weather Control for Video World Model"
+          },
+          {
+            "paper_id": "arxiv:2609.04196v1",
+            "title": "Puffin-World: Scaling a Unified Multimodal Model with Native 3D World States",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Puffin-World: Scaling a Unified Multimodal Model with Native 3D World States"
+          },
+          {
+            "paper_id": "dblp:journals/corr/abs-2603-06331",
+            "title": "WorldCache: Accelerating World Models for Free via Heterogeneous Token Caching",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in WorldCache: Accelerating World Models for Free via Heterogeneous Token Caching"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "pattern_name": "Reframe as a Solvable Object",
+        "papers": [
+          {
+            "paper_id": "openalex:W7166826476",
+            "title": "Guidelines as Environments: A World Model Approach to Rule Following",
+            "venue_year": "arXiv 2026-01",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Guidelines as Environments: A World Model Approach to Rule Following"
+          },
+          {
+            "paper_id": "arxiv:2605.22882v4",
+            "title": "GEM-4D: Geometry-Enhanced Video World Models for Robot Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in GEM-4D: Geometry-Enhanced Video World Models for Robot Manipulation"
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "pattern_name": "Encode Structure by Construction",
+        "papers": [
+          {
+            "paper_id": "openalex:W4415344191",
+            "title": "Robust and Efficient Embedded Convex Optimization through First-Order Adaptive Caching",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Robust and Efficient Embedded Convex Optimization through First-Order Adaptive Caching"
+          },
+          {
+            "paper_id": "arxiv:2604.24971v1",
+            "title": "PolyKV: A Shared Asymmetrically-Compressed KV Cache Pool for Multi-Agent LLM Inference",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in PolyKV: A Shared Asymmetrically-Compressed KV Cache Pool for Multi-Agent LLM Inference"
+          },
+          {
+            "paper_id": "arxiv:2605.24322v1",
+            "title": "Causal Physics Steering in Video World Models via Concept Activation Vectors",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in Causal Physics Steering in Video World Models via Concept Activation Vectors"
+          },
+          {
+            "paper_id": "arxiv:2411.04983v2",
+            "title": "DINO-WM: World Models on Pre-trained Visual Features enable Zero-shot Planning",
+            "venue_year": "arXiv 2024",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in DINO-WM: World Models on Pre-trained Visual Features enable Zero-shot Planning"
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "pattern_name": "Unify Heterogeneous Inputs into One Space",
+        "papers": [
+          {
+            "paper_id": "openalex:W4404350116",
+            "title": "$蟺_0$: A Vision-Language-Action Flow Model for General Robot Control",
+            "venue_year": "arXiv (Cornell University) 2024",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in $蟺_0$: A Vision-Language-Action Flow Model for General Robot Control"
+          },
+          {
+            "paper_id": "arxiv:2604.14268v1",
+            "title": "HY-World 2.0: A Multi-Modal World Model for Reconstructing, Generating, and Simulating 3D Worlds",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in HY-World 2.0: A Multi-Modal World Model for Reconstructing, Generating, and Simulating 3D Worlds"
+          },
+          {
+            "paper_id": "arxiv:2608.22788v2",
+            "title": "TailSieve: Partial-Rollout-Guided Tail Routing for LLM Rollouts",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in TailSieve: Partial-Rollout-Guided Tail Routing for LLM Rollouts"
+          },
+          {
+            "paper_id": "arxiv:2604.01985v2",
+            "title": "World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "Addresses the efficiency or reliability bottleneck in World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry"
+          }
+        ]
+      }
+    ],
+    "phase0_outside_taxonomy": [],
+    "phase3_collision": [
+      {
+        "paper_id": "openalex:W7169923855",
+        "title": "Think at 5 Hz, Act at 20 Hz: Asynchronous Fast-Slow Vision-Language-Action Inference for Closed-Loop Driving",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7167460919",
+        "title": "Provenance-Respecting Measure Specifications Without a Global Selector: The PRSpec Normal Form, Graded-Weight Augmentations, and the Classification Extended",
+        "venue_year": "PhilPapers (PhilPapers Foundation) 2026"
+      },
+      {
+        "paper_id": "openalex:W7154789562",
+        "title": "Bridging MARL to SARL: An Order-Independent Multi-Agent Transformer via Latent Consensus",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7168376032",
+        "title": "Paper 114CD: Exhaustive Native-Background Exclusivity of the Exact Two-Property Weighted Holosphere–QCD Color-Connection Mechanism Across the Complete 59,049-Class C3 Family",
+        "venue_year": "Zenodo (CERN European Organization for Nuclear Research) 2026"
+      },
+      {
+        "paper_id": "openalex:W7213371608",
+        "title": "LePlanner: An Iterative Amortized Controller For World Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160565619",
+        "title": "VLMaxxing through FrameMogging Training-Free Anti-Recomputation for Video Vision-Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7163594973",
+        "title": "Leyline: KV Cache Directives for Agentic Inference",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7204157086",
+        "title": "CacheRouter: A Dual-Path Tool Routing Architecture with Cache-Preserving Main-Model Isolation for Long-Tail Tool Discovery",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164973575",
+        "title": "Towards Direct Latent-Space Synthesis for Parallel Branches in LLM-Agent Workflows",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7170224625",
+        "title": "Operational Proto-Introspection in Looped Language Models: Process-Quality Taps, Executable Branching, and the Readout-Control Boundary",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162149387",
+        "title": "How You Move Tells What You'll Do: Trajectory-Conditioned Egocentric Prediction",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7212069311",
+        "title": "CLAMP: Constrained Decoding for Vision-Language Embodied Planning",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7141725691",
+        "title": "A novel interpretable domain adaptive framework for robust damage detection in composite structures under environmental variability",
+        "venue_year": "Structural Health Monitoring 2026"
+      },
+      {
+        "paper_id": "openalex:W7134992050",
+        "title": "PRISM: Streaming Human Motion Generation with Per-Joint Latent Decomposition",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7127951641",
+        "title": "OAT: Ordered Action Tokenization",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7172473983",
+        "title": "SAT Certificates for the Matrix-Multiplication Challenges over F2: All Ten `Expected-UNSAT` Instances Are Satisfiable, and a Type-3-Free Rank-23 Scheme",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7171601634",
+        "title": "Ordered Action Tokens for Visuomotor Policy Learning",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7204555102",
+        "title": "WALL-SS: Scaling Long-horizon World Models via Next-Scale Autoregression",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7204120338",
+        "title": "CDRL: Certification-Driven Reinforcement Learning for Neutrino Flavor Model Discovery",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7165818135",
+        "title": "World Action Models: A Survey",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7167508699",
+        "title": "A deterministic sin2-type algorithm for complex cubic irrationalities with exact periodicity certificates",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7116084174",
+        "title": "mimic-video: Video-Action Models for Generalizable Robot Control Beyond VLAs",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7154994433",
+        "title": "LST-AGCN: A Novel Unified Lightweight Attention Framework for Efficient Skeleton-Based Action Recognition",
+        "venue_year": "Big Data and Cognitive Computing 2026"
+      },
+      {
+        "paper_id": "openalex:W7161035235",
+        "title": "Eviction Notice: Reviving and Advancing Page Cache Attacks",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7204165090",
+        "title": "Where World Models Break: Natural-Input Failure Discovery",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7202182129",
+        "title": "Verication-driven closed-loop multi-agent large language modelframework for code-compliant structural design",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7201914846",
+        "title": "FocusMem: Factorizing Content, Readout, and Trust in Latent GUI Memory",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7125459461",
+        "title": "LangForce: Bayesian Decomposition of Vision Language Action Models via Latent Action Queries",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7143374110",
+        "title": "Federated Retrieval-Augmented Generation for Cybersecurity in Resource-Constrained IoT and Edge Environments: A Deployment-Oriented Scoping Review",
+        "venue_year": "Electronics 2026"
+      },
+      {
+        "paper_id": "openalex:W7166831519",
+        "title": "Learning Diverse Responses with Prefix-Conditioned Supervised Fine-Tuning",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7164447540",
+        "title": "IntentKV: Cross-Turn Intent-Aware KV Cache Pruning for Agent Inference",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164614463",
+        "title": "Partitioned Tags, Shared Data: Reconciling Strict Cache Isolation with Write-Shared Coherence",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7161354161",
+        "title": "F-GRPO: Factorized Group-Relative Policy Optimization for Unified Candidate Generation and Ranking",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4417049983",
+        "title": "Machine Learning for Sensor Analytics: A Comprehensive Review and Benchmark of Boosting Algorithms in Healthcare, Environmental, and Energy Applications",
+        "venue_year": "Sensors 2025"
+      },
+      {
+        "paper_id": "openalex:W7162818009",
+        "title": "MerLean-Prover: A Recursive Looping Harness for Lean 4 Theorem Proving",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7212275277",
+        "title": "Trends in the Psychometric Characteristics of NECO Mathematics Senior School Certificate Examination Over a Period of Five Years (2020-2024) among Osun State Candidates, Nigeria.",
+        "venue_year": "PubMed 2026"
+      },
+      {
+        "paper_id": "openalex:W7204072635",
+        "title": "Nexus: Depth-Adaptive KV-Cache Splicing and Retrieval-Decoupled Tool Routing for Agentic LLMs on Unified Memory",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162893629",
+        "title": "Conformal Certification of Reasoning Trace Prefixes",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7139146850",
+        "title": "Trustworthy Koopman Operator Learning: Invariance Diagnostics and Error Bounds",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7135083712",
+        "title": "Hopf-Like Fibrations on Calabi-Yau Manifolds",
+        "venue_year": "Preprints.org 2026"
+      },
+      {
+        "paper_id": "openalex:W4417027101",
+        "title": "A Survey of Generative Recommendation from a Tri-Decoupled Perspective: Tokenization, Architecture, and Optimization",
+        "venue_year": "Preprints.org 2025"
+      },
+      {
+        "paper_id": "openalex:W7135156718",
+        "title": "Distributed Stability Certification and Control from Local Data",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172558607",
+        "title": "Agentic Coding in the Wild: Characterizing GitHub Copilot Traces at Production Scale",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4415022831",
+        "title": "VaN3Twin: The Multi-Technology V2X Digital Twin With Ray Tracing in the Loop",
+        "venue_year": "IEEE Transactions on Wireless Communications 2026"
+      },
+      {
+        "paper_id": "openalex:W7196948437",
+        "title": "Explainable AI: learning from the learners",
+        "venue_year": "Nature Communications 2026"
+      },
+      {
+        "paper_id": "openalex:W7159734263",
+        "title": "Factorized Latent Reasoning for LLM-based Recommendation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7128618204",
+        "title": "WorldAgent++: A Deep, Constraint- and Verification-Aware Blueprint for Building World Agents",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7152457584",
+        "title": "The need for verification in artificial intelligence-driven scientific discovery",
+        "venue_year": "Philosophical Transactions of the Royal Society A Mathematical Physical and Engineering Sciences 2026"
+      },
+      {
+        "paper_id": "openalex:W7203682138",
+        "title": "A Biophysically-Inspired Feedback Controller for Multi-Class Cache Fairness",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164700783",
+        "title": "LabVLA: Grounding Vision-Language-Action Models in Scientific Laboratories",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7134992451",
+        "title": "Reward Prediction with Factorized World States",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7206164620",
+        "title": "Client-side transparent caching for remote ROOT data analysis",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7161354761",
+        "title": "Ego2World: Compiling Egocentric Cooking Videos into Executable Worlds for Belief-State Planning",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162150154",
+        "title": "Evaluating Temporal Semantic Caching and Workflow Optimization in Agentic Plan-Execute Pipelines",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7168267878",
+        "title": "Strategic Testing and Rank Equivalence *",
+        "venue_year": "SSRN Electronic Journal 2026"
+      },
+      {
+        "paper_id": "openalex:W7139146099",
+        "title": "The Optimizer Quotient and the Certification Trilemma",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172068387",
+        "title": "VITAL-RAG: Invariance Race for Context Allocation in Coding Agents",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7155210330",
+        "title": "An Edge–Mesh–Cloud Telemetry Architecture for High-Mobility Environments: Low-Latency V2V Hazard Dissemination in Competitive Motorcycling",
+        "venue_year": "Telecom 2026"
+      },
+      {
+        "paper_id": "openalex:W4392683874",
+        "title": "Stability-certified on-policy data-driven LQR via recursive learning and policy gradient",
+        "venue_year": "Automatica 2026"
+      },
+      {
+        "paper_id": "openalex:W7126055443",
+        "title": "Towards efficient real-time video motion transfer via generative time series modeling",
+        "venue_year": "Multimedia Tools and Applications 2026"
+      },
+      {
+        "paper_id": "openalex:W7166253030",
+        "title": "Multi-Agent Goal Recognition with Team- and Goal-Conditioned Reinforcement Learning and Factorized Branch-and-Bound",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7124293183",
+        "title": "Deep Learning for U.S. Bond Yield Forecasting: An Enhanced LSTM–LagLasso Framework",
+        "venue_year": "ICCK Transactions on Emerging Topics in Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "openalex:W7169688833",
+        "title": "Proof-or-Stop: Don't Trust the Agent, Trust the Evidence -- Loop Engineering for Verifiable Evidence-Gated Lifecycle Control",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4417275656",
+        "title": "Mechanistic indicators of understanding in large language models",
+        "venue_year": "Philosophical Studies 2026"
+      },
+      {
+        "paper_id": "openalex:W7134992247",
+        "title": "VLN-Cache: Enabling Token Caching for VLN Models with Visual/Semantic Dynamics Awareness",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162149611",
+        "title": "Grounding Driving VLA via Inverse Kinematics",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172558534",
+        "title": "The Gate, Not the Cache: Gate Provenance Bounds the Closed-Loop Reliability of Training-Free VLA Token Skipping",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4407185791",
+        "title": "VLA-Cache: Efficient Vision-Language-Action Manipulation via Adaptive Token Caching",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W7140001043",
+        "title": "EntropyCache: Decoded Token Entropy Guided KV Caching for Diffusion Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4404360744",
+        "title": "DINO-WM: World Models on Pre-trained Visual Features enable Zero-shot Planning",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W7165816881",
+        "title": "Kamera: Unified Position-Invariant Multimodal KV Cache for Training-Free Reuse",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4417302119",
+        "title": "MVAR: Visual Autoregressive Modeling with Scale and Spatial Markovian Conditioning",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W7137920954",
+        "title": "Q Cache: Visual Attention Is Valuable in Less than Half of Decode Layers for Multimodal Large Language Model",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "openalex:W7161203838",
+        "title": "Overcoming Dynamics-Blindness: Training-Free Pace-and-Path Correction for VLA Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7137903069",
+        "title": "Rethinking Visual Token Reduction in LVLMs Under Cross-Modal Misalignment",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "openalex:W7125459974",
+        "title": "TIDAL: Temporally Interleaved Diffusion and Action Loop for High-Frequency VLA Control",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4399437527",
+        "title": "A recurrent network model of planning explains hippocampal replay and human behavior",
+        "venue_year": "Nature Neuroscience 2024"
+      },
+      {
+        "paper_id": "openalex:W4417492126",
+        "title": "SatViT-Seg: A Transformer-Only Lightweight Semantic Segmentation Model for Real-Time Land Cover Mapping of High-Resolution Remote Sensing Imagery on Satellites",
+        "venue_year": "Remote Sensing 2025"
+      },
+      {
+        "paper_id": "openalex:W7201914723",
+        "title": "GUARD: Grounding Uncertainty and Ablation-Based Risk Detection for Diffusion-Based VLAs",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7114933106",
+        "title": "Token Expand-Merge: Training-Free Token Compression for Vision-Language-Action Models",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W4309930795",
+        "title": "Integrated world modeling theory expanded: Implications for the future of consciousness",
+        "venue_year": "Frontiers in Computational Neuroscience 2022"
+      },
+      {
+        "paper_id": "openalex:W4403346092",
+        "title": "SparseVLM: Visual Token Sparsification for Efficient Vision-Language Model Inference",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4414285669",
+        "title": "A review of learning-based dynamics models for robotic manipulation",
+        "venue_year": "Science Robotics 2025"
+      },
+      {
+        "paper_id": "openalex:W4403580265",
+        "title": "Fluid: Scaling Autoregressive Text-to-image Generative Models with Continuous Tokens",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4319836402",
+        "title": "Dynamic capacity planning of hospital resources under COVID-19 uncertainty using approximate dynamic programming",
+        "venue_year": "Journal of the Operational Research Society 2023"
+      },
+      {
+        "paper_id": "openalex:W4411486515",
+        "title": "Bishop: Sparsified Bundling Spiking Transformers on Heterogeneous Cores with Error-constrained Pruning",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4417337020",
+        "title": "Fine-Grained Image Captioning by Ranking Diffusion Transformer",
+        "venue_year": "IEEE Transactions on Image Processing 2025"
+      },
+      {
+        "paper_id": "openalex:W7204531595",
+        "title": "TemporalFlow-VLA: Learning Physically Grounded Execution History for Long-Horizon Robot Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4411735734",
+        "title": "Understanding World or Predicting Future? A Comprehensive Survey of World Models",
+        "venue_year": "ACM Computing Surveys 2025"
+      },
+      {
+        "paper_id": "openalex:W4392940311",
+        "title": "Multimodal Colearning Meets Remote Sensing: Taxonomy, State of the Art, and Future Works",
+        "venue_year": "IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing 2024"
+      },
+      {
+        "paper_id": "openalex:W4382246105",
+        "title": "Recent Advances in Natural Language Processing via Large Pre-trained Language Models: A Survey",
+        "venue_year": "ACM Computing Surveys 2023"
+      },
+      {
+        "paper_id": "openalex:W4378802379",
+        "title": "Machine Learning With Data Assimilation and Uncertainty Quantification for Dynamical Systems: A Review",
+        "venue_year": "IEEE/CAA Journal of Automatica Sinica 2023"
+      },
+      {
+        "paper_id": "openalex:W4404343151",
+        "title": "TokenFormer: Rethinking Transformer Scaling with Tokenized Model Parameters",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4379185073",
+        "title": "Evolving Dispatching Rules for Dynamic Vehicle Routing with Genetic Programming",
+        "venue_year": "Algorithms 2023"
+      },
+      {
+        "paper_id": "openalex:W4309044236",
+        "title": "DRAM Bender: An Extensible and Versatile FPGA-based Infrastructure to Easily Test State-of-the-art DRAM Chips",
+        "venue_year": "arXiv (Cornell University) 2022"
+      },
+      {
+        "paper_id": "openalex:W4406603752",
+        "title": "LeMo: Enabling LEss Token Involvement for MOre Context Fine-tuning",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W4324007064",
+        "title": "BinaryInferno: A Semantic-Driven Approach to Field Inference for Binary Message Formats",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4390061930",
+        "title": "Review of Stochastic Dynamic Vehicle Routing in the Evolving Urban Logistics Environment",
+        "venue_year": "Mathematics 2023"
+      },
+      {
+        "paper_id": "openalex:W7167855458",
+        "title": "ActionCache: Training-Free Acceleration for Vision-Language-Action Models with Action Caching and Refinement",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4406465766",
+        "title": "MiniMax-01: Scaling Foundation Models with Lightning Attention",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W4405706082",
+        "title": "A Review of Large Language Models: Fundamental Architectures, Key Technological Evolutions, Interdisciplinary Technologies Integration, Optimization and Compression Techniques, Applications, and Challenges",
+        "venue_year": "Electronics 2024"
+      },
+      {
+        "paper_id": "openalex:W4384923249",
+        "title": "Health effects of routine measles vaccination and supplementary immunisation activities in 14 high-burden countries: a Dynamic Measles Immunization Calculation Engine (DynaMICE) modelling study",
+        "venue_year": "The Lancet Global Health 2023"
+      },
+      {
+        "paper_id": "openalex:W4402521849",
+        "title": "Evolving routing policies for electric vehicles by means of genetic programming",
+        "venue_year": "Applied Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4362513019",
+        "title": "When and why does motor preparation arise in recurrent neural network models of motor control?",
+        "venue_year": "bioRxiv (Cold Spring Harbor Laboratory) 2023"
+      },
+      {
+        "paper_id": "openalex:W4405739351",
+        "title": "ImagTIDS: an internet of things intrusion detection framework utilizing GADF imaging encoding and improved Transformer",
+        "venue_year": "Complex & Intelligent Systems 2024"
+      },
+      {
+        "paper_id": "openalex:W7201915055",
+        "title": "Graph-Aware Exact Branch-and-Bound with Device Profiles for Static Qubit Allocation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4416178376",
+        "title": "Agentic Lab: An Agentic-physical AI system for cell and organoid experimentation and manufacturing",
+        "venue_year": "bioRxiv (Cold Spring Harbor Laboratory) 2025"
+      },
+      {
+        "paper_id": "openalex:W4404783497",
+        "title": "AgentReview: Exploring Peer Review Dynamics with LLM Agents",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4399282165",
+        "title": "Exploiting Vector Code Semantics for Efficient Data Cache Prefetching",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4389992156",
+        "title": "From Image to Imagination: Exploring the Impact of Generative AI on Cultural Translation in Jewelry Design",
+        "venue_year": "Sustainability 2023"
+      },
+      {
+        "paper_id": "openalex:W4412944859",
+        "title": "PlanGenLLMs: A Modern Survey of LLM Planning Capabilities",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4391305431",
+        "title": "AI and 6G Into the Metaverse: Fundamentals, Challenges and Future Research Trends",
+        "venue_year": "IEEE Open Journal of the Communications Society 2024"
+      },
+      {
+        "paper_id": "openalex:W4408275905",
+        "title": "Constructing future behavior in the hippocampal formation through composition and replay",
+        "venue_year": "Nature Neuroscience 2025"
+      },
+      {
+        "paper_id": "openalex:W4394946817",
+        "title": "Scaling Instructable Agents Across Many Simulated Worlds",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4386316891",
+        "title": "Embedding by Unembedding",
+        "venue_year": "Proceedings of the ACM on Programming Languages 2023"
+      },
+      {
+        "paper_id": "openalex:W4407353207",
+        "title": "Potential Clinical and Economic Impacts of Cutbacks in the President’s Emergency Plan for AIDS Relief Program in South Africa",
+        "venue_year": "Annals of Internal Medicine 2025"
+      },
+      {
+        "paper_id": "openalex:W4391069505",
+        "title": "A framework for higher-order effects & handlers",
+        "venue_year": "Science of Computer Programming 2024"
+      },
+      {
+        "paper_id": "openalex:W4395065101",
+        "title": "A Survey on the Memory Mechanism of Large Language Model based Agents",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4323651349",
+        "title": "Foundation Models for Decision Making: Problems, Methods, and Opportunities",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4384935147",
+        "title": "Service Caching and Computation Reuse Strategies at the Edge: A Survey",
+        "venue_year": "ACM Computing Surveys 2023"
+      },
+      {
+        "paper_id": "openalex:W4389665575",
+        "title": "Chat with the Environment: Interactive Multimodal Perception Using Large Language Models",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4389326242",
+        "title": "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4391953812",
+        "title": "Fashion intelligence in the Metaverse: promise and future prospects",
+        "venue_year": "Artificial Intelligence Review 2024"
+      },
+      {
+        "paper_id": "openalex:W4385660512",
+        "title": "Learning high-level robotic manipulation actions with visual predictive model",
+        "venue_year": "Complex & Intelligent Systems 2023"
+      },
+      {
+        "paper_id": "openalex:W4413132639",
+        "title": "The Imagination Pulse",
+        "venue_year": "Cambridge University Press eBooks 2025"
+      },
+      {
+        "paper_id": "openalex:W4391259573",
+        "title": "Sparcl : A language for partially invertible computation",
+        "venue_year": "Journal of Functional Programming 2024"
+      },
+      {
+        "paper_id": "openalex:W4388134666",
+        "title": "Cost-Effectiveness Analysis of Vaccines for COVID-19 According to Sex, Comorbidity and Socioeconomic Status: A Population Study",
+        "venue_year": "PharmacoEconomics 2023"
+      },
+      {
+        "paper_id": "openalex:W4388105655",
+        "title": "DrM: Mastering Visual Reinforcement Learning through Dormant Ratio Minimization",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4306403480",
+        "title": "Interpretable machine learning methods for predictions in systems biology from omics data",
+        "venue_year": "Frontiers in Molecular Biosciences 2022"
+      },
+      {
+        "paper_id": "openalex:W7203710593",
+        "title": "StructRL: Structured Action-Space Exploration for Flow-Based VLAs",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4362611851",
+        "title": "Environmentally sustainable smart cities and their converging AI, IoT, and big data technologies and solutions: an integrated approach to an extensive literature review",
+        "venue_year": "Energy Informatics 2023"
+      },
+      {
+        "paper_id": "openalex:W4394914663",
+        "title": "Assessing Consumer Behavior in Sustainable Product Markets: A Structural Equation Modeling Approach with Partial Least Squares Analysis",
+        "venue_year": "Sustainability 2024"
+      },
+      {
+        "paper_id": "openalex:W4408612137",
+        "title": "Model checking with memoisation for fast overtaking planning",
+        "venue_year": "Science of Computer Programming 2025"
+      },
+      {
+        "paper_id": "openalex:W4409562197",
+        "title": "A Survey on Model Context Protocol: Architecture, State-of-the-art, Challenges and Future Directions",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4390841447",
+        "title": "Multi-resolution partial differential equations preserved learning framework for spatiotemporal dynamics",
+        "venue_year": "Communications Physics 2024"
+      }
+    ]
+  }
+}

@@ -1,0 +1,272 @@
+{
+  "intake": {
+    "domain": "training-free temporal feature caching for diffusion World Action Models, especially Fast-WAM Optional IDM / video-then-action robotics",
+    "venue": "top-tier ML/robotics conference (not specified)",
+    "time": "bounded research campaign; deadline not specified",
+    "data": [
+      "existing Fast-WAM checkpoint",
+      "validated Fast-WAM Optional IDM path",
+      "receding-observation robot rollouts such as LIBERO/RoboTwin",
+      "native GPU latency traces and action/predicted-observation fidelity measurements"
+    ],
+    "compute": "2-4 A100 GPUs; no full pretraining; use the existing checkpoint and require native latency evidence for speed claims",
+    "expertise": "intermediate-to-advanced ML systems, diffusion inference, and robot learning",
+    "preference": "both",
+    "baseline": "uncached Fast-WAM Optional IDM, with C3ache, EfficientVLA, VLA-Cache, and both WorldCache variants as comparison families",
+    "user_direction": "exploit repeated denoising or video/action-expert computation across timesteps or receding observations with an explicit cache invalidation rule",
+    "excluded_direction": "n_a",
+    "limitation": "Current temporal reuse methods do not establish when an intermediate remains valid after a receding observation changes while preserving both the Optional-IDM action output and the predicted-observation output.",
+    "contribution_type": "method",
+    "_inferred_fields": [
+      "domain",
+      "venue",
+      "time",
+      "data",
+      "expertise",
+      "preference",
+      "baseline",
+      "limitation"
+    ]
+  },
+  "bottleneck_statement": "Temporal feature reuse for conditional diffusion WAMs fails at the boundary between denoising time and receding-observation time: an intermediate can be locally stable along the current denoising trajectory yet stale after the observation or action context changes, and the resulting error can propagate differently into the future-video and action-expert outputs. C3ache (arxiv:2606.08962v1) demonstrates cross-inference residual reuse on a Fast-WAM backbone but uses a periodic refresh schedule, while EfficientVLA (arxiv:2506.10100v1) reuses action-head intermediates within denoising and VLA-Cache reuses adjacent-frame visual KV tokens; the two WorldCache papers (arxiv:2603.06331v2 and arxiv:2603.22286v1) target video/world-model fidelity with token- or content-aware skipping. X-Cache (arxiv:2604.20289v2) adds action-conditioned gating for an autoregressive video simulator, but its validity target remains the video block path. These lines leave a structural gap for Fast-WAM Optional IDM: cache validity under changed observations is not established by a quantity that simultaneously predicts downstream action behavior and future-observation fidelity, so latency gains can silently exchange action correctness for world-model fidelity in closed-loop control.",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "is_anchor": true,
+      "summary_and_residue": "C3ache caches each Fast-WAM action-expert residual at a denoising step and reuses it at the same step in later inference chunks, using a periodic one-full-plus-cached-chunks schedule while reporting wall-clock speed and task success. It does not define an observation-conditioned invalidation condition or jointly check cached action output against Optional-IDM predicted-video fidelity, leaving the coupled cross-output failure this project must beat."
+    },
+    {
+      "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+      "is_anchor": false,
+      "summary_and_residue": "Fast-WAM separates video co-training from explicit future imagination and includes a video-then-action Fast-WAM-IDM variant, while its direct path uses a single-pass video representation for action generation. The controlled study omits the outer autoregressive loop and provides no temporal cache or invalidation protocol for the IDM branch under receding observations."
+    },
+    {
+      "paper_id": "arxiv:2506.10100v1",
+      "is_anchor": false,
+      "summary_and_residue": "EfficientVLA combines language-layer pruning, task-aware visual-token selection, and caching of intermediate attention/MLP outputs in a diffusion action head, reporting 1.93x speedup with a small SIMPLER success-rate drop. Its cache is within denoising of a VLA action head and its evaluation does not include WAM predicted-observation fidelity or receding-observation invalidation, so it does not establish transfer to Optional IDM."
+    },
+    {
+      "paper_id": "arxiv:2603.06331v2",
+      "is_anchor": false,
+      "summary_and_residue": "WorldCache uses curvature-guided heterogeneous token prediction and chaotic-prioritized adaptive skipping to handle long-tailed token difficulty and non-stationary regimes in diffusion world-model denoising. It reports world-model rollout quality but has no Fast-WAM action-expert output or joint action/video fidelity criterion, leaving token drift disconnected from control correctness under receding observations."
+    },
+    {
+      "paper_id": "arxiv:2603.22286v1",
+      "is_anchor": false,
+      "summary_and_residue": "The second WorldCache combines motion- and saliency-aware skip decisions with approximation rules for video world-model generation and reports content and motion fidelity. It does not specify an action-conditioned Fast-WAM/IDM cache or a joint action/predicted-observation fidelity test, so its video-side refresh logic does not close the control-side validity question."
+    },
+    {
+      "paper_id": "arxiv:2604.20289v2",
+      "is_anchor": false,
+      "summary_and_residue": "X-Cache reuses block residuals across autoregressive video chunks and gates reuse with sparse/global/action-condition fingerprints, plus step-zero, anchor-block, KV-update, and maximum-staleness protections. The gated quantity is video-world-model block validity with action as a condition, not the action expert's generated distribution paired with IDM video fidelity, leaving the coupled WAM control test open."
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+    "No retrieved frontier leaf shows that video/world-model fidelity and action-expert fidelity remain coupled under the same cache decision: the WorldCache variants track token or content rollout quality but do not measure the action distribution produced from the cached representation — stakes: practitioners may deploy a visually plausible but control-wrong predictor or preserve task success while corrupting the world signal used for planning; intellectually, modality-specific quality claims cannot support a causal claim about WAM control.",
+    "No retrieved leaf tests whether denoising-trajectory feature change is a sufficient proxy for downstream cache validity when the conditioning observation and output branch change across receding steps, rather than assuming that local feature similarity or drift carries the relevant control semantics — stakes: teams can spend GPU budget tuning thresholds around a proxy that misses task-critical changes, blocking principled cache design; intellectually, the field may mistake a convenient similarity statistic for a necessary validity criterion and draw non-transferring conclusions."
+  ],
+  "method_lineage": {
+    "line": "temporal intermediate-representation reuse for conditional diffusion policies and video-then-action World Action Models",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "iterative conditional diffusion policy",
+        "move": "root formulation maps conditioned noisy latents to actions or future observations through repeated denoising",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "high",
+        "residual_problem": "Repeated denoising is expensive, and a reused feature can deviate from the current latent without a downstream control guarantee.",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n1",
+        "method": "imagine-then-execute conditional video-action WAM",
+        "move": "adds future-observation generation as an intermediate before or alongside action prediction",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "Future-video and action predictions share context, so an approximation error can affect both outputs; prior WAMs do not expose a validity test across receding observations.",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n2",
+        "method": "Fast-WAM video co-training with direct action inference and Fast-WAM-IDM control variant",
+        "move": "decouples video co-training from explicit future generation on the direct path while retaining a video-then-action comparison variant",
+        "parent": "n1",
+        "provenance": "retrieved:semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "The controlled study omits the outer receding loop and does not test temporal cache reuse or invalidation on the Optional-IDM branch.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n3",
+        "method": "C3ache cross-inference chunk residual reuse",
+        "move": "persists same-denoising-step action-expert residuals across consecutive Fast-WAM inference chunks",
+        "parent": "n2",
+        "provenance": "retrieved:arxiv:2606.08962v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Periodic one-full-plus-cached-chunks reuse has no observation-conditioned invalidation and reports task success rather than joint action/video fidelity.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n4",
+        "method": "EfficientVLA temporal action-head cache",
+        "move": "caches intermediate attention and MLP outputs across diffusion denoising steps while also pruning other VLA modules",
+        "parent": null,
+        "provenance": "retrieved:arxiv:2506.10100v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Within-denoising action-head caching does not test changed observations or WAM predicted-observation outputs.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n5",
+        "method": "VLA-Cache adjacent-frame visual KV reuse",
+        "move": "reuses visually stable token KV representations while filtering task-relevant regions with attention and layer-adaptive ratios",
+        "parent": null,
+        "provenance": "retrieved:user_ref:arxiv_id:2502.02175",
+        "age_band": "0-2y",
+        "confidence": "medium",
+        "residual_problem": "Visual-token KV reuse is not a video/action-expert cache and does not define joint WAM action and predicted-observation fidelity.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n6",
+        "method": "WorldCache curvature-guided heterogeneous token caching",
+        "move": "assigns reuse, extrapolation, or damped prediction per token and triggers full computation from chaotic-token drift",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2603.06331v2",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Token-wise denoising drift control is not linked to action-expert outputs under changed observations.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n7",
+        "method": "WorldCache perception-constrained content-aware caching",
+        "move": "uses motion/saliency-aware drift and phase-aware approximation to preserve video-world-model content and motion",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2603.22286v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Video content and motion fidelity are not tied to the action branch or to action-conditioned receding inputs.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n8",
+        "method": "X-Cache cross-chunk block caching for autoregressive video world models",
+        "move": "adds action-aware block-input gating and safety guards to cross-chunk residual reuse in a few-step video simulator",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2604.20289v2",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Action is treated as a conditioning signal for video-block validity; generated action-distribution fidelity paired with IDM video fidelity remains untested.",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n9",
+        "method": "EVO global cache scheduling",
+        "move": "allocates a fixed refresh budget over the block-timestep lattice using offline rollout-driven evolutionary search",
+        "parent": null,
+        "provenance": "retrieved:semanticscholar:b4571fc18735f4575c0138ee98a307b6abe03dbd",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "The frozen task schedule cannot adapt its validity decision to runtime observation-regime changes or a coupled predicted-video output.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "n10",
+        "method": "OnlineCache dynamic cache policy with error correction",
+        "move": "learns instance- and timestep-level reuse decisions and trains an error corrector for diffusion trajectory drift",
+        "parent": null,
+        "provenance": "retrieved:semanticscholar:24aa6f3f5aefcd2463ee56a14077f2bcf11c3fcb",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "The learned policy and corrector are not validated for the coupled Fast-WAM Optional-IDM outputs under receding closed-loop observations.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "Retrieved nodes ground the recent frontier; parametric nodes are awareness-only and are not prior-art citations. The ancestry exposes the inherited assumption that local denoising feature dynamics are an adequate proxy for downstream validity. Collateral families cover visual KV reuse (VLA-Cache), within-denoising action-head reuse (EfficientVLA), offline global scheduling (EVO), and learned diffusion cache control (OnlineCache); they attack related residuals through different mechanisms and are not gap sites. The frontier leaves show distinct residuals for direct Fast-WAM, cross-chunk Fast-WAM residual reuse, video-world token/content caching, and action-aware autoregressive video caching, without inventing a single cure at diagnosis time."
+  },
+  "domain_pattern_distribution": {
+    "n_total": 89,
+    "n_on_topic": 83,
+    "patterns": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 42,
+        "share": 0.51,
+        "saturation_band": "saturated"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 39,
+        "share": 0.47,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 36,
+        "share": 0.43,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 34,
+        "share": 0.41,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 27,
+        "share": 0.33,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 26,
+        "share": 0.31,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 6,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 3,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      }
+    ],
+    "saturation_threshold_saturated": 0.5,
+    "saturation_threshold_untested_count": 1,
+    "notes": "architectural_operator_substitution is the most-used pattern (42/83); caching papers using it still tend to tie validity to denoising or video-side proxies rather than to coupled action and predicted-observation outputs."
+  },
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

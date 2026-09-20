@@ -1,0 +1,92 @@
+#!/bin/bash
+#PBS -N lewm_policy_preflight
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+OUT=${LEWM_PREFLIGHT_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -d "$LEWM_ROOT"
+test -d "$STABLEWM_HOME"
+test -f "$CONTROL/run_lewm_pusht_iteration.py"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+"$PYTHON_BIN" - "$STABLEWM_HOME" "$OUT/policy_preflight.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+from run_lewm_pusht_iteration import prepare_policy_info
+
+stable_home = Path(sys.argv[1])
+output = Path(sys.argv[2])
+observations, _ = prepare_policy_info(stable_home, 2)
+expected_ids = ["pusht_obs_00", "pusht_obs_01"]
+observation_ids = [observation_id for observation_id, _ in observations]
+if observation_ids != expected_ids:
+    raise RuntimeError(f"unexpected observation IDs: {observation_ids}")
+
+required_finite_keys = ["pixels", "goal"]
+keys = []
+tensor_shapes = []
+tensor_finite = []
+for observation_id, info in observations:
+    if not isinstance(info, dict) or not info:
+        raise RuntimeError(f"empty/non-dict info for {observation_id}")
+    missing = [key for key in required_finite_keys if key not in info]
+    if missing:
+        raise RuntimeError(f"missing required keys for {observation_id}: {missing}")
+    keys.append(sorted(info))
+    shapes = {}
+    finite = {}
+    for key, value in info.items():
+        if torch.is_tensor(value):
+            shapes[key] = list(value.shape)
+            finite[key] = (
+                bool(torch.isfinite(value).all().item())
+                if value.is_floating_point() or value.is_complex()
+                else True
+            )
+    for key in required_finite_keys:
+        if not torch.is_tensor(info[key]) or not finite.get(key, False):
+            raise RuntimeError(f"required non-finite/non-tensor key: {observation_id}/{key}")
+    tensor_shapes.append(shapes)
+    tensor_finite.append(finite)
+
+payload = {
+    "status": "PASS",
+    "observation_ids": observation_ids,
+    "required_finite_keys": required_finite_keys,
+    "keys": keys,
+    "tensor_shapes": tensor_shapes,
+    "tensor_finite": tensor_finite,
+}
+output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+print(json.dumps(payload))
+PY
+test -s "$OUT/policy_preflight.json"
+printf 'LEWM_POLICY_PREFLIGHT_PASS\n'

@@ -1,0 +1,82 @@
+#!/bin/bash
+#PBS -N lewm_pusht_asset
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=08:00:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2;; esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+BUNDLE_ROOT=${LEWM_BUNDLE_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/01-iteration-cache-cross-model-planners}
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-$BUNDLE_ROOT/cases/lewm-pusht-cem}
+LEWM_COMMIT=8edfeb336732b5f3ce7b8b210d0ba370a09e2cac
+SWM_COMMIT=10c26dbd5677083fa31dba69eb738b973845e9a4
+OUT=${LEWM_PREP_OUT:-$SCRIPT_DIR/artifacts/$PBS_JOBID}
+mkdir -p "$OUT" "$STAGE_ROOT" "$STAGE_ROOT/hf_pusht" "$STAGE_ROOT/stablewm_home"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+PYTHON_BIN=${LEWM_PREP_PYTHON:-$(command -v python)}
+VENV="$STAGE_ROOT/venv"
+
+if [ ! -d "$STAGE_ROOT/le-wm" ]; then
+  curl -fL --retry 3 --connect-timeout 30 -o "$OUT/le-wm.zip" "https://github.com/lucas-maes/le-wm/archive/$LEWM_COMMIT.zip"
+  unzip -q "$OUT/le-wm.zip" -d "$STAGE_ROOT"
+  mv "$STAGE_ROOT/le-wm-$LEWM_COMMIT" "$STAGE_ROOT/le-wm"
+fi
+if [ ! -d "$STAGE_ROOT/stable-worldmodel" ]; then
+  curl -fL --retry 3 --connect-timeout 30 -o "$OUT/stable-worldmodel.zip" "https://github.com/galilai-group/stable-worldmodel/archive/$SWM_COMMIT.zip"
+  unzip -q "$OUT/stable-worldmodel.zip" -d "$STAGE_ROOT"
+  mv "$STAGE_ROOT/stable-worldmodel-$SWM_COMMIT" "$STAGE_ROOT/stable-worldmodel"
+fi
+
+MODEL_DIR="$STAGE_ROOT/hf_pusht"
+HOME_DIR="$STAGE_ROOT/stablewm_home"
+if [ ! -f "$MODEL_DIR/config.json" ]; then
+  curl -fL --retry 3 --connect-timeout 30 -o "$MODEL_DIR/config.json" "https://huggingface.co/quentinll/lewm-pusht/resolve/main/config.json?download=true"
+fi
+if [ ! -f "$MODEL_DIR/weights.pt" ]; then
+  curl -fL --retry 3 --connect-timeout 30 -o "$MODEL_DIR/weights.pt" "https://huggingface.co/quentinll/lewm-pusht/resolve/main/weights.pt?download=true"
+fi
+if [ ! -f "$HOME_DIR/pusht_expert_train.h5" ]; then
+  curl -fL --retry 3 --connect-timeout 30 -o "$OUT/pusht_expert_train.h5.zst" "https://huggingface.co/datasets/quentinll/lewm-pusht/resolve/main/pusht_expert_train.h5.zst?download=true"
+  if command -v unzstd >/dev/null 2>&1; then
+    unzstd -f "$OUT/pusht_expert_train.h5.zst" -o "$HOME_DIR/pusht_expert_train.h5"
+  else
+    "$PYTHON_BIN" -m pip install --user zstandard
+    "$PYTHON_BIN" -c 'import zstandard as z; from pathlib import Path; s=Path("'$OUT'/pusht_expert_train.h5.zst"); d=Path("'$HOME_DIR'/pusht_expert_train.h5"); z.ZstdDecompressor().copy_stream(s.open("rb"), d.open("wb"))'
+  fi
+fi
+
+if [ ! -f "$STAGE_ROOT/LEWM_DEPS_READY" ]; then
+  if [ ! -x "$VENV/bin/python" ]; then
+    "$PYTHON_BIN" -m venv --system-site-packages "$VENV"
+  fi
+  "$VENV/bin/python" -m pip install --upgrade pip
+  # ASPIRE2A's current NVIDIA driver supports CUDA 12.8.  Pin the official
+  # matching wheels before broad Python dependencies can select CUDA 13.
+  "$VENV/bin/python" -m pip install \
+    torch==2.8.0 torchvision==0.23.0 \
+    --index-url https://download.pytorch.org/whl/cu128
+  # Avoid stable-worldmodel's broad env extra: gymnasium[all] pulls box2d-py,
+  # which is unnecessary for the PushT world and fails to build on this node.
+  "$VENV/bin/python" -m pip install 'stable-worldmodel[train,format]' 'stable-pretraining==0.1.7' 'transformers==4.57.6' hdf5plugin pygame pymunk shapely scikit-learn
+fi
+export STABLEWM_HOME="$HOME_DIR"
+export PYTHONPATH="$STAGE_ROOT/le-wm:$STAGE_ROOT/stable-worldmodel:${PYTHONPATH:-}"
+if [ ! -f "$HOME_DIR/pusht/lewm_object.ckpt" ]; then
+  mkdir -p "$HOME_DIR/pusht"
+  "$VENV/bin/python" "$CONTROL/prepare_lewm_checkpoint.py" --stage-root "$STAGE_ROOT" --stablewm-home "$HOME_DIR"
+fi
+test -f "$HOME_DIR/pusht/lewm_object.ckpt"
+test -f "$HOME_DIR/pusht_expert_train.h5"
+touch "$STAGE_ROOT/LEWM_ASSETS_READY" "$STAGE_ROOT/LEWM_DEPS_READY"
+printf 'LEWM_ASSETS_READY\nLEWM_DEPS_READY\n'

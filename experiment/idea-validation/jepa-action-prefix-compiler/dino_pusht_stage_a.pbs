@@ -1,0 +1,187 @@
+#!/bin/bash
+#PBS -N dino_pusht_apc_stage_a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=08:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+# This wrapper only consumes already-staged files. Runtime extraction is done
+# inside this PBS compute allocation; nothing is downloaded, installed, or
+# hashed by this job.
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+IDEA_ROOT=${DINO_APC_ROOT:-$ROOT/idea-validation/jepa-action-prefix-compiler}
+RUNNER=${DINO_PUSHT_STAGE_A_RUNNER:-$IDEA_ROOT/run_dino_pusht_stage_a.py}
+CONTRACT=${DINO_PUSHT_STAGE_A_CONTRACT:-$IDEA_ROOT/STAGE_A_FREEZE.json}
+PUSHT_FREEZE=${DINO_PUSHT_TRANSFER_FREEZE:-$ROOT/idea-validation/dino-wm-shared-prefix-cache/pusht_transfer/PUSHT_TRANSFER_FREEZE.json}
+CHECKPOINT=${DINO_PUSHT_CHECKPOINT:-$ROOT/checkpoints/outputs/pusht/checkpoints/model_latest.pth}
+CHECKPOINT_CONFIG=${DINO_PUSHT_CHECKPOINT_CONFIG:-$ROOT/checkpoints/outputs/pusht/hydra.yaml}
+OFFICIAL_CONFIG=${DINO_PUSHT_OFFICIAL_CONFIG:-$ROOT/source/conf/plan_pusht.yaml}
+DATA_ROOT=${DINO_PUSHT_DATA_ROOT:-$ROOT/data/pusht_noise}
+DEPS_ROOT=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+DEPS_MARKER=${DINO_PUSHT_DEPS_MARKER:-$ROOT/PUSHT_DEPS_READY_V5}
+JOB_ID=${PBS_JOBID:-unassigned}
+OUT_ROOT=${DINO_PUSHT_STAGE_A_OUT_ROOT:-$ROOT/artifacts}
+OUT="$OUT_ROOT/jepa-action-prefix-dino-pusht-stage-a-$JOB_ID"
+WORK=${TMPDIR:-/tmp}/dino-pusht-apc-stage-a-$JOB_ID
+RUNTIME_ARCHIVE=${DINO_RUNTIME_ARCHIVE:-$ROOT/runtime-complete.tar}
+RUNTIME_ROOT="$WORK/runtime"
+PYTHON="$RUNTIME_ROOT/venv/bin/python"
+TIMEOUT_SECONDS=${DINO_PUSHT_STAGE_A_TIMEOUT_SECONDS:-25200}
+STEPS=${DINO_PUSHT_STAGE_A_STEPS:-500}
+BATCH_SIZE=${DINO_PUSHT_STAGE_A_BATCH_SIZE:-32}
+
+# Refuse accidental login-node execution before runtime/model/data access.
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+
+# Create the job-isolated output before input checks so missing staged inputs
+# still leave a terminal status artifact without touching model/data files.
+test ! -e "$OUT"
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+
+# Preserve a small terminal status even when the runner or a preflight guard
+# fails before it can write its own summary.
+write_fallback_status() {
+  local rc=$?
+  stop_gpu_monitor
+  if [ ! -s "$OUT/runner_exit_status.txt" ]; then
+    printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+    printf '%s\n' wrapper_failed > "$OUT/run_status.txt"
+    printf '%s\n' "job_id=$JOB_ID" > "$OUT/job_status.txt"
+    printf '%s\n' "runner_exit_code=$rc" >> "$OUT/job_status.txt"
+    printf '%s\n' 'status=wrapper_failed' >> "$OUT/job_status.txt"
+    printf '%s\n' 'summary=missing' >> "$OUT/job_status.txt"
+    printf '%s\n' "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT/job_status.txt"
+    touch "$OUT/DINO_PUSHT_STAGE_A_FAILED"
+  fi
+}
+trap write_fallback_status EXIT
+
+# Require a real CUDA allocation and all pre-staged inputs before extraction or
+# model access. The runtime archive is extracted only after these guards and
+# only into this job's private TMPDIR.
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+command -v nvidia-smi >/dev/null 2>&1
+test -f "$RUNTIME_ARCHIVE"
+test -f "$RUNNER"
+test -f "$CONTRACT"
+test -f "$PUSHT_FREEZE"
+test -f "$CHECKPOINT"
+test -f "$CHECKPOINT_CONFIG"
+test -f "$OFFICIAL_CONFIG"
+test -d "$DATA_ROOT"
+test -d "$DEPS_ROOT"
+test -f "$DEPS_MARKER"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$RUNTIME_ARCHIVE" -C "$WORK"
+test -x "$PYTHON"
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export MPLBACKEND=Agg
+export TORCH_HOME="$WORK/runtime/torch"
+export DINO_WM_ROOT="$ROOT"
+export DINO_PUSHT_CHECKPOINT="$CHECKPOINT"
+export DINO_PUSHT_CHECKPOINT_CONFIG="$CHECKPOINT_CONFIG"
+export DINO_PUSHT_OFFICIAL_CONFIG="$OFFICIAL_CONFIG"
+export DINO_PUSHT_DATA_ROOT="$DATA_ROOT"
+export DINO_PUSHT_DEPS_ROOT="$DEPS_ROOT"
+export PYTHONPATH="$DEPS_ROOT:$IDEA_ROOT:$ROOT/source${PYTHONPATH:+:$PYTHONPATH}"
+
+# Check CUDA through the exact runtime that will execute the runner.
+"$PYTHON" - <<'PY'
+import torch
+
+if not torch.cuda.is_available():
+    raise SystemExit("CUDA is unavailable in the staged runtime")
+if torch.cuda.device_count() < 1:
+    raise SystemExit("the staged runtime sees no CUDA device")
+print(f"cuda_device_count={torch.cuda.device_count()}")
+print(f"cuda_device_name={torch.cuda.get_device_name(0)}")
+PY
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi \
+  --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total \
+  --format=csv \
+  -l 30 > "$OUT/gpu_usage.csv" 2>&1 &
+GPU_MONITOR_PID=$!
+
+# Runner CLI contract (the runner may be added later): keep the existing
+# PushT runner interface stable and write stage_a_summary.json beneath
+# --output. The predictor protocol is passed separately as --protocol.
+set +e
+timeout --signal=TERM --kill-after=30s "$TIMEOUT_SECONDS" \
+  "$PYTHON" "$RUNNER" \
+  --root "$ROOT" \
+  --asset-root "$ROOT" \
+  --output "$OUT" \
+  --freeze "$PUSHT_FREEZE" \
+  --protocol "$CONTRACT" \
+  --steps "$STEPS" \
+  --batch-size "$BATCH_SIZE"
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 124 ] || [ "$RUNNER_RC" -eq 137 ] || [ "$RUNNER_RC" -eq 143 ]; then
+  RUN_STATUS=timeout
+elif [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/stage_a_summary.json" ]; then
+  RUN_STATUS=completed
+else
+  RUN_STATUS=failed
+fi
+
+if [ -s "$OUT/stage_a_summary.json" ]; then
+  SUMMARY_STATUS=present
+else
+  SUMMARY_STATUS=missing
+fi
+
+printf '%s\n' "$RUNNER_RC" > "$OUT/runner_exit_status.txt"
+printf '%s\n' "$RUN_STATUS" > "$OUT/run_status.txt"
+printf '%s\n' "job_id=$JOB_ID" > "$OUT/job_status.txt"
+printf '%s\n' "runner_exit_code=$RUNNER_RC" >> "$OUT/job_status.txt"
+printf '%s\n' "status=$RUN_STATUS" >> "$OUT/job_status.txt"
+printf '%s\n' "summary=$SUMMARY_STATUS" >> "$OUT/job_status.txt"
+printf '%s\n' "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT/job_status.txt"
+
+# A zero runner exit without its required summary is not a successful Stage A.
+if [ "$RUNNER_RC" -eq 0 ] && [ "$SUMMARY_STATUS" = present ]; then
+  FINAL_RC=0
+  touch "$OUT/DINO_PUSHT_STAGE_A_COMPLETE"
+else
+  FINAL_RC=$RUNNER_RC
+  if [ "$FINAL_RC" -eq 0 ]; then
+    FINAL_RC=1
+  fi
+  touch "$OUT/DINO_PUSHT_STAGE_A_FAILED"
+fi
+
+printf '%s\n' "$FINAL_RC" > "$OUT/final_exit_status.txt"
+printf '%s\n' "final_exit_code=$FINAL_RC" >> "$OUT/job_status.txt"
+stop_gpu_monitor
+trap - EXIT
+date -u
+exit "$FINAL_RC"

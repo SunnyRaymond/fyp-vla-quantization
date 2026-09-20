@@ -1,0 +1,99 @@
+{
+  "gap_closure_reject_check": {
+    "entries": [
+      {
+        "gap": "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+        "main_pattern": "reframe_as_solvable_object",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "tactical_failure_mode_quoted": "The signature failure is treating the reframing as a mechanical wrapper: taking an established attribution, decomposition, or estimation tool and pointing it at a new input granularity, a new architecture, or a new domain without re-deriving why the resulting scores are faithful to the model. These papers supply the computation but not the justification — no causal validation that the identified components actually drive behavior (only correlation), no axiomatic or soundness argument for why the proposed definition is the 'real' importance, and no confound control, so a reviewer can point to a methodological artifact (a computation-granularity difference, a degenerate zero baseline, an off-manifold perturbation) that explains the result instead.",
+        "reject_lessons_evaluated": [
+          {
+            "lesson_quoted": "Pointing an off-the-shelf decomposition at a coarser input granularity without showing the coarser units preserve the signal reads as a wrapper, not a contribution.",
+            "candidate_match": "no",
+            "reasoning": "The candidate uses native cache units u=(b,k) and stale-value interventions in the unchanged Fast-WAM graph rather than pointing an off-the-shelf decomposition at a coarser granularity."
+          },
+          {
+            "lesson_quoted": "Porting a known attribution technique to a new architecture or domain while ignoring that technique's documented failure modes — and omitting comparisons to alternatives — leaves reviewers unable to see any unique benefit.",
+            "candidate_match": "no",
+            "reasoning": "The candidate explicitly tests stale-value downstream failure modes and compares uncached, periodic, global-gate, homogeneous-control, and pooled-envelope alternatives."
+          },
+          {
+            "lesson_quoted": "Proposing a new attribution definition without an axiomatic or causal argument for why it should count as ground-truth collapses the moment a reviewer asks why this is the real importance.",
+            "candidate_match": "no",
+            "reasoning": "The paired discrepancy is tied to causal leave-one-unit-out stale replay, a unit-label permutation null, and downstream action/video outcomes rather than asserted as a post-hoc importance score."
+          },
+          {
+            "lesson_quoted": "Conflating a methodological artifact — a computation-granularity difference, a degenerate zero baseline — with genuine signal undermines the entire premise once the confound is identified.",
+            "candidate_match": "no",
+            "reasoning": "The design holds the remaining graph fixed, uses the uncached outputs as the comparison, preserves the full source-vector change, and separates operator-only from heterogeneous risk-allocation effects."
+          },
+          {
+            "lesson_quoted": "Building a suppression or privacy method without formalizing the threat model leaves the central guarantee unverifiable regardless of strong empirical numbers.",
+            "candidate_match": "no",
+            "reasoning": "The candidate is a cache-validity and selective-refresh method, not a suppression or privacy method, so this lesson is inapplicable."
+          },
+          {
+            "lesson_quoted": "Surveying or recombining fragmented methods without a unifying axis or a decisive controlled experiment yields a contribution reviewers dismiss as anecdotal.",
+            "candidate_match": "no",
+            "reasoning": "The per-unit risk envelope, paired downstream discrepancy, and constrained refresh operator form one causal axis and are tested by the stated matched-skip-rate control matrix."
+          }
+        ],
+        "verdict": "clear"
+      }
+    ],
+    "verdict": "clear",
+    "reasoning": "The sole gap beginning 'No retrieved frontier leaf establishes an output-preserving validity condition...' uses C00 as a measured, causally tested object rather than a mechanical wrapper. In particular, the lesson about omitting causal validation is not triggered because stale-value replay, the permutation null, and paired downstream outcomes are explicit load-bearing checks."
+  },
+  "recipe_application_check": {
+    "entries": [
+      {
+        "gap": "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "tactical_pattern_quoted": "This cluster recasts an opaque transparency question about an already-trained model or dataset — which feature/datum/internal component is responsible, how uncertain a prediction is, what a hidden representation encodes — as a concrete measurement over a well-studied object: a manifold-constrained counterfactual optimization, a submodular subset selection, an expectation/estimator over marginal statistics, an additive decomposition into a (often sparse) basis, or an influence/Shapley score accumulated along the optimization trajectory. The decisive move is choosing the right unit of analysis and the right faithfulness constraint so the resulting scores reflect the model's actual computation rather than an off-distribution or post-hoc artifact — e.g., searching counterfactuals only on the learned data manifold, decomposing into monosemantic sparse directions before causal tracing, or embedding the explanatory predictors as the primary decision representation.",
+        "instantiation_in_core_mechanism": "The candidate fixes the unit as each native Fast-WAM cache unit u=(b,k), measures the concrete paired downstream discrepancy D_joint from a stale-value replay with all other graph inputs fixed, maps source change d to a monotone empirical upper envelope r_u(d), and validates faithfulness with the unit-label permutation null and held-out action/video outcomes. Its constrained risk-budgeted selective-refresh operator then consumes this measured object while enforcing descendant invalidation, so the mechanism performs C00's unit-and-faithfulness move rather than merely naming it.",
+        "verdict": "applied"
+      }
+    ],
+    "verdict": "applied",
+    "reasoning": "The C00 entry is applied: core_mechanism makes the native cache unit and paired stale-value discrepancy the measurement object, then uses causal intervention and controlled downstream outcomes as its faithfulness test."
+  },
+  "anti_pattern_check": {
+    "composition_set": [
+      "reframe_as_solvable_object",
+      "architectural_operator_substitution"
+    ],
+    "matched_pattern_id": null,
+    "required_mitigation_quoted": null,
+    "mitigation_substantively_delivered": "n/a",
+    "reasoning": "The composition contains no heterogeneous_decomposition component, so none of the three documented reject-favored compositions matches; the companion operator is not itself an anti-pattern trigger."
+  },
+  "paper_pointed_threat": {
+    "threat_paper_id": "openalex:W7203663435",
+    "threat_source": "collision_hits",
+    "threat_channel": "signature",
+    "subsumption_argument": "DriveCache reports that cache tolerance varies with ego translation and rotation, denoising progress, and consecutive reuse length, then uses a training-free action-aware controller with dynamic programming under a calibrated response budget and a causal drift-triggered refresh and replan. This directly threatens any broad novelty claim for action-aware budgeted caching with causal refresh. The supplied abstract does not, however, establish the candidate's narrower per-unit stale-value paired action/video envelope, unit-label heterogeneity null, or dependency-complete descendant invalidation, so it does not establish exact-mechanism overlap; the candidate must explicitly contrast these objects before claiming novelty.",
+    "addressable_via": "Add a differentiation_from_lit entry for DriveCache that contrasts its scene-level planned-motion schedule and causal drift replan with this candidate's per-unit paired-output stale replay, heterogeneity test, and dependency-complete invalidation.",
+    "parametric_family_concern": null
+  },
+  "falsification_structure_check": {
+    "minimal_experiment_named": "yes",
+    "outcome_metric_named": "yes",
+    "load_bearing_variable": "r_u(d)",
+    "negative_control_target": "outcome_metric",
+    "numeric_bar_provenance": "none",
+    "verdict": "sound",
+    "reasoning": "The falsification paragraph names a concrete held-out Fast-WAM comparison at matched skip rates, gives downstream action MSE, predicted-observation MSE, and task-success directions, and names r_u(d) as the load-bearing variable. Its envelope-permutation control targets downstream outcomes while preserving risk budget, skip rate, and dependency logic, and the paragraph contains no unsourced numeric outcome bar."
+  },
+  "blocking_findings_disposition": [],
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "The C00 reject audit is clear and its recipe signature is applied: the candidate defines native per-unit measurements, performs stale-value causal replay, and uses downstream controls, while the anti-pattern composition does not match any hard-floor pair. The falsification structure is sound, but the signature collision DriveCache already combines action-aware cache allocation, a calibrated response budget, and causal refresh/replanning; because that threat is addressable in differentiation_from_lit rather than exact-mechanism overlap, the safe verdict is revise.",
+  "revision_targets": [
+    {
+      "scope": "tactical",
+      "field": "differentiation_from_lit",
+      "issue": "paper_pointed_threat: DriveCache is a recent signature-channel threat to the broad action-aware, response-budgeted, causally refreshed caching framing.",
+      "fix_direction": "Add one explicit DriveCache comparison that concedes its planned-motion, scene-level dynamic-programming schedule and causal drift replan, then states the candidate-specific contribution as per-unit stale-value intervention, paired action/video risk envelope, unit-label heterogeneity test, and dependency-complete descendant invalidation; do not claim that action-aware budgeted refresh alone is novel."
+    }
+  ]
+}

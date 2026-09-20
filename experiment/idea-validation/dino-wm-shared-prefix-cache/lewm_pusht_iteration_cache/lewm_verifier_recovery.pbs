@@ -1,0 +1,73 @@
+#!/bin/bash
+#PBS -N lewm_verifier_recovery
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/idea-validation/dino-wm-shared-prefix-cache/lewm_pusht_iteration_cache}
+SOURCE_JOB_ID=${LEWM_RECOVERY_SOURCE_JOB_ID:-24382364.pbs101}
+OUT=${LEWM_ITERATION_OUT:-$CONTROL/artifacts/$SOURCE_JOB_ID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python}
+
+test -f "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json"
+test -f "$CONTROL/verify_lewm_pusht_iteration.py"
+test -s "$OUT/system_summary.json"
+
+exec > >(tee -a "$OUT/verifier_recovery_job.log") 2>&1
+export PYTHONUNBUFFERED=1
+
+set +e
+"$PYTHON_BIN" "$CONTROL/verify_lewm_pusht_iteration.py" \
+  --freeze "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json" \
+  --summary "$OUT/system_summary.json" > "$OUT/verifier.json"
+VERIFY_STATUS=$?
+set -e
+test -s "$OUT/verifier.json"
+
+"$PYTHON_BIN" - "$OUT/verifier.json" "$OUT/verifier_recovery_summary.json" "$SOURCE_JOB_ID" "$VERIFY_STATUS" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+verifier_path = Path(sys.argv[1])
+summary_path = Path(sys.argv[2])
+source_job_id = sys.argv[3]
+verify_status = int(sys.argv[4])
+result = json.loads(verifier_path.read_text(encoding="utf-8"))
+comparisons = result.get("comparisons", [])
+nonfinite_fields = sum(
+    1
+    for row in comparisons
+    for key, value in row.items()
+    if key not in {"observation_id", "warmup", "technical_repeat"} and value is None
+)
+errors = result.get("errors", [])
+payload = {
+    "source_job_id": source_job_id,
+    "verifier_exit_status": verify_status,
+    "status": result.get("status"),
+    "decision_gate": result.get("decision_gate"),
+    "system_gates": result.get("system_gates"),
+    "latency": result.get("latency"),
+    "comparison_count": len(comparisons),
+    "nonfinite_comparison_field_count": nonfinite_fields,
+    "error_count": len(errors),
+    "error_sample": errors[:3],
+}
+summary_path.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
+print(json.dumps(payload, allow_nan=False))
+PY
+
+printf 'LEWM_VERIFIER_RECOVERY_STATUS=%s\n' "$VERIFY_STATUS"
+exit "$VERIFY_STATUS"

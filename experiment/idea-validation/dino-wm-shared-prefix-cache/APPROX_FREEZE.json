@@ -1,0 +1,98 @@
+{
+  "schema": "dino-wm-shared-prefix-cache.approximate-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-shared-prefix-cache-approximate-screen",
+  "method": "Decision-Safe Approximate Factorized Cache",
+  "purpose": "Engineering screen for whether factorized approximate prefix reuse preserves chained CEM decisions closely enough to justify a 10-case shadow closed-loop run.",
+  "claim_boundary": "This is an engineering screen, not a statistical non-inferiority proof and not evidence of population-level decision equivalence.",
+  "scope": {
+    "task": "DINO-WM Wall",
+    "observations": {
+      "count": 10,
+      "independence_unit": "independent Wall observation with its own complete chained CEM run",
+      "required_ids": "Exactly 10 unique observation_id values in decision.jsonl."
+    },
+    "paths": ["baseline", "factorized_cache"],
+    "fixed_settings": {
+      "candidate_count": 300,
+      "horizon": 5,
+      "topk": 30,
+      "cem_opt_steps": 10,
+      "objective": "Use the existing DINO-WM Wall planner objective without modification.",
+      "tie_break": "Use the existing stable candidate-index tie-break.",
+      "checkpoint_and_preprocessing": "Identical checkpoint, evaluation mode, preprocessing, action bounds, and initial observation for both paths."
+    }
+  },
+  "decision_gate": {
+    "input_file": "decision.jsonl",
+    "record_unit": "one independent observation containing all 10 chained CEM rounds",
+    "required_top_level": ["observation_id", "observation_seed", "candidate_count", "horizon", "topk", "cem_opt_steps", "rounds", "final_first_action_max_abs_diff", "final_first_action_l2_diff"],
+    "round_count": 10,
+    "round_schema": {
+      "required_fields": ["round_index", "noise_schedule_seed", "baseline", "factorized_cache", "topk_set_overlap", "mu_max_abs_diff", "sigma_max_abs_diff", "first_action_max_abs_diff", "first_action_l2_diff"],
+      "path_fields": ["path", "noise_schedule_seed", "input_mu", "input_sigma", "topk_indices", "mu", "sigma", "first_action"],
+      "noise_rule": "The baseline and factorized_cache paths must reset to the same planner noise schedule seed before the planner call. DINO-WM samples CEM noise with CPU torch.randn and then transfers it to CUDA; the seed identifies the whole paired schedule, not an individual CUDA draw.",
+      "chain_rule": "For round r>0, each path input_mu and input_sigma must equal that same path's actual mu and sigma from round r-1. Round 0 inputs must be recorded for both paths and equal each other.",
+      "topk_rule": "topk_indices must contain 30 unique integer candidate indices in [0,299]. topk_set_overlap is the set intersection size divided by 30.",
+      "difference_rule": "mu_max_abs_diff, sigma_max_abs_diff, first_action_max_abs_diff, and first_action_l2_diff are recomputed from the recorded baseline and factorized_cache arrays; all must be finite."
+    },
+    "screen_thresholds": {
+      "final_first_action_max_abs": 0.00001,
+      "per_round_topk_set_overlap": 1.0,
+      "per_round_mu_max_abs": 0.00001,
+      "per_round_sigma_max_abs": 0.00001
+    },
+    "pass_rule": "PASS only when exactly 10 observations each have exactly 10 chained rounds, every round has topk set overlap=1 and mu/sigma max absolute differences <=1e-5, and all 10 final-round first-action max absolute differences <=1e-5. The L2 difference is reported and checked for finiteness but is diagnostic, not an additional gate.",
+    "failure_rule": "Missing, duplicated, non-finite, non-paired, non-chained, or threshold-violating records fail the decision screen."
+  },
+  "system_gate": {
+    "input_file": "system_summary.json",
+    "latency_subset": {
+      "count": 2,
+      "selection": "Exactly two observation_id values drawn from the 10 decision-screen observations.",
+      "paths": ["baseline", "factorized_cache"]
+    },
+    "timing": {
+      "measurement_unit": "observation/planner call",
+      "timing_boundary": "Complete planner call from entry through returned first action",
+      "includes_preprocessing": true,
+      "includes_environment_interaction": false,
+      "device_synchronization": "CUDA synchronize immediately before timing and immediately after timing",
+      "path_order": "interleaved and seeded",
+      "path_order_policy_field": "path_order_policy must equal interleaved_seeded and path_order_seed must be recorded as a scalar identifier",
+      "warmup_repeats": 5,
+      "technical_repeats": 10
+    },
+    "record_fields": ["observation_id", "planner_call_id", "path", "warmup", "technical_repeat", "latency_ms", "peak_memory_mib"],
+    "latency_statistic": "For each latency-subset planner call and path, take the median of its 10 technical repeats. Report the median of the two paired reductions, reduction = 1 - median(factorized_latency)/median(baseline_latency).",
+    "latency_gate": {
+      "minimum_paired_median_reduction": 0.2,
+      "rule": "Paired median latency reduction must be at least 20%."
+    },
+    "memory_statistic": "For each latency-subset planner call and path, take the maximum peak_memory_mib over technical repeats. Compare the maximum factorized-to-baseline ratio across the two calls.",
+    "memory_gate": {
+      "maximum_peak_memory_ratio": 1.1,
+      "rule": "Peak memory ratio must be at most 1.10."
+    },
+    "pass_rule": "PASS only when exactly two observations have complete paired records for both paths, metadata and CUDA synchronization policy match, the latency gate passes, and the memory gate passes."
+  },
+  "authorization": {
+    "shadow_closed_loop": "Authorized only if decision_gate and system_gate both PASS.",
+    "shadow_scope": "10-case Wall shadow closed-loop with identical initial states, goals, seeds, and candidate/noise schedule; compare actions and success without using the approximate path to silently replace the baseline reference.",
+    "not_authorized_on": "Any missing/failed decision or system gate, or any incomplete pairing."
+  },
+  "result_files": {
+    "decision": "JSONL; exactly 10 records",
+    "system": "JSON summary with timing metadata and records array",
+    "verifier": "verify_approx_screen.py"
+  },
+  "prohibited": [
+    "Do not reset mu or sigma between chained CEM rounds.",
+    "Do not use different planner noise schedule seeds between paired paths.",
+    "Do not substitute independent fresh CEM runs for chained runs.",
+    "Do not include environment interaction in planner latency.",
+    "Do not claim statistical non-inferiority, closed-loop success, or population-level equivalence from this screen alone.",
+    "Do not use hashes as a substitute for recorded values or comparisons."
+  ]
+}

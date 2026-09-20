@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -N dino_pusht_assets
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+ARCHIVE_ROOT=${DINO_PUSHT_ARCHIVE_SOURCE:-$ROOT/artifacts/pusht-assets-23952308.pbs101/downloads}
+CHECKPOINT_ARCHIVE="$ARCHIVE_ROOT/official-checkpoints.zip"
+DATASET_ARCHIVE="$ARCHIVE_ROOT/official-pusht-noise.zip"
+CHECKPOINT_TARGET="$ROOT/checkpoints/outputs/pusht"
+DATASET_TARGET="$ROOT/data/pusht_noise"
+MARKER="$ROOT/PUSHT_ASSETS_READY"
+
+# This is a control/data-preparation job, never a login-node workload.
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+command -v unzip >/dev/null 2>&1
+
+# The old job's archives are read-only inputs.  Do not redownload, overwrite,
+# or merge into an existing model/data directory.
+test -f "$CHECKPOINT_ARCHIVE"
+test -f "$DATASET_ARCHIVE"
+test ! -e "$CHECKPOINT_TARGET"
+test ! -e "$DATASET_TARGET"
+
+mkdir -p "$ROOT/checkpoints" "$ROOT/data"
+unzip -q "$CHECKPOINT_ARCHIVE" 'outputs/pusht/*' -d "$ROOT/checkpoints"
+unzip -q "$DATASET_ARCHIVE" 'pusht_noise/*' -d "$ROOT/data"
+
+# Publish the marker only after the frozen required paths are present.
+test -f "$ROOT/checkpoints/outputs/pusht/hydra.yaml"
+test -f "$ROOT/checkpoints/outputs/pusht/checkpoints/model_latest.pth"
+for split in train val; do
+  test -f "$ROOT/data/pusht_noise/$split/states.pth"
+  test -f "$ROOT/data/pusht_noise/$split/rel_actions.pth"
+  test -f "$ROOT/data/pusht_noise/$split/seq_lengths.pkl"
+  test -f "$ROOT/data/pusht_noise/$split/velocities.pth"
+  test -f "$ROOT/data/pusht_noise/$split/obses/episode_000.mp4"
+done
+printf '%s\n' '{"schema":"dino-wm-shared-prefix-cache.pusht-assets-ready","source_job":"23952308.pbs101","hashes":"not computed"}' > "$MARKER.partial"
+mv "$MARKER.partial" "$MARKER"
+date

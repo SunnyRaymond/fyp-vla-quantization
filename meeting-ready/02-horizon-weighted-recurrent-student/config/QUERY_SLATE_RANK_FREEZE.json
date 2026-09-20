@@ -1,0 +1,346 @@
+{
+  "schema": "jepa-action-prefix-compiler.query-slate-rank-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-action-query-slate-planner-rank",
+  "purpose": "Test whether giving the planner-aware loss a within-context action slate repairs candidate ranking at fixed h256 Dhigh context support, training budget, and action-conditioned predictor interface.",
+  "research_question": {
+    "primary": "At fixed h256, 256-context Dhigh support, and 1500 updates, does adding a fixed planner-aware listwise KL over multiple action queries from the same context improve held-out candidate ranking over the identical slate-trained latent-MSE control?",
+    "mechanism": "A single action query per context supplies pointwise latent regression, while a within-context slate supplies relative planner-order supervision. The treatment changes only the training objective; the student inference interface is unchanged.",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; the 300 candidates inside a block are nested measurements, not independent replicates",
+    "primary_comparison": "slate_rank treatment minus slate_mse control at step 1500",
+    "external_reference": "The completed h256-Dhigh density result is descriptive context, not the paired control for this experiment."
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "horizon": 5,
+    "student_class": "NativeDinoPrefixStudent",
+    "student_hidden_dim": 256,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "transformer_depth": 2,
+    "transformer_nhead": 4,
+    "dim_feedforward": 1024,
+    "dropout": 0.0,
+    "activation": "gelu",
+    "norm_first": true,
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_receives_goal": false,
+    "student_encode_obs_calls": false,
+    "closed_loop": false,
+    "cem_execution": false,
+    "environment_interaction": false,
+    "lewm_transfer": false,
+    "observation_encoder_scope": "out of scope; use cached native observation latents",
+    "query_slate_scope": "action-conditioned predictor only"
+  },
+  "entry_context": {
+    "prior_evidence": {
+      "optimization_length": "FAIL: 1500-step extension did not materially improve ranking",
+      "capacity_h256": "FAIL: h256 did not improve ranking over h128 at the frozen budget",
+      "context_density": "FAIL effect gate, but all 16 Spearman deltas were positive and Dhigh/Dlow logged teacher-relative MSE ratio was 0.5001",
+      "old_rankdistill": "Two-anchor paired ranking smoke passed its narrow paired direction, but absolute fidelity and latent non-inferiority failed"
+    },
+    "authorization": "The next factor is the missing within-context action-ranking supervision, not another capacity, step, or context-density retune.",
+    "not_a_retest": "This cell changes the supervision structure and action-slate grouping; it must not be described as a rerun of the old 500-step rank-distill cell."
+  },
+  "data_and_manifest": {
+    "train_context_pool": {
+      "source": "the exact completed Dhigh context-density manifest",
+      "train_contexts": 256,
+      "train_episodes": 32,
+      "contexts_per_episode": 8,
+      "old_rows": 128,
+      "appended_rows": 128,
+      "manifest_policy": "Preserve the manifest rows, feature values, targets, episode IDs, ordinals, and order exactly; do not regenerate, reorder, subsample, or add trajectories."
+    },
+    "heldout_split": {
+      "contexts": 8,
+      "fresh_action_prefix_seeds": [20264925, 20264926],
+      "change": "none",
+      "reuse_exact_contexts_candidates_and_order": true,
+      "heldout_exclusion": "No held-out context, action, seed, candidate, or goal may enter training."
+    },
+    "external_dhigh_reference": {
+      "role": "read-only descriptive diagnostic",
+      "completed_job": "24477396.pbs101",
+      "local_artifact": "artifacts/24477396.pbs101/context_density_summary.json",
+      "variant": "h256-Dhigh",
+      "paired_control": false,
+      "allowed_use": "Report absolute ranking, logged-action relative MSE, causality, and predictor-only latency beside the new arms; do not subtract Dhigh metrics to define the primary slate effect.",
+      "forbidden_use": "Do not claim the new treatment beats Dhigh as a causal or paired comparison, because its initialization, context schedule, and query schedule are not the paired control defined here."
+    }
+  },
+  "arms": {
+    "slate_mse_control": {
+      "name": "slate latent-MSE control",
+      "loss": "mean dense native-latent MSE over the 32 query rows",
+      "rank_loss_weight": 0.0
+    },
+    "slate_rank_treatment": {
+      "name": "slate planner-aware rank treatment",
+      "loss": "mean dense native-latent MSE over the 32 query rows plus fixed planner-aware listwise KL",
+      "rank_loss_weight": 0.1
+    },
+    "pairing": "Both arms receive the same initial state dictionary, context schedule, exact precomputed action slates, detached teacher targets, optimizer hyperparameters, update count, snapshot schedule, held-out candidate bank, and timing inputs. Only the treatment rank-loss term is different.",
+    "initialization": {
+      "procedure": "Create one fresh h256 student, clone its initial state dictionary into two students, and create independent AdamW optimizer states from the same initial parameter values.",
+      "initialization_seed": 99,
+      "state_dict_copy": true,
+      "load_h128_checkpoint": false,
+      "load_dhigh_checkpoint": false
+    }
+  },
+  "action_query_slate": {
+    "definition": "Each selected training context contributes one fixed four-query slate. Query slot 0 is retained primary logged action; slots 1-3 are planner-like counterfactual action prefixes.",
+    "queries_per_context": 4,
+    "slate_group_count_per_update": 8,
+    "effective_query_rows_per_update": 32,
+    "primitive_action_shape": [5, 2],
+    "packed_action_token_shape": [5, 10],
+    "normalized_action_coordinate_system": "the same normalized primitive-action coordinates consumed by the official DINO-WM predictor",
+    "slot_order": [
+      "primary_logged",
+      "gaussian_planner_init_a",
+      "gaussian_planner_init_b",
+      "one_step_cem_resample"
+    ],
+    "primary_logged": {
+      "source": "the selected Dhigh train-manifest context's real five-token action prefix",
+      "preserve_exact_values": true,
+      "student_target": "frozen teacher rollout for this exact prefix"
+    },
+    "gaussian_planner_init_a": {
+      "distribution": "independent Normal(0,1) per primitive-action coordinate",
+      "rng": "CPU torch.Generator",
+      "seed_formula": "action_slate_seed + 1009 * context_ordinal"
+    },
+    "gaussian_planner_init_b": {
+      "distribution": "independent Normal(0,1) per primitive-action coordinate",
+      "rng": "CPU torch.Generator independent of gaussian_planner_init_a",
+      "seed_formula": "action_slate_seed + 100000 + 1009 * context_ordinal"
+    },
+    "one_step_cem_resample": {
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "candidate_distribution": "independent Normal(0,1) per coordinate",
+      "score": "frozen teacher terminal objective for the same context goal",
+      "elite_rule": "select the K lowest-cost candidates",
+      "resample": "one diagonal Normal sample using elite mean and per-coordinate max(variance,0.05)",
+      "variance_floor": 0.05,
+      "rng": "CPU torch.Generator",
+      "seed_formula": "cem_seed + 1009 * context_ordinal",
+      "student_result_used": false,
+      "training_only": true,
+      "full_cem_claim": false
+    },
+    "distinctness": {
+      "requirement": "All four prefixes in every context slate must be pairwise distinct by exact tensor comparison.",
+      "validation": "Check the precomputed slate bank before step 1; a collision invalidates the cell.",
+      "replacement_policy": "No result-dependent resampling or retuning is allowed; a deterministic seed collision is an invalid run."
+    },
+    "precomputation": "Generate the complete 256-context x 4-query slate bank on CPU before the first update, then use immutable lookup during both arms."
+  },
+  "context_schedule": {
+    "pool_size": 256,
+    "contexts_per_update": 8,
+    "sampling": "eight distinct context ordinals per update",
+    "schedule_generation": "Use a CPU generator to make a fresh permutation of 0..255 every 32 updates and consume eight consecutive ordinals per update; continue the fixed sequence for 1500 updates.",
+    "schedule_seed": 20260931,
+    "no_within_update_context_duplicates": true,
+    "approximately_balanced_exposure": "Every context is exposed 46 or 47 times over 12000 context slots.",
+    "shared_between_arms": true,
+    "schedule_precomputed_before_training": true,
+    "role_schedule": "No independent logged/Gaussian/CEM role permutation; the four slots are fixed within every context slate."
+  },
+  "teacher_targets": {
+    "teacher": "frozen official DINO-WM autoregressive predictor",
+    "input": "cached native observation latent z_t plus each exact normalized five-step action prefix",
+    "output": "five future native observation latents",
+    "detached": true,
+    "target_loss": "dense native-latent MSE only",
+    "target_generation": "Generate one detached teacher target for each of the 1024 precomputed slate rows before step 1; both arms use identical target rows.",
+    "goal_usage": "The context goal is used only for CEM proposal scoring and planner-aware training/evaluation costs; it is never concatenated with or passed into the student."
+  },
+  "training": {
+    "steps": 1500,
+    "snapshot_steps": [500, 1000, 1500],
+    "batch_semantics": {
+      "effective_batch_query_rows": 32,
+      "slates_per_update": 8,
+      "queries_per_slate": 4,
+      "microbatch_query_rows": 32,
+      "microbatch_slates": 8,
+      "gradient_accumulation_steps": 1,
+      "optimizer_steps_per_update_per_arm": 1,
+      "microbatch_split_allowed": false,
+      "reason": "A rank group must remain complete inside the single microbatch; no partial-slate gradient or cross-microbatch KL is permitted."
+    },
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "scheduler": null,
+    "weight_decay": 0.01,
+    "betas": [0.9, 0.999],
+    "eps": 1e-08,
+    "early_stop": false,
+    "retune_after_observation": false,
+    "training_seed": 20260930,
+    "context_schedule_seed": 20260931,
+    "action_slate_seed": 20260932,
+    "cem_seed": 20260933,
+    "timing_action_prefix_seed": 20270925,
+    "rng_policy": "Generate initialization, context schedule, Gaussian actions, CEM proposals, held-out candidates, and timing candidates with explicit CPU generators before GPU transfer; do not use result-dependent RNG calls.",
+    "arm_update_order": "At even updates evaluate/update control then treatment; at odd updates treatment then control. The order counterbalances same-GPU sequencing while the inputs remain identical.",
+    "loss_reduction": {
+      "latent_mse": "mean over all 32 query rows, horizons, and native latent dimensions",
+      "rank_group_kl": "mean over the eight complete four-query context slates",
+      "treatment_total": "latent_mse + 0.1 * rank_group_kl",
+      "control_total": "latent_mse"
+    }
+  },
+  "planner_aware_loss": {
+    "type": "within-context listwise KL",
+    "rank_group": "the four action queries sharing one context ordinal in one update; no cross-context ranking",
+    "cost": "official terminal latent-to-goal objective at horizon 5",
+    "direction": "lower cost is better",
+    "standardization": "z-score the four costs within each group using group mean and std floor 1e-6",
+    "teacher_distribution": "softmax(-standardized_teacher_cost / temperature)",
+    "student_distribution": "softmax(-standardized_student_cost / temperature)",
+    "temperature": 1.0,
+    "divergence": "KL(teacher_distribution || student_distribution)",
+    "teacher_cost_detached": true,
+    "student_cost_differentiable": true,
+    "student_goal_input": false,
+    "lambda": 0.1,
+    "fixed_from": "the previous rank-distillation smoke protocol; no new weight or temperature sweep"
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "contexts": 8,
+      "fresh_action_prefix_seeds": [20264925, 20264926],
+      "blocks": 16,
+      "candidates_per_block": 300,
+      "topk": 30,
+      "candidate_distribution": "the existing frozen CPU-generated normalized Gaussian candidate bank",
+      "pairing_key": "(action_prefix_seed, heldout_context_index)",
+      "shared_inputs": "The same held-out context, candidate action tensor, goal, and frozen teacher costs are used for control, treatment, and teacher.",
+      "primary_unit": "block, not candidate",
+      "metrics": ["objective Spearman", "top-30 overlap", "teacher-relative native-latent MSE", "per-horizon cosine"]
+    },
+    "logged_action_fidelity": {
+      "contexts": 8,
+      "action": "each heldout context's real logged action prefix",
+      "target": "frozen teacher rollout",
+      "statistic": "mean dense relative native-latent MSE",
+      "primary_ratio": "slate_rank treatment / slate_mse control",
+      "external_dhigh_ratio": "report descriptively only"
+    },
+    "causality": {
+      "procedure": "For each arm and each prefix horizon k, change only action tokens after k while keeping z_t and the first k tokens fixed.",
+      "metric": "maximum absolute output difference at horizon k",
+      "threshold": 0.000001
+    },
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through frozen teacher rollout or one student forward",
+      "batch_size": 300,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "primary_arm": "slate_rank_treatment",
+      "reduction": "1 - median(student_ms) / median(teacher_ms)"
+    },
+    "telemetry": "During GPU execution append utilization and VRAM samples every 30 seconds to the job log."
+  },
+  "gates": {
+    "paired_integrity": {
+      "both_arms_finite": true,
+      "both_arms_training_last10_to_first_mse_ratio_max": 0.8,
+      "future_action_leakage_max_abs_per_arm": 0.000001,
+      "student_encode_obs_hidden": false,
+      "student_goal_input_hidden": true,
+      "same_initial_state": true,
+      "same_context_schedule": true,
+      "same_action_slates": true,
+      "all_slate_groups_complete": true,
+      "all_slate_queries_pairwise_distinct": true,
+      "heldout_split_unchanged": true,
+      "no_oom_nan_or_silent_fallback": true
+    },
+    "slate_ranking_effect": {
+      "comparison": "slate_rank treatment - slate_mse control at step 1500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "query_slate_planner_ranking_effect_established",
+      "decision_label_if_fail": "query_slate_planner_ranking_effect_not_established"
+    },
+    "absolute_fidelity": {
+      "primary_arm": "slate_rank_treatment",
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "latent_noninferiority": {
+      "comparison": "slate_rank treatment / slate_mse control on heldout logged-action teacher-relative MSE",
+      "ratio_max": 1.25
+    },
+    "latency": {
+      "primary_arm": "slate_rank_treatment",
+      "predictor_only_reduction_min": 0.2
+    },
+    "external_dhigh": {
+      "role": "diagnostic_only",
+      "does_not_gate_paired_effect": true,
+      "does_not_define_control": true
+    },
+    "decision_levels": {
+      "paired_effect": "PASS iff paired_integrity and all four slate_ranking_effect thresholds pass.",
+      "full_replacement": "GO iff paired_integrity, slate_ranking_effect, treatment absolute fidelity, treatment/control MSE non-inferiority, and treatment predictor-only latency all pass.",
+      "slate_supported_replacement": "GO iff paired_effect and full_replacement are both GO.",
+      "invalidity": "If pairing, slate distinctness, manifest, or integrity is invalid, report NO-GO and do not interpret ranking deltas.",
+      "no_retuning": "Any failed gate is preserved; do not change lambda, temperature, slate composition, steps, seeds, or thresholds after observing results."
+    }
+  },
+  "required_summary_fields": {
+    "pairing": ["initial_state_equal", "context_schedule_equal", "slate_bank_equal", "heldout_candidate_bank_equal", "paired_block_ids"],
+    "training": ["per_step_latent_mse_control", "per_step_latent_mse_treatment", "per_step_rank_kl_treatment", "last10_to_first_ratio_each_arm", "snapshot_steps"],
+    "slate": ["context_count", "queries_per_context", "query_slot_counts", "pairwise_distinct_passed", "teacher_target_cache_rows", "rank_group_count_per_update"],
+    "evaluation": ["per_block_control", "per_block_treatment", "paired_deltas", "absolute_treatment", "logged_mse_ratio", "causality_each_arm", "latency_each_arm", "external_dhigh_diagnostic"],
+    "decisions": ["integrity", "paired_effect", "full_replacement", "slate_supported_replacement", "claim_boundary"]
+  },
+  "claim_boundary": {
+    "allowed_if_paired_effect_pass": "Under this frozen DINO-WM PushT predictor-level contract, adding a fixed within-context action-query slate plus planner-aware listwise KL improves held-out candidate ranking over the identical slate-trained latent-MSE control.",
+    "allowed_if_full_replacement_go": "The treatment meets the stated predictor-level replacement gates while preserving the action-conditioned inference interface.",
+    "external_dhigh_sentence": "Dhigh is a descriptive context-support reference only; it is not evidence for the paired treatment effect.",
+    "forbidden": [
+      "query-slate effect on encode_obs",
+      "full planner or closed-loop task success",
+      "multi-step CEM integration or end-to-end control latency",
+      "LeWM or Fast-LeWM transfer",
+      "all-JEPA universality",
+      "population-level inference from 16 nested blocks",
+      "native low-bit deployment claim",
+      "causal claims beyond this paired cell"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "hash": false,
+    "gpu_telemetry_seconds": 30,
+    "do_not_submit_during_freeze_creation": true,
+    "primary_artifacts": ["query-slate summary JSON", "job log", "job status", "GPU telemetry"],
+    "checkpoint_return": "No checkpoint retrieval is required as the primary result artifact."
+  }
+}

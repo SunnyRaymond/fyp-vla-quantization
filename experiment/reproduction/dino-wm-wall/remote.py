@@ -4,7 +4,7 @@ import sys
 import stat
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'nscc-access'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'nscc-access'))
 from aspire2a_shell import connect
 import paramiko
 

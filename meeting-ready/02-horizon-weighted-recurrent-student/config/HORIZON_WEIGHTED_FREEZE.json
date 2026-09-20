@@ -1,0 +1,325 @@
+{
+  "schema": "jepa-action-prefix-compiler.horizon-weighted-recurrent-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-horizon-weighted-recurrent-transition",
+  "purpose": "Test one frozen horizon-weighted supervision cell for the shared recurrent action-conditioned predictor, using the completed uniform-MSE recurrent run as a read-only paired reference.",
+  "research_question": {
+    "primary": "At the same recurrent h256 architecture, data, seeds, slate bank, teacher targets, and 1500-update budget, does weighting later prediction horizons more strongly improve held-out planner-candidate ranking without sacrificing absolute fidelity or predictor latency?",
+    "mechanism": "The planner ranking is determined by the terminal h5 rollout, while the uniform recurrent loss gives every horizon equal weight and the observed held-out relative MSE rises from approximately 0.012 at early horizons to approximately 0.038 at h5. A fixed linear horizon weight directly emphasizes the terminal part of the same free-running rollout.",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; 300 candidates inside a block are nested measurements, not independent replicates",
+    "primary_comparison": "horizon-weighted treatment minus read-only uniform-MSE recurrent control at step 1500",
+    "scope": "action-conditioned predictor only"
+  },
+  "entry_evidence": {
+    "uniform_recurrent_reference": {
+      "job_id": "24503839.pbs101",
+      "result": "positive direction but effect-size gate failed",
+      "spearman_delta_median": 0.037226,
+      "spearman_positive_blocks": "15/16",
+      "top30_delta_median": 0.066667,
+      "top30_positive_blocks": "12/16",
+      "absolute_fidelity": "FAIL",
+      "logged_mse_noninferiority": "PASS",
+      "predictor_latency": "PASS"
+    },
+    "horizon_error_pattern": "The held-out per-horizon relative MSE was observed to rise from about 0.012 toward about 0.038 at the terminal horizon; this motivates one predetermined loss reweighting, not a post-hoc retune.",
+    "optimization_pattern": "The uniform recurrent ranking was approximately flat or slightly weaker from step1000 to step1500; therefore step1500 remains the formal endpoint and step1000 cannot be selected post hoc.",
+    "authorization": "Use one new loss cell; do not alter the recurrent architecture, data, schedule, seeds, gates, or inference interface."
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "horizon": 5,
+    "frameskip": 5,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "student_hidden_dim": 256,
+    "student_class": "RecurrentNativeLatentTransitionStudent",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_receives_goal": false,
+    "student_encode_obs_calls": false,
+    "student_contains_teacher_or_source_parameters": false,
+    "closed_loop": false,
+    "cem_execution": false,
+    "environment_interaction": false,
+    "observation_encoder_scope": "out of scope; use cached native observation latents",
+    "predictor_scope": "action-conditioned predictor only",
+    "architecture_change": false,
+    "inference_interface_change": false
+  },
+  "baseline": {
+    "role": "read_only_authoritative_uniform_loss_reference",
+    "remote_job_id": "24503839.pbs101",
+    "local_summary": "artifacts/24503839.pbs101/recurrent_student_summary.json",
+    "local_result": "RESULT_RECURRENT_STUDENT.zh.md",
+    "arm": "uniform_recurrent_control",
+    "snapshot": "step_1500",
+    "architecture": "RecurrentNativeLatentTransitionStudent, h256, shared residual transition",
+    "loss": "mean dense native-latent MSE over all query rows, five horizons, modalities, and latent dimensions",
+    "read_only": true,
+    "rerun": false,
+    "checkpoint_load": false,
+    "summary_mutation": false,
+    "pairing_key": "(action_prefix_seed, heldout_context_index)",
+    "reference_metrics": {
+      "spearman_median": 0.966345,
+      "spearman_minimum": 0.881070,
+      "top30_median": 0.8,
+      "top30_minimum": 0.533333
+    },
+    "initialization_pairing": "Use the same initialization seed and procedure for the new treatment; the historical control remains read-only and is not rerun or loaded."
+  },
+  "treatment": {
+    "name": "horizon_weighted_recurrent",
+    "class": "RecurrentNativeLatentTransitionStudent",
+    "hidden_dim": 256,
+    "architecture": "Exactly the recurrent architecture in RECURRENT_STUDENT_FREEZE.json; one shared cell and shared output heads reused for k=0..4.",
+    "only_changed_factor": "dense latent-MSE horizon reduction",
+    "inputs": {
+      "initial_visual": "cached native context[visual][:,-1] with shape [B, patches, 384]",
+      "initial_proprio": "cached native context[proprio][:,-1] with shape [B, 10]",
+      "current_action": "one normalized packed action token a_k with shape [B, 10]",
+      "history": "only the current predicted native visual/proprio state; no teacher-forced future latent",
+      "goal": "never passed to the student"
+    },
+    "feedback": "Predicted visual_{k+1} and proprio_{k+1}, without detach, are fed to step k+1 during both training and evaluation.",
+    "loss": {
+      "base": "dense native-latent MSE",
+      "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+      "weight_formula": "w_h=(h+1)/3 for h=0..4",
+      "mean_weight": 1.0,
+      "reduction": "For each horizon h, compute 0.5 * (visual MSE + proprio MSE) exactly as in the uniform recurrent baseline; total loss = (1/5) * sum_h w_h * mse_h.",
+      "uniform_control_formula": "(1/5) * sum_h mse_h",
+      "teacher_targets": "detached dense future native visual/proprio latents from the frozen official teacher",
+      "teacher_forcing": false,
+      "rank_loss": false,
+      "goal_loss": false,
+      "self_consistency_loss": false
+    },
+    "forbidden": [
+      "planner-aware rank loss",
+      "listwise KL",
+      "goal input",
+      "encode_obs call",
+      "teacher forcing",
+      "ground-truth future-frame input",
+      "teacher or source predictor module inside the student",
+      "per-horizon cell copies",
+      "architecture change",
+      "hyperparameter sweep",
+      "result-dependent snapshot selection"
+    ]
+  },
+  "shared_data_and_schedule": {
+    "parent_freeze": "RECURRENT_STUDENT_FREEZE.json",
+    "parent_protocol": "PROTOCOL_RECURRENT_STUDENT.zh.md",
+    "train_context_pool": {
+      "contexts": 256,
+      "episodes": 32,
+      "contexts_per_episode": 8,
+      "reuse_exact_manifest": true,
+      "mutation": false
+    },
+    "action_query_slate": {
+      "queries_per_context": 4,
+      "rows": 1024,
+      "slots": ["primary_logged", "gaussian_planner_init_a", "gaussian_planner_init_b", "one_step_cem_resample"],
+      "primitive_action_shape": [5, 2],
+      "packed_action_token_shape": [5, 10],
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "variance_floor": 0.05,
+      "reuse_exact_bank": true,
+      "pairwise_distinct_required": true,
+      "student_output_not_used_to_generate_bank": true
+    },
+    "context_schedule": {
+      "pool_size": 256,
+      "contexts_per_update": 8,
+      "updates": 1500,
+      "schedule_seed": 20260931,
+      "generation": "CPU permutation of 0..255 every 32 updates; consume eight consecutive ordinals",
+      "precomputed_before_training": true,
+      "same_as_uniform_control": true,
+      "no_within_update_duplicates": true
+    },
+    "teacher_targets": {
+      "teacher": "frozen official DINO-WM autoregressive predictor",
+      "target": "detached dense future native visual/proprio latents for the exact four-query slate rows",
+      "rows": 1024,
+      "student_target_gradients": false,
+      "student_inference_teacher_dependency": false,
+      "same_as_uniform_control": true
+    },
+    "seeds": {
+      "initialization": 99,
+      "training": 20260930,
+      "context_schedule": 20260931,
+      "action_slate": 20260932,
+      "cem": 20260933,
+      "heldout_action_prefix": [20264925, 20264926],
+      "timing_action_prefix": 20270925,
+      "cpu_generator_policy": "Generate schedules, slates, held-out candidates, and timing candidates with explicit CPU generators before GPU transfer."
+    },
+    "training": {
+      "steps": 1500,
+      "snapshot_steps": [500, 1000, 1500],
+      "batch_contexts": 8,
+      "effective_query_rows": 32,
+      "microbatch_query_rows": 32,
+      "gradient_accumulation_steps": 1,
+      "optimizer": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.01,
+      "betas": [0.9, 0.999],
+      "eps": 1e-08,
+      "scheduler": null,
+      "early_stop": false,
+      "loss_change_only": true,
+      "retune_after_observation": false,
+      "uniform_control_rerun": false
+    }
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "contexts": 8,
+      "fresh_action_prefix_seeds": [20264925, 20264926],
+      "blocks": 16,
+      "candidates_per_block": 300,
+      "topk": 30,
+      "candidate_bank": "reuse the exact held-out candidate bank and order from the recurrent/query-slate freeze",
+      "pairing_key": "(action_prefix_seed, heldout_context_index)",
+      "primary_unit": "block, not candidate",
+      "formal_snapshot": "step_1500",
+      "descriptive_snapshots": [500, 1000, 1500],
+      "metrics": ["objective Spearman", "top-30 overlap", "teacher-relative native-latent MSE", "per-horizon relative MSE", "per-horizon cosine"]
+    },
+    "logged_action_fidelity": {
+      "contexts": 8,
+      "action": "each held-out context's logged action prefix",
+      "target": "frozen teacher rollout",
+      "statistic": "mean dense relative native-latent MSE",
+      "comparison": "horizon-weighted treatment / read-only uniform recurrent control",
+      "ratio_max": 1.25
+    },
+    "causality": {
+      "procedure": "For unchanged prefix lengths 1,2,3,4, change only later action tokens and compare outputs through the unchanged prefix.",
+      "threshold": 0.000001,
+      "all_horizons_required": true
+    },
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through the predictor",
+      "batch_size": 300,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "reduction": "1 - median(horizon-weighted student ms) / median(frozen teacher ms)",
+      "control_ratio": "Report treatment ms / read-only uniform recurrent control ms; diagnostic only"
+    },
+    "telemetry": "During GPU execution append utilization and VRAM samples every 30 seconds to the job log."
+  },
+  "gates": {
+    "integrity": {
+      "treatment_outputs_finite": true,
+      "treatment_training_finite": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "student_encode_obs_hidden": true,
+      "student_goal_input_hidden": true,
+      "student_source_or_teacher_parameters_absent": true,
+      "same_recurrent_architecture": true,
+      "same_initialization_seed": true,
+      "same_context_schedule": true,
+      "same_action_slate_bank": true,
+      "same_teacher_target_rows": true,
+      "same_heldout_candidate_bank": true,
+      "same_seed_values": true,
+      "baseline_summary_read_only": true,
+      "heldout_split_unchanged": true,
+      "exact_horizon_weights": true,
+      "no_oom_nan_or_silent_fallback": true
+    },
+    "convergence": {
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "uses": "horizon-weighted training loss",
+      "no_early_stop": true
+    },
+    "horizon_weight_effect": {
+      "comparison": "horizon-weighted treatment step1500 - read-only uniform recurrent control step1500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "horizon_weight_effect_established",
+      "decision_label_if_fail": "horizon_weight_effect_not_established"
+    },
+    "absolute_fidelity": {
+      "primary_arm": "horizon-weighted treatment",
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "logged_mse_noninferiority": {
+      "comparison": "horizon-weighted treatment / uniform recurrent control on held-out logged-action teacher-relative MSE",
+      "ratio_max": 1.25
+    },
+    "causality": {
+      "maximum_future_action_leakage_abs": 0.000001
+    },
+    "latency": {
+      "predictor_only_reduction_min": 0.2
+    },
+    "decision_levels": {
+      "integrity": "PASS iff all integrity fields pass.",
+      "convergence": "PASS iff the weighted training last10/first ratio is at most 0.8 and training is finite.",
+      "horizon_weight_effect": "PASS iff integrity, convergence, and all four horizon_weight_effect thresholds pass.",
+      "full_replacement": "GO iff integrity, convergence, treatment absolute fidelity, logged MSE non-inferiority, causality, and predictor-only latency pass. This level is independent of relative horizon-weight effect.",
+      "weighted_recurrent_supported_replacement": "GO iff horizon_weight_effect PASS and full_replacement GO.",
+      "invalidity": "If the read-only control, shared banks, held-out pairing, integrity, convergence, or causality contract is invalid, report NO-GO and do not interpret ranking deltas.",
+      "no_retuning": "Do not change the weight vector, recurrent cell, hidden size, seeds, schedule, loss scale, steps, snapshots, or thresholds after observing results; do not select step1000 or another snapshot as the formal result."
+    }
+  },
+  "required_summary_fields": {
+    "baseline": ["job_id", "arm", "summary_path", "per_block_metrics", "read_only_confirmed"],
+    "treatment": ["class", "architecture_unchanged", "horizon_weights", "loss_formula", "trainable_parameter_count", "teacher_or_source_parameters_absent", "teacher_forcing_disabled"],
+    "pairing": ["initialization_seed_equal", "context_schedule_equal", "slate_bank_equal", "teacher_target_bank_equal", "heldout_candidate_bank_equal", "paired_block_ids"],
+    "training": ["per_step_weighted_latent_mse", "per_horizon_mse", "last10_to_first_ratio", "snapshot_steps", "finite_and_no_fallback"],
+    "evaluation": ["per_block_treatment", "per_block_uniform_control", "paired_deltas", "absolute_treatment", "per_horizon_relative_mse", "logged_mse_ratio", "causality", "latency"],
+    "decisions": ["integrity", "convergence", "horizon_weight_effect", "full_replacement", "weighted_recurrent_supported_replacement", "claim_boundary"]
+  },
+  "claim_boundary": {
+    "allowed_if_horizon_weight_effect_pass": "Under this frozen DINO-WM PushT predictor-level contract, the specified linear later-horizon weighting of the recurrent dense latent-MSE loss improves held-out candidate ranking over the read-only uniform-MSE recurrent control.",
+    "allowed_if_full_replacement_go": "The horizon-weighted recurrent student independently satisfies the stated predictor-level replacement gates while preserving strict action-prefix causality.",
+    "parameter_latency_sentence": "Inference architecture and parameters are unchanged; predictor-only latency should be reported as a controlled diagnostic, not as a loss-induced causal benefit.",
+    "forbidden": [
+      "encode_obs speedup or observation encoder claim",
+      "full planner or closed-loop task success",
+      "multi-step CEM integration claim",
+      "LeWM or Fast-LeWM empirical transfer",
+      "all-JEPA universality",
+      "population-level inference from 16 nested blocks",
+      "claim that step1000 is the selected result",
+      "claim that the loss weighting proves a causal h5 mechanism beyond this cell",
+      "native low-bit deployment claim"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "hash": false,
+    "gpu_telemetry_seconds": 30,
+    "do_not_submit_during_freeze_creation": true,
+    "baseline_rerun": false,
+    "checkpoint_return": "No checkpoint retrieval is required as the primary result artifact.",
+    "primary_artifacts": ["horizon-weighted summary JSON", "job log", "job status", "GPU telemetry"]
+  }
+}

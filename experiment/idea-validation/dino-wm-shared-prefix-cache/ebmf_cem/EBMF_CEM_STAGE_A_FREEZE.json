@@ -1,0 +1,136 @@
+{
+  "schema": "dino-wm-shared-prefix-cache.ebmf-cem-stage-a-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-shared-prefix-cache-ebmf-cem-stage-a",
+  "method": "Elite-Band Multi-Fidelity CEM (EBMF-CEM)",
+  "stage": "stage_a_calibration",
+  "purpose": "Calibrate one fixed cheap_L4 evaluator and decide whether a held-out Stage B mechanism screen is ready.",
+  "claim_boundary": "Stage A is calibration/readiness evidence only. It does not authorize a decision-equivalence claim, a latency claim, native system timing, or closed-loop evaluation.",
+  "scope": {
+    "task": "DINO-WM Wall",
+    "independence_unit": "one independent Wall observation with one complete chained CEM planner call",
+    "observations": {
+      "count": 6,
+      "required_ids": [
+        "wall_case_00",
+        "wall_case_01",
+        "wall_case_02",
+        "wall_case_03",
+        "wall_case_04",
+        "wall_case_05"
+      ]
+    },
+    "round_count": 10,
+    "fixed_settings": {
+      "candidate_count": 300,
+      "horizon": 5,
+      "topk": 30,
+      "cem_opt_steps": 10,
+      "objective": "Existing DINO-WM Wall planner objective without modification; lower is better.",
+      "tie_break": "Stable ascending candidate-index tie-break after objective value.",
+      "candidate_population_rule": "cheap_L4 and full use the identical candidate population in every round.",
+      "noise_rule": "The chained CEM noise schedule is recorded per round and is shared by the paired cheap/full evaluations.",
+      "checkpoint_and_preprocessing": "Identical checkpoint, evaluation mode, preprocessing, action bounds, observation, goal, and candidate/action tensors for cheap_L4 and full."
+    },
+    "cheap_evaluator": {
+      "name": "cheap_L4",
+      "layer_count": 4,
+      "total_predictor_layers": 6,
+      "construction": "The existing 6-layer ViT predictor's first four Transformer blocks plus the existing final LayerNorm.",
+      "must_be_native": true,
+      "sweep_authorized": false,
+      "precision_sweep_authorized": false,
+      "threshold_sweep_authorized": false
+    }
+  },
+  "calibration_record": {
+    "file": "calibration.jsonl",
+    "record_unit": "one observation containing all ten chained CEM rounds",
+    "required_observation_fields": [
+      "observation_id",
+      "observation_seed",
+      "candidate_count",
+      "horizon",
+      "topk",
+      "cem_opt_steps",
+      "cheap_evaluator",
+      "rounds"
+    ],
+    "required_round_fields": [
+      "round_index",
+      "candidate_population_seed",
+      "cem_noise_seed",
+      "input_mu",
+      "input_sigma",
+      "output_mu",
+      "output_sigma",
+      "first_action",
+      "J_tilde",
+      "J_full",
+      "abs_error",
+      "cheap_top30",
+      "full_top30",
+      "full_cutoff",
+      "epsilon_round",
+      "tau",
+      "A",
+      "full_top30_in_A"
+    ],
+    "array_rules": {
+      "J_tilde": "Exactly 300 finite numeric values from cheap_L4.",
+      "J_full": "Exactly 300 finite numeric values from the full six-layer predictor.",
+      "abs_error": "Exactly 300 finite values, recomputed as abs(J_tilde[i] - J_full[i]).",
+      "cheap_top30": "Stable top-30 indices from J_tilde, ordered by (value, candidate index).",
+      "full_top30": "Stable top-30 indices from J_full, ordered by (value, candidate index).",
+      "A": "Unique candidate indices in [0,299] recomputed from the frozen epsilon rule.",
+      "full_cutoff": "J_full at the 30th stable-ranked candidate; lower-objective minimization."
+    },
+    "chain_rule": "round 0 records the initial input_mu/input_sigma; for round r>0, input_mu and input_sigma equal the same observation's output_mu and output_sigma from round r-1. No reset to a shared state is allowed.",
+    "epsilon_rule": "For each round r, epsilon_round is the maximum abs_error over all six calibration observations at that same round. It must be generated only from calibration.jsonl; no validation-derived or hand-edited epsilon is accepted.",
+    "interval_rule": "For each candidate i, L_i=J_tilde[i]-epsilon_round and U_i=J_tilde[i]+epsilon_round. Let tau be the 30th stable-ranked U value. A={i | L_i <= tau}.",
+    "coverage_rule": "full_top30_in_A is true exactly when every full_top30 index occurs in A. Stage A reports this calibration property but does not treat it as held-out decision evidence."
+  },
+  "readiness_gate": {
+    "completeness_finite": {
+      "rule": "Exactly six unique required observations, each with exactly ten rounds indexed 0..9; all required arrays and scalars are present, finite, and shape-valid; chain continuity holds.",
+      "failure_action": "FAIL and do not authorize Stage B."
+    },
+    "cheap_identity": {
+      "rule": "Every record identifies cheap_evaluator exactly as cheap_L4 with layer_count=4 and total_predictor_layers=6; implementation metadata must not claim another layer count.",
+      "failure_action": "FAIL and do not authorize Stage B."
+    },
+    "epsilon_provenance": {
+      "rule": "Every round epsilon_round equals the verifier-recomputed calibration maximum for that round; epsilon_source must be calibration_max_abs_error if present and no record may provide an alternate epsilon.",
+      "failure_action": "FAIL and do not authorize Stage B."
+    }
+  },
+  "ambiguity_gate": {
+    "population": "All 60 calibration observation-round records.",
+    "ratio": "len(A)/300 for each record.",
+    "median_max": 0.25,
+    "p90_max": 0.4,
+    "quantile_definition": "Nearest-rank p90: sort 60 ratios and select 1-based rank ceil(0.90*60)=54; median is the mean of ranks 30 and 31.",
+    "rule": "PASS only when median ambiguity ratio <=0.25 and nearest-rank p90 <=0.40.",
+    "adjustment_policy": "Thresholds are frozen before seeing results. Any future adjustment requires a new freeze and must be justified by compute structure/break-even accounting, never by observed calibration outcomes."
+  },
+  "authorization": {
+    "stage_b_held_out_mechanism_screen": "Authorized only after readiness_gate and ambiguity_gate both PASS; Stage B must use held-out observations and this frozen epsilon.",
+    "decision_claim": "NOT_AUTHORIZED in Stage A.",
+    "latency_claim": "NOT_AUTHORIZED in Stage A.",
+    "native_system_screen": "NOT_AUTHORIZED in Stage A.",
+    "closed_loop": "NOT_AUTHORIZED in Stage A."
+  },
+  "result_files": {
+    "calibration": "calibration.jsonl",
+    "verifier": "verify_ebmf_cem.py",
+    "summary": "stage_a_summary.json"
+  },
+  "prohibited": [
+    "Do not load a model or run inference inside the verifier.",
+    "Do not use hashes as a substitute for recorded values or comparisons.",
+    "Do not tune layer count, precision, interval threshold, or epsilon after observing calibration outcomes.",
+    "Do not reset mu or sigma between chained CEM rounds.",
+    "Do not infer held-out, decision, latency, or closed-loop evidence from Stage A."
+  ]
+}

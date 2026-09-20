@@ -1,0 +1,73 @@
+#!/bin/bash
+#PBS -N dino_wall_gd_prefix
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+BUNDLE_ROOT=${DINO_CACHE_BUNDLE_ROOT:-$ROOT/meeting-ready/01-iteration-cache-cross-model-planners}
+CONTROL=${DINO_CACHE_CASE_ROOT:-$BUNDLE_ROOT/cases/dino-wall-gd}
+COMMON_ROOT=${DINO_CACHE_COMMON_ROOT:-$BUNDLE_ROOT/common}
+
+# Fail closed before runtime extraction or model/data I/O.
+test -n "${PBS_JOBID:-}"
+JOB_ID="$PBS_JOBID"
+OUT=${DINO_GD_PORTABILITY_OUT:-$CONTROL/artifacts/$JOB_ID}
+WORK=${TMPDIR:-/tmp}/dino-wall-gd-prefix-$JOB_ID
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+test -d "$ROOT/data"
+test -f "$ROOT/ASSETS_READY"
+test -f "$ROOT/runtime-complete.tar"
+test -f "$ROOT/checkpoints/outputs/wall_single/checkpoints/model_latest.pth"
+test -f "$CONTROL/run_gd_portability.py"
+test -f "$CONTROL/GD_PORTABILITY_FREEZE.json"
+test -f "$CONTROL/verify_gd_portability.py"
+test -f "$COMMON_ROOT/cache_core.py"
+
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+export PYTHONPATH="$CONTROL:$COMMON_ROOT:$ROOT/source"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu.txt"
+nvidia-smi \
+  --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total \
+  --format=csv -l 30 > "$OUT/gpu_usage.csv" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup_gpu_monitor() {
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+}
+trap cleanup_gpu_monitor EXIT
+timeout --signal=TERM 230m "$WORK/runtime/venv/bin/python" "$CONTROL/run_gd_portability.py" \
+  --root "$ROOT" \
+  --control-root "$COMMON_ROOT" \
+  --output "$OUT" \
+  --freeze "$CONTROL/GD_PORTABILITY_FREEZE.json"
+
+"$WORK/runtime/venv/bin/python" "$CONTROL/verify_gd_portability.py" \
+  --freeze "$CONTROL/GD_PORTABILITY_FREEZE.json" \
+  --summary "$OUT/system_summary.json" > "$OUT/verifier.json"
+touch "$OUT/GD_PORTABILITY_NUMERICAL_PASS"
+cleanup_gpu_monitor
+trap - EXIT
+date

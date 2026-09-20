@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -N dino_ebmf_diag
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:05:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s)
+case "$HOST" in
+  *login*|asp2a-login*|ntu-login*) echo "refusing login host: $HOST" >&2; exit 2 ;;
+esac
+
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+EBMF_ROOT=$ROOT/idea-validation/dino-wm-shared-prefix-cache/ebmf_cem
+INPUT=$ROOT/artifacts/ebmf-cem-stage-a-23486772.pbs101/calibration.jsonl
+OUTPUT=$ROOT/artifacts/ebmf-cem-stage-a-23486772.pbs101/diagnosis.json
+
+test -s "$INPUT"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+python3 "$EBMF_ROOT/diagnose_stage_a.py" "$INPUT" "$OUTPUT"
+test -s "$OUTPUT"

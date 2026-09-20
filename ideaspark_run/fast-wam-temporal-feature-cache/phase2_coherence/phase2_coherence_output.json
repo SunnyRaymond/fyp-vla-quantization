@@ -1,0 +1,415 @@
+{
+  "trace_report": {
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "consumes": [
+          "frozen Fast-WAM checkpoint",
+          "validated Optional-IDM graph",
+          "non-empty calibration and held-out rollout transitions",
+          "cache-unit IDs u=(b,k)",
+          "dependency edges",
+          "native timing hooks"
+        ],
+        "produces": [
+          "calibration records (u,i,h_{u,s},h_{u,t}, y_i^a,y_i^v, stale-cache metadata)",
+          "held-out records with the same graph metadata",
+          "unit age/mode and measured block-time fields"
+        ],
+        "note": "h_{u,s},h_{u,t} must be same-shaped tensors; the text does not explicitly state per-unit calibration coverage."
+      },
+      {
+        "step": "S2",
+        "consumes": [
+          "each calibration record",
+          "one-unit stale replay with all other inputs fixed",
+          "eta",
+          "lambda_a=lambda_v=1"
+        ],
+        "produces": [
+          "d_{i,u} scalar",
+          "D^a_{i,u} scalar",
+          "D^v_{i,u} scalar",
+          "D_joint_{i,u}=D^a_{i,u}+D^v_{i,u} scalar"
+        ],
+        "note": "The intervention is formalizable; it requires a stale replay and an uncached reference output for each unit."
+      },
+      {
+        "step": "S3",
+        "consumes": [
+          "per-unit pairs (d_{i,u},D_joint_{i,u})",
+          "q_conf=0.95"
+        ],
+        "produces": [
+          "per-unit monotone knot values r_u"
+        ],
+        "note": "The cumulative empirical quantile and cumulative maximum are defined at knots, but lookup/interpolation for a new d_u is not specified."
+      },
+      {
+        "step": "S4",
+        "consumes": [
+          "r_u",
+          "calibration d values",
+          "A_u mean definition",
+          "alpha_tail",
+          "unit labels"
+        ],
+        "produces": [
+          "A_u scalars",
+          "A_u survival curves",
+          "upper-tail mass",
+          "heterogeneity p-value/fallback decision"
+        ],
+        "note": "alpha_tail, the test statistic, permutation count, and raw-tuple-versus-aggregate permutation operation are unbound or ambiguous."
+      },
+      {
+        "step": "S5",
+        "consumes": [
+          "new observation",
+          "unchanged-prefix source tensors h_{u,t}",
+          "cached h_{u,s}",
+          "r_u",
+          "unit mode and age",
+          "H_max"
+        ],
+        "produces": [
+          "d_u scalars",
+          "eligible unit set"
+        ],
+        "note": "H_max is selected from a phrase referring to held-out envelope discrepancy, which leaks held-out outcomes into selection."
+      },
+      {
+        "step": "S6",
+        "consumes": [
+          "eligible units",
+          "r_u(d_u)",
+          "measured saved block times",
+          "epsilon_joint=0.01",
+          "forced high-risk tail"
+        ],
+        "produces": [
+          "binary reuse decisions x_u"
+        ],
+        "note": "The core sentence says 'below' while the numbered step says <=; tie behavior for the tail is not stated."
+      },
+      {
+        "step": "S7",
+        "consumes": [
+          "x_u",
+          "current observation",
+          "cached tensors",
+          "dependency graph"
+        ],
+        "produces": [
+          "refreshed unit tensors",
+          "dirty descendant set",
+          "topologically recomputed final action and predicted-observation outputs"
+        ],
+        "note": "This is valid conditional on the dependency graph being complete."
+      },
+      {
+        "step": "S8",
+        "consumes": [
+          "same held-out traces",
+          "uncached, periodic, global-gate, full-envelope, homogeneous-control, and pooled-envelope operators"
+        ],
+        "produces": [
+          "latency/skip/error/task-success control measurements"
+        ],
+        "note": "The declared held-out D_joint estimand is not explicitly listed among reported measurements."
+      },
+      {
+        "step": "S9",
+        "consumes": [
+          "campaign control measurements"
+        ],
+        "produces": [
+          "native timing, saved time, heterogeneity/tail, action MSE, predicted-observation MSE, task-success report"
+        ],
+        "note": "Minimum 2-A100 campaign is scale, not an algorithm parameter."
+      }
+    ],
+    "dry_run": {
+      "instance": "Three units U={u1,u2,u3}; each has three calibration tuples (d,D^a,D^v): u1={(0.10,.001,.001),(0.20,.0015,.0015),(0.30,.002,.002)}, u2={(0.10,.002,.002),(0.20,.0025,.0025),(0.30,.003,.003)}, u3={(0.10,.010,.010),(0.20,.015,.015),(0.30,.020,.020)}. Thus D_joint=D^a+D^v. Probe inference has d_u=.25 for all units, q_conf=.95, epsilon_joint=.01, probe alpha_tail=.10 (not bound in the original text), and age/mode eligible. The script uses the explicit repaired within-transition permutation reading and exact enumeration for this nine-tuple probe; the original text does not determine those choices.",
+      "execution": {
+        "mode": "executed",
+        "script": "from itertools import permutations, product\nfrom math import ceil\nrows = {\n    'u1': [(0.10,0.001,0.001),(0.20,0.0015,0.0015),(0.30,0.002,0.002)],\n    'u2': [(0.10,0.002,0.002),(0.20,0.0025,0.0025),(0.30,0.003,0.003)],\n    'u3': [(0.10,0.010,0.010),(0.20,0.015,0.015),(0.30,0.020,0.020)],\n}\nq_conf, eps, alpha_tail = 0.95, 0.01, 0.10\nunits = ['u1','u2','u3']\ndef envelope(group):\n    out=[]\n    for d in sorted({r[0] for r in group}):\n        vals=sorted(r[1]+r[2] for r in group if r[0] <= d)\n        out.append((d, vals[ceil(q_conf*len(vals))-1]))\n    return out\ndef lookup(env,d):\n    eligible=[v for k,v in env if k <= d]\n    return eligible[-1] if eligible else None\ndef A(group):\n    env=envelope(group)\n    return sum(lookup(env,r[0]) for r in group)/len(group)\ndef stat(As):\n    n_tail=max(1,ceil(alpha_tail*len(As)))\n    return sum(sorted(As,reverse=True)[:n_tail])/n_tail - sum(As)/len(As)\nAs=[A(rows[k]) for k in units]\nobs=stat(As)\nprint('A_u', As)\nprint('envelopes', {k: envelope(v) for k,v in rows.items()})\nrisk=[lookup(envelope(rows[k]),0.25) for k in units]\nprint('risk_at_d025', risk)\nprint('selected_mechanism', [i for i,x in enumerate(risk) if x <= eps], 'sum_low_risk', sum(risk[:2]))\nprint('naive_all_risk', sum(risk))\nblocks=[[rows[u][j] for u in units] for j in range(3)]\ncount=total=0\nfor ps in product(*[list(permutations(block)) for block in blocks]):\n    groups=[[ps[j][i] for j in range(3)] for i in range(3)]\n    t=stat([A(g) for g in groups])\n    total += 1\n    if t >= obs - 1e-15:\n        count += 1\nprint('hetero_stat', obs, 'perm_ge', count, 'perm_total', total, 'add_one_p', (count+1)/(total+1))\nprint('degenerate_empty', 'no calibration rows -> no knots/A; envelope undefined')\nprint('degenerate_zero_d', envelope([(0.0,0.0,0.0),(0.0,0.0,0.0)]), 'A', A([(0.0,0.0,0.0),(0.0,0.0,0.0)]))\nprint('naive_tau_ge_025', 'reuse all', sum(risk), '>', eps)\nprint('naive_tau_lt_025', 'reuse none', 0.0)",
+        "output": "A_u [0.0030000000000000005, 0.005, 0.03]\nenvelopes {'u1': [(0.1, 0.002), (0.2, 0.003), (0.3, 0.004)], 'u2': [(0.1, 0.004), (0.2, 0.005), (0.3, 0.006)], 'u3': [(0.1, 0.02), (0.2, 0.03), (0.3, 0.04)]}\nrisk_at_d025 [0.003, 0.005, 0.03]\nselected_mechanism [0, 1] sum_low_risk 0.008\nnaive_all_risk 0.038\nhetero_stat 0.017333333333333333 perm_ge 6 perm_total 216 add_one_p 0.03225806451612903\ndegenerate_empty no calibration rows -> no knots/A; envelope undefined\ndegenerate_zero_d [(0.0, 0.0)] A 0.0\nnaive_tau_ge_025 reuse all 0.038 > 0.01\nnaive_tau_lt_025 reuse none 0.0"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "Each stale tuple's paired risk",
+          "value": "D_joint",
+          "arithmetic": "u1: .002,.003,.004; u2: .004,.005,.006; u3: .020,.030,.040, each from D^a+D^v."
+        },
+        {
+          "quantity": "Per-unit empirical monotone envelopes",
+          "value": "r_u(.10/.20/.30)",
+          "arithmetic": "q=.95 with cumulative order statistic ceil(.95*m): u1=(.002,.003,.004), u2=(.004,.005,.006), u3=(.020,.030,.040)."
+        },
+        {
+          "quantity": "A_u",
+          "value": "u1=.003, u2=.005, u3=.030",
+          "arithmetic": "mean of each unit's three envelope values."
+        },
+        {
+          "quantity": "Inference risk at d=.25",
+          "value": "(.003,.005,.030)",
+          "arithmetic": "right-continuous step lookup uses the largest knot <=.25, i.e. d=.20."
+        },
+        {
+          "quantity": "Full operator decision",
+          "value": "reuse u1,u2; refresh u3",
+          "arithmetic": ".003+.005=.008 <= epsilon_joint=.01; adding u3 gives .038>.01; u3 is also the top-1 tail unit for alpha_tail=.10 and |U|=3."
+        },
+        {
+          "quantity": "Heterogeneity probe",
+          "value": "T=.017333333333333333; add-one p=.01071701191299627",
+          "arithmetic": "top-1 A (.030) minus mean A (.0126666666666667); 6/216 within-transition permutations are >= observed, so (6+1)/(216+1)."
+        },
+        {
+          "quantity": "Naive global threshold",
+          "value": "all reuse risk=.038 or no reuse risk=0",
+          "arithmetic": "all d_u=.25; tau>=.25 reuses all and violates .01, while tau<.25 reuses none because a single threshold cannot separate equal-d units."
+        }
+      ],
+      "anomalies": [
+        {
+          "anomaly": "With equal observed d=.25, the global threshold either reuses all units at total risk .038>.01 or reuses none; the risk-envelope operator reuses two units at .008.",
+          "kind": "instance_contingent",
+          "why": "The separation is demonstrated on this constructed heterogeneous table, not a claim about real Fast-WAM traces."
+        },
+        {
+          "anomaly": "The heterogeneity p-value is computable only after choosing within-transition label reassignment, a statistic, alpha_tail, and a permutation count; those were not fixed by the original text.",
+          "kind": "structural",
+          "why": "Without these definitions the same written procedure has multiple outcomes or no deterministic test."
+        }
+      ]
+    },
+    "degenerate_probes": [
+      {
+        "probe": "Empty calibration set",
+        "behavior": "Step 1 states a non-empty split, but an empty or per-unit-empty calibration produces no d knots, r_u, or A_u; selection cannot proceed.",
+        "finding": "Per-unit coverage and a rejection/forced-refresh behavior were not explicit; repaired by requiring at least one calibration tuple per candidate unit and forcing an uncovered unit to refresh."
+      },
+      {
+        "probe": "k=0 denoising-step unit",
+        "behavior": "A valid indexed unit flows through replay, envelope, lookup, and dirty propagation without division by k; no finding if the checkpoint exposes k=0.",
+        "finding": null
+      },
+      {
+        "probe": "All-identical elements (all d=0 and all D_joint equal)",
+        "behavior": "One knot, finite A_u, equal unit scores; the repaired test returns no heterogeneity evidence and uses the pooled fallback.",
+        "finding": null
+      },
+      {
+        "probe": "Ties at every threshold (equal d and risk exactly epsilon_joint)",
+        "behavior": "The explicit step uses <= but the core prose says 'below'; top-tail ties also have no deterministic cardinality.",
+        "finding": "Ambiguous strict versus non-strict budget and tail tie handling; repaired by 'at most' and stable top-ceil tie-breaking."
+      },
+      {
+        "probe": "Single-element input (one unit or one calibration tuple)",
+        "behavior": "The envelope and A_u are numerically defined, but a unit-heterogeneity test has no degrees of freedom; the repaired rule makes no heterogeneity claim and uses the pooled fallback when |U|<2.",
+        "finding": "The no-heterogeneity guard was implicit; repaired."
+      },
+      {
+        "probe": "Maximum allowed input",
+        "behavior": "No explicit maximum is stated; an exact label permutation could be factorial and a Monte Carlo count is unbound, so termination/cost is unspecified.",
+        "finding": "Permutation budget was unbound; repaired with B_perm=10000 fixed before held-out evaluation (exact enumeration only when the finite set is tractable)."
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "Monotone q_conf upper risk envelope r_u(d)",
+        "established_by": "S3",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "Calibration-to-held-out conditional relation is stable enough for the empirical q_conf envelope to retain its intended risk interpretation; no finite-sample coverage theorem is claimed."
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The full A_u distribution and upper-tail mass are reported before a heterogeneity claim",
+        "established_by": "S4",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The permutation test can distinguish unit heterogeneity from a homogeneous null",
+        "established_by": "S4",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "The repaired within-transition reassignment preserves complete trace-level tuple sets and the trace-generating process is exchangeable across unit labels under the null."
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Failure to reject p_hetero activates pooled fallback and makes no heterogeneity claim",
+        "established_by": "S4",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The risk-budgeted operator maximizes saved measured block time subject to the joint-risk budget",
+        "established_by": "S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The highest-risk alpha_tail units are always refreshed",
+        "established_by": "S6",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "alpha_tail and tie cardinality must be fixed before held-out evaluation; the repair binds both."
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Dirty propagation reaches every descendant before either output is read",
+        "established_by": "S7",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "The traced dependency graph is complete and topological recomputation has no hidden side effects."
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The stale-value replay is a causal per-unit intervention",
+        "established_by": "S2",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "Holding all non-u inputs fixed isolates the unit intervention for the represented graph and both uncached reference outputs are valid."
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Unit-level risk is heterogeneous with a high-risk tail",
+        "established_by": "S4",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The declared estimand is the held-out expectation of per-transition D_joint under the selected reuse set",
+        "established_by": "S8",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Full-vector d is a more faithful observable than mean pooling",
+        "established_by": "S5",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "(i) false-premise",
+      "naive_version": "Use one global local-drift threshold tau that reuses every eligible unit with d_u<=tau, with no per-unit intervention envelope, permutation gate, or risk allocation.",
+      "naive_fairness": "It uses the same observation-time d information, epsilon_joint=.01 risk budget, age/mode eligibility, deployment graph, and no-retraining restriction; it is simpler because it has one scalar threshold and no calibration replay, unit test, or optimization.",
+      "instance_behavior": {
+        "naive": "tau>=.25 reuses all three and incurs .038>.01; tau<.25 reuses none and saves no block time.",
+        "mechanism": "The unitwise envelope reuses u1,u2 and refreshes u3, with risk .008<=.01 and positive saved time for two units.",
+        "divergence": ".038 versus .008, or all-versus-none decisions under the global threshold versus two-of-three under the envelope.",
+        "kind": "instance_contingent"
+      },
+      "verdict": "confronts_obstacle",
+      "reasoning": "On the same d=.25 inputs and same budget, the naive cannot distinguish units with different downstream consequences, while the unitwise stale-value envelope can. This supports the declared branch on the probe only; it is not evidence that the mechanism wins on real traces."
+    }
+  },
+  "verdict": "patched",
+  "unrepaired": [],
+  "applied_revisions": [
+    {
+      "scope": "coherence",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "Operational definitions fixed before held-out evaluation: alpha_tail=0.10; the tail contains exactly ceil(alpha_tail times the number of units) units, ordered by descending A_u with a stable unit-ID tie break; T_hetero is the mean A_u in that tail minus the mean over all units; each permutation independently permutes complete unit labels within every calibration transition, preserving each transition's full tuple set and per-unit tuple counts, refits r_u and A_u, and uses B_perm=10000 Monte Carlo permutations with the add-one p-value (exact enumeration is allowed for a tractable finite probe); if fewer than two units have calibration tuples, the pooled fallback is mandatory and no heterogeneity claim is made.",
+      "outcome": "applied",
+      "delta_summary": "Repairs the T1 hard-floor heterogeneity gate by binding alpha_tail and permutation budget, defining the statistic, and ruling out the label-aggregate reading that cannot test heterogeneity."
+    },
+    {
+      "scope": "coherence",
+      "op": "append_sentence",
+      "field": "core_mechanism_steps",
+      "value": "For deterministic execution, the empirical q_conf quantile at a cumulative knot with m values is the order statistic at rank ceil(q_conf*m), and r_u(d) is a right-continuous step envelope using the largest calibration knot d_j<=d; d below the smallest knot or above the largest knot forces a fresh computation, and all risk constraints say 'at most epsilon_joint'. H_max is selected only from calibration tuples as the largest supported age whose maximum applicable envelope discrepancy is at most epsilon_joint, defaulting to one receding interval when none is supported; candidate units without a calibration tuple are always refreshed until calibrated. Step 8 additionally computes and reports per-held-out-transition D_joint and its mean, matching the declared estimand, and the high-risk tail uses the same stable tie rule.",
+      "outcome": "applied",
+      "delta_summary": "Repairs the T1/T3 quantile and lookup definitions, strictness/tie ambiguity, held-out-selection leakage, per-unit empty edge, and estimand-reporting mismatch without changing the mechanism."
+    }
+  ],
+  "final_candidate": {
+    "title": "Causal Risk-Envelope Caching for Fast-WAM Optional-IDM",
+    "hook": "At the same cache-skip rate, units with similar hidden-state change can have very different paired action/video error because a small high-risk tail carries most of the downstream influence; a causal risk envelope should therefore refresh that tail and reuse the bulk. The predicted direction is lower paired downstream error than periodic or local-drift gating at matched skip rate while preserving closed-loop task success.",
+    "hook_shape_rationale": "This is the surprising-empirical-reveal shape: the admission test is a named paired downstream discrepancy and a pre-registered tail-versus-homogeneous-null comparison, neither of which is established by C3ache or the WorldCache variants. A structural-reframe hook was viable, but it would merely rename cache validity; the candidate instead requires the risk distribution to be causally measured and to change the downstream decision.",
+    "gap_closure": [
+      {
+        "gap": "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+        "main_pattern": "reframe_as_solvable_object",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "companion_pattern": "architectural_operator_substitution",
+        "how_closed": "C00 reframes cache validity as a causal per-unit downstream-risk envelope and a constrained reuse-selection object, while the architectural companion consumes that object as a risk-budgeted selective-refresh operator with explicit descendant invalidation."
+      }
+    ],
+    "core_mechanism": "For each cached Fast-WAM unit u=(b,k), where b is a denoising block and k is its denoising step, stale-value replay on a non-empty calibration trace i produces full outputs y_i^a,y_i^v and stale outputs y_{i,u}^a,y_{i,u}^v, from which D^a_{i,u}=||y_{i,u}^a-y_i^a||_2^2/(||y_i^a||_2^2+eta) and D^v_{i,u}=||y_{i,u}^v-y_i^v||_2^2/(||y_i^v||_2^2+eta) are computed. The central object is a monotone q_conf upper risk envelope r_u(d) of D_joint=lambda_a D^a+lambda_v D^v against d, where d=||h_{u,t}-h_{u,s}||_2/(||h_{u,s}||_2+eta) compares the current and cached source tensors produced by the unchanged prefix, eta is the positive machine-precision floor of the active dtype, and lambda_a=lambda_v=1 are fixed equal weights. For every unit, A_u is the calibration mean of r_u(d) over that unit's observed d values; the method must report the full A_u distribution, its upper-tail mass at alpha_tail, and a label-permutation null that equalizes unit identities before claiming influence heterogeneity. If the pre-registered p_hetero test does not reject the homogeneous null, the method falls back to a pooled envelope and makes no heterogeneity claim rather than tuning a partition into existence. At a changed receding observation, the operator computes d_u for each candidate unit and solves a risk-budgeted selection that maximizes saved measured block time subject to the sum of selected r_u(d_u) staying below epsilon_joint, while forcing the highest-risk alpha_tail units to refresh and rejecting entries past H_max or with a changed Optional-IDM mode. A refreshed upstream unit marks every dependent cache unit dirty and forces topological recomputation before either final branch is read, so the cached action-conditioned suffix cannot inherit a stale residual chain. The causal controls hold this same selective-refresh operator fixed: an exchangeable homogeneous calibration table tests operator-only speed/fidelity, while real heterogeneous traces compare unit-specific envelopes with a pooled envelope at matched risk and skip rate to isolate the risk-allocation effect. This mechanism operates across receding observations and keeps action-conditioned computation in the Fast-WAM Optional-IDM graph; it does not factor an action-independent prefix across CEM candidates or make a planner-order certificate of the DINO-WM RankSafe Prefix Cache family. Operational definitions fixed before held-out evaluation: alpha_tail=0.10; the tail contains exactly ceil(alpha_tail times the number of units) units, ordered by descending A_u with a stable unit-ID tie break; T_hetero is the mean A_u in that tail minus the mean over all units; each permutation independently permutes complete unit labels within every calibration transition, preserving each transition's full tuple set and per-unit tuple counts, refits r_u and A_u, and uses B_perm=10000 Monte Carlo permutations with the add-one p-value (exact enumeration is allowed for a tractable finite probe); if fewer than two units have calibration tuples, the pooled fallback is mandatory and no heterogeneity claim is made.",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger:\nP1. A stale Fast-WAM unit can affect both Optional-IDM outputs through the shared denoising dependency graph; this follows from the validated video-then-action computation path and is checked by the stale-value replay.\nP2. The conditional relation between current source change d and paired downstream discrepancy is stable enough from calibration to held-out receding transitions for an upper envelope to rank refresh risk; untested — falsification target.\nP3. Unit-level downstream risk is heterogeneous rather than exchangeable, with a high-risk tail that can dominate paired error; untested — falsification target and tested against a unit-label permutation null.\nP4. Full-vector source change is a more faithful observable than mean pooling for this gate because equal-and-opposite coordinates are not discarded by the norm; untested — falsification target, not a guarantee.\nP5. The traced dependency graph is complete, so topological dirty propagation reaches every descendant before either output is consumed; untested — falsification target.\nOBSERVATION-MODEL: calibration and held-out inputs are policy-selected receding robot observations from existing LIBERO and RoboTwin rollouts, including nominal and contact or motion-change transitions; they are not IID and no unbiased-sampling claim is made.\nESTIMAND: the held-out expectation of D_joint=lambda_a D^a+lambda_v D^v per receding-observation transition under the selected reuse set, where D^a and D^v are squared-error discrepancies relative to uncached Optional-IDM action vectors and predicted-observation clips; A_u is the calibration mean of the envelope r_u(d) for unit u.\nThe design avoids the method-lineage regression to local denoising dynamics as a sufficient validity proxy, and its cached object is not the action-independent shared prefix used by the sibling DINO-WM RankSafe candidate.\nBLOCK 2 — NAIVE-BASELINE AUDIT: the naive version uses a periodic C3ache-style schedule or one global local-drift threshold to reuse every eligible unit. It fails under branch (i): the naive version silently assumes that the same observed feature change has the same downstream consequence for every unit and that action and predicted-observation branches share one sensitivity, while the unit-risk tail and paired stale-value interventions can falsify both premises. The proposed mechanism confronts that failure with a causal leave-one-unit-out envelope, a homogeneous-null test, a risk budget, and dependency-complete refresh; the domain-specific structure that makes this more than a textbook quantile gate is the shared Fast-WAM Optional-IDM graph with policy-selected receding observations and two coupled downstream outputs, under a no-retraining constraint.\nBLOCK 3 — DESIGN RATIONALE: the anchor is kept single-gap because the risk object, its causal validation, and the selective-refresh operator are one chain; the other gaps are evaluation properties already enforced by D_joint and the controls. The earlier scalar influence-times-mean-drift design was rejected because it could not establish a non-exchangeable influence distribution and its mean statistic admits cancellation; a learned cache policy was rejected because it adds training and hides the causal risk object. The factorial controls deliberately separate operator-only speed/fidelity from unit-specific risk allocation, and the candidate is accepted only if those downstream controls support the claimed mechanism rather than merely reporting a global mean improvement.",
+    "core_mechanism_steps": "1. Freeze the existing Fast-WAM checkpoint and validated Optional-IDM path, then construct non-empty calibration and held-out splits from LIBERO and RoboTwin receding-observation rollouts; record each cache unit u=(b,k), source tensor h_{u,s}, current tensor h_{u,t}, action vector, predicted-observation clip, dependency edges, and native GPU timing.\n2. For every calibration transition and unit, replay the graph once with only u replaced by its stale cached value, keeping all other inputs fixed; compute D^a and D^v against the uncached outputs with eta as the active-dtype floor and lambda_a=lambda_v=1, and store (d_{i,u},D_joint_{i,u}) without fitting on held-out outcomes.\n3. For each u, sort its observed d values, compute the q_conf empirical upper quantile of D_joint at each cumulative d knot, and take the cumulative maximum to obtain the monotone envelope r_u(d); q_conf=0.95 is fixed before held-out evaluation, and d values beyond the observed calibration range force a fresh computation instead of extrapolation.\n4. Compute A_u as the mean of r_u(d_{i,u}) over calibration transitions, report its empirical survival curve and alpha_tail mass, and run a unit-label permutation test that pools the same trace-level tuples while destroying unit identity; p_hetero=0.05 is the pre-registered decision level, and failure to reject activates the pooled-envelope fallback.\n5. In each new receding-observation inference, run the unchanged prefix to form h_{u,t}, compute the full-vector d_u against h_{u,s}, look up r_u(d_u), and set the reuse variable x_u=1 only for units whose mode matches and age is at most H_max; H_max is the largest observed age whose held-out envelope discrepancy satisfies epsilon_joint, with one receding interval as the default when no larger age is supported.\n6. Select the eligible x_u values by maximizing measured saved block time subject to sum_u x_u r_u(d_u) <= epsilon_joint, with epsilon_joint=0.01 fixed before held-out evaluation, while forcing the units in the upper alpha_tail risk set to x_u=0; use the same rule for every inference and never tune it from task success.\n7. For each x_u=0 unit, recompute from the current observation and replace its cached tensor and source fingerprint; mark every downstream dependent unit dirty and recompute all dirty descendants in topological order before either the final action or predicted-observation output is consumed.\n8. Run the causal control matrix on the same held-out traces: uncached full computation, periodic C3ache-style reuse, one global local-drift gate, the full risk-envelope operator, the operator-only homogeneous-control table with the same operator, and a heterogeneous real-trace arm that swaps the unit-specific envelopes for the pooled envelope at matched skip rate.\n9. On a minimum 2-A100 campaign, record native GPU event latency including lookup and fallback, saved block time, tail-mass versus the homogeneous null, branch-normalized and raw action MSE, predicted-observation MSE, and closed-loop task success; report the operator effect on homogeneous controls separately from the unit-risk allocation effect on heterogeneous traces. For deterministic execution, the empirical q_conf quantile at a cumulative knot with m values is the order statistic at rank ceil(q_conf*m), and r_u(d) is a right-continuous step envelope using the largest calibration knot d_j<=d; d below the smallest knot or above the largest knot forces a fresh computation, and all risk constraints say 'at most epsilon_joint'. H_max is selected only from calibration tuples as the largest supported age whose maximum applicable envelope discrepancy is at most epsilon_joint, defaulting to one receding interval when none is supported; candidate units without a calibration tuple are always refreshed until calibrated. Step 8 additionally computes and reports per-held-out-transition D_joint and its mean, matching the declared estimand, and the high-risk tail uses the same stable tie rule.",
+    "falsification_prediction": "Run the existing Fast-WAM Optional-IDM checkpoint on held-out LIBERO and RoboTwin receding-observation rollouts, comparing uncached inference, periodic C3ache-style reuse, a global local-drift gate, and the proposed risk-envelope operator at matched skip rates with native GPU timing. If the mechanism is correct, the per-unit envelope r_u(d) will show a non-exchangeable high-risk tail relative to the unit-label permutation null, and the proposed operator will reduce held-out D_joint, action MSE, and predicted-observation MSE relative to the global gate without lowering closed-loop task success. The single load-bearing variable is the unit-specific risk envelope r_u(d); a negative control permutes complete envelopes across cache units while preserving the risk budget, skip rate, and dependency logic, and should increase downstream D_joint and reduce task success rather than merely changing the envelope values. If the heterogeneity test fails or the envelope permutation leaves downstream outcomes unchanged, the claimed causal risk-allocation mechanism is falsified even if a latency reduction remains.",
+    "compute_budget": "Minimum campaign: 2 A100 GPUs, expandable to 4 for parallel matched arms; approximately 12 A100-GPU-days for calibration replays, native latency profiling, homogeneous/null controls, and held-out LIBERO/RoboTwin evaluation using the existing checkpoint, with no full pretraining; $0 API because all inference and evaluation are local.",
+    "differentiation_from_lit": [
+      {
+        "paper_id": "arxiv:2606.08962v1",
+        "delta": "C3ache reuses same-denoising-step action-expert residuals on a periodic cross-chunk cadence, whereas this candidate causally estimates a unit-specific paired-output risk envelope, protects its empirically tested high-risk tail, and allocates reuse under a downstream error budget with dependency-complete refresh."
+      },
+      {
+        "paper_id": "arxiv:2506.10100v1",
+        "delta": "EfficientVLA caches attention and MLP intermediates within a CogACT action head from feature similarity, whereas this candidate uses stale-value interventions on Fast-WAM Optional-IDM to estimate receding-observation risk jointly for action and predicted-observation outputs without retraining."
+      },
+      {
+        "paper_id": "arxiv:2603.06331v2",
+        "delta": "The heterogeneous-token WorldCache uses curvature and accumulated drift to preserve video rollout quality, whereas this candidate's load-bearing object is an empirically calibrated paired action/video downstream-risk envelope whose tail is tested against a homogeneous null and a unit-permutation control."
+      },
+      {
+        "paper_id": "arxiv:2604.20289v2",
+        "delta": "X-Cache gates autoregressive video-block reuse with structure- and action-aware input fingerprints and KV-update guards, whereas this candidate refreshes Fast-WAM Optional-IDM units from a constrained paired-output error budget and validates the action branch and predicted-observation branch together after receding changes."
+      },
+      {
+        "paper_id": "semanticscholar:24aa6f3f5aefcd2463ee56a14077f2bcf11c3fcb",
+        "delta": "OnlineCache learns a policy and an error corrector for diffusion caching, whereas this candidate remains training-free and makes the causal stale-value risk envelope, its heterogeneity null, and its dependency refresh rule the directly testable mechanism."
+      }
+    ],
+    "almost_prior_paper_id": "arxiv:2606.08962v1",
+    "what_step_was_missed": "C3ache would have needed to replay each cached block-timestep with a stale value while holding the remaining Fast-WAM Optional-IDM graph fixed, estimate a per-unit paired action/predicted-observation risk envelope conditioned on the changed receding observation, test whether its risk distribution is genuinely heterogeneous, and solve a downstream error-budgeted refresh problem with descendant recomputation; its fixed cadence and task-success aggregate do not construct any of these causal validity objects.",
+    "signature_terms": [
+      "paired branch risk envelope cache",
+      "tail protected receding refresh",
+      "unitwise downstream discrepancy budget",
+      "Fast-WAM Optional-IDM risk gating"
+    ],
+    "alias_terms": [
+      "diffusion action head intermediate caching",
+      "adjacent frame visual KV reuse",
+      "evolutionary global cache scheduling",
+      "learned dynamic cache error correction",
+      "risk constrained selective computation",
+      "conformal prediction adaptive refresh",
+      "event triggered state recomputation"
+    ],
+    "composition_note": ""
+  },
+  "falsification_rewritten": false
+}

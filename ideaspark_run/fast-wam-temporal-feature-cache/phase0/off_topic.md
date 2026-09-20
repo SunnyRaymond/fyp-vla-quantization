@@ -1,0 +1,110 @@
+# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)
+
+These were retrieved by a connector but the host judged them outside the research direction (cross-domain "memory-augmented" false positives, surveys, unrelated fields). They are archived here for transparency but do NOT feed Phase 1 or the deep-read pool.
+
+- **DACA-GRPO: Denoising-Aware Credit Assignment for Reinforcement Learning in Diffusion Language Models** (`semanticscholar:991cc900ec2df53a32cacf4c2625c924d1127c14`)
+  - denoising credit assignment for diffusion language models is an NLP objective, not WAM/cache acceleration
+- **TA-GRPO-d: Trajectory-Aware GRPO for Optimizing Denoising Trajectories in Diffusion LLMs** (`semanticscholar:f9a61a549b945301e2b45a2803faa3a5ea05a619`)
+  - adaptive denoising schedules for diffusion language models are outside the embodied caching direction
+- **LFPO: Likelihood-Free Policy Optimization for Masked Diffusion Models** (`semanticscholar:0258d64a4d37176012dfd98a876058b42b6dd08a`)
+  - likelihood-free optimization for diffusion language models is an unrelated NLP objective
+- **On-Policy Self-Distillation in Diffusion Models** (`semanticscholar:62af4359568ef3a11c1c280c00decf39c18064c1`)
+  - reinforcement learning for image diffusion alignment has no cache mechanism and is outside robotics
+- **OPTD: On-Policy Transition Distillation with Consistency-Guided Adaptive Compression for Few-Step Di** (`semanticscholar:56da01e72c8c2a2fa620c5fbcf831435c8bfb8a0`)
+  - few-step distillation for diffusion language models is outside the embodied caching direction
+- **Diffusion-State Policy Optimization for Masked Diffusion Language Models** (`semanticscholar:10541eac6ce8f4ee62f2cedd1f97a030e4ece4cb`)
+  - intermediate-state policy optimization for diffusion language models is outside the target domain
+- **Reinforcement Learning from Denoising Feedback** (`semanticscholar:67fcb95fbc2cd46e4c2f88fe05c345e6406fc4d3`)
+  - reinforcement learning from denoising feedback targets diffusion language models, not caching or WAM
+- **Toward Diffusion-Based Deep Reinforcement Learning for Discrete Decision-Making: Methods and Evaluat** (`semanticscholar:a7e7fe217d8238d10d10536b49e9b6f07340e07d`)
+  - diffusion RL for discrete optimization in network and industrial settings is a different domain with no cache
+- **Reinforcement Learning for Diffusion LLMs with Entropy-Guided Step Selection and Stepwise Advantages** (`semanticscholar:7b707b1ecff9a00121f17a736144a3087fb17f28`)
+  - step selection and policy optimization for diffusion language models are outside the target domain
+- **Steering Away from Memorization: Reachability-Constrained Reinforcement Learning for Text-to-Image D** (`semanticscholar:01da175df4a6c28ff667c457c5dfad8bed9649ea`)
+  - text-to-image diffusion memorization mitigation has no cache mechanism and a different objective
+- **A Continuous-Time Reinforcement Learning Framework for Fine-Tuning Discrete Diffusion Models** (`semanticscholar:1eb0a4185cca0bc76339640acc4a718ad13361b5`)
+  - continuous-time RL for masked diffusion language models is outside the embodied caching direction
+- **A Novel Human Action Recognition Model by Grad-CAM Visualization with Multi-level Feature Extraction** (`semanticscholar:2fcc66044c82994332b86a1b8ee153b7056fc56e`)
+  - human action recognition for surveillance is a different application and research field
+- **Efficient Video Anomaly Detection for Edge Devices via Background Feature Caching** (`semanticscholar:5a8f43b8825b36c99871d55a79d00009833197dd`)
+  - background feature caching for surveillance anomaly detection is a different application and field
+- **Vision-Language-Action Models for Robotics: A Review Towards Real-World Applications** (`openalex:W4414198610`)
+  - pure VLA survey; explicitly excluded as a survey rather than a mechanism paper
+- **Deep BiLSTM Attention Model for Spatial and Temporal Anomaly Detection in Video Surveillance** (`openalex:W4406103127`)
+  - video-surveillance anomaly detection is clearly outside embodied world-action caching
+- **A Survey on Large Language Model Acceleration based on KV Cache Management** (`openalex:W4405902850`)
+  - pure survey of LLM KV-cache management in an NLP serving setting
+- **Enhancing malware detection with feature selection and scaling techniques using machine learning mod** (`openalex:W4408529537`)
+  - malware detection is unrelated to diffusion, robotics, and temporal feature caching
+- **Networking Systems for Video Anomaly Detection: A Tutorial and Survey** (`openalex:W4409507112`)
+  - pure survey of video-anomaly networking systems in an unrelated application
+- **Survey on Large Language Model-Enhanced Reinforcement Learning: Concept, Taxonomy, and Methods** (`openalex:W4393763811`)
+  - pure survey of LLM-enhanced reinforcement learning outside the target mechanism
+- **Hierarchical Micro-Segmentations for Zero-Trust Services via Large Language Model-Enhanced Graph Dif** (`openalex:W7124135466`)
+  - zero-trust network service provisioning is unrelated to WAM and feature caching
+- **From hydrated silica to quartz: Potential hydrothermal precipitates found in Jezero crater, Mars** (`openalex:W4408010184`)
+  - Mars geology is unrelated to the research direction
+- **From Data Creator to Data Reuser: Distance Matters** (`openalex:W4391833076`)
+  - data-sharing governance is unrelated to model inference caching
+- **Digital Oceans: Artificial Intelligence, IoT, and Sensor Technologies for Marine Monitoring and Clim** (`openalex:W4412372488`)
+  - marine monitoring is unrelated to WAM and feature caching
+- **Optimizing AIGC Services by Prompt Engineering and Edge Computing: A Generative Diffusion Model-Base** (`openalex:W4403210165`)
+  - edge AIGC contract/resource optimization is outside the embodied caching mechanism
+- **Advancing Persistent Character Generation: Comparative Analysis of Fine-Tuning Techniques for Diffus** (`openalex:W4402985646`)
+  - text-to-image diffusion fine-tuning is unrelated to temporal cache inference
+- **A Comprehensive Review of Neuro-symbolic AI for Robustness, Uncertainty Quantification, and Interven** (`openalex:W7110983869`)
+  - pure survey of neuro-symbolic AI is outside the direction
+- **Deep Learning Architectures Enabling Sophisticated Feature Extraction and Representation for Complex** (`openalex:W4404365286`)
+  - pure review of generic deep-learning feature extraction is outside the direction
+- **Digital solutions for migrant and refugee health: a framework for analysis and action** (`openalex:W4405794653`)
+  - digital health framework is unrelated to WAM and feature caching
+- **The operational medium-range deterministic weather forecasting can be extended beyond a 10-day lead ** (`openalex:W4411936988`)
+  - weather forecasting with a replay buffer is unrelated to feature-cache inference
+- **FALCON 2.0 SNAPPY REPORTS A NOVEL TOPSIS-DRIVEN APPROACH FOR REAL-TIME MULTI-ATTRIBUTE DECISION ANAL** (`openalex:W4411114223`)
+  - business reporting and TOPSIS analysis are unrelated to the research direction
+- **From Large AI Models to Agentic AI: A Tutorial on Future Intelligent Communications** (`openalex:W7127083419`)
+  - pure communications tutorial is outside embodied diffusion caching
+- **Automated video-based pain recognition in cats using facial landmarks** (`openalex:W4404375877`)
+  - cat pain recognition is unrelated to WAM and temporal feature caching
+- **Multi-Agent Reinforcement Learning in Games: Research and Applications** (`openalex:W4411100896`)
+  - pure survey of multi-agent RL in games is outside the mechanism and domain
+- **Optimizing Edge AI: A Comprehensive Survey on Data, Model, and System Strategies** (`openalex:W4406348153`)
+  - pure survey of edge-AI optimization is outside the specific WAM cache direction
+- **Biomimicry-Inspired Automated Machine Learning Fit-for-Purpose Wastewater Treatment for Sustainable ** (`openalex:W4410122044`)
+  - wastewater treatment automation is unrelated to the research direction
+- **Generative AI Meets 6G and Beyond: Diffusion Models for Semantic Communications** (`openalex:W4416191160`)
+  - pure survey of diffusion for wireless semantic communications is outside embodied caching
+- **Improving Reproducibility in AI Research: Four Mechanisms Adopted by JAIR** (`openalex:W4405867014`)
+  - AI publication reproducibility policy is unrelated to the research mechanism
+- **Compositional Context Fine-Tuning Vision-Language Model for Complex Assembly Action Understanding fr** (`arxiv:2607.10797v1`)
+  - video assembly action recognition is outside WAM inference caching
+- **Unrestrained Simplex Denoising for Discrete Data. A Non-Markovian Approach Applied to Graph Generati** (`arxiv:2603.28572v1`)
+  - graph diffusion generation is unrelated to WAM and feature caching
+- **Grounded Cache Routing for Retrieval-Augmented Generation: When Is It Safe to Reuse an Answer?** (`arxiv:2605.27494v1`)
+  - RAG answer and prefix caching is an LLM serving problem outside the target domain
+- **Keeping the Cache Warm Pays: Keepalive Economics for Agentic Workloads** (`arxiv:2607.19214v2`)
+  - LLM prompt-cache keepalive economics is unrelated to model feature caching
+- **EgoAction: Egocentric Action Composition with Reliability-Aware Temporal Fusion for the EPIC-KITCHEN** (`arxiv:2605.24496v2`)
+  - egocentric action detection has no WAM/cache mechanism
+- **Caching for Dollars, Not Hits: An Exact Offline Reference for Cloud-Egress Caching and the Crossover** (`arxiv:2606.20539v2`)
+  - cloud-egress cache economics is unrelated to model inference caching
+- **PolyKV: A Shared Asymmetrically-Compressed KV Cache Pool for Multi-Agent LLM Inference** (`arxiv:2604.24971v1`)
+  - shared compressed KV caches for LLM agents are outside WAM feature caching
+- **Spatial-Temporal Expert Learning for Video-based Person Re-identification** (`arxiv:2607.01353v1`)
+  - video person re-identification is unrelated to embodied world-action caching
+- **TF-CADE: Foreground-Concentrated Text-Video Alignment for Zero-Shot Temporal Action Detection** (`arxiv:2608.17422v1`)
+  - zero-shot temporal action detection is outside WAM inference caching
+- **IAE-VTG: Interaction-Aligned Action-Entity Video Temporal Grounding** (`arxiv:2609.09736v1`)
+  - video temporal grounding is outside embodied cache inference
+- **Fine-tuning Pocket-Aware Diffusion Models via Denoising Policy Optimization** (`arxiv:2605.17693v1`)
+  - pocket-aware molecular diffusion optimization is a different domain and has no cache mechanism
+- **Why did My Robot Just Change Personality? Prompting Guidelines for a Grounded Robot Persona in LLM-B** (`arxiv:2608.26182v1`)
+  - LLM-based robot persona prompting is unrelated to temporal feature caching
+- **Attention-Weighted Value Projection for KV-Cache Compression** (`arxiv:2604.11501v2`)
+  - KV-cache compression for language-model attention is outside WAM feature caching
+- **TAME: Temporal-Aware Mixture-of-Experts for Text-Video Retrieval** (`arxiv:2609.02204v1`)
+  - text-video retrieval is outside embodied world-action caching
+- **Robot Learning from Human Videos: A Survey** (`arxiv:2604.27621v1`)
+  - pure survey of learning robotics from human videos
+- **Quo Vadis, World Modeling?** (`arxiv:2608.02713v1`)
+  - conceptual survey and roadmap of world modeling, not a cache mechanism paper

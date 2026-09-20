@@ -1,0 +1,125 @@
+{
+  "method_name": "RankSafe Exact-Prefix Cache (RankSafe-EPC)",
+  "abstract_draft": "Counterfactual action-sequence evaluation is the main cost in DINO-WM's CEM planner: many candidates share the same observation and history computation, yet the planner repeatedly recomputes it before applying different action-conditioned suffixes. Recent reuse methods such as C³ache (arxiv:2606.08962v1) and X-Cache (arxiv:2604.20289v2) use residual similarity or action-aware fingerprints, but they do not make preservation of CEM candidate ordering the validity target. RankSafe-EPC instruments the forward graph, identifies an exact prefix whose outputs are independent of the candidate action, computes that prefix once, and reuses it while retaining every action-conditioned suffix and a mismatch fallback. The load-bearing prediction is that a correct action-dependency mask will preserve candidate costs, CEM first-action choices, and closed-loop Wall success while reducing native end-to-end planner latency; a randomized mask should instead induce rank inversions and lower action agreement. The expected outcome is a bounded planner-level cache with an explicit invariance contract, not a claim that approximate cache similarity is safe in general. Failure to reduce native latency or failure of the randomized-mask control to affect downstream decisions would falsify the proposed mechanism.",
+  "motivation.problem_framing": "DINO-WM's test-time CEM planner evaluates multiple counterfactual action sequences from one observed history. The visual/history prefix before the action-conditioned dynamics suffix is shared across those candidates, but a naive implementation recomputes it for every branch. The bottleneck is therefore not merely model inference time: any reuse rule must preserve the ordering of candidate costs that determines the selected first action. A cache that saves FLOPs while silently changing that ordering can alter closed-loop behavior even when individual predictions look close.\n\nC³ache and X-Cache make reuse decisions from residual similarity or action-aware fingerprints, and WorldCache uses curvature and drift to trade rollout fidelity for speed. These works establish that computation reuse is useful, but their validity signals are not an exact graph-level statement about which computation is independent of counterfactual actions. RankSafe-EPC treats the DINO-WM Wall planner as the primary instance of this gap: it isolates an action-independent prefix, leaves the suffix untouched, and tests the resulting candidate-order and first-action invariance directly.",
+  "motivation.why_now": "Recent cache systems such as C³ache, X-Cache, and WorldCache make reuse practical but stop short of planner-selection invariance. The existing DINO-WM Wall checkpoint and local trajectories provide a fixed, reproducible setting in which graph instrumentation, exact-prefix reuse, native latency, and first-action agreement can be measured without retraining; 2–4 A100s are sufficient for the bounded implementation and matched evaluation. This makes the missing contract testable now, while keeping the claim explicitly provisional until native end-to-end and closed-loop evidence is obtained.",
+  "motivation.why_prior_stopped[0].what_they_did": "C³ache reuses same-denoising-step residuals across smooth consecutive WAM chunks and reports task-success degradation as its main safety signal.",
+  "motivation.why_prior_stopped[0].what_they_did_not_do": "It did not identify an exact observation/history prefix shared by counterfactual CEM branches or test preservation of their candidate-cost ordering.",
+  "motivation.why_prior_stopped[0].structural_reason_they_stopped": "Its residual-similarity construction is tied to smooth executed chunks, not an action-independence analysis of the planner's forward graph.",
+  "motivation.why_prior_stopped[1].what_they_did": "X-Cache gates cross-chunk residual reuse with structure- and action-aware fingerprints while protecting persistent KV updates.",
+  "motivation.why_prior_stopped[1].what_they_did_not_do": "It did not certify equality of the planner-relevant prefix across a CEM candidate set or selected-action preservation under exact reuse.",
+  "motivation.why_prior_stopped[1].structural_reason_they_stopped": "Fingerprint gating supplies an approximate similarity test, whereas the missing mechanism is a graph-level action-independence contract with a planner-level consequence.",
+  "motivation.why_prior_stopped[2].what_they_did": "WorldCache adapts token skipping from curvature and drift to maintain video-rollout fidelity.",
+  "motivation.why_prior_stopped[2].what_they_did_not_do": "It did not retain all action-conditioned suffix computation while targeting CEM candidate ranking and first-action selection.",
+  "motivation.why_prior_stopped[2].structural_reason_they_stopped": "Its fidelity proxy is defined for rollout content, not for the ordering statistic that a sampling-based planner uses to select an action.",
+  "motivation.why_prior_stopped[3].what_they_did": "EfficientVLA combines layer pruning, visual-token selection, and temporal action-head feature caching in CogACT.",
+  "motivation.why_prior_stopped[3].what_they_did_not_do": "It did not define an exact shared-prefix object or validity condition for DINO-WM's counterfactual CEM branches.",
+  "motivation.why_prior_stopped[3].structural_reason_they_stopped": "Its compression changes the represented computation, so it does not isolate planner-preserving reuse by an action-dependency boundary.",
+  "motivation.why_prior_stopped[4].what_they_did": "DINO-WM uses pretrained visual features and test-time action-sequence optimization for zero-shot planning.",
+  "motivation.why_prior_stopped[4].what_they_did_not_do": "It did not expose a reusable prefix object or a cache-validity test tied to candidate-cost and selected-action invariance.",
+  "motivation.why_prior_stopped[4].structural_reason_they_stopped": "The original planner evaluates each counterfactual branch directly and provides no graph instrumentation for separating action-independent from action-dependent computation.",
+  "motivation.what_changes_when_gap_closes": "A successful result would turn shared-prefix reuse into a planner-level operation with an explicit condition for preserving CEM candidate ordering and the selected first action, rather than a similarity heuristic whose downstream effect is unknown. It would also give systems such as C³ache and X-Cache a concrete diagnostic boundary for separating safe exact reuse from approximate cross-chunk reuse, while making native latency and closed-loop agreement jointly measurable.",
+  "core_claim": "Caching an exactly action-independent DINO-WM prefix across CEM candidates preserves candidate-cost ordering and the selected first action, whereas corrupting its action-dependency mask causes rank inversions.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "A graph-derived binary mask can identify a DINO-WM prefix whose outputs are identical for all counterfactual CEM candidates.",
+      "supports_which_aspect": "Closes the bottleneck's missing action-independence contract for shared observation/history computation."
+    },
+    {
+      "id": "c2",
+      "statement": "Reusing that exact prefix while recomputing every action-conditioned suffix preserves candidate costs, their ordering, and the CEM first-action choice.",
+      "supports_which_aspect": "Closes the gap between computation reuse and the planner-selection quantity that controls downstream behavior."
+    },
+    {
+      "id": "c3",
+      "statement": "A randomized action-dependency mask produces candidate-cost rank inversions and lower first-action agreement or closed-loop success under a matched cache opportunity.",
+      "supports_which_aspect": "Distinguishes the causal invariance mechanism from a generic cache path or latency effect."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "e1",
+      "linked_step_id": "S1",
+      "latex": "M_b = \\mathbf{1}\\{\\partial h_b / \\partial a \\neq 0\\}",
+      "description": "The binary mask marks graph nodes at boundary b whose representation depends on the candidate action.",
+      "description_zh": "二值 mask 标记边界 b 处依赖候选 action 的图节点。"
+    },
+    {
+      "id": "e2",
+      "linked_step_id": "S2",
+      "latex": "M_b=0 \\Longrightarrow h_b^{(j)} = h_b^{\\mathrm{cache}} \\quad \\forall j \\in \\{1,\\ldots,K\\}",
+      "description": "When the boundary is action-independent, one cached prefix representation is valid for every candidate j.",
+      "description_zh": "当边界与 action 无关时，一个 cached prefix 表示可供全部候选 j 使用。"
+    },
+    {
+      "id": "e3",
+      "linked_step_id": "S3",
+      "latex": "J_j = \\sum_{\\tau=1}^{H} \\ell(\\hat{o}_{j,\\tau}, o_{t+\\tau}), \\qquad \\pi = \\operatorname{argsort}(J_{1:K})",
+      "description": "CEM ranks candidates by their rollout cost after the shared prefix and candidate-specific suffix are evaluated.",
+      "description_zh": "CEM 根据共享 prefix 与候选专属 suffix 得到的 rollout cost 对候选排序。"
+    },
+    {
+      "id": "e4",
+      "linked_step_id": "S4",
+      "latex": "\\Delta_{\\mathrm{rank}} = \\mathbf{1}[\\pi_{\\mathrm{cache}} \\neq \\pi_{\\mathrm{full}}], \\qquad a^*_{\\mathrm{cache}} = a^*_{\\mathrm{full}}",
+      "description": "The mechanism check records rank disagreement and requires the selected first action to match the full recomputation.",
+      "description_zh": "机制检查记录排序是否不一致，并要求 cached 与 full recomputation 的首 action 相同。"
+    }
+  ],
+  "method_flow.high_level_pipeline": "Given one DINO-WM Wall observation and a CEM candidate population, instrument the forward graph to locate the boundary before action-dependent computation and record its binary mask. Compute the observation/history prefix once and reuse it only when the mask certifies candidate independence; evaluate every action-conditioned suffix normally. Compare the cached and full candidate costs, ordering, first action, closed-loop outcome, and native end-to-end latency, with a canary mismatch fallback for the valid cache path. A matched randomized-mask control tests whether any downstream change is caused by violating the proposed invariance rather than by caching alone.",
+  "method_flow.steps": [
+    {
+      "step_id": "S1",
+      "title": "Trace the action boundary",
+      "what_changes": "Instrument the DINO-WM CEM forward graph and construct `M_b`, marking which boundary outputs depend on candidate actions.",
+      "why_this_step": "The bottleneck is repeated shared-prefix work, and an explicit dependency mask supplies the missing exact validity condition.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "DINO-WM Wall checkpoint, observation/history input, and CEM forward graph",
+      "output": "Candidate-independent boundary and binary action-dependency mask `M_b`"
+    },
+    {
+      "step_id": "S2",
+      "title": "Cache the invariant prefix",
+      "what_changes": "Compute the prefix through the certified boundary once per observation/history and feed the same cached representation to all candidate-specific suffixes.",
+      "why_this_step": "Exact reuse removes duplicated computation without altering the action-conditioned part that determines counterfactual outcomes.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Boundary mask `M_b` and current observation/history",
+      "output": "Reusable prefix representation plus a cache-hit path"
+    },
+    {
+      "step_id": "S3",
+      "title": "Guard candidate evaluation",
+      "what_changes": "Run each action-conditioned suffix, compare a deterministic canary against the full path, and fall back on mismatch while retaining a randomized-mask negative control with fallback disabled.",
+      "why_this_step": "The provenance threat is that a self-contaminated gate can hide errors; an explicit canary and a matched corrupted-mask control expose that failure mode.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Cached prefix and candidate-specific action suffixes",
+      "output": "Guarded cached candidate costs and negative-control costs"
+    },
+    {
+      "step_id": "S4",
+      "title": "Test planner invariance",
+      "what_changes": "Measure candidate-cost rank disagreement, first-action agreement, closed-loop success, and native end-to-end latency against matched full recomputation.",
+      "why_this_step": "The proposal is about preserving the planner's selection quantity, so speed without ordering and action agreement is insufficient evidence.",
+      "linked_component": "theory",
+      "linked_falsification": "metric_specification",
+      "input": "Full, RankSafe, and randomized-mask candidate evaluations under identical CEM settings",
+      "output": "Planner-level invariance and latency verdict"
+    }
+  ],
+  "method_flow.design_reasoning_echo": "The design chooses exact action-independence over residual similarity because the downstream object that matters is CEM's candidate ordering, not a local feature distance. It removes only the prefix provably shared by counterfactual branches and leaves the action-conditioned suffix intact, limiting the mechanism claim to a graph boundary that can be inspected. The canary fallback addresses gate provenance, while the randomized-mask arm tests whether rank changes follow the proposed dependency violation; this separates a planner-preserving cache from generic acceleration or self-contaminated reuse.",
+  "feasibility_validation.data.verdict": "feasible",
+  "feasibility_validation.data.rationale": "The existing DINO-WM Wall checkpoint and local trajectories provide the required inputs, with the public DINO-WM Wall setup as a reproducible substitute if traces must be regenerated.",
+  "feasibility_validation.theoretical.verdict": "feasible",
+  "feasibility_validation.theoretical.rationale": "The theoretical burden is a graph-level action-independence and ordering-invariance condition that can be checked directly from the instrumented forward path without a new training theorem.",
+  "feasibility_validation.engineering.verdict": "tight",
+  "feasibility_validation.engineering.rationale": "Native graph instrumentation, canary fallback, and matched end-to-end latency measurement are implementable but are the binding cost within the stated 2–4 A100 and 12 GPU-day budget.",
+  "feasibility_validation.falsification.verdict": "feasible",
+  "feasibility_validation.falsification.rationale": "The existing checkpoint, fixed CEM settings, randomized-mask intervention, rank and first-action metrics, and native latency path form a concrete runnable falsification test.",
+  "feasibility_validation.overall": "tight",
+  "reviewer_concerns_and_responses[0].response": "The provenance concern is addressed in `method_flow.steps` S3: the valid cache path uses a deterministic canary and falls back on mismatch, while the randomized-mask control disables fallback so gate contamination cannot be hidden. The `falsification_prediction` and `sub_claims.c3` fields make the required evidence downstream—rank inversions, first-action agreement, and closed-loop success—not merely a change in the gate itself, matching the Phase 3.2 verdict_rationale.",
+  "domain_landscape.position_note": "The candidate's assumption-audit-and-pivot pattern is untested in this corpus, while nearby cache proposals cluster around saturated architectural operator substitution and mid-frequency controlled diagnostics."
+}

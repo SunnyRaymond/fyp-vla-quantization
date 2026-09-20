@@ -1,0 +1,334 @@
+{
+  "schema": "jepa-action-prefix-compiler.recurrent-student-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-recurrent-latent-transition-architecture",
+  "purpose": "Compare one compact recurrent latent-transition student with the completed slate-trained NativeDinoPrefixStudent control while keeping context support, action-query slate, teacher targets, training budget, and held-out evaluation fixed.",
+  "research_question": {
+    "primary": "At fixed 256-context four-query slate support and 1500 updates, can a shared causal recurrent latent-transition student match or improve the read-only NativeDinoPrefixStudent control on held-out planner-candidate ranking while reducing parameter and predictor-latency cost?",
+    "mechanism": "The recurrent student predicts one next native visual/proprio latent from the current predicted latent and current packed action token, then feeds that prediction into the next transition. A single shared transition cell is reused for all five action steps, exposing the action-conditioned predictor's temporal mechanism directly instead of encoding the whole action prefix with a parallel causal transformer.",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; 300 candidates inside a block are nested measurements, not independent replicates",
+    "primary_comparison": "recurrent treatment minus read-only slate-MSE control at step 1500, aligned by (action-prefix seed, held-out context index)",
+    "secondary_comparison": "trainable parameter count and predictor-only latency of recurrent treatment versus the read-only control",
+    "architecture_contrast": "This is one frozen architecture contrast, not a width, training-length, query-density, context-density, or rank-loss sweep."
+  },
+  "entry_evidence": {
+    "optimization_length": "FAIL: extending the existing direct student to 1500 updates did not materially improve ranking",
+    "capacity_h256": "FAIL: h256 did not improve ranking over h128 at the frozen budget",
+    "context_density": "FAIL: adding same-episode context support did not pass the ranking-effect gate",
+    "query_slate_rank": "FAIL: planner-aware listwise rank treatment did not improve over identical slate-trained MSE control",
+    "authorization": "The next controlled axis is temporal student architecture: replace the direct prefix transformer with one shared recurrent native-latent transition cell.",
+    "read_only_control_metrics": {
+      "job_id": "24494756.pbs101",
+      "arm": "control",
+      "snapshot": "step_1500",
+      "spearman_median": 0.9332448244094849,
+      "spearman_minimum": 0.8302789926528931,
+      "top30_overlap_median": 0.7166666666666666,
+      "top30_overlap_minimum": 0.5333333333333333,
+      "source": "artifacts/24494756.pbs101/query_slate_rank_summary.json"
+    }
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "horizon": 5,
+    "frameskip": 5,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "student_hidden_dim": 256,
+    "baseline_student_class": "NativeDinoPrefixStudent",
+    "treatment_student_class": "RecurrentNativeLatentTransitionStudent",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_receives_goal": false,
+    "student_encode_obs_calls": false,
+    "student_contains_teacher_or_source_parameters": false,
+    "closed_loop": false,
+    "cem_execution": false,
+    "environment_interaction": false,
+    "lewm_transfer": false,
+    "observation_encoder_scope": "out of scope; use cached native observation latents",
+    "predictor_scope": "action-conditioned predictor only"
+  },
+  "baseline": {
+    "role": "read_only_authoritative_reference",
+    "remote_job_id": "24494756.pbs101",
+    "local_summary": "artifacts/24494756.pbs101/query_slate_rank_summary.json",
+    "local_job_log": "artifacts/24494756.pbs101/job.log",
+    "arm": "control",
+    "snapshot": "step_1500",
+    "architecture": {
+      "class": "NativeDinoPrefixStudent",
+      "description": "Two-layer causal action-prefix transformer followed by shared per-patch visual and proprio residual heads.",
+      "action_prefix_encoder": "CausalPrefixEncoder(action_dim=10, context_dim=394, hidden_dim=256)",
+      "transformer_layers": 2,
+      "transformer_heads": 4,
+      "feedforward_dim": 1024,
+      "visual_and_proprio_residual_heads": "separate LayerNorm-Linear(256,512)-GELU-Linear(512,256) heads",
+      "inference_rollout": "parallel prefix encoding with anchor latent; no recurrent feedback"
+    },
+    "summary_use": "Use its stored per-block metrics, logged-action MSE, causality, latency, convergence, and integrity fields as the paired read-only reference.",
+    "rerun": false,
+    "checkpoint_load": false,
+    "summary_mutation": false,
+    "pairing_key": "(action_prefix_seed, heldout_context_index)",
+    "initial_state_pairing": "not_applicable: the architecture contrast has different parameter shapes; use the same initialization seed and all shared data/schedule seeds, but do not claim identical parameter state."
+  },
+  "treatment": {
+    "name": "recurrent_shared_latent_transition",
+    "class": "RecurrentNativeLatentTransitionStudent",
+    "hidden_dim": 256,
+    "parameterization": "one shared cell and shared output heads reused for k=0..4; no per-horizon parameters",
+    "inputs": {
+      "initial_visual": "cached native context[visual][:,-1] with shape [B, patches, 384]",
+      "initial_proprio": "cached native context[proprio][:,-1] with shape [B, 10]",
+      "current_action": "one normalized packed action token a_k with shape [B, 10]",
+      "goal": "never passed to the student",
+      "history": "only the current predicted native visual/proprio state; no teacher-forced future latent"
+    },
+    "cell": {
+      "step_definition": "At each k, consume only (visual_k, proprio_k, action_k), emit (visual_{k+1}, proprio_{k+1}), and feed those predictions into step k+1.",
+      "visual_projection": "Linear(384,256)",
+      "proprio_projection": "Linear(10,256)",
+      "action_projection": "Linear(10,256)",
+      "patch_summary": "mean over projected visual patches; this is the only spatial mixing",
+      "shared_condition": "s_k = mean(visual_proj(visual_k), patches) + proprio_proj(proprio_k) + action_proj(action_k)",
+      "shared_transition": "LayerNorm(256) -> Linear(256,1024) -> GELU -> Linear(1024,256)",
+      "visual_update": "visual_{k+1} = visual_k + visual_out(LayerNorm(visual_proj(visual_k) + shared_transition(s_k)))",
+      "proprio_update": "proprio_{k+1} = proprio_k + proprio_out(LayerNorm(proprio_proj(proprio_k) + shared_transition(s_k)))",
+      "visual_output": "Linear(256,384)",
+      "proprio_output": "Linear(256,10)",
+      "feedback": "The predicted native outputs, not detached targets, are the next-step inputs during both training and evaluation.",
+      "dropout": 0.0,
+      "activation": "gelu",
+      "normalization": "LayerNorm on shared condition and each modality update",
+      "spatial_attention": false,
+      "per_step_parameter_copies": false
+    },
+    "causality_contract": "Output through horizon k may depend on actions 0..k only; changing action tokens after k while holding the prefix fixed must not change outputs through k.",
+    "loss": "mean dense native-latent MSE over all 32 query rows, five predicted steps, and native visual/proprio dimensions",
+    "forbidden": [
+      "planner-aware rank loss",
+      "listwise KL",
+      "goal input",
+      "encode_obs call",
+      "teacher forcing",
+      "ground-truth future-frame input",
+      "teacher or source predictor module inside the student",
+      "per-horizon cell copies",
+      "architecture or hyperparameter sweep"
+    ]
+  },
+  "shared_data_and_schedule": {
+    "parent_freeze": "QUERY_SLATE_RANK_FREEZE.json",
+    "parent_protocol": "PROTOCOL_QUERY_SLATE_RANK.zh.md",
+    "train_context_pool": {
+      "contexts": 256,
+      "episodes": 32,
+      "contexts_per_episode": 8,
+      "manifest": "reuse the completed Dhigh 256-context manifest exactly",
+      "mutation": false
+    },
+    "action_query_slate": {
+      "contexts": 256,
+      "queries_per_context": 4,
+      "rows": 1024,
+      "slots": [
+        "primary_logged",
+        "gaussian_planner_init_a",
+        "gaussian_planner_init_b",
+        "one_step_cem_resample"
+      ],
+      "primitive_action_shape": [5, 2],
+      "packed_action_token_shape": [5, 10],
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "variance_floor": 0.05,
+      "reuse_exact_bank": true,
+      "pairwise_distinct_required": true,
+      "student_output_not_used_to_generate_bank": true
+    },
+    "context_schedule": {
+      "pool_size": 256,
+      "contexts_per_update": 8,
+      "updates": 1500,
+      "schedule_seed": 20260931,
+      "generation": "CPU permutation of 0..255 every 32 updates; consume eight consecutive ordinals",
+      "precomputed_before_training": true,
+      "shared_with_baseline": true,
+      "no_within_update_duplicates": true
+    },
+    "teacher_targets": {
+      "teacher": "frozen official DINO-WM autoregressive predictor",
+      "target": "detached dense future native visual/proprio latents for the exact four-query slate rows",
+      "rows": 1024,
+      "student_target_gradients": false,
+      "student_inference_teacher_dependency": false
+    },
+    "seeds": {
+      "initialization": 99,
+      "training": 20260930,
+      "context_schedule": 20260931,
+      "action_slate": 20260932,
+      "cem": 20260933,
+      "heldout_action_prefix": [20264925, 20264926],
+      "timing_action_prefix": 20270925,
+      "cpu_generator_policy": "Generate all schedules, slates, held-out candidates, and timing candidates with explicit CPU generators before GPU transfer."
+    },
+    "training": {
+      "steps": 1500,
+      "snapshot_steps": [500, 1000, 1500],
+      "batch_contexts": 8,
+      "effective_query_rows": 32,
+      "microbatch_query_rows": 32,
+      "gradient_accumulation_steps": 1,
+      "optimizer": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.01,
+      "betas": [0.9, 0.999],
+      "eps": 1e-08,
+      "scheduler": null,
+      "early_stop": false,
+      "teacher_forcing": false,
+      "loss_change": false,
+      "retune_after_observation": false,
+      "loss_reduction": "mean over query rows, horizons, and native latent dimensions"
+    }
+  },
+  "heldout_evaluation": {
+    "ranking": {
+      "contexts": 8,
+      "fresh_action_prefix_seeds": [20264925, 20264926],
+      "blocks": 16,
+      "candidates_per_block": 300,
+      "topk": 30,
+      "candidate_bank": "reuse the exact held-out candidate bank and order from QUERY_SLATE_RANK_FREEZE",
+      "pairing_key": "(action_prefix_seed, heldout_context_index)",
+      "primary_unit": "block, not candidate",
+      "metrics": ["objective Spearman", "top-30 overlap", "teacher-relative native-latent MSE", "per-horizon cosine"]
+    },
+    "logged_action_fidelity": {
+      "contexts": 8,
+      "action": "each held-out context's logged action prefix",
+      "target": "frozen teacher rollout",
+      "statistic": "mean dense relative native-latent MSE",
+      "comparison": "recurrent treatment / read-only baseline control"
+    },
+    "causality": {
+      "procedure": "For unchanged prefix lengths 1,2,3,4, change only later action tokens and compare outputs through the unchanged prefix.",
+      "threshold": 0.000001,
+      "all_horizons_required": true
+    },
+    "latency": {
+      "boundary": "cached native observation latent plus normalized action prefix through the predictor",
+      "batch_size": 300,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "reduction": "1 - median(recurrent student ms) / median(frozen teacher ms)",
+      "baseline_comparison": "Report recurrent ms / read-only control ms as a diagnostic; it is not the primary success gate."
+    },
+    "parameter_tradeoff": {
+      "count": "count trainable parameters in each student from the instantiated state dictionary",
+      "report": ["recurrent_trainable_params", "baseline_trainable_params_from_summary_or_contract", "recurrent_to_baseline_parameter_ratio", "ranking_delta", "logged_mse_ratio", "teacher_latency_reduction", "recurrent_to_baseline_latency_ratio"],
+      "gate_role": "diagnostic tradeoff; parameter count alone cannot establish a scientific win"
+    },
+    "telemetry": "During GPU execution append utilization and VRAM samples every 30 seconds to the job log."
+  },
+  "gates": {
+    "pairing_and_integrity": {
+      "recurrent_outputs_finite": true,
+      "recurrent_training_finite": true,
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "future_action_leakage_max_abs": 0.000001,
+      "student_encode_obs_hidden": true,
+      "student_goal_input_hidden": true,
+      "student_source_or_teacher_parameters_absent": true,
+      "same_context_schedule": true,
+      "same_action_slate_bank": true,
+      "same_teacher_target_rows": true,
+      "same_heldout_candidate_bank": true,
+      "same_seed_values": true,
+      "initial_parameter_state_equal": "not_applicable_for_different_architectures",
+      "baseline_summary_read_only": true,
+      "heldout_split_unchanged": true,
+      "no_oom_nan_or_silent_fallback": true
+    },
+    "architecture_effect": {
+      "comparison": "recurrent treatment step1500 - read-only slate-MSE control step1500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "recurrent_architecture_effect_established",
+      "decision_label_if_fail": "recurrent_architecture_effect_not_established"
+    },
+    "absolute_fidelity": {
+      "primary_arm": "recurrent treatment",
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "logged_mse_noninferiority": {
+      "comparison": "recurrent treatment / read-only control on held-out logged-action teacher-relative MSE",
+      "ratio_max": 1.25
+    },
+    "causality": {
+      "maximum_future_action_leakage_abs": 0.000001
+    },
+    "latency": {
+      "predictor_only_reduction_min": 0.2
+    },
+    "decision_levels": {
+      "architecture_effect": "PASS iff pairing_and_integrity passes and all four architecture_effect thresholds pass.",
+      "full_replacement": "GO iff pairing_and_integrity passes, recurrent absolute fidelity passes, logged MSE non-inferiority passes, causality passes, and predictor-only latency passes. This is independent of relative architecture effect.",
+      "recurrent_supported_replacement": "GO iff architecture_effect PASS and full_replacement GO.",
+      "invalidity": "If the read-only baseline, shared slate bank, held-out pairing, recurrent integrity, or causality contract is invalid, report NO-GO and do not interpret ranking deltas.",
+      "no_retuning": "Do not change cell structure, hidden size, seeds, schedule, loss, steps, snapshots, or thresholds after observing results."
+    }
+  },
+  "required_summary_fields": {
+    "baseline": ["job_id", "arm", "summary_path", "per_block_metrics", "read_only_confirmed"],
+    "architecture": ["class", "cell_equations", "trainable_parameter_count", "parameter_ratio_to_baseline", "teacher_or_source_parameters_absent", "feedback_enabled", "teacher_forcing_disabled"],
+    "pairing": ["context_schedule_equal", "slate_bank_equal", "teacher_target_bank_equal", "heldout_candidate_bank_equal", "paired_block_ids", "initial_parameter_state_equal_not_applicable"],
+    "training": ["per_step_latent_mse", "last10_to_first_ratio", "snapshot_steps", "finite_and_no_fallback"],
+    "evaluation": ["per_block_recurrent", "per_block_baseline", "paired_deltas", "absolute_recurrent", "logged_mse_ratio", "causality", "latency", "parameter_tradeoff"],
+    "decisions": ["integrity", "architecture_effect", "full_replacement", "recurrent_supported_replacement", "claim_boundary"]
+  },
+  "claim_boundary": {
+    "allowed_if_architecture_effect_pass": "Under this frozen DINO-WM PushT predictor-level contract, the specified shared recurrent native-latent transition student improves held-out candidate ranking over the read-only slate-trained direct student control at the stated paired thresholds.",
+    "allowed_if_full_replacement_go": "The recurrent student independently satisfies the stated predictor-level replacement gates while preserving strict action-prefix causality.",
+    "parameter_latency_sentence": "Report parameter and predictor-only latency differences as an engineering tradeoff; neither alone proves ranking or closed-loop benefit.",
+    "baseline_boundary": "The 24494756 control is a read-only historical paired reference aligned by shared data banks and held-out blocks; it is not rerun and its checkpoints are not loaded.",
+    "forbidden": [
+      "encode_obs speedup or observation encoder claim",
+      "full planner or closed-loop task success",
+      "multi-step CEM integration claim",
+      "LeWM or Fast-LeWM empirical transfer",
+      "all-JEPA universality",
+      "population-level inference from 16 nested blocks",
+      "native low-bit deployment claim",
+      "claim that fewer parameters alone caused ranking improvement",
+      "causal claims beyond this architecture contrast"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "hash": false,
+    "gpu_telemetry_seconds": 30,
+    "do_not_submit_during_freeze_creation": true,
+    "baseline_rerun": false,
+    "checkpoint_return": "No checkpoint retrieval is required as the primary result artifact.",
+    "primary_artifacts": ["recurrent architecture summary JSON", "job log", "job status", "GPU telemetry"]
+  }
+}

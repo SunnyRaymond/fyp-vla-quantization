@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -N dino_shared_prefix_approx
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+IDEA_ROOT=${DINO_PREFIX_ROOT:-$ROOT/idea-validation/dino-wm-shared-prefix-cache}
+OUT=${DINO_APPROX_OUT:-$ROOT/artifacts/shared-prefix-approx-$PBS_JOBID}
+WORK=${TMPDIR:-/tmp}/dino-shared-prefix-approx-$PBS_JOBID
+
+# Fail closed before model loading, runtime extraction, or other heavy I/O.
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s)
+case "$HOST" in
+  *login*|*login1*|*login2*|asp2a-login*|ntu-login*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+test -d "$ROOT/data"
+test -f "$ROOT/ASSETS_READY"
+test -f "$ROOT/runtime-complete.tar"
+test -f "$IDEA_ROOT/run_approx_screen.py"
+test -f "$IDEA_ROOT/cache_core.py"
+test -f "$IDEA_ROOT/verify_approx_screen.py"
+
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+export PYTHONPATH="$IDEA_ROOT:$ROOT/source"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+timeout --signal=TERM 84m "$WORK/runtime/venv/bin/python" "$IDEA_ROOT/run_approx_screen.py" \
+  --root "$ROOT" \
+  --output "$OUT" \
+  --n-observations 10 \
+  --latency-observations 2
+
+test -s "$OUT/decision.jsonl"
+test -s "$OUT/system_summary.json"
+"$WORK/runtime/venv/bin/python" "$IDEA_ROOT/verify_approx_screen.py" \
+  --decision "$OUT/decision.jsonl" \
+  --system "$OUT/system_summary.json" > "$OUT/verifier.json"
+touch "$OUT/APPROX_SCREEN_PASS"
+date

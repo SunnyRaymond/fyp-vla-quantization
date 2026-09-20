@@ -1,0 +1,90 @@
+#!/bin/bash
+#PBS -N dino_pusht_iter
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+CONTROL="$ROOT/idea-validation/dino-wm-shared-prefix-cache/pusht_iteration_cache"
+
+# Fail closed before runtime extraction, model loading, or any PushT I/O.
+test -n "${PBS_JOBID:-}"
+JOB_ID="$PBS_JOBID"
+OUT=${DINO_PUSHT_ITERATION_OUT:-$ROOT/artifacts/pusht-iteration-cache-$JOB_ID}
+WORK=${TMPDIR:-/tmp}/dino-pusht-prefix-$JOB_ID
+ASSET_ROOT="$ROOT"
+DEPS_ROOT=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+
+test -f "$ROOT/source/conf/plan_pusht.yaml"
+test -f "$ROOT/runtime-complete.tar"
+test -f "$CONTROL/run_iteration_cache.py"
+test -f "$CONTROL/ITERATION_CACHE_FREEZE.json"
+test -f "$CONTROL/verify_iteration_cache.py"
+test -f "$ROOT/idea-validation/dino-wm-shared-prefix-cache/cache_core.py"
+test -f "$ROOT/PUSHT_ASSETS_READY"
+test -f "$ROOT/PUSHT_DEPS_READY_V5"
+test -d "$DEPS_ROOT"
+test -f "$ROOT/checkpoints/outputs/pusht/hydra.yaml"
+test -f "$ROOT/checkpoints/outputs/pusht/checkpoints/model_latest.pth"
+for split in train val; do
+  test -f "$ROOT/data/pusht_noise/$split/states.pth"
+  test -f "$ROOT/data/pusht_noise/$split/rel_actions.pth"
+  test -f "$ROOT/data/pusht_noise/$split/seq_lengths.pkl"
+  test -f "$ROOT/data/pusht_noise/$split/velocities.pth"
+  test -f "$ROOT/data/pusht_noise/$split/obses/episode_000.mp4"
+done
+
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+# Submit this job with qsub -W depend=afterok:<pusht_assets_jobid>:<pusht_deps_prep_jobid>
+# so both stable asset markers and the dependency overlay below come from
+# successful CPU-only prep jobs first.
+export PYTHONPATH="$DEPS_ROOT:$CONTROL:$ROOT/idea-validation/dino-wm-shared-prefix-cache:$ROOT/source"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu.txt"
+nvidia-smi \
+  --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total \
+  --format=csv \
+  -l 30 > "$OUT/gpu_usage.csv" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup_gpu_monitor() {
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+}
+trap cleanup_gpu_monitor EXIT
+
+timeout --signal=TERM 230m "$WORK/runtime/venv/bin/python" "$CONTROL/run_iteration_cache.py" \
+  --root "$ROOT" \
+  --asset-root "$ASSET_ROOT" \
+  --output "$OUT" \
+  --freeze "$CONTROL/ITERATION_CACHE_FREEZE.json"
+
+"$WORK/runtime/venv/bin/python" "$CONTROL/verify_iteration_cache.py" \
+  --freeze "$CONTROL/ITERATION_CACHE_FREEZE.json" \
+  --summary "$OUT/system_summary.json" > "$OUT/verifier.json"
+touch "$OUT/PUSHT_ITERATION_CACHE_NUMERICAL_PASS"
+cleanup_gpu_monitor
+trap - EXIT
+date

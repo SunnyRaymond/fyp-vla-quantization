@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -N lewm_pusht_iter
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+BUNDLE_ROOT=${LEWM_BUNDLE_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/01-iteration-cache-cross-model-planners}
+CONTROL=${LEWM_ITERATION_CONTROL_DIR:-$BUNDLE_ROOT/cases/lewm-pusht-cem}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+OUT=${LEWM_ITERATION_OUT:-$SCRIPT_DIR/artifacts/$PBS_JOBID}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -f "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json"
+test -f "$CONTROL/run_lewm_pusht_iteration.py"
+test -f "$CONTROL/verify_lewm_pusht_iteration.py"
+test -f "$STABLEWM_HOME/pusht/lewm_object.ckpt"
+test -f "$STABLEWM_HOME/pusht_expert_train.h5"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu.txt"
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 30 > "$OUT/gpu_usage.csv" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup() { kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; }
+trap cleanup EXIT
+
+"$PYTHON_BIN" "$CONTROL/run_lewm_pusht_iteration.py" \
+  --lewm-root "$LEWM_ROOT" \
+  --stablewm-home "$STABLEWM_HOME" \
+  --output "$OUT" \
+  --freeze "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json"
+"$PYTHON_BIN" "$CONTROL/verify_lewm_pusht_iteration.py" \
+  --freeze "$CONTROL/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json" \
+  --summary "$OUT/system_summary.json" > "$OUT/verifier.json"
+cleanup
+trap - EXIT

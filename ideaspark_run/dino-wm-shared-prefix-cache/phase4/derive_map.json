@@ -1,0 +1,73 @@
+{
+  "title_zh": "用于 DINO-WM CEM 规划的 RankSafe 前缀缓存",
+  "plain_motivation_en": "DINO-WM's test-time CEM planner evaluates several alternative action sequences from the same observed history. The visual and history computation before the action-dependent dynamics part is shared by these alternatives, but a straightforward implementation recomputes it for every branch. The challenge is therefore not only inference speed. Any reuse rule must keep the candidate-cost ordering unchanged, because that ordering determines the first action selected by the planner. A cache can save computation while silently changing that ordering and consequently changing closed-loop behavior, even when individual predictions appear close.\n\nC³ache and X-Cache decide when to reuse computation using residual similarity or action-aware fingerprints, while WorldCache uses curvature and drift to trade rollout fidelity for speed. These methods show that computation reuse can be useful, but their validity signals do not state exactly which graph computation is independent of alternative actions. RankSafe-EPC addresses this gap in the DINO-WM Wall planner by isolating a prefix that is independent of the action, leaving the suffix unchanged, and directly testing whether candidate ordering and the first selected action stay the same.\n\nRecent cache systems such as C³ache, X-Cache, and WorldCache make reuse practical but do not establish invariance of planner selection. The existing DINO-WM Wall checkpoint and local trajectories provide a fixed, reproducible setting for measuring graph instrumentation, exact-prefix reuse, native latency, and first-action agreement without retraining. A bounded implementation and matched evaluation fit within 2–4 A100s. The missing contract can therefore be tested now, while the claim remains provisional until native end-to-end and closed-loop evidence is obtained.\n\nEarlier work stopped short for structural reasons. C³ache reuses residuals across smooth consecutive WAM chunks, rather than analyzing action independence in a planner graph. X-Cache uses approximate structure- and action-aware fingerprint gating, rather than certifying equality of a planner-relevant prefix across CEM candidates and preservation of the selected action. WorldCache targets rollout content fidelity, rather than the candidate ordering used by a sampling-based planner. EfficientVLA changes the represented computation through pruning, token selection, and feature caching, rather than isolating planner-preserving reuse at an action-dependency boundary. DINO-WM itself performs each counterfactual branch directly and does not expose a reusable prefix or a cache-validity test tied to candidate-cost and selected-action invariance.\n\nIf the gap is closed, shared-prefix reuse becomes a planner-level operation with an explicit condition for preserving CEM candidate ordering and the selected first action, instead of a similarity heuristic with an unknown downstream effect. It also gives systems such as C³ache and X-Cache a concrete boundary for distinguishing safe exact reuse from approximate cross-chunk reuse, while allowing native latency and closed-loop agreement to be measured together.",
+  "plain_motivation_zh": "DINO-WM 的 test-time CEM planner 会从同一段观测历史出发，评估多条可能的 action sequence。这些候选共享 action-conditioned dynamics 之前的 visual/history 计算，但直接实现时会为每条分支重复计算。因此，问题不只是 inference 速度：任何复用规则都必须保持候选 cost 的排序不变，因为 planner 根据这个排序决定首个 action。即使单步 prediction 看起来接近，缓存若悄悄改变了排序，closed-loop 行为也可能随之改变。\n\nC³ache 和 X-Cache 根据 residual similarity 或 action-aware fingerprint 决定何时复用计算，WorldCache 则利用 curvature 和 drift 在 rollout fidelity 与速度之间取舍。这些工作说明复用计算是有用的，但它们的 validity signal 没有精确说明：forward graph 中哪些计算与候选 action 无关。RankSafe-EPC 在 DINO-WM Wall planner 中处理这个缺口：找出与 action 无关的 prefix，保持 suffix 不变，并直接检查 candidate ordering 和首个 selected action 是否保持不变。\n\n近来的 cache system（如 C³ache、X-Cache 和 WorldCache）让复用更实用，但还没有建立 planner selection invariance。现有的 DINO-WM Wall checkpoint 和 local trajectories 提供了固定且可复现的环境，可以在不 retraining 的情况下测量 graph instrumentation、exact-prefix reuse、native latency 和 first-action agreement。一个受限的实现和匹配评估可以在 2–4 张 A100 上完成。因此，这个缺失的 contract 现在可以检验；不过，在取得 native end-to-end 和 closed-loop evidence 以前，结论仍是 provisional。\n\n已有工作停在这里有结构性原因。C³ache 在平滑的连续 WAM chunk 之间复用 residual，但没有分析 planner graph 中的 action independence。X-Cache 用近似的 structure- and action-aware fingerprint gate，而没有证明 CEM 候选之间 planner-relevant prefix 相等并保持 selected action。WorldCache 针对 rollout content fidelity，而不是 sampling-based planner 用来选择 action 的候选排序。EfficientVLA 通过 pruning、token selection 和 feature caching 改变所表示的计算，并没有在 action-dependency boundary 处隔离 planner-preserving reuse。DINO-WM 本身直接计算每条 counterfactual branch，也没有提供与 candidate-cost 和 selected-action invariance 绑定的 reusable prefix 或 cache-validity test。\n\n如果这个缺口被补上，shared-prefix reuse 就会成为一种 planner-level operation，并有明确条件来保持 CEM candidate ordering 和 selected first action，而不再只是下游影响未知的 similarity heuristic。它也会给 C³ache 和 X-Cache 这样的 system 一个具体的 diagnostic boundary，用来区分 safe exact reuse 与 approximate cross-chunk reuse，同时共同测量 native latency 和 closed-loop agreement。",
+  "plain_method_steps_en": [
+    {
+      "step_id": "S1",
+      "what_to_do": "Instrument the DINO-WM CEM forward graph using the Wall checkpoint, observation/history input, and CEM graph. Build `M_b` to mark which outputs at the chosen boundary depend on candidate actions. The result is a candidate-independent boundary and a binary action-dependency mask `M_b`.",
+      "why_this_makes_sense": "The repeated work is the shared prefix, so an explicit dependency mask provides the exact condition for deciding whether that prefix can be reused."
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "For each observation/history, compute the prefix through the certified boundary once, then send the same cached representation to every candidate-specific action-conditioned suffix. Produce a reusable prefix representation and a cache-hit path.",
+      "why_this_makes_sense": "Exact reuse removes duplicated computation while leaving the action-conditioned part that determines counterfactual outcomes unchanged."
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "Run every action-conditioned suffix. Compare a deterministic canary with the full path and fall back on a mismatch. In parallel, retain a randomized-mask negative control with fallback disabled; use the cached prefix and candidate-specific suffixes to obtain guarded cached costs and negative-control costs.",
+      "why_this_makes_sense": "A gate could hide an error if it is contaminated by the result it is meant to protect. The canary and the matched corrupted-mask control expose that failure mode."
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "Under identical CEM settings, compare full, RankSafe, and randomized-mask candidate evaluations. Measure candidate-cost rank disagreement, first-action agreement, closed-loop success, and native end-to-end latency, and report a planner-level invariance and latency verdict.",
+      "why_this_makes_sense": "The proposal concerns the planner's selection quantity, so speed alone is not enough; ordering and action agreement must also be preserved."
+    }
+  ],
+  "plain_method_steps_zh": [
+    {
+      "step_id": "S1",
+      "what_to_do": "使用 Wall checkpoint、observation/history input 和 CEM forward graph，对 DINO-WM CEM forward graph 做 instrumentation。在选定 boundary 处构造 `M_b`，标记哪些 output 依赖候选 action。结果是 candidate-independent boundary 和 binary action-dependency mask `M_b`。",
+      "why_this_makes_sense": "重复发生的计算是 shared prefix，因此显式 dependency mask 能提供判断这个 prefix 是否可复用的精确条件。"
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "对于每个 observation/history，只计算一次通过已认证 boundary 的 prefix，然后把同一个 cached representation 送入每个 candidate-specific action-conditioned suffix。得到 reusable prefix representation 和 cache-hit path。",
+      "why_this_makes_sense": "Exact reuse 去掉重复计算，同时保持决定 counterfactual outcome 的 action-conditioned 部分不变。"
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "运行每个 action-conditioned suffix。把 deterministic canary 与 full path 比较，出现 mismatch 时回退。与此同时保留一个关闭 fallback 的 randomized-mask negative control；使用 cached prefix 和 candidate-specific suffixes，得到 guarded cached costs 与 negative-control costs。",
+      "why_this_makes_sense": "如果 gate 被它本应保护的结果污染，它可能掩盖错误。canary 和匹配的 corrupted-mask control 可以暴露这种 failure mode。"
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "在相同的 CEM settings 下比较 full、RankSafe 和 randomized-mask candidate evaluations。测量 candidate-cost rank disagreement、first-action agreement、closed-loop success 以及 native end-to-end latency，并给出 planner-level invariance 和 latency verdict。",
+      "why_this_makes_sense": "这个 proposal 关注的是 planner 的 selection quantity，因此只有速度还不够；还必须保持排序和 action agreement。"
+    }
+  ],
+  "plain_method_modules_en": [
+    {
+      "module_id": "M1_mechanism",
+      "purpose_oneline": "Identify the exact action-independent boundary and reuse the shared prefix while preserving each action-conditioned suffix.",
+      "step_ids": ["S1", "S2"]
+    },
+    {
+      "module_id": "M2_validation",
+      "purpose_oneline": "Guard candidate evaluation and test planner invariance, downstream decisions, and native latency.",
+      "step_ids": ["S3", "S4"]
+    }
+  ],
+  "plain_method_modules_zh": [
+    {
+      "module_id": "M1_mechanism",
+      "purpose_oneline": "找出精确的 action-independent boundary，复用 shared prefix，同时保留每个 action-conditioned suffix。",
+      "step_ids": ["S1", "S2"]
+    },
+    {
+      "module_id": "M2_validation",
+      "purpose_oneline": "保护 candidate evaluation，并检验 planner invariance、下游 decision 和 native latency。",
+      "step_ids": ["S3", "S4"]
+    }
+  ]
+}

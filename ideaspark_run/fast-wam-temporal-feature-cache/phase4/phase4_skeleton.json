@@ -1,0 +1,1483 @@
+{
+  "title": "Causal Risk-Envelope Caching for Fast-WAM Optional-IDM",
+  "title_zh": "<TODO[title_zh]: Chinese translation; keep proper nouns and method acronyms in English>",
+  "method_name": "<TODO[method_name]: short handle for the proposed method, e.g. 'Persistent Baseline GRPO (PB-GRPO)'>",
+  "hook": "At the same cache-skip rate, units with similar hidden-state change can have very different paired action/video error because a small high-risk tail carries most of the downstream influence; a causal risk envelope should therefore refresh that tail and reuse the bulk. The predicted direction is lower paired downstream error than periodic or local-drift gating at matched skip rate while preserving closed-loop task success.",
+  "abstract_draft": "<TODO[abstract_draft]: 150-250 words. Order: problem → bottleneck (cite ≥ 1 Phase 0 paper) → contribution (one sentence) → falsification prediction → expected outcome.>",
+  "motivation": {
+    "problem_framing": "<TODO[motivation.problem_framing]: 2-3 paragraphs framing the user's problem. Reference the bottleneck_statement from Phase 1 and the closest_adjacent papers. NOT a category label.>",
+    "why_now": "<TODO[motivation.why_now]: one paragraph on what makes this gap timely. Cite the most recent Phase 0 papers (within last 4-12 months) that get close but stop short.>",
+    "why_prior_stopped": [
+      {
+        "paper_id": "arxiv:2606.08962v1",
+        "venue_year": "arXiv 2026-06",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[0].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[0].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[0].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+        "venue_year": "arXiv 2026-03",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[1].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[1].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[1].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2506.10100v1",
+        "venue_year": "arXiv 2025",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[2].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[2].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[2].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2603.06331v2",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[3].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[3].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[3].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2603.22286v1",
+        "venue_year": "arXiv 2026-03",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[4].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[4].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[4].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      },
+      {
+        "paper_id": "arxiv:2604.20289v2",
+        "venue_year": "arXiv 2026-04",
+        "what_they_did": "<TODO[motivation.why_prior_stopped[5].what_they_did]: one sentence>",
+        "what_they_did_not_do": "<TODO[motivation.why_prior_stopped[5].what_they_did_not_do]: one sentence — the specific limit being lifted by the candidate>",
+        "structural_reason_they_stopped": "<TODO[motivation.why_prior_stopped[5].structural_reason_they_stopped]: one sentence — missing tool / missing assumption-relaxation / missing mechanism / missing measurement>"
+      }
+    ],
+    "what_changes_when_gap_closes": "<TODO[motivation.what_changes_when_gap_closes]: 2-3 sentences naming downstream consequences. NOT \"better numbers\" — name the specific capability or theoretical statement that becomes available>"
+  },
+  "core_claim": "<TODO[core_claim]: one sentence; should mirror the candidate's hook stripped to its load-bearing assertion>",
+  "sub_claims": "<TODO[sub_claims]: list of {id, statement, supports_which_aspect}; 2-4 entries>",
+  "key_equations": "<TODO[key_equations]: optional 3-6 equations; each {id, linked_step_id, latex, description, description_zh}. Emit [] (literal empty list) for a pure-prose candidate.>",
+  "method_flow": {
+    "high_level_pipeline": "<TODO[method_flow.high_level_pipeline]: 3-5 sentences narrating the method end-to-end as a story: input → key transformation → output>",
+    "steps": "<TODO[method_flow.steps]: derive from candidate.core_mechanism_steps; emit a list where each entry is {step_id, title, what_changes, why_this_step, linked_component, linked_falsification, input, output}. Each step_id MUST be S1, S2, ... in reading order. linked_component ∈ {theory, engineering, both}; linked_falsification ∈ {metric_specification, mechanism_distinguisher, both}.>",
+    "design_reasoning_echo": "<TODO[method_flow.design_reasoning_echo]: one paragraph echoing or condensing candidate.core_mechanism_reasoning>"
+  },
+  "plain_motivation_en": "<TODO[plain_motivation_en]: plain-language English rendering of motivation for a reader outside this subfield. Simplify LANGUAGE only — never drop the load-bearing mechanism. Spell out every abbreviation on first use.>",
+  "plain_motivation_zh": "<TODO[plain_motivation_zh]: Chinese 普通版 counterpart. Same content; keep identifiers/symbols/acronyms in English.>",
+  "plain_method_steps_en": "<TODO[plain_method_steps_en]: list of {step_id, what_to_do, why_this_makes_sense}; SAME step_ids and SAME order as method_flow.steps.>",
+  "plain_method_steps_zh": "<TODO[plain_method_steps_zh]: Chinese 普通版 counterpart; English for identifiers/symbols/acronyms.>",
+  "plain_method_modules_en": "<TODO[plain_method_modules_en]: group the CONTRIBUTION steps into named modules; list of {module_id, purpose_oneline, step_ids}.>",
+  "plain_method_modules_zh": "<TODO[plain_method_modules_zh]: Chinese 普通版 counterpart.>",
+  "falsification_prediction": "Run the existing Fast-WAM Optional-IDM checkpoint on held-out LIBERO and RoboTwin receding-observation rollouts, comparing uncached inference, periodic C3ache-style reuse, a global local-drift gate, and the proposed risk-envelope operator at matched skip rates with native GPU timing. If the mechanism is correct, the per-unit envelope r_u(d) will show a non-exchangeable high-risk tail relative to the unit-label permutation null, and the proposed operator will reduce held-out D_joint, action MSE, and predicted-observation MSE relative to the global gate without lowering closed-loop task success. The single load-bearing variable is the unit-specific risk envelope r_u(d); a negative control permutes complete envelopes across cache units while preserving the risk budget, skip rate, and dependency logic, and should increase downstream D_joint and reduce task success rather than merely changing the envelope values. If the heterogeneity test fails or the envelope permutation leaves downstream outcomes unchanged, the claimed causal risk-allocation mechanism is falsified even if a latency reduction remains.",
+  "compute_budget": "Minimum campaign: 2 A100 GPUs, expandable to 4 for parallel matched arms; approximately 12 A100-GPU-days for calibration replays, native latency profiling, homogeneous/null controls, and held-out LIBERO/RoboTwin evaluation using the existing checkpoint, with no full pretraining; $0 API because all inference and evaluation are local.",
+  "almost_prior_paper_id": "arxiv:2606.08962v1",
+  "almost_prior_venue_year": "arXiv 2026-06",
+  "what_step_was_missed": "C3ache would have needed to replay each cached block-timestep with a stale value while holding the remaining Fast-WAM Optional-IDM graph fixed, estimate a per-unit paired action/predicted-observation risk envelope conditioned on the changed receding observation, test whether its risk distribution is genuinely heterogeneous, and solve a downstream error-budgeted refresh problem with descendant recomputation; its fixed cadence and task-success aggregate do not construct any of these causal validity objects.",
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "feasible",
+      "rationale": "API line ≈ $0 vs $10000 (0%) → feasible. Overall (worse line) → feasible."
+    },
+    "data": {
+      "verdict": "<TODO[feasibility_validation.data.verdict]: feasible | tight | infeasible>",
+      "rationale": "<TODO[feasibility_validation.data.rationale]: one sentence: required data sources accessible; if any closed/private, name a public substitute>"
+    },
+    "theoretical": {
+      "verdict": "<TODO[feasibility_validation.theoretical.verdict]: feasible | tight | infeasible | n/a (only when the candidate has no theoretical contribution)>",
+      "rationale": "<TODO[feasibility_validation.theoretical.rationale]: one sentence; if tight, name the missing prerequisite>"
+    },
+    "engineering": {
+      "verdict": "<TODO[feasibility_validation.engineering.verdict]: feasible | tight | infeasible | n/a (only when the candidate has no engineering contribution)>",
+      "rationale": "<TODO[feasibility_validation.engineering.rationale]: one sentence; if tight, name the binding implementation cost>"
+    },
+    "falsification": {
+      "verdict": "<TODO[feasibility_validation.falsification.verdict]: feasible | tight | infeasible>",
+      "rationale": "<TODO[feasibility_validation.falsification.rationale]: one sentence: the falsification_prediction experiment is concrete enough to run with available tooling>"
+    },
+    "overall": "<TODO[feasibility_validation.overall]: feasible | tight | infeasible>"
+  },
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "venue_year": "arXiv 2026-06",
+      "delta": "C3ache reuses same-denoising-step action-expert residuals on a periodic cross-chunk cadence, whereas this candidate causally estimates a unit-specific paired-output risk envelope, protects its empirically tested high-risk tail, and allocates reuse under a downstream error budget with dependency-complete refresh."
+    },
+    {
+      "paper_id": "arxiv:2506.10100v1",
+      "venue_year": "arXiv 2025",
+      "delta": "EfficientVLA caches attention and MLP intermediates within a CogACT action head from feature similarity, whereas this candidate uses stale-value interventions on Fast-WAM Optional-IDM to estimate receding-observation risk jointly for action and predicted-observation outputs without retraining."
+    },
+    {
+      "paper_id": "arxiv:2603.06331v2",
+      "venue_year": "arXiv 2026",
+      "delta": "The heterogeneous-token WorldCache uses curvature and accumulated drift to preserve video rollout quality, whereas this candidate's load-bearing object is an empirically calibrated paired action/video downstream-risk envelope whose tail is tested against a homogeneous null and a unit-permutation control."
+    },
+    {
+      "paper_id": "arxiv:2604.20289v2",
+      "venue_year": "arXiv 2026-04",
+      "delta": "X-Cache gates autoregressive video-block reuse with structure- and action-aware input fingerprints and KV-update guards, whereas this candidate refreshes Fast-WAM Optional-IDM units from a constrained paired-output error budget and validates the action branch and predicted-observation branch together after receding changes."
+    },
+    {
+      "paper_id": "semanticscholar:24aa6f3f5aefcd2463ee56a14077f2bcf11c3fcb",
+      "venue_year": "arXiv 2026-07",
+      "delta": "OnlineCache learns a policy and an error corrector for diffusion caching, whereas this candidate remains training-free and makes the causal stale-value risk envelope, its heterogeneity null, and its dependency refresh rule the directly testable mechanism."
+    },
+    {
+      "paper_id": "openalex:W7203663435",
+      "venue_year": "",
+      "delta": "DriveCache already combines a planned-motion, scene-level dynamic-programming schedule with a calibrated response budget and causal drift-triggered refresh/replan; this candidate instead contributes a per-unit stale-value intervention with a paired action/video downstream-risk envelope, a unit-label heterogeneity test, and dependency-complete descendant invalidation, so action-aware budgeted refresh alone is not claimed as novel."
+    }
+  ],
+  "reviewer_concerns_and_responses": [
+    {
+      "attack": "Paper-pointed threat: openalex:W7203663435 (collision_hits). DriveCache reports that cache tolerance varies with ego translation and rotation, denoising progress, and consecutive reuse length, then uses a training-free action-aware controller with dynamic programming under a calibrated response budget and a causal drift-triggered refresh and replan. This directly threatens any broad novelty claim for action-aware budgeted caching with causal refresh. The supplied abstract does not, however, establish the candidate's narrower per-unit stale-value paired action/video envelope, unit-label heterogeneity null, or dependency-complete descendant invalidation, so it does not establish exact-mechanism overlap; the candidate must explicitly contrast these objects before claiming novelty.",
+      "severity": "non_blocking",
+      "response": "<TODO[reviewer_concerns_and_responses[0].response]: 2-3 sentences: explain where in the candidate (which field) the defense is anchored; reference the Phase 3.2 verdict_rationale when relevant>",
+      "fields_changed_to_address": [
+        "differentiation_from_lit"
+      ]
+    }
+  ],
+  "domain_landscape": {
+    "n_papers": 83,
+    "pattern_distribution": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 42,
+        "share": 0.51,
+        "saturation_band": "saturated"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 39,
+        "share": 0.47,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 36,
+        "share": 0.43,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 34,
+        "share": 0.41,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 27,
+        "share": 0.33,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 26,
+        "share": 0.31,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 6,
+        "share": 0.07,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 3,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      }
+    ],
+    "candidate_uses": [
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "role": "closes Gap 1",
+        "sub_pattern_id": "C00 (Reframe as a Solvable Object)",
+        "saturation_in_domain": "mid_frequency"
+      }
+    ],
+    "position_note": "<TODO[domain_landscape.position_note]: one sentence describing how the candidate's chosen patterns sit relative to the area's pattern usage; descriptive, not prescriptive>"
+  },
+  "literature_breakdown": {
+    "summary": {
+      "n_phase0_total": 89,
+      "n_phase0_on_topic": 84,
+      "n_phase0_outside_taxonomy": 5,
+      "n_phase3_collision": 137
+    },
+    "phase0_by_pattern": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "pattern_name": "Adapt by Conditioning, Not Retraining",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:1ab120aaa6303ae19bcff74e4e4778f354873a54",
+            "title": "EWAM: An Enhanced World Action Model for Closed-Loop Online Adaptation in Embodied Intelligence",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:96f9a89c1dbb0713cbfa6a8304cd5142dbdb369c",
+            "title": "HybridVLA: Collaborative Diffusion and Autoregression in a Unified Vision-Language-Action Model",
+            "venue_year": "arXiv 2025-03",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:3fbf40b6d2125b0593f34d8e5e597abc00c976eb",
+            "title": "Prediction with Action: Visual Policy Learning via Joint Denoising Process",
+            "venue_year": "Neural Information Processing Systems 2024",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "semanticscholar:9b5a613d45d3bb8c370b8f26b4ae156c04c439de",
+            "title": "MotionWAM: Towards Foundation World Action Models for Real-Time Humanoid Loco-Manipulation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:11d92b7d333667cb811cf21cc0c0b726858c033d",
+            "title": "The DAWN of World-Action Interactive Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:259c27284c1491adfbe14a1cac054b1ab8bd8870",
+            "title": "Privileged Foresight Distillation: Zero-Cost Future Correction for World Action Models",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "openalex:W4415200532",
+            "title": "Fine-tuning Diffusion Policies with Backpropagation Through Diffusion Timesteps",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2608.20114v2",
+            "title": "DECOWAM: Decoupled Whole-Body World-Action Model for Legged Mobile Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "arxiv:2608.20735v2",
+            "title": "ForeTime-VLA: Causal Future-Token Distillation from a World Action Model for Conveyor-Belt Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "arxiv:2606.12403v1",
+            "title": "World Pilot: Steering Vision-Language-Action Models with World-Action Priors",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "arxiv:2606.17046v2",
+            "title": "Geometric Action Model for Robot Policy Learning",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "arxiv:2608.25196v1",
+            "title": "Longitudinal Robot Learning from Demonstration with Care Providers in a Home Environment",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2605.23993v2",
+            "title": "Nano World Models: A Minimalist Implementation of Future Video Prediction",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2605.27589v1",
+            "title": "What-If World: A Causal Benchmark for General World Models in Embodied Scenarios",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2609.09630v1",
+            "title": "JEPA Policy: Diffusion-Free Imitation Learning via Paired Action and Future Representation Prediction",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2606.15691v1",
+            "title": "Can Causal Models Enhance Robot Navigation? Online Causal Adaptation for Real-Robot Navigation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "pattern_name": "Substitute the Operator or Representation",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:b4571fc18735f4575c0138ee98a307b6abe03dbd",
+            "title": "Evolving Cache Schedules for Fast Diffusion Policy Inference",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:24aa6f3f5aefcd2463ee56a14077f2bcf11c3fcb",
+            "title": "OnlineCache: Learning Dynamic Caching Policies with Error Correction for Efficient Diffusion Inference",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:a76d92f5dc365000585987f1c7a0c3b807ebd9e9",
+            "title": "From Local Mismatch to Global Impact: Optimizing Cache Reuse Policy for Efficient Diffusion",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:53d65f8729eb4775883b7d42f7c19fa97d061d31",
+            "title": "SeaCache: Spectral-Evolution-Aware Cache for Accelerating Diffusion Models",
+            "venue_year": "arXiv 2026-02",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:48384c7f58a94eda4d92e987d2644e2bea1a0065",
+            "title": "AdaCorrection: Adaptive Offset Cache Correction for Accurate Diffusion Transformers",
+            "venue_year": "International Conference on Information Photonics 2026",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:d68249a8f670dcf5b435537b62c8a2e06ed8e05d",
+            "title": "BeCARE: Budgeted Cache Refresh for Diffusion Transformer Acceleration",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:ab64277caacc9ccfd0ee252db2969ae575d1422e",
+            "title": "Trajectory-Consistent Calibration for Cache-Accelerated Diffusion Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:cce1d20e749ca5b0902908068f9682e309122f0d",
+            "title": "Sparse ActionGen: Accelerating Diffusion Policy with Real-time Pruning",
+            "venue_year": "arXiv 2026-01",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:10879d5b79fa8703bc8ba7b60aae52d9961696f5",
+            "title": "Adaptive-WAM: Quality-Guided Early-Exit Planning from Intermediate Video-Diffusion Features",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:d3e2550ef75f159ad3a47ca1e66dd8ec612d2266",
+            "title": "Denoising as Path Planning: Training-Free Acceleration of Diffusion Models with DPCache",
+            "venue_year": "arXiv 2026-02",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:041f0b2997e34b6639729c7f7d6a4fe3e79489ef",
+            "title": "BlockVLA: Accelerating Autoregressive VLA via Block Diffusion Finetuning",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:ad6d294f5dd54e5f20b17c258813c2a380e38237",
+            "title": "SenCache: Accelerating Diffusion Model Inference via Sensitivity-Aware Caching",
+            "venue_year": "arXiv 2026-02",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:5bf5b2330775ad59e21959551f80eb3535456e6a",
+            "title": "GUARD: Grounding Uncertainty and Ablation-Based Risk Detection for Diffusion-Based VLAs",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:9a3fab270ba157650422eded74e4a96a6f37bceb",
+            "title": "Budget-Constrained Step-Level Diffusion Caching",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:f5da4f234363201fbd8c4760e0c5f042bd242e4d",
+            "title": "ReCache: Learning Budget-Aware Caching Schedules for Diffusion Models via REINFORCE",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:39a5f9f7628f9259472c822ee497758d40a2d286",
+            "title": "SoftCap: Soft-Budget Control for Diffusion Transformer Acceleration",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:e57e80f4e5de6fc5cfd89e68fc32fbc0e097a463",
+            "title": "Rapid Generation of Channel Knowledge Map by Joint Physics and Conditional Diffusion Models",
+            "venue_year": "IEEE Transactions on Network Science and Engineering 2026",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:c423ddbd62c50be698ee612d5e3b9b61cf6bace3",
+            "title": "MotuBrain: An Advanced World Action Model for Robot Control",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:ac1c367285ef8f185ab2d5734a6a7f25aff025a4",
+            "title": "Efficient-WAM: A 1B-Parameter World-Action Model with Low-Cost Future Imagination",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:40d63feec5b965bed9bfb983616dd10ba2fe17bc",
+            "title": "Dream-Tac: A Unified Tactile World Action Model for Contact-Rich Robot Manipulation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:925d79a0c31a8b7966fac5e6b64904089aabe918",
+            "title": "dVLA: Diffusion Vision-Language-Action Model with Multimodal Chain-of-Thought",
+            "venue_year": "arXiv 2025-09",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:ff29cdbcf4a7343b8c41edaff0e82d67e654ae23",
+            "title": "SpeCa: Accelerating Diffusion Transformers with Speculative Feature Caching",
+            "venue_year": "ACM Multimedia 2025",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:67c2331a036458c9a42abea870319bb38836a56b",
+            "title": "ProCache: Constraint-Aware Feature Caching with Selective Computation for Diffusion Transformer Acceleration",
+            "venue_year": "AAAI Conference on Artificial Intelligence 2025",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:3f886d2b463c5d490981cb28dfcf62a2ccaf18e3",
+            "title": "Compute Only 16 Tokens in One Timestep: Accelerating Diffusion Transformers with Cluster-Driven Feature Caching",
+            "venue_year": "ACM Multimedia 2025",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "semanticscholar:8466a41d21973e8b63bb923e840e977d3ef5d2de",
+            "title": "C3ache: Accelerating World Action Models with Cross Inference Chunk Cache",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:f6fc8b8ca360d49de5ede2585bfd4ccda0f60a5f",
+            "title": "OmniCache: Multidimensional Hierarchical Feature Caching For Diffusion Models",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "semanticscholar:fbcef50b01b282842da0e3932d7c2523d0478707",
+            "title": "Exposure Bias Reduction for Enhancing Diffusion Transformer Feature Caching",
+            "venue_year": "arXiv 2025",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "openalex:W4406231035",
+            "title": "FlexCache: Flexible Approximate Cache System for Video Diffusion",
+            "venue_year": "arXiv (Cornell University) 2024",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "openalex:W4403346100",
+            "title": "Accelerating Diffusion Transformers with Token-wise Feature Caching",
+            "venue_year": "arXiv (Cornell University) 2024",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "openalex:W4409893269",
+            "title": "Intermediary Output Caching for Diffusion Model-Based Text-to-Image GenAI Services in Edge Computing Networks",
+            "venue_year": "ACM Transactions on Embedded Computing Systems 2025",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "openalex:W4415108896",
+            "title": "Block-wise Adaptive Caching for Accelerating Diffusion Policy",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "openalex:W4416053328",
+            "title": "AB-Cache: Training-Free Acceleration of Diffusion Models via Adams-Bashforth Cached Feature Reuse",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "openalex:W4415536316",
+            "title": "Accelerating Diffusion Transformer via Error-Optimized Cache",
+            "venue_year": "arXiv 2025-10",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2604.01985v2",
+            "title": "World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "arxiv:2608.25495v1",
+            "title": "Pose-Anchored Optical Flow for Low-Latency Human Action Anticipation in Human-Robot Teaming",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2606.15615v2",
+            "title": "MoECa: Aligning Feature Reuse with Expert Decomposition in Diffusion Transformers",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2605.06027v1",
+            "title": "FluxShard: Motion-Aware Feature Cache Reuse for Collaborative Video Analytics in Mobile Edge Computing",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2606.08962v1",
+            "title": "C$^3$ache: Accelerating World Action Models with Cross Inference Chunk Cache",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2603.22286v1",
+            "title": "WorldCache: Content-Aware Caching for Accelerated Video World Models",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2604.20289v2",
+            "title": "X-Cache: Cross-Chunk Block Caching for Few-Step Autoregressive World Models Inference",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2608.09231v2",
+            "title": "BAG: Budget-Aware Gating for Diffusion Caching",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "It targets redundant iterative denoising and the resulting inference latency or cache-error trade-off."
+          },
+          {
+            "paper_id": "arxiv:2506.10100v1",
+            "title": "EfficientVLA: Training-Free Acceleration and Compression for Vision-Language-Action Models",
+            "venue_year": "arXiv 2025",
+            "bottleneck_targeted": "It targets redundant computation and memory use across the VLA pipeline, including iterative diffusion action-head inference."
+          },
+          {
+            "paper_id": "arxiv:2603.06331v2",
+            "title": "WorldCache: Accelerating World Models for Free via Heterogeneous Token Caching",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "It targets costly iterative diffusion rollout caused by heterogeneous tokens and non-uniform temporal dynamics in world models."
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "pattern_name": "Design a Confound-Isolating Diagnostic",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:b5be12ccbb037be57a1dbc03fbd43d379170055f",
+            "title": "Fast-WAM: Do World Action Models Need Test-time Future Imagination?",
+            "venue_year": "arXiv 2026-03",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:0a61a9d9afffe4089f986e6b031cfe87e3db47a8",
+            "title": "WCog-VLA: A Dual-Level World-Cognitive Vision-Language-Action Model for End-to-End Autonomous Driving",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:de907b402c6005e74bc954b1f27ebe097e24cdf6",
+            "title": "GeoAware-VLA: Implicit Geometry Aware Vision-Language-Action Model",
+            "venue_year": "arXiv 2025-09",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:881370b510c86a86b20daae26074db050e7c017b",
+            "title": "NaVILA: Legged Robot Vision-Language-Action Model for Navigation",
+            "venue_year": "Robotics 2024",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "openalex:W7136924652",
+            "title": "Push-or-Avoid: Deep Reinforcement Learning of Obstacle-Aware Harvesting for Orchard Robots",
+            "venue_year": "Agriculture 2026",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "pattern_name": "Decompose for Differentiated Treatment",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:0ce7bed236203b2b84c3dc5fcbe2ec9d885c2bc8",
+            "title": "DIA: Denoising Intermediate Advantage for Diffusion Policy Optimization",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "semanticscholar:ce57d678ab254b8ed895e0ef7cd0e43871dbd468",
+            "title": "Mixture of Frames Policy: Multi-Frame Action Denoising for Bimanual Mobile Manipulation",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "semanticscholar:ed4d0cdac476d4514bd8a7f2b6b7101df423ae86",
+            "title": "Hume: Introducing System-2 Thinking in Visual-Language-Action Model",
+            "venue_year": "arXiv 2025-05",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:0609831cd27e84661f880eadfe85165670519187",
+            "title": "Astra: General Interactive World Model with Autoregressive Denoising",
+            "venue_year": "arXiv 2025-12",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "semanticscholar:929d7ee38bba5c9ef272e41a145ed21050400fba",
+            "title": "Unified Diffusion VLA: Vision-Language-Action Model via Joint Discrete Denoising Diffusion Process",
+            "venue_year": "arXiv 2025-11",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:835615a8828ddf99281ba1cd77c18e3ffd7c4da5",
+            "title": "Dual-Stream Diffusion for World-Model Augmented Vision-Language-Action Model",
+            "venue_year": "arXiv 2025-10",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "semanticscholar:5976a31d1b0f3edb4032803168e33cb7fdacb5a4",
+            "title": "ChatVLA: Unified Multimodal Understanding and Robot Control with Vision-Language-Action Model",
+            "venue_year": "Conference on Empirical Methods in Natural Language Processing 2025",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "openalex:W4414050443",
+            "title": "Unified World Models: Coupling Video and Action Diffusion for Pretraining on Large Robotic Datasets",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2605.15725v1",
+            "title": "DiLA: Disentangled Latent Action World Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2605.01391v2",
+            "title": "VISTA: Video Interaction Spatio-Temporal Analysis Benchmark",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2604.02330v2",
+            "title": "ActionParty: Multi-Subject Action Binding in Generative Video Games",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2607.07675v1",
+            "title": "Scaling Mixture-of-Experts Video Pretraining for Embodied Intelligence",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2606.12365v1",
+            "title": "Ambient Diffusion Policy: Imitation Learning from Suboptimal Data in Robotics",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2607.07763v1",
+            "title": "Unlocking Temporal Generalization in Hamiltonian Video Dynamics Models",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "pattern_name": "Encode Structure by Construction",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:a13e2495577354d366c72322b35680dedb1d19a8",
+            "title": "Point Tracking Improves World Action Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          },
+          {
+            "paper_id": "arxiv:2606.31101v1",
+            "title": "Efficient Sim-to-Real Transfer of World-Action Models from Synthetic Priors",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "pattern_name": "Unify Heterogeneous Inputs into One Space",
+        "papers": [
+          {
+            "paper_id": "semanticscholar:0f13c8d91f2d321c20553e7ee75e094ff8fbbd9a",
+            "title": "Unified 4D World Action Modeling from Video Priors with Asynchronous Denoising",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2605.22882v4",
+            "title": "GEM-4D: Geometry-Enhanced Video World Models for Robot Manipulation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2606.16413v1",
+            "title": "An Augmented Reality Brain-Robot Interface for Generalist Robot Arm Manipulation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          },
+          {
+            "paper_id": "arxiv:2607.19919v1",
+            "title": "Diffusion ReRoll: Revisable Denoising for Robotic Sequential Prediction",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+          }
+        ]
+      }
+    ],
+    "phase0_outside_taxonomy": [
+      {
+        "paper_id": "semanticscholar:dc263909d1706b36c2e39a1e827781588545c236",
+        "title": "OTTER: A Vision-Language-Action Model with Text-Aware Visual Feature Extraction",
+        "venue_year": "International Conference on Machine Learning 2025",
+        "bottleneck_targeted": "It targets the gap between multimodal/world modeling capability and efficient, reliable embodied control."
+      },
+      {
+        "paper_id": "openalex:W4414079054",
+        "title": "π₀: A Vision-Language-Action Flow Model for General Robot Control",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+      },
+      {
+        "paper_id": "openalex:W4416971765",
+        "title": "MAD3PG: A framework for multi-agent deep denoising diffusion policy gradient optimization",
+        "venue_year": "Information Fusion 2025",
+        "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+      },
+      {
+        "paper_id": "openalex:W4414197770",
+        "title": "Efficient Task-Specific Conditional Diffusion Policies: Shortcut Model Acceleration and SO(3) Optimization",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+      },
+      {
+        "paper_id": "arxiv:2609.13982v1",
+        "title": "Rethinking the Implications of Human Feedback for Preference Learning in Human-Robot Collaboration",
+        "venue_year": "arXiv 2026-09",
+        "bottleneck_targeted": "It targets the paper’s stated efficiency, quality, control, or generalization bottleneck."
+      }
+    ],
+    "phase3_collision": [
+      {
+        "paper_id": "openalex:W7172473602",
+        "title": "WitCert: Sound Runtime Risk Observability and Gating for KV-Cache Quantization",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7131252209",
+        "title": "City-Scale Intelligent Scheduling of EV Charging and Vehicle-to-Grid Under Renewable Variability",
+        "venue_year": "World Electric Vehicle Journal 2026"
+      },
+      {
+        "paper_id": "openalex:W7203663435",
+        "title": "DriveCache: Action-Aware Caching for Driving World Model Inference",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7161091981",
+        "title": "When Does Value-Aware KV Eviction Help? A Fixed-Contract Diagnostic for Non-Monotone Cache Compression",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7159965625",
+        "title": "Towards trustworthy agentic AI: a comprehensive survey of safety, robustness, privacy, and system security",
+        "venue_year": "Academia AI and Applications 2026"
+      },
+      {
+        "paper_id": "openalex:W4416595960",
+        "title": "Integrated Bayesian Networks and Linear Programming for Decision Optimization",
+        "venue_year": "Mathematics 2025"
+      },
+      {
+        "paper_id": "openalex:W7169809424",
+        "title": "Rigorous Evaluation of Machine Learning Intrusion Detection for Water Treatment Systems on SWaT Network Traffic",
+        "venue_year": "Applied Sciences 2026"
+      },
+      {
+        "paper_id": "openalex:W7128532681",
+        "title": "CoPrimeEEG: CRT-Guided Dual-Branch Reconstruction from Co-Prime Sub-Nyquist EEG",
+        "venue_year": "bioRxiv (Cold Spring Harbor Laboratory) 2026"
+      },
+      {
+        "paper_id": "openalex:W7114889968",
+        "title": "A Systematic Literature Review of Retrieval-Augmented Generation: Techniques, Metrics, and Challenges",
+        "venue_year": "Big Data and Cognitive Computing 2025"
+      },
+      {
+        "paper_id": "openalex:W4417242380",
+        "title": "Radshield: Software Radiation Protection for Commodity Hardware in Space",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4417528713",
+        "title": "Edge AI for Real-Time Vision: Challenges, Limitations, and Future Research Directions",
+        "venue_year": "مجلة العلوم الهندسية و تكنولوجيا المعلومات 2025"
+      },
+      {
+        "paper_id": "openalex:W7171748600",
+        "title": "Memory for Attention: Language-Conditioned Re-Perception with a Vision--Language--Motion Map",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160968678",
+        "title": "Echo: KV-Cache-Free Associative Recall with Spectral Koopman Operators",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7171749839",
+        "title": "$N_0$-TWAM: Scaling Tactile-Native World-Action Model for Contact-Rich Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7166900664",
+        "title": "When Latent Agents Lie: KV-Cache Integrity in Multi-Agent LLM Collaboration",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7124925838",
+        "title": "Advancements in adversarial example defense for deep learning models: a review",
+        "venue_year": "Cybersecurity 2026"
+      },
+      {
+        "paper_id": "openalex:W7164090951",
+        "title": "The Custody Envelope Threshold: Authority-Scaled Admission of External Artifacts in Institutional Infrastructure",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7151768773",
+        "title": "Morphology, Seam Topology, and Temporal Scaffolding in Complex Systems",
+        "venue_year": "Preprints.org 2026"
+      },
+      {
+        "paper_id": "openalex:W7154290581",
+        "title": "Dynamic optimization of multi-truck and multi-drone collaborative delivery for emergency material distribution",
+        "venue_year": "Journal of Industrial and Management Optimization 2026"
+      },
+      {
+        "paper_id": "openalex:W7212372923",
+        "title": "Multi-Hazard Disaster Intelligence for Early Warning, Evacuation Optimization and Humanitarian Digital Twins",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "semanticscholar:67c2331a036458c9a42abea870319bb38836a56b",
+        "title": "ProCache: Constraint-Aware Feature Caching with Selective Computation for Diffusion Transformer Acceleration",
+        "venue_year": "AAAI Conference on Artificial Intelligence 2025"
+      },
+      {
+        "paper_id": "semanticscholar:64fe8aab2083123fdca79d9d66ef717bcce00341",
+        "title": "Event-Triggered Selective Channel Refinement for Energy-Constrained IoT Communications",
+        "venue_year": "International Symposium on Communication Systems, Networks and Digital Signal Processing 2026"
+      },
+      {
+        "paper_id": "semanticscholar:a2ec7991f091b1047b60f8f2f169aaf66d200ba6",
+        "title": "LEC: Linear Expectation Constraints for Selection-Conditioned Risk Control in Selective Prediction and Routing Systems",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "semanticscholar:0e4463322e4d005c3eda98a244624ee404c6c21f",
+        "title": "SPIFF: Selective Preservation of Image Fidelity for Bandwidth-constrained Heterogeneous Networks",
+        "venue_year": "IEEE Conference on Computer Communications 2026"
+      },
+      {
+        "paper_id": "semanticscholar:04f6519cd6a2ad3e84ed099a991ac58f2810b472",
+        "title": "Clinical risk-aware reinforcement learning for latency-constrained healthcare IoT scheduling",
+        "venue_year": "Scientific Reports 2026"
+      },
+      {
+        "paper_id": "semanticscholar:88326d5a11a76023ca5294c62c83bd59720a6101",
+        "title": "Risk-Aware False-Alarm Suppression for Resource-Constrained Edge–Cloud Fire Detection",
+        "venue_year": "IEEE Access 2026"
+      },
+      {
+        "paper_id": "semanticscholar:a06e1d23e1bebb51285ef0a064cd76c7c8fc5bb1",
+        "title": "Adaptive Risk-Constrained Energy Scheduling of Microgrids Under Renewable Uncertainty",
+        "venue_year": "International Conference on Industrial Mechatronics and Automation 2026"
+      },
+      {
+        "paper_id": "openalex:W4376890833",
+        "title": "Adaptive Context Caching for IoT-Based Applications: A Reinforcement Learning Approach",
+        "venue_year": "Sensors 2023"
+      },
+      {
+        "paper_id": "openalex:W4365810871",
+        "title": "Conceptual associations generate sensory predictions",
+        "venue_year": "Journal of Neuroscience 2023"
+      },
+      {
+        "paper_id": "openalex:W4390815577",
+        "title": "Dopamine-independent effect of rewards on choices through hidden-state inference",
+        "venue_year": "Nature Neuroscience 2024"
+      },
+      {
+        "paper_id": "openalex:W4387666959",
+        "title": "A model of conceptual bootstrapping in human cognition",
+        "venue_year": "Nature Human Behaviour 2023"
+      },
+      {
+        "paper_id": "openalex:W4393956869",
+        "title": "Contrôle temps-réel et efficace pour la course autonome",
+        "venue_year": "HAL (Le Centre pour la Communication Scientifique Directe) 2023"
+      },
+      {
+        "paper_id": "semanticscholar:c7e7731bd004d3c7f3c8aa8aaa3a287c0cdd00fb",
+        "title": "ESLM: Risk-Averse Selective Language Modeling for Efficient Pretraining",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "semanticscholar:d94f8b377291dbd39a203f0a61de6337a47cb55a",
+        "title": "SAFER: Risk-Constrained Sample-then-Filter in Large Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "semanticscholar:819f7dd7921f2608a5dd085251037bb1a39db09d",
+        "title": "Risk-Constrained MPC With Application in Safety-Critical Control of Turbofan Engines",
+        "venue_year": "IEEE Transactions on Automation Science and Engineering 2025"
+      },
+      {
+        "paper_id": "semanticscholar:9f16a9785a7f48bedfd2a096074612de1dbbea1f",
+        "title": "Gaussian mixture Taylor approximations of risk measures constrained by PDEs with Gaussian random field inputs",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "semanticscholar:46971336d16ceb82691e7b1ef6060892851d5cee",
+        "title": "Convex Block-Cholesky Approach to Risk-Constrained Low-thrust Trajectory Design under Operational Uncertainty",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "semanticscholar:e6b37ad7dbd4c216c94baff6e8b1985527cbc315",
+        "title": "Chance-Constrained Inference for Hallucination Risk Control in Large Language Models",
+        "venue_year": "Trans. Mach. Learn. Res. 2026"
+      },
+      {
+        "paper_id": "semanticscholar:8aef74541ac345975fd8347aa7046e379e458710",
+        "title": "Selective Conformal Risk Control",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "openalex:W4409367296",
+        "title": "EfficientVMamba: Atrous Selective Scan for Light Weight Visual Mamba",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2025"
+      },
+      {
+        "paper_id": "openalex:W4406639316",
+        "title": "A survey on resource scheduling approaches in multi-access edge computing environment: a deep reinforcement learning study",
+        "venue_year": "Cluster Computing 2025"
+      },
+      {
+        "paper_id": "openalex:W4386245158",
+        "title": "SaTCP: Link-Layer Informed TCP Adaptation for Highly Dynamic LEO Satellite Networks",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4380576977",
+        "title": "Machine learning in computational histopathology: Challenges and opportunities",
+        "venue_year": "Genes Chromosomes and Cancer 2023"
+      },
+      {
+        "paper_id": "openalex:W4412610757",
+        "title": "Characterizing the Behavior and Impact of KV Caching on Transformer Inferences Under Concurrency",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4378508736",
+        "title": "Reparo: Loss-Resilient Generative Codec for Video Conferencing",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4389476223",
+        "title": "MEGA Evolving Graph Accelerator",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "semanticscholar:2c1362e063dcc28b5069eb43b4aab1472af6e850",
+        "title": "A Limit-Aware Sparse Frequency-Domain Decision Engine for EMI Risk Feedback in Resource-Constrained Systems",
+        "venue_year": "Italian National Conference on Sensors 2026"
+      },
+      {
+        "paper_id": "semanticscholar:bb6c71ece7df6d7959e2902b07bfba0fb616c129",
+        "title": "Clipped DeepControl: deep neural network two-dimensional pulse design with an amplitude constraint layer",
+        "venue_year": "Artif. Intell. Medicine 2022"
+      },
+      {
+        "paper_id": "semanticscholar:a9d20646e83b8572365d6e4bcded202418f481dc",
+        "title": "Federated Learning With Selective Knowledge Distillation Over Bandwidth-constrained Wireless Networks",
+        "venue_year": "ICC 2024 - IEEE International Conference on Communications 2024"
+      },
+      {
+        "paper_id": "semanticscholar:6e11e2007bce9f263d97a62cc4b283d659605ef0",
+        "title": "Safe to Stop? Risk-Constrained Stopping for Sequential Clinical Diagnosis Agents",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "semanticscholar:dc603760aebe18b452625a961db1b67fe74860d1",
+        "title": "Learning to Decide When Not to Decide: Coverage-Constrained Selective Classification with Abstention",
+        "venue_year": "2026 IEEE International Conference on AI Engineering and Innovations (AIEI) 2026"
+      },
+      {
+        "paper_id": "semanticscholar:0a186156e9f04f728c5812eee2f7cb2ad37e6d20",
+        "title": "Towards Risk-Aware Real-Time Security Constrained Economic Dispatch: A Tailored Deep Reinforcement Learning Approach",
+        "venue_year": "IEEE Transactions on Power Systems 2024"
+      },
+      {
+        "paper_id": "semanticscholar:8a350d9d5b9b7b6b60385da2fde4c4589af0704f",
+        "title": "Enhancing Grid Flood Resilience with CFD Fragility Modelling and Risk-Constrained DRL",
+        "venue_year": "IEEE International Conference on Smart Grid Communications 2025"
+      },
+      {
+        "paper_id": "semanticscholar:4223f2d56a7fd9ea065618878166b406f7c8ece5",
+        "title": "A primal-dual approach to double-risk-constrained LQR for practical control under non-Gaussian noise.",
+        "venue_year": "ISA transactions 2025"
+      },
+      {
+        "paper_id": "semanticscholar:8d7310172f657ebe626465a0b39dc350e4606e8e",
+        "title": "MambaDS: Near-Surface Meteorological Field Downscaling With Topography Constrained Selective State-Space Modeling",
+        "venue_year": "IEEE Transactions on Geoscience and Remote Sensing 2024"
+      },
+      {
+        "paper_id": "semanticscholar:5caa359542a396b6788d22ca66f1391d2546eaa1",
+        "title": "Risk-Constrained Multi-Objective Deep Reinforcement Learning for AGV Path Planning in Rail Transit",
+        "venue_year": "Applied System Innovation 2025"
+      },
+      {
+        "paper_id": "semanticscholar:9c5462e66def4137d1ead1cab4fbf235929dde46",
+        "title": "Risk-Constrained Optimization Framework for Generation and Transmission Maintenance Scheduling Under Economic and Carbon Emission Constraints",
+        "venue_year": "Energies 2025"
+      },
+      {
+        "paper_id": "semanticscholar:4a453a65b9dc543f1f0c34f0588f12d3aa56b5c0",
+        "title": "Selective Tensor Freezing for Efficient Fine-Tuning in Resource-Constrained Federated Learning",
+        "venue_year": "IEEE Journal on Selected Areas in Communications 2026"
+      },
+      {
+        "paper_id": "semanticscholar:dbf67d0f22b702fc06e4fcd516a4226830b859ec",
+        "title": "SelectInfer: Selective Neuron Loading and Computation for On-Device LLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "semanticscholar:04e465ac5b417ea93898ceaf5d0e8dd7332ad61f",
+        "title": "EdgeBoost: Confidence Boosting for Resource Constrained Inference via Selective Offloading",
+        "venue_year": "2024 20th International Conference on Distributed Computing in Smart Systems and the Internet of Things (DCOSS-IoT) 2024"
+      },
+      {
+        "paper_id": "semanticscholar:233ff7c2000dbe02ff2133cb1d1bc1b82a20225b",
+        "title": "A Confidence-Constrained IGDT Model for Risk-Aware Market Bidding of Wind Power Systems",
+        "venue_year": "2025 4th Asian Conference on Frontiers of Power and Energy (ACFPE) 2025"
+      },
+      {
+        "paper_id": "semanticscholar:d1ca89b724a8a43b331b5d0477c681ec0abf6394",
+        "title": "Integrating Dynamic Risk Assessment with Explicit Model Predictive Control via Chance-Constrained Programming",
+        "venue_year": "Systems and Control Transactions 2025"
+      },
+      {
+        "paper_id": "semanticscholar:8cccbcfdada172b217c82bc5681cd06a8b2fd6f7",
+        "title": "Constrained optimization algorithms for the computation of investable portfolios analytics: evaluation of economic-capital parameters for performance measurement and improvement",
+        "venue_year": "Studies in Economics and Finance 2022"
+      },
+      {
+        "paper_id": "openalex:W4312910656",
+        "title": "Efficient Acceleration of Deep Learning Inference on Resource-Constrained Edge Devices: A Review",
+        "venue_year": "Proceedings of the IEEE 2022"
+      },
+      {
+        "paper_id": "openalex:W4382203549",
+        "title": "VIDM: Video Implicit Diffusion Models",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2023"
+      },
+      {
+        "paper_id": "openalex:W4321021843",
+        "title": "Representative-Based Cold Start for Adaptive SSVEP-BCI",
+        "venue_year": "IEEE Transactions on Neural Systems and Rehabilitation Engineering 2023"
+      },
+      {
+        "paper_id": "openalex:W4403346100",
+        "title": "Accelerating Diffusion Transformers with Token-wise Feature Caching",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4399848219",
+        "title": "A stochastic vs deterministic perspective on the timing of cellular events",
+        "venue_year": "Nature Communications 2024"
+      },
+      {
+        "paper_id": "openalex:W4407565216",
+        "title": "GRU-Based Deep Learning Framework for Real-Time, Accurate, and Scalable UAV Trajectory Prediction",
+        "venue_year": "Drones 2025"
+      },
+      {
+        "paper_id": "openalex:W4382007459",
+        "title": "Multi-Thread Real-Time Control Based on Event-Triggered Mechanism",
+        "venue_year": "Electronics 2023"
+      },
+      {
+        "paper_id": "openalex:W4316020004",
+        "title": "Energy-Aware Scheduling for High-Performance Computing Systems: A Survey",
+        "venue_year": "Energies 2023"
+      },
+      {
+        "paper_id": "openalex:W4404853699",
+        "title": "Dynamic scheduling for flexible job shop based on MachineRank algorithm and reinforcement learning",
+        "venue_year": "Scientific Reports 2024"
+      },
+      {
+        "paper_id": "openalex:W4409803737",
+        "title": "Violated predictions enhance the representational fidelity of visual features in perception",
+        "venue_year": "Journal of Vision 2025"
+      },
+      {
+        "paper_id": "openalex:W4381251523",
+        "title": "Enhancing Next-Generation Extended Reality Applications With Coded Caching",
+        "venue_year": "IEEE Open Journal of the Communications Society 2023"
+      },
+      {
+        "paper_id": "openalex:W4380373478",
+        "title": "A model instability issue in the National Centers for Environmental Prediction Global Forecast System version 16 and potential solutions",
+        "venue_year": "Geoscientific model development 2023"
+      },
+      {
+        "paper_id": "openalex:W4409350029",
+        "title": "AI-driven job scheduling in cloud computing: a comprehensive review",
+        "venue_year": "Artificial Intelligence Review 2025"
+      },
+      {
+        "paper_id": "openalex:W4385701844",
+        "title": "Data-driven evolutionary computation for service constrained inventory optimization in multi-echelon supply chains",
+        "venue_year": "Complex & Intelligent Systems 2023"
+      },
+      {
+        "paper_id": "openalex:W4404261736",
+        "title": "DiP-GO: A Diffusion Pruner via Few-step Gradient Optimization",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4410800850",
+        "title": "Impaired reinforcement learning and coding of prediction errors in patients with cerebellar degeneration - a study with EEG and voxel-based morphometry",
+        "venue_year": "Cognitive Affective & Behavioral Neuroscience 2025"
+      },
+      {
+        "paper_id": "openalex:W4392962812",
+        "title": "Cognitive radio resource scheduling using an adaptive multiobjective evolutionary algorithm",
+        "venue_year": "Applied Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4388379734",
+        "title": "Mobile Robot Path Planning Based on Kinematically Constrained A-Star Algorithm and DWA Fusion Algorithm",
+        "venue_year": "Mathematics 2023"
+      },
+      {
+        "paper_id": "openalex:W4416816193",
+        "title": "LRX: A Hybrid-based Real-Time Air Quality Index Prediction and Visualization Model",
+        "venue_year": "Emerging Science Journal 2025"
+      },
+      {
+        "paper_id": "openalex:W4386488130",
+        "title": "Semantic 3D city interfaces—Intelligent interactions on dynamic geospatial knowledge graphs",
+        "venue_year": "Data-Centric Engineering 2023"
+      },
+      {
+        "paper_id": "openalex:W4391047432",
+        "title": "VMamba: Visual State Space Model",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "semanticscholar:391168dbf815cc7974b37045dffd4cfd8fa44c32",
+        "title": "A Bi-level Risk-constrained Optimization (BRO) Model for Autonomous Driving Trajectory Planning at On-ramp Areas*",
+        "venue_year": "2024 IEEE Intelligent Vehicles Symposium (IV) 2024"
+      },
+      {
+        "paper_id": "semanticscholar:bb9b1d3e3cf9768d1e5b9a56bf795b80500dc749",
+        "title": "Entropic Value-at-Risk Constrained Optimal Power Flow Considering Distribution Network Outages During Extreme Events",
+        "venue_year": "IEEE Transactions on Power Systems 2025"
+      },
+      {
+        "paper_id": "semanticscholar:5af13277ac5fd847a7de66c67c34046be6743207",
+        "title": "Fast Computation of Superquantile-Constrained Optimization Through Implicit Scenario Reduction",
+        "venue_year": "Journal of machine learning research 2024"
+      },
+      {
+        "paper_id": "semanticscholar:a9f8132b2a5b7726a0cf6da4fe3520b7371f36ff",
+        "title": "BabyMamba-HAR: Lightweight Selective State Space Models for Efficient Human Activity Recognition on Resource Constrained Devices",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "semanticscholar:645e35fa38f7c9052693c74c2f63dbfcb93728ab",
+        "title": "D2D and Edge Server-Enabled Computation Offloading for Resource-Constrained Wireless Networks",
+        "venue_year": "IEEE Transactions on Mobile Computing 2026"
+      },
+      {
+        "paper_id": "semanticscholar:199b377ac0516b8f2e3324a9ec919d1510f5df7c",
+        "title": "An Efficient Algorithm for Solving Entropy Value-at-Risk Constrained DC Optimal Power Flow Considering Wind Power Uncertainty",
+        "venue_year": "IEEE Power & Energy Society General Meeting 2024"
+      },
+      {
+        "paper_id": "semanticscholar:851ede9e9c0c1f694ac23527e5b9145fd187cc7d",
+        "title": "Risk-constrained community battery utilisation optimisation for electric vehicle charging with photovoltaic resources",
+        "venue_year": "Journal of Energy Storage 2024"
+      },
+      {
+        "paper_id": "semanticscholar:69e596bee3e70bd1c95ccae0ccfadb2d16aba650",
+        "title": "When to Localize? A Risk-Constrained Reinforcement Learning Approach",
+        "venue_year": "American Control Conference 2024"
+      },
+      {
+        "paper_id": "semanticscholar:2395d3150ae5e0d1a1624f768130ef85a1540a90",
+        "title": "SHA256 at SemEval-2025 Task 4: Selective Amnesia - Constrained Unlearning for Large Language Models via Knowledge Isolation",
+        "venue_year": "SemEval@ACL 2025"
+      },
+      {
+        "paper_id": "semanticscholar:73e3e8eadfcc6f7f6548847b474aeb0fded651ed",
+        "title": "Wasserstein Distributionally Robust Risk-Constrained Iterative MPC for Motion Planning: Computationally Efficient Approximations",
+        "venue_year": "IEEE Conference on Decision and Control 2023"
+      },
+      {
+        "paper_id": "semanticscholar:5b3e766a227c34b36541199bbbe3fe0320e23549",
+        "title": "Iterative Risk-Constrained Model Predictive Control: A Data-Driven Distributionally Robust Approach",
+        "venue_year": "IEEE Transactions on Automatic Control 2023"
+      },
+      {
+        "paper_id": "semanticscholar:d190b72435daeb311b701d7e04e9171fbaa1f147",
+        "title": "Agreement-Constrained Probabilistic Minimum Bayes Risk Decoding",
+        "venue_year": "IJCNLP-AACL 2025"
+      },
+      {
+        "paper_id": "openalex:W4407857534",
+        "title": "Parkinsons Disease Prediction With Spiral Drawings and Wave Frequency Using Deep Conformal Neural Networks",
+        "venue_year": "Journal of Neonatal Surgery 2025"
+      },
+      {
+        "paper_id": "openalex:W4399121711",
+        "title": "Low-latency automotive vision with event cameras",
+        "venue_year": "Nature 2024"
+      },
+      {
+        "paper_id": "openalex:W4400036065",
+        "title": "Integrating Sporadic Events in Time-triggered Systems via Affine Envelope Approximations",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4389326242",
+        "title": "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4389755588",
+        "title": "SGLang: Efficient Execution of Structured Language Model Programs",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4385964285",
+        "title": "Machine-Learning-Based Qubit Allocation for Error Reduction in Quantum Circuits",
+        "venue_year": "IEEE Transactions on Quantum Engineering 2023"
+      },
+      {
+        "paper_id": "openalex:W4328050984",
+        "title": "Recent advances in computational modeling of MOFs: From molecular simulations to machine learning",
+        "venue_year": "Coordination Chemistry Reviews 2023"
+      },
+      {
+        "paper_id": "openalex:W4390339624",
+        "title": "Computational modeling of cardiac electrophysiology and arrhythmogenesis: toward clinical translation",
+        "venue_year": "Physiological Reviews 2023"
+      },
+      {
+        "paper_id": "openalex:W4385074905",
+        "title": "The timing of cellular events: a stochastic vs deterministic perspective",
+        "venue_year": "bioRxiv (Cold Spring Harbor Laboratory) 2023"
+      },
+      {
+        "paper_id": "openalex:W7124135466",
+        "title": "Hierarchical Micro-Segmentations for Zero-Trust Services via Large Language Model-Enhanced Graph Diffusion",
+        "venue_year": "IEEE Transactions on Networking 2026"
+      },
+      {
+        "paper_id": "openalex:W4387994442",
+        "title": "GenSLMs: Genome-scale language models reveal SARS-CoV-2 evolutionary dynamics",
+        "venue_year": "The International Journal of High Performance Computing Applications 2023"
+      },
+      {
+        "paper_id": "openalex:W4385623043",
+        "title": "Real-Time PageRank on Dynamic Graphs",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4396217831",
+        "title": "Social Elastic Band with Prediction and Anticipation: Enhancing Real-Time Path Trajectory Optimization for Socially Aware Robot Navigation",
+        "venue_year": "International Journal of Social Robotics 2024"
+      },
+      {
+        "paper_id": "openalex:W4402985646",
+        "title": "Advancing Persistent Character Generation: Comparative Analysis of Fine-Tuning Techniques for Diffusion Models",
+        "venue_year": "AI 2024"
+      },
+      {
+        "paper_id": "openalex:W4414972923",
+        "title": "A Time-dependent Solution for GSN 069 Disk Evolution and the Nature of Long-lived Tidal Disruption Events",
+        "venue_year": "The Astrophysical Journal 2025"
+      },
+      {
+        "paper_id": "openalex:W4378573801",
+        "title": "Dual synergistic inhibition of COX and LOX by potential chemicals from Indian daily spices investigated through detailed computational studies",
+        "venue_year": "Scientific Reports 2023"
+      },
+      {
+        "paper_id": "openalex:W4318334658",
+        "title": "Event-driven adaptive intermittent control applied to a rotational pendulum",
+        "venue_year": "Proceedings of the Institution of Mechanical Engineers Part I Journal of Systems and Control Engineering 2023"
+      },
+      {
+        "paper_id": "openalex:W4404595387",
+        "title": "Challenges and future research directions in secure multi-party computation for resource-constrained devices and large-scale computations",
+        "venue_year": "International Journal of Information Security 2024"
+      },
+      {
+        "paper_id": "openalex:W4362470986",
+        "title": "Building Dynamic Capabilities and Organizational Resilience in Tourism Firms During COVID-19: A Staged Approach",
+        "venue_year": "Journal of Travel Research 2023"
+      },
+      {
+        "paper_id": "openalex:W4308731068",
+        "title": "Path-Planning for Unmanned Aerial Vehicles with Environment Complexity Considerations: A Survey",
+        "venue_year": "ACM Computing Surveys 2022"
+      },
+      {
+        "paper_id": "openalex:W4321608012",
+        "title": "Efficient Error Detection for Matrix Multiplication With Systolic Arrays on FPGAs",
+        "venue_year": "IEEE Transactions on Computers 2023"
+      },
+      {
+        "paper_id": "openalex:W4411902261",
+        "title": "Optimization of rational parameters for fastening and protection systems of mine workings in conditions of occurrence of unpredictable rock pressure manifestations",
+        "venue_year": "Mining of Mineral Deposits 2025"
+      },
+      {
+        "paper_id": "openalex:W4390970201",
+        "title": "A Comprehensive Survey: Evaluating the Efficiency of Artificial Intelligence and Machine Learning Techniques on Cyber Security Solutions",
+        "venue_year": "IEEE Access 2024"
+      },
+      {
+        "paper_id": "openalex:W4320477349",
+        "title": "Adaptive patch foraging in deep reinforcement learning agents",
+        "venue_year": "arXiv (Cornell University) 2022"
+      },
+      {
+        "paper_id": "openalex:W4415775422",
+        "title": "Explainability and Interpretability in Concept and Data Drift: A Systematic Literature Review",
+        "venue_year": "Algorithms 2025"
+      },
+      {
+        "paper_id": "openalex:W4380090011",
+        "title": "A State-of-the-Art Review of Task Scheduling for Edge Computing: A Delay-Sensitive Application Perspective",
+        "venue_year": "Electronics 2023"
+      },
+      {
+        "paper_id": "openalex:W4393183872",
+        "title": "SWIX: A Memory-efficient Sliding Window Learned Index",
+        "venue_year": "Proceedings of the ACM on Management of Data 2024"
+      },
+      {
+        "paper_id": "openalex:W7166890317",
+        "title": "Diffusion-CAM: Faithful Visual Explanations for dMLLMs",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W4385461846",
+        "title": "Task Scheduling Mechanism Based on Reinforcement Learning in Cloud Computing",
+        "venue_year": "Mathematics 2023"
+      },
+      {
+        "paper_id": "openalex:W4415372385",
+        "title": "Applying machine learning for perioperative adverse event prediction: a narrative review toward better clinical efficacy and usability",
+        "venue_year": "Anesthesiology and Perioperative Science 2025"
+      },
+      {
+        "paper_id": "openalex:W3197686051",
+        "title": "Overview of the TCV digital real-time plasma control system and its applications",
+        "venue_year": "Fusion Engineering and Design 2024"
+      },
+      {
+        "paper_id": "openalex:W4399752630",
+        "title": "Advancements in heuristic task scheduling for IoT applications in fog-cloud computing: challenges and prospects",
+        "venue_year": "PeerJ Computer Science 2024"
+      },
+      {
+        "paper_id": "openalex:W4391989542",
+        "title": "NetDiffusion: Network Data Augmentation Through Protocol-Constrained Traffic Generation",
+        "venue_year": "Proceedings of the ACM on Measurement and Analysis of Computing Systems 2024"
+      },
+      {
+        "paper_id": "openalex:W4403640621",
+        "title": "AM 3 : An Open-source Tool for Time-dependent Lepto-hadronic Modeling of Astrophysical Sources",
+        "venue_year": "The Astrophysical Journal Supplement Series 2024"
+      },
+      {
+        "paper_id": "openalex:W4401819987",
+        "title": "Artificial intelligence for geoscience: Progress, challenges, and perspectives",
+        "venue_year": "The Innovation 2024"
+      },
+      {
+        "paper_id": "openalex:W4320724720",
+        "title": "Language Control Diffusion: Efficiently Scaling through Space, Time, and Tasks",
+        "venue_year": "arXiv (Cornell University) 2022"
+      },
+      {
+        "paper_id": "semanticscholar:8a08b6ae1d4b791821276f2b62b4a964cad8f50e",
+        "title": "Selective Binarization based Architecture Design Methodology for Resource-constrained Computation of Deep Neural Networks",
+        "venue_year": "International Symposium on Circuits and Systems 2023"
+      },
+      {
+        "paper_id": "semanticscholar:dd7f0cb63ea76af48f4fa3ee0c0da36d05fe6b0d",
+        "title": "Reliability-Constrained Economic Dispatch With Analytical Formulation of Operational Risk Evaluation",
+        "venue_year": "IEEE Transactions on Power Systems 2024"
+      },
+      {
+        "paper_id": "semanticscholar:b14e5a644e71554db7b01ee0e6dc0f14ea26e2e6",
+        "title": "Risk-Aware Security-Constrained Unit Commitment: Taming the Curse of Real-Time Volatility and Consumer Exposure",
+        "venue_year": "IEEE Transactions on Energy Markets, Policy and Regulation 2023"
+      },
+      {
+        "paper_id": "semanticscholar:dad29892ffea4cd918c58bcab1270696629364a0",
+        "title": "Risk-Sensitive Security-Constrained Economic Dispatch: Pricing and Algorithm Design",
+        "venue_year": "IEEE Transactions on Power Systems 2025"
+      },
+      {
+        "paper_id": "semanticscholar:ae365af83ebe6ae018316104906fcb4e16538e29",
+        "title": "Antenna Health-Aware Selective Beamforming for Hardware-Constrained DFRC Systems II",
+        "venue_year": "2024"
+      }
+    ]
+  }
+}

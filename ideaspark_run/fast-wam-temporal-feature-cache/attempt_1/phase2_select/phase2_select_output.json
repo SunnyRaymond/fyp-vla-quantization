@@ -1,0 +1,43 @@
+{
+  "selected_gaps": [
+    {
+      "gap": "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+      "chosen_pattern_id": "heterogeneous_decomposition",
+      "anchor_alternates": [],
+      "companion_pattern": "architectural_operator_substitution",
+      "companion_rationale": "The heterogeneous decomposition produces a joint action/video output-sensitivity map over cache units as the named intermediate object; architectural_operator_substitution consumes that map to replace full recomputation with a cheaper observation-conditioned reuse operator, while forcing recomputation when the preserved output property is at risk.",
+      "selection_rationale": "This is the most load-bearing construction gap because the user's method contribution cannot claim safe temporal reuse until changed observations have an explicit validity rule tied to both Optional-IDM outputs. Heterogeneous decomposition closes it by separating cache units according to joint downstream influence, and the attested architectural-operator companion turns that partition into a runnable reuse/invalidation mechanism rather than a diagnostic alone; it deliberately avoids the lineage's flagged local-denoising-dynamics proxy.",
+      "deliverable_coverage": "method — the anchor gap is closed by heterogeneous_decomposition's joint-sensitivity partition, while its architectural_operator_substitution companion ships the runnable observation-conditioned cache and invalidation operator."
+    }
+  ],
+  "coherence_thread_type": "n_a",
+  "deliverable_coverage": "method — the anchor gap is closed by heterogeneous_decomposition's joint-sensitivity partition, while its architectural_operator_substitution companion ships the runnable observation-conditioned cache and invalidation operator.",
+  "user_direction_disposition": {
+    "verdict": "adopted",
+    "user_wanted": "exploit repeated denoising or video/action-expert computation across timesteps or receding observations with an explicit cache invalidation rule",
+    "chosen": "an observation-conditioned joint action/video output-sensitivity cache that reuses repeated Fast-WAM Optional-IDM computation only when the downstream coupled-output risk is below a calibrated threshold"
+  },
+  "composition_note": "",
+  "pattern_saturation": {
+    "heterogeneous_decomposition": {
+      "share": 0.41,
+      "saturation_band": "mid_frequency",
+      "selection_note": ""
+    },
+    "architectural_operator_substitution": {
+      "share": 0.51,
+      "saturation_band": "saturated",
+      "selection_note": "saturated lane — differentiation_from_lit must substantively defend the choice"
+    }
+  },
+  "deferred_gaps": [
+    {
+      "gap": "No retrieved frontier leaf shows that video/world-model fidelity and action-expert fidelity remain coupled under the same cache decision: the WorldCache variants track token or content rollout quality but do not measure the action distribution produced from the cached representation — stakes: practitioners may deploy a visually plausible but control-wrong predictor or preserve task success while corrupting the world signal used for planning; intellectually, modality-specific quality claims cannot support a causal claim about WAM control.",
+      "reason": "fails removal test — anchor stands without it because the joint action/video sensitivity and downstream paired-fidelity test are built into the anchor's invalidation mechanism; a separate fidelity leg would make a second evaluation paper"
+    },
+    {
+      "gap": "No retrieved leaf tests whether denoising-trajectory feature change is a sufficient proxy for downstream cache validity when the conditioning observation and output branch change across receding steps, rather than assuming that local feature similarity or drift carries the relevant control semantics — stakes: teams can spend GPU budget tuning thresholds around a proxy that misses task-critical changes, blocking principled cache design; intellectually, the field may mistake a convenient similarity statistic for a necessary validity criterion and draw non-transferring conclusions.",
+      "reason": "fails removal test — anchor stands without it because the proposed joint-output score directly tests and replaces local feature-drift sufficiency; retaining this as a separate gap would duplicate the same mechanism"
+    }
+  ]
+}

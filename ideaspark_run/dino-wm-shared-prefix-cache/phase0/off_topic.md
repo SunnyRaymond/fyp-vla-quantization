@@ -1,0 +1,142 @@
+# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)
+
+These were retrieved by a connector but the host judged them outside the research direction (cross-domain "memory-augmented" false positives, surveys, unrelated fields). They are archived here for transparency but do NOT feed Phase 1 or the deep-read pool.
+
+- **A Comprehensive Survey of Small Language Models in the Era of Large Language Models: Techniques, Enh** (`openalex:W4404354530`)
+  - pure small-language-model survey, not world-model caching
+- **A data-driven group retrosynthesis planning model inspired by neurosymbolic programming** (`openalex:W4406001199`)
+  - shared synthesis-pattern reuse in chemistry, a different application domain
+- **Artificial Intelligence for Satellite Communication: A Survey** (`openalex:W4407448560`)
+  - pure satellite-communication survey, unrelated to embodied world-model inference
+- **A Comprehensive Review of Neuro-symbolic AI for Robustness, Uncertainty Quantification, and Interven** (`openalex:W7110983869`)
+  - pure neuro-symbolic AI survey, no shared-prefix or world-model mechanism
+- **An Integrated Framework for AI and Predictive Analytics in Supply Chain Management** (`openalex:W4416151835`)
+  - supply-chain analytics framework, outside embodied world-model inference
+- **A Survey of Vibe Coding with Large Language Models** (`openalex:W4415270339`)
+  - pure survey of LLM coding practice, unrelated to the requested mechanism
+- **Classifications and Analysis of Caching Strategies in Information‐Centric Networking for Modern Comm** (`openalex:W4407714476`)
+  - pure information-centric networking caching survey, a different systems domain
+- **Recent Innovations in Cloud-Optimized Retrieval-Augmented Generation Architectures for AI-Driven Dec** (`openalex:W4413939461`)
+  - RAG architecture overview for enterprise decision systems, not world-model caching
+- **Never Start from Scratch: Expediting On-Device LLM Personalization via Explainable Model Selection** (`openalex:W4414760843`)
+  - on-device LLM personalization, with no world-model or shared-prefix inference mechanism
+- **CLARITY: A CLOSED-LOOP FRAMEWORK FOR DUPLICATE-AWARE FAILURE PREDICTION AND BUDGETED AUTOMATED REMED** (`openalex:W7202295994`)
+  - cloud-infrastructure failure remediation, outside embodied prediction and planning
+- **A Survey on Model Context Protocol: Architecture, State-of-the-art, Challenges and Future Directions** (`openalex:W4409562197`)
+  - pure Model Context Protocol survey, unrelated to world-model feature reuse
+- **A Framework-Driven Evaluation and Survey of MCU Fault Injection Resilience for IoT** (`openalex:W4416123477`)
+  - IoT fault-injection resilience survey, unrelated domain
+- **Predicting concrete compressive strength using optimized deep learning and large language models** (`openalex:W7131677905`)
+  - concrete-strength prediction, unrelated application
+- **Generative AI in Medicine and Healthcare: A Comprehensive Review of Foundational Technologies, Clini** (`openalex:W7152621645`)
+  - medicine and healthcare review, unrelated to embodied world-model inference
+- **xMTF: A Formula-Free Model for Reinforcement-Learning-Based Multi-Task Fusion in Recommender Systems** (`openalex:W4409657183`)
+  - multi-task recommender systems, a clear cross-domain false positive
+- **A Review of Large Language Models: Fundamental Architectures, Key Technological Evolutions, Interdis** (`openalex:W4405706082`)
+  - pure broad LLM survey, not focused on world models or rollout caching
+- **Proceedings of the International Conference on Compilers, Architecture, and Synthesis for Embedded S** (`openalex:W2912099628`)
+  - compiler and embedded-systems proceedings, no relevant paper-level mechanism
+- **Audio-Enhanced Vision-Language Modeling with Latent Space Broadening for High Quality Data Expansion** (`openalex:W4412876911`)
+  - audio-enhanced vision-language modeling, no world-model caching or planning relevance
+- **Efficient Caching Strategies in NDN-Enabled IoT Networks: Strategies, Constraints, and Future Direct** (`openalex:W4413396238`)
+  - pure NDN/IoT caching survey, outside the embodied model setting
+- **A Scalable Approach to Solving Simulation-Based Network Security Games** (`openalex:W7130617661`)
+  - network-security game simulation, unrelated domain
+- **Large Language Models for Planning: A Comprehensive and Systematic Survey** (`openalex:W4414586831`)
+  - pure LLM-planning survey, outside visual world-model inference
+- **A Comparative Study of Waveforms Across Mobile Cellular Generations: From 0G to 6G and Beyond** (`openalex:W4414096704`)
+  - cellular waveform comparison, unrelated domain
+- **Olmo 3** (`openalex:W4417465430`)
+  - general LLM model release, no relevant cache or embodied mechanism
+- **Unifying Modern AI with Robotics: Survey on MDPs with Diffusion and Foundation Models** (`openalex:W4409587791`)
+  - pure robotics foundation-model survey, not a specific caching study
+- **Efficiently Scaling LLM Reasoning with Certaindex** (`openalex:W4405957588`)
+  - LLM reasoning efficiency, without world-model or rollout-prefix relevance
+- **Overview of AI and communication for 6G network: fundamentals, challenges, and future research oppor** (`openalex:W4409190069`)
+  - pure AI-and-6G survey, unrelated application domain
+- **Multi-Agent Reinforcement Learning in Games: Research and Applications** (`openalex:W4411100896`)
+  - pure MARL games survey, no visual world-model caching mechanism
+- **Advancing Object Detection in Transportation with Multimodal Large Language Models (MLLMs): A Compre** (`openalex:W4411001423`)
+  - pure transportation MLLM review, not embodied world-model caching
+- **Operationalizing AI in game development: MLOps infrastructure patterns and frontline insights** (`openalex:W4410139334`)
+  - game-development MLOps framework, outside the requested model mechanism
+- **Scaling of Search and Learning: A Roadmap to Reproduce o1 from Reinforcement Learning Perspective** (`openalex:W4405627094`)
+  - LLM reasoning and search roadmap, unrelated to latent-prefix reuse
+- **A Survey of Large Language Models: Evolution, Architectures, Adaptation, Benchmarking, Applications,** (`openalex:W4414142808`)
+  - pure broad LLM survey, not a world-model caching study
+- **CoSense-LLM: Semantics at the Edge with Cost- and Uncertainty-Aware Cloud-Edge Cooperation** (`openalex:W4416439858`)
+  - edge LLM semantic sensing, no embodied world-model or CEM reuse
+- **Towards Unified Attribution in Explainable AI, Data-Centric AI, and Mechanistic Interpretability** (`openalex:W4407093092`)
+  - interpretability attribution position paper, unrelated mechanism
+- **Task-Oriented Co-Design of Communication, Computing, and Control for Edge-Enabled Industrial Cyber-P** (`openalex:W4411143500`)
+  - industrial CPS communication/control co-design, not visual world-model inference
+- **Recent Advances in Microencapsulated Phase Change Materials for Energy Efficiency in Buildings: A Re** (`openalex:W7128492637`)
+  - building materials review, unrelated domain
+- **Search-R3: Unifying Reasoning and Embedding in Large Language Models** (`openalex:W4415317978`)
+  - LLM retrieval embeddings, no world-model or feature-cache mechanism
+- **Optimizing Microservice Deployment in Edge Computing with Large Language Models: Integrating Retriev** (`openalex:W4404076297`)
+  - edge microservice deployment optimization, unrelated application
+- **Deploying TensorFlow-Based Risk Assessment Models for High-Stakes Operational Decisions in Regulated** (`openalex:W7163421989`)
+  - regulated risk-model deployment study, outside embodied inference
+- **Multi-Modal Foundation Models for Space-Air-Ground Integrated 6G and Beyond Networks: A Survey and T** (`openalex:W7158645093`)
+  - pure 6G multimodal-foundation-model survey, unrelated setting
+- **Reasoning Language Models: A Blueprint** (`openalex:W4406734791`)
+  - LLM reasoning blueprint, no visual WM caching
+- **Designing Scalable AI Systems for Continuous Monitoring, Fault Detection, and Operational Intelligen** (`openalex:W7153010524`)
+  - generic operational-intelligence architecture, unrelated mechanism
+- **TokenShapley: Token Level Context Attribution with Shapley Value** (`openalex:W4412888711`)
+  - LLM token attribution, unrelated to temporal feature reuse
+- **EduStudio: towards a unified library for student cognitive modeling** (`openalex:W4406296124`)
+  - student cognitive modeling library, unrelated domain
+- **Secure AI-Driven Identity Infrastructure for Regulated Sectors** (`openalex:W4416307404`)
+  - AI identity infrastructure, unrelated application
+- **Formal Mathematical Reasoning: A New Frontier in AI** (`openalex:W4405715707`)
+  - formal mathematical reasoning position paper, unrelated mechanism
+- **F-LMM: Grounding Frozen Large Multimodal Models** (`openalex:W4413146366`)
+  - frozen multimodal grounding, no rollout or caching mechanism
+- **ZipLLM: Efficient LLM Storage via Model-Aware Synergistic Data Deduplication and Compression** (`openalex:W4417276878`)
+  - LLM model-storage deduplication, not inference-time feature reuse
+- **Diffusion-Enabled Digital Twin Synchronization for AIGC Services in Space–Air–Ground-Integrated Netw** (`openalex:W4405838426`)
+  - diffusion resource allocation for 6G networks, unrelated application
+- **Multi-vendor OpenROADM Testbed Supporting the Live-Migration of a 5G gNB-CU-UP Container** (`openalex:W4411337693`)
+  - 5G container migration testbed, unrelated domain
+- **SPAVM: A SFC Placement and VNF Migration Framework for VNF Instance Reuse in Vehicle-Infrastructure ** (`openalex:W4412623485`)
+  - vehicular network-function placement, a cross-domain reuse match
+- **Enhancing 5G Spectrum Agility Through O-RAN xApp Initiated Handovers** (`openalex:W4405104136`)
+  - 5G spectrum handover, unrelated domain
+- **User-Centric IoT Service Placement in Shared Edge Computing Infrastructures** (`openalex:W4411094083`)
+  - IoT service placement with no world-model or cache mechanism
+- **Accelerating Shared Services with UiPath: Lessons from Early Automation Centres of Excellence (CoEs)** (`openalex:W4412989104`)
+  - UiPath shared-services case study, unrelated application
+- **Quo Vadis, World Modeling?** (`arxiv:2608.02713v1`)
+  - conceptual world-model survey/position paper rather than a specific caching method
+- **Reliable Chain-of-Thought via Prefix Consistency** (`arxiv:2605.07654v1`)
+  - LLM chain-of-thought consistency, no embodied cache or world-model mechanism
+- **Caching for Dollars, Not Hits: An Exact Offline Reference for Cloud-Egress Caching and the Crossover** (`arxiv:2606.20539v2`)
+  - cloud egress caching economics, unrelated to model feature computation
+- **Optimal Control for Cancer Chemotherapy Using Hybrid Quantum Particle Swarm Optimization** (`arxiv:2609.11197v1`)
+  - cancer chemotherapy control, unrelated application
+- **The State of Scientific Poster Sharing and Reuse** (`arxiv:2604.21150v2`)
+  - scientific-poster sharing study, unrelated domain
+- **Towards Interactive Video World Modeling: Frontiers, Challenges, Benchmarks, and Future Trends** (`arxiv:2606.01164v1`)
+  - pure interactive-video-world-model survey, not a specific cache method
+- **Enabling Reuse for Data-Sharing Pipelines in Federated Environments** (`arxiv:2608.18751v1`)
+  - federated data-pipeline reuse, unrelated application
+- **Where to Spend Rollouts: Hit-Utility Optimal Rollout Allocation for Group-Based RLVR** (`arxiv:2605.07114v1`)
+  - adaptive rollout allocation for mathematical LLM RL, without prefix or feature reuse
+- **Cyclic-Prefix-Free OFDM With Tail-Reuse Reconstruction for Distributed Acoustic Sensing** (`arxiv:2607.18687v1`)
+  - OFDM tail reuse for distributed acoustic sensing, clear cross-domain false positive
+- **Interior interpretability with attention rollout: contraction and propagation profiles in Transforme** (`arxiv:2607.22367v1`)
+  - Transformer attention interpretability, unrelated to world-model inference caching
+- **Bridging the Agent-World Gap: Text World Models for LLM-based Agents** (`arxiv:2606.09032v1`)
+  - pure text-world-model survey for LLM agents, not visual embodied WM
+- **Measuring research data reuse in scholarly publications using generative artificial intelligence: Op** (`arxiv:2604.28061v2`)
+  - scholarly data-reuse measurement, unrelated domain
+- **Spend Your Rollouts Where It Counts: Rollout Allocation for Group-Based RL Post-Training** (`arxiv:2605.26606v1`)
+  - rollout allocation for mathematical LLM post-training, no shared-prefix feature reuse
+- **Principled Detection of Coordinated Manipulation from Aggregate Distortion and Account Reuse** (`arxiv:2609.13407v1`)
+  - coordinated-review manipulation detection, unrelated domain
+- **When Agents Talk: Honeytokens under Shared Memory** (`arxiv:2608.11436v1`)
+  - security of shared agent memory, unrelated to model feature reuse
+- **Generate, Filter, Control, Replay: A Comprehensive Survey of Rollout Strategies for LLM Reinforcemen** (`arxiv:2605.02913v1`)
+  - pure survey of LLM rollout strategies, outside visual WM caching

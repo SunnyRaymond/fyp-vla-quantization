@@ -1,0 +1,173 @@
+{
+  "schema": "jepa-action-prefix-compiler.stage-a-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-pusht-action-prefix-compiler-stage-a",
+  "purpose": "Predictor-first smoke for a post-hoc action-prefix student on a frozen DINO-WM PushT teacher.",
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "checkpoint": "outputs/pusht/checkpoints/model_latest.pth",
+    "official_config": "experiment/reproduction/dino-wm-wall/source/conf/plan_pusht.yaml",
+    "horizon": 5,
+    "closed_loop": false,
+    "mpc_outer_loop": false,
+    "environment_action_execution": false,
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "planner_frozen": true,
+    "teacher_only_targets": true,
+    "pldm": false
+  },
+  "known_boundary": {
+    "observation_cache_b_arm": {
+      "status": "FAIL",
+      "decision_gate": "FAIL",
+      "paired_median_full_plan_latency_reduction": 0.04815,
+      "required_minimum": 0.10,
+      "consequence": "Stage A does not depend on B, does not run E1, and cannot claim full-framework composition."
+    },
+    "stage_a_claim": "predictor-only DINO-WM PushT capacity, fidelity and latency smoke",
+    "stage_a_forbidden_claims": [
+      "observation-prefix reuse is effective",
+      "2x2 composition is validated",
+      "full framework is validated",
+      "closed-loop success or SOTA is established"
+    ]
+  },
+  "arms": {
+    "A": {
+      "name": "teacher_baseline",
+      "observation_path": "official raw encode_obs",
+      "predictor_path": "official autoregressive action-conditioned predictor P0"
+    },
+    "C": {
+      "name": "compiled_predictor",
+      "observation_path": "same official raw encode_obs as A",
+      "predictor_path": "post-hoc action-prefix student P1",
+      "changed_component_only": "predictor query"
+    }
+  },
+  "model_contract": {
+    "anchor_latent": "same observed z_t for all prefix horizons",
+    "prefix_input": "a[t:t+k-1] for prefix k",
+    "future_action_leakage": false,
+    "outputs": "five future latents z[t+1:t+5]",
+    "dino_geometry": "preserve spatial/token alignment",
+    "student_may_call_encode_obs": false,
+    "action_independent_adapter_accounting": "encode once and assign to T_obs",
+    "action_conditioned_adapter_accounting": "assign to T_pred"
+  },
+  "anchors_and_seeds": {
+    "official_anchors": [
+      "pusht_obs_00",
+      "pusht_obs_01"
+    ],
+    "training_action_prefix_seed": 20260919,
+    "heldout_action_prefix_seeds": [20261920, 20261921],
+    "timing_action_prefix_seed": 20270920,
+    "seed_selection": "fixed before execution; no result-dependent replacement",
+    "anchor_scope": "capacity/fidelity/latency smoke only, not generalization evaluation"
+  },
+  "training": {
+    "teacher": "frozen P0 rollout",
+    "student": "new P1 action-prefix predictor",
+    "target": "teacher future latent for each k in 1..H",
+    "future_observation_targets": false,
+    "source_checkpoint_update": false,
+    "planner_update": false,
+    "heldout_separation": true,
+    "steps": 500,
+    "batch_size": 32,
+    "learning_rate": 0.0003,
+    "hidden_dim": 128
+  },
+  "timing": {
+    "measurement_unit": "one batch of 300 action prefixes from the same cached native anchor latent",
+    "batch_size": 300,
+    "warmup_repeats": 3,
+    "technical_repeats": 10,
+    "path_order": "teacher then student within each synchronized repeat",
+    "boundary": "predictor-level cached native observation latent plus normalized action prefix through either five-step frozen teacher rollout or one student forward",
+    "includes_encoder": false,
+    "includes_cem": false,
+    "environment_interaction": false,
+    "cuda_synchronize_before_after": true,
+    "candidate_schedule": "same fixed normalized action-prefix batch for teacher and student",
+    "no_double_count_rule": "P1 receives encoded z_t and must not include encode_obs; Stage A reports predictor-level timing only and makes no full-plan claim"
+  },
+  "metrics": {
+    "capacity": [
+      "finite outputs",
+      "shape/dtype/device match",
+      "H=5 batched prefix output",
+      "no OOM/NaN/silent fallback",
+      "no hidden encode_obs"
+    ],
+    "latent_fidelity": [
+      "per-horizon relative L2/MSE",
+      "per-horizon cosine similarity",
+      "DINO spatial/token aligned error"
+    ],
+    "planner_fidelity": [
+      "objective Spearman correlation",
+      "top-30 overlap"
+    ],
+    "latency": [
+      "teacher autoregressive predictor latency",
+      "compiled student predictor latency",
+      "predictor-level reduction"
+    ]
+  },
+  "controls": {
+    "teacher_identity": "repeat P0 with identical z_t, action prefix and seed",
+    "causal_future_action": "change actions after k and require P1 output at k to remain within tolerance",
+    "raw_observation_separation": "A/C use the same official raw encode_obs and P1 consumes z_t only"
+  },
+  "gates": {
+    "capacity": {
+      "all_anchors_and_heldout_seeds_finite": true,
+      "future_action_control_pass": true,
+      "hidden_encode_obs": false,
+      "shape_dtype_device_match": true,
+      "oom_nan_fallback": false,
+      "maximum_last10_to_first_train_loss_ratio": 0.8
+    },
+    "fidelity": {
+      "median_objective_spearman_min": 0.99,
+      "median_top30_overlap_min": 0.95,
+      "latent_mse_alone_is_sufficient": false
+    },
+    "latency": {
+      "statistic": "1 - median(student predictor time) / median(teacher predictor time)",
+      "minimum_paired_median_predictor_reduction": 0.20,
+      "timing_boundary_must_match": true
+    },
+    "stage_a_go": "capacity and fidelity and latency all pass",
+    "stage_a_no_go": "any gate fails; do not enter Stage B and do not adjust gates"
+  },
+  "future_stage_b": {
+    "allowed_only_after_stage_a_go": true,
+    "arms": ["A", "B", "C", "D"],
+    "definition": {
+      "A": "raw encode_obs + P0",
+      "B": "observation-prefix reuse + P0",
+      "C": "raw encode_obs + P1",
+      "D": "observation-prefix reuse + P1"
+    },
+    "cache_gate": {
+      "decision_gate_required": true,
+      "minimum_paired_median_full_plan_reduction": 0.10,
+      "known_current_result": "FAIL: decision gate failed and reduction was 0.04815"
+    },
+    "combined_gain": "1 - median(T_D) / median(T_A)",
+    "sum_of_component_gains_is_not_valid": true,
+    "full_framework_claim_allowed": "only after B, C and D gates pass"
+  },
+  "execution_constraints": {
+    "compute": "guarded PBS compute allocation only",
+    "login_node_heavy_work": false,
+    "download_extract_install_compile_on_login": false,
+    "hash": false,
+    "vpn_failure_policy": "pause after consecutive ASPIRE2A access failures; do not restart heavy work automatically"
+  }
+}

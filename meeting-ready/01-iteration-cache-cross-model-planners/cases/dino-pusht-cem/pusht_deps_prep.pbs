@@ -1,0 +1,67 @@
+#!/bin/bash
+#PBS -N dino_pusht_deps
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+OVERLAY=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+MARKER="$ROOT/PUSHT_DEPS_READY_V5"
+WORK=${TMPDIR:-/tmp}/dino-pusht-deps-${PBS_JOBID:-unassigned}
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+test -f "$ROOT/runtime-complete.tar"
+test ! -e "$OVERLAY"
+test ! -e "$OVERLAY.partial"
+test ! -e "$MARKER"
+test ! -e "$MARKER.partial"
+
+mkdir -p "$WORK" "$OVERLAY.partial"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+PYTHON="$WORK/runtime/venv/bin/python"
+test -x "$PYTHON"
+
+# The bundled runtime venv has no usable pip.  Use the Python module loaded in
+# this CPU allocation to create a disposable installer venv; the resulting
+# target directory is still smoke-tested with the actual bundled runtime.
+PREP_PYTHON=$(command -v python3)
+test -x "$PREP_PYTHON"
+"$PREP_PYTHON" -m venv "$WORK/bootstrap"
+PIP_PYTHON="$WORK/bootstrap/bin/python"
+"$PIP_PYTHON" -m pip --version
+
+# Install the two missing official PushT environment dependencies as pinned
+# binary wheels in this CPU allocation; do not compile or hash.
+"$PIP_PYTHON" -m pip install \
+  --disable-pip-version-check \
+  --no-cache-dir \
+  --only-binary=:all: \
+  --target "$OVERLAY.partial" \
+  "pymunk==6.8.0" \
+  "pygame==2.5.2" \
+  "shapely==2.0.3" \
+  "numpy<2" \
+  "scikit-image==0.21.0"
+
+PYTHONPATH="$OVERLAY.partial" "$PYTHON" -c \
+  'import pymunk, pygame, shapely, cv2, skimage; print("pusht_dependency_smoke=PASS")'
+
+mv "$OVERLAY.partial" "$OVERLAY"
+printf '%s\n' '{"schema":"dino-wm-shared-prefix-cache.pusht-deps-ready","pymunk":"6.8.0","pygame":"2.5.2","shapely":"2.0.3","scikit-image":"0.21.0","numpy":"<2","hashes":"not computed"}' > "$MARKER.partial"
+mv "$MARKER.partial" "$MARKER"
+date

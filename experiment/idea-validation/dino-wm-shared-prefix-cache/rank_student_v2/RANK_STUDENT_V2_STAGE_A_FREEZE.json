@@ -1,0 +1,245 @@
+{
+  "schema": "dino-wm-shared-prefix-cache.rank-student-v2-stage-a-freeze",
+  "schema_version": 2,
+  "status": "frozen",
+  "experiment_id": "dino-wm-shared-prefix-cache-rank-student-v2-stage-a",
+  "method": "Context-aware action-conditioned cross-attention student with action-only negative control",
+  "stage": "stage_a_v2_teacher_student_calibration_heldout_offline",
+  "purpose": "Evaluate a redesigned context-aware action-conditioned cross-attention student using train-only teacher data, calibration-only fixed-M selection, and one held-out offline screen.",
+  "claim_boundary": "Stage A is offline ranking and readiness evidence only. It does not authorize student-updated chained CEM, latency, native system timing, memory, or closed-loop claims.",
+  "prior_failed_recipe": {
+    "job_id": "23895140.pbs101",
+    "reference": "../rank_student/",
+    "status": "honest_no_go",
+    "interpretation": "V1 is retained as a prior failed recipe. Its no-go is not hidden, reinterpreted, or converted into a V2 result.",
+    "v2_relation": "V2 is an architecture/data redesign with a newly frozen split and gate; do not retune V1 gates or pool V1 observations into V2."
+  },
+  "splits": {
+    "train": {
+      "count": 64,
+      "required_ids": [
+        "wall_v2_case_20",
+        "wall_v2_case_21",
+        "wall_v2_case_22",
+        "wall_v2_case_23",
+        "wall_v2_case_24",
+        "wall_v2_case_25",
+        "wall_v2_case_26",
+        "wall_v2_case_27",
+        "wall_v2_case_28",
+        "wall_v2_case_29",
+        "wall_v2_case_30",
+        "wall_v2_case_31",
+        "wall_v2_case_32",
+        "wall_v2_case_33",
+        "wall_v2_case_34",
+        "wall_v2_case_35",
+        "wall_v2_case_36",
+        "wall_v2_case_37",
+        "wall_v2_case_38",
+        "wall_v2_case_39",
+        "wall_v2_case_40",
+        "wall_v2_case_41",
+        "wall_v2_case_42",
+        "wall_v2_case_43",
+        "wall_v2_case_44",
+        "wall_v2_case_45",
+        "wall_v2_case_46",
+        "wall_v2_case_47",
+        "wall_v2_case_48",
+        "wall_v2_case_49",
+        "wall_v2_case_50",
+        "wall_v2_case_51",
+        "wall_v2_case_52",
+        "wall_v2_case_53",
+        "wall_v2_case_54",
+        "wall_v2_case_55",
+        "wall_v2_case_56",
+        "wall_v2_case_57",
+        "wall_v2_case_58",
+        "wall_v2_case_59",
+        "wall_v2_case_60",
+        "wall_v2_case_61",
+        "wall_v2_case_62",
+        "wall_v2_case_63",
+        "wall_v2_case_64",
+        "wall_v2_case_65",
+        "wall_v2_case_66",
+        "wall_v2_case_67",
+        "wall_v2_case_68",
+        "wall_v2_case_69",
+        "wall_v2_case_70",
+        "wall_v2_case_71",
+        "wall_v2_case_72",
+        "wall_v2_case_73",
+        "wall_v2_case_74",
+        "wall_v2_case_75",
+        "wall_v2_case_76",
+        "wall_v2_case_77",
+        "wall_v2_case_78",
+        "wall_v2_case_79",
+        "wall_v2_case_80",
+        "wall_v2_case_81",
+        "wall_v2_case_82",
+        "wall_v2_case_83"
+      ]
+    },
+    "calibration": {
+      "count": 8,
+      "required_ids": [
+        "wall_v2_case_84",
+        "wall_v2_case_85",
+        "wall_v2_case_86",
+        "wall_v2_case_87",
+        "wall_v2_case_88",
+        "wall_v2_case_89",
+        "wall_v2_case_90",
+        "wall_v2_case_91"
+      ]
+    },
+    "heldout": {
+      "count": 8,
+      "required_ids": [
+        "wall_v2_case_92",
+        "wall_v2_case_93",
+        "wall_v2_case_94",
+        "wall_v2_case_95",
+        "wall_v2_case_96",
+        "wall_v2_case_97",
+        "wall_v2_case_98",
+        "wall_v2_case_99"
+      ]
+    },
+    "disjoint_required": true,
+    "v1_observations_excluded": true
+  },
+  "scope": {
+    "task": "DINO-WM Wall",
+    "independence_unit": "one independent Wall observation with one complete ten-round full-teacher CEM chain",
+    "round_count": 10,
+    "fixed_settings": {
+      "candidate_count": 300,
+      "horizon": 5,
+      "topk": 30,
+      "cem_opt_steps": 10,
+      "objective": "Existing DINO-WM Wall planner objective; lower is better.",
+      "tie_break": "Stable ascending candidate-index tie-break after objective or score value.",
+      "candidate_population_rule": "J_full and both student score arrays in each call describe the identical 300-candidate population.",
+      "chain_rule": "The full teacher alone updates chained CEM distributions; student and action-only scores are offline ranking observations and never update mu or sigma.",
+      "checkpoint_and_preprocessing": "Teacher and student records use the V2 observation/action preprocessing contract; no V1 record or checkpoint is pooled into V2."
+    }
+  },
+  "architecture_freeze": {
+    "context_aware_student": {
+      "architecture_id": "v2_context_aware_action_conditioned_cross_attention",
+      "context_tokens": "candidate-independent z0 and zgoal visual/proprio context tokens",
+      "action_tokens": "candidate action sequence tokens for each H=5 action sequence",
+      "fusion": "action-conditioned cross-attention from action queries to context tokens",
+      "cross_attention": true,
+      "action_conditioned": true,
+      "uses_observation_goal_context": true,
+      "uses_autoregressive_rollout": false,
+      "ranking_direction": "lower_is_better"
+    },
+    "action_only_control": {
+      "architecture_id": "v2_action_only_negative_control",
+      "context_tokens": "none",
+      "action_tokens": "candidate action sequence tokens",
+      "fusion": "action_only_score_head",
+      "cross_attention": false,
+      "action_conditioned": true,
+      "uses_observation_goal_context": false,
+      "ranking_direction": "lower_is_better",
+      "gate_required": false,
+      "report_required": true
+    }
+  },
+  "training": {
+    "teacher_data_file": "teacher_data.jsonl",
+    "training_summary_file": "student_training_summary.json",
+    "teacher_data_record_unit": "one train observation containing all ten chained rounds",
+    "required_teacher_data": "Each train observation has exactly ten rounds; each round records 300 finite candidate actions, 300 finite J_full values, and full-teacher CEM update states.",
+    "uses_train_only": true,
+    "calibration_used_for_training": false,
+    "heldout_used_for_training": false,
+    "summary_array_policy": "Training and verifier summaries must contain compact counts/medians/minima only; raw candidate/action/score arrays belong only in JSONL records.",
+    "action_only_control_required_to_pass": false
+  },
+  "evaluation_records": {
+    "file_pattern": "{calibration,heldout}_results.jsonl",
+    "record_unit": "one observation containing all ten chained full-teacher rounds",
+    "required_round_fields": [
+      "round_index",
+      "candidate_population_seed",
+      "cem_noise_seed",
+      "candidate_actions",
+      "input_mu",
+      "input_sigma",
+      "output_mu",
+      "output_sigma",
+      "first_action",
+      "cem_update_source",
+      "student_used_for_cem_update",
+      "J_full",
+      "student_context_scores",
+      "student_action_only_scores"
+    ],
+    "ranking_rule": "The verifier stably ranks each 300-value array by (value, candidate index); recorded top-M lists and recall values are non-authoritative.",
+    "required_arrays": {
+      "candidate_actions": "A non-empty finite numeric array whose first dimension has length 300.",
+      "J_full": "Exactly 300 finite numeric values.",
+      "student_context_scores": "Exactly 300 finite numeric values, lower is better.",
+      "student_action_only_scores": "Exactly 300 finite numeric values, lower is better."
+    },
+    "teacher_update": {
+      "cem_update_source": "full_teacher",
+      "student_used_for_cem_update": false,
+      "chain_continuity": "For round r>0, input_mu and input_sigma equal the same observation's preceding output_mu and output_sigma."
+    }
+  },
+  "selection_gate": {
+    "candidate_M_grid": [60, 90, 120, 150, 180],
+    "selection_source": "calibration_only",
+    "call_definition": "One observation-round pair; calibration has 8 observations x 10 rounds = 80 calls.",
+    "context_rule": "Select the smallest M whose calibration context-aware recall has median exactly 1.0 and minimum at least 29/30.",
+    "action_only_rule": "Report the same calibration metrics for action-only control; it is a negative control and is not a pass/fail gate.",
+    "no_heldout_tuning": true,
+    "no_per_call_M": true,
+    "gate_origin": "new_v2_gate_not_retuned_from_v1"
+  },
+  "heldout_gate": {
+    "selected_M_max": 180,
+    "call_count": 80,
+    "context_rule": "At the one calibration-selected fixed M, heldout context-aware recall has median exactly 1.0 and minimum at least 29/30.",
+    "action_only_rule": "Report heldout action-only recall at the selected M; it does not determine the verdict.",
+    "selection_must_precede_heldout": true
+  },
+  "result_decision": {
+    "pass_verdict": "PASS only when contract, V2 split/schema/completeness, train-only provenance, V2 architecture identity, calibration selection, and heldout context-aware gates all pass.",
+    "pass_authorizes": "A later separately frozen chained Stage B using the selected fixed M.",
+    "pass_does_not_authorize": [
+      "student-updated chained CEM",
+      "latency or speedup claim",
+      "native system timing",
+      "memory claim",
+      "closed-loop success claim"
+    ]
+  },
+  "prohibited": [
+    "Do not tune selected M using heldout records.",
+    "Do not train the V2 student or action-only control on calibration or heldout observations.",
+    "Do not let student scores update CEM mu or sigma in Stage A.",
+    "Do not pool V1 observations, V1 checkpoints, or V1 no-go outcomes into V2 metrics.",
+    "Do not use hashes as a substitute for recorded values or comparisons.",
+    "Do not infer latency, native deployment, or closed-loop behavior from this offline screen."
+  ],
+  "artifacts": {
+    "teacher_data": "teacher_data.jsonl",
+    "training_summary": "student_training_summary.json",
+    "calibration_results": "calibration_results.jsonl",
+    "heldout_results": "heldout_results.jsonl",
+    "selection": "selection.json",
+    "verifier": "verify_rank_student_v2.py",
+    "verifier_result": "verifier.json"
+  }
+}

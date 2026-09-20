@@ -1,0 +1,197 @@
+{
+  "schema": "jepa-action-prefix-compiler.grounded-prefix-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "dino-wm-pusht-grounded-prefix-three-arm",
+  "purpose": "Test whether real future-observation targets remove the planner-fidelity trade-off seen with frozen teacher-rollout targets.",
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "predictor_level_only": true,
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_receives_goal": false,
+    "cem": false,
+    "closed_loop": false,
+    "lewm_transfer": false
+  },
+  "source": {
+    "reproduction_root": "experiment/reproduction/dino-wm-wall",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "official_config": "source/conf/plan_pusht.yaml",
+    "planner_source": "source/planning/cem.py",
+    "runner": "experiment/idea-validation/jepa-action-prefix-compiler/run_dino_pusht_grounded_prefix.py",
+    "cpu_manifest_preparer": "experiment/idea-validation/jepa-action-prefix-compiler/prepare_grounded_prefix_assets.py"
+  },
+  "official_pushT": {
+    "config_name": "plan_pusht.yaml",
+    "mainline": "MPCPlanner with CEM sub_planner",
+    "cem_settings": {
+      "horizon": 5,
+      "topk": 30,
+      "num_samples": 300,
+      "var_scale": 1,
+      "opt_steps": 30,
+      "eval_every": 1
+    },
+    "seed": 99,
+    "goal_source": "dset",
+    "goal_H": 5,
+    "objective": {
+      "alpha": 1,
+      "base": 2,
+      "mode": "last"
+    }
+  },
+  "model": {
+    "model_name": "pusht",
+    "checkpoint": "outputs/pusht/checkpoints/model_latest.pth",
+    "dtype": "torch.float32",
+    "evaluation_mode": true,
+    "model_parameters_requires_grad": false,
+    "decoder_unused": true
+  },
+  "assets": {
+    "checkpoint_config": "checkpoints/outputs/pusht/hydra.yaml",
+    "checkpoint_file": "checkpoints/outputs/pusht/checkpoints/model_latest.pth",
+    "dataset_root": "data/pusht_noise",
+    "dataset_splits": ["train", "val"],
+    "required_dataset_files": [
+      "states.pth",
+      "rel_actions.pth",
+      "seq_lengths.pkl",
+      "velocities.pth",
+      "obses/episode_000.mp4"
+    ],
+    "manifest_schema": "jepa-action-prefix-compiler.grounded-prefix-manifest",
+    "manifest_train_examples": 128,
+    "manifest_heldout_examples": 32,
+    "hash_policy": "no checksum or hash is computed"
+  },
+  "arms": {
+    "NARROW-T": {
+      "implementation_name": "narrow_teacher",
+      "target": "frozen teacher rollout on real manifest segments",
+      "data_contract": "the first two manifest train episodes and their real action segments",
+      "manifest_examples": 8
+    },
+    "WIDE-T": {
+      "implementation_name": "wide_teacher",
+      "target": "frozen teacher rollout on the manifest train segments",
+      "data_contract": "manifest train examples and their real action segments"
+    },
+    "WIDE-GT": {
+      "implementation_name": "wide_grounded",
+      "target": "frozen encode_obs latents from the manifest future frames",
+      "data_contract": "the same manifest train examples and action segments as WIDE-T"
+    }
+  },
+  "anchors_and_seeds": {
+    "official_anchors": ["pusht_obs_00", "pusht_obs_01"],
+    "training_seed": 20260921,
+    "training_action_prefix_seed": 20260921,
+    "heldout_action_prefix_seeds": [20263920, 20263921],
+    "timing_action_prefix_seed": 20270921,
+    "seed_selection": "fixed before execution; no result-dependent replacement"
+  },
+  "data": {
+    "manifest_required": true,
+    "manifest_train_examples": 128,
+    "manifest_heldout_examples": 32,
+    "train_segments": 128,
+    "heldout_segments": 32,
+    "narrow_manifest_examples": 8,
+    "narrow_episode_rule": "the first two train episode IDs in the manifest, preserving all four anchors per episode",
+    "horizon": 5,
+    "frame_skip": 5,
+    "cache_episodes": 8,
+    "preencode_chunk": 8,
+    "validation_batches": 8,
+    "episode_overlap": false,
+    "target_observation_indices": "start + [5, 10, 15, 20, 25]"
+  },
+  "training": {
+    "steps": 500,
+    "batch_size": 32,
+    "learning_rate": 0.0003,
+    "hidden_dim": 128,
+    "optimizer": "AdamW",
+    "loss": "dense native latent MSE only",
+    "rank_loss": false,
+    "same_initial_state_dict": true,
+    "update_order": "NARROW-T, WIDE-T, WIDE-GT on even steps; reverse on odd steps"
+  },
+  "heldout": {
+    "candidates_per_block": 300,
+    "topk": 30,
+    "independent_blocks": 4,
+    "block_definition": "official anchor x fresh heldout action-prefix seed",
+    "seeds_are_new": true
+  },
+  "timing": {
+    "batch_size": 300,
+    "warmup_repeats": 3,
+    "technical_repeats": 10,
+    "boundary": "cached native observation latent plus normalized action prefix; excludes observation encoder, CEM, environment interaction and closed-loop execution",
+    "cuda_synchronize_before_after": true
+  },
+  "controls": {
+    "future_action_tolerance": 0.000001,
+    "goal_in_student_input": false,
+    "wide_arms_share_manifest_and_actions": true,
+    "teacher_targets_detached": true
+  },
+  "gates": {
+    "capacity": {
+      "finite_outputs_and_training": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "latent_last10_to_first_ratio_max": 0.8
+    },
+    "absolute_fidelity": {
+      "grounded_dense_spearman_median_min": 0.99,
+      "grounded_dense_spearman_minimum_min": 0.95,
+      "grounded_dense_top30_median_min": 0.95,
+      "grounded_dense_top30_minimum_min": 0.80
+    },
+    "grounding_effect": {
+      "comparison": "WIDE-GT minus WIDE-T",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_overlap_delta_min": 0.10,
+      "positive_spearman_blocks_min": 3,
+      "positive_top30_blocks_min": 3
+    },
+    "coverage_effect": {
+      "comparison": "WIDE-T minus NARROW-T",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_overlap_delta_min": 0.10,
+      "positive_spearman_blocks_min": 3,
+      "positive_top30_blocks_min": 3,
+      "diagnostic_only": true
+    },
+    "grounded_noninferiority": {
+      "grounded_to_teacher_dense_mean_relative_mse_ratio_max": 1.25
+    },
+    "latency": {
+      "grounded_dense_predictor_reduction_vs_teacher_min": 0.20
+    },
+    "go": "all capacity, absolute fidelity, grounding effect, grounded non-inferiority and latency gates pass; coverage effect is diagnostic only",
+    "no_go": "any primary gate fails; coverage_effect remains diagnostic and does not block GO; do not retune, change seeds, add updates, or enter CEM integration"
+  },
+  "claim_boundary": {
+    "allowed_if_go": "On the frozen DINO-WM PushT predictor contract, manifest-grounded dense supervision meets the stated planner-fidelity and native-future non-inferiority gates against WIDE-T.",
+    "forbidden": [
+      "CEM or closed-loop success",
+      "full planner speedup",
+      "LeWM transfer",
+      "all-JEPA universality",
+      "population-level inference from the finite manifest",
+      "全量数据 claim"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "gpu_telemetry_seconds": 30,
+    "hash": false
+  }
+}

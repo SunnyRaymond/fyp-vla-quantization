@@ -1,0 +1,66 @@
+#!/bin/bash
+#PBS -N dino_rank_student_stage_a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+IDEA_ROOT=${DINO_PREFIX_ROOT:-$ROOT/idea-validation/dino-wm-shared-prefix-cache}
+STUDENT_ROOT=${DINO_STUDENT_ROOT:-$IDEA_ROOT/rank_student}
+OUT=${DINO_STUDENT_OUT:-$ROOT/artifacts/rank-student-stage-a-$PBS_JOBID}
+WORK=${TMPDIR:-/tmp}/dino-rank-student-stage-a-$PBS_JOBID
+
+# Guard before runtime extraction, model loading, data access, or other heavy I/O.
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s)
+case "$HOST" in
+  *login*|*login1*|*login2*|asp2a-login*|ntu-login*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+test -d "$ROOT/data"
+test -f "$ROOT/ASSETS_READY"
+test -f "$ROOT/runtime-complete.tar"
+test -f "$STUDENT_ROOT/stage_a_runner.py"
+test -f "$STUDENT_ROOT/RANK_STUDENT_STAGE_A_FREEZE.json"
+test -f "$STUDENT_ROOT/verify_rank_student.py"
+
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+export PYTHONPATH="$STUDENT_ROOT:$ROOT/source"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+timeout --signal=TERM 234m "$WORK/runtime/venv/bin/python" "$STUDENT_ROOT/stage_a_runner.py" \
+  --root "$ROOT" \
+  --output "$OUT"
+
+test -s "$OUT/teacher_records.pt"
+test -s "$OUT/student_checkpoint.pt"
+test -s "$OUT/teacher_data.jsonl"
+test -s "$OUT/student_training_summary.json"
+test -s "$OUT/calibration_results.jsonl"
+test -s "$OUT/heldout_results.jsonl"
+test -s "$OUT/selection.json"
+test -s "$OUT/stage_a_summary.json"
+touch "$OUT/RANK_STUDENT_STAGE_A_COMPLETE"
+VERIFY_RC=0
+"$WORK/runtime/venv/bin/python" "$STUDENT_ROOT/verify_rank_student.py" \
+  --root "$OUT" \
+  --contract "$STUDENT_ROOT/RANK_STUDENT_STAGE_A_FREEZE.json" \
+  --output "$OUT/verifier.json" || VERIFY_RC=$?
+if [ "$VERIFY_RC" -eq 0 ]; then
+  touch "$OUT/RANK_STUDENT_STAGE_A_PASS"
+fi
+date

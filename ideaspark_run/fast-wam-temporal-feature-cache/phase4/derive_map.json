@@ -1,0 +1,83 @@
+{
+  "title_zh": "面向 Fast-WAM Optional-IDM 的因果风险包络缓存",
+  "plain_motivation_en": "Fast-WAM Optional-IDM repeatedly processes new, receding observations. The problem is not merely repeated computation: changing an observation can make a cached unit affect both the action output and the predicted-video output, and two units with similar hidden-state drift can have very different downstream effects. A single local-drift threshold treats all units as interchangeable even when a small high-risk tail accounts for most paired error.\n\nThe proposed setting keeps the existing Fast-WAM model and graph fixed and measures this asymmetry directly. C3ache provides a periodic World-Action caching reference, EfficientVLA provides a feature-similarity reuse reference, and WorldCache and X-Cache show that heterogeneous or structure-aware reuse can preserve rollout quality. As represented here, none measures the downstream paired action/video risk of making one cache unit stale and uses that measurement to decide which dependencies must be refreshed. The question is therefore whether causal risk allocation, rather than another similarity score or fixed cadence, is the missing operation.\n\nRecent caching work makes this measurement timely. C3ache, WorldCache, and X-Cache supply relevant reuse references, while DriveCache is a boundary case that already combines scene-level scheduling, an action-aware response budget, and causal drift-triggered refresh or replanning. CREC therefore makes no broad claim about action-aware budgeted caching. The bounded question is whether Fast-WAM Optional-IDM has a distinct per-unit paired action/video risk envelope, whether its heterogeneity can be tested, and whether descendant-complete invalidation can be evaluated with the existing checkpoint and native GPU timing.\n\nIf the gap is closed, Fast-WAM caching gains an explicit allocation object: at a fixed skip rate, it can refresh the empirically high-risk tail and reuse the bulk instead of treating local drift as sufficient. Paired action/video error and closed-loop task success become part of the cache validity boundary. A successful gate would also provide a reusable causal diagnostic for deciding when a latency gain is mechanistically meaningful, while complementing rather than claiming to subsume the cited reuse mechanisms.",
+  "plain_motivation_zh": "Fast-WAM Optional-IDM 会反复处理不断到来的观测。问题不只是重复计算：观测变化后，一个缓存单位可能同时影响动作输出和预测视频输出；两个单位即使隐藏状态漂移相近，它们对下游的影响也可能很不一样。单一的局部漂移阈值把所有单位当成可互换的对象，即使少数高风险单位已经承担了大部分动作与视频误差。\n\n这个方案保持现有 Fast-WAM 模型和计算图不变，直接测量这种不对称性。C3ache 提供周期性 World-Action caching 参考，EfficientVLA 提供基于特征相似度的复用参考，WorldCache 和 X-Cache 则说明异质或结构感知的复用可以保持 rollout 质量。就当前 scaffold 所表示的内容而言，这些工作都没有测量让某个缓存单位变旧后产生的动作与视频联合下游风险，也没有用该测量决定哪些依赖必须刷新。因此，问题是：缺少的操作究竟是不是因果风险分配，而不是又一个相似度分数或固定刷新节奏。\n\n近期 caching 工作让这套测量及时可行。C3ache、WorldCache 和 X-Cache 提供了相关复用参考；DriveCache 是一个边界案例，它已经结合了场景级调度、动作感知响应预算，以及由因果漂移触发的刷新或重规划。因此，CREC 不对所有动作感知的预算式 caching 做宽泛主张。这里的有限问题是：Fast-WAM Optional-IDM 是否存在独特的单位级动作/视频联合风险包络；这种异质性是否可以检验；以及在现有 checkpoint 和 native GPU timing 下，是否能够评估覆盖完整后继的失效处理。\n\n如果这个缺口被补上，Fast-WAM caching 就会得到一个明确的分配对象：在 skip rate 固定时，刷新实证上高风险的尾部，复用其余大部分单位，而不再把局部漂移当成充分依据。动作与视频联合误差以及 closed-loop task success 会成为 cache validity boundary 的一部分。通过检验后，它还可以成为一个可复用的因果诊断，用来判断 latency 下降是否具有机制意义；同时它只是补充已有复用机制，并不声称取代它们。",
+  "plain_method_steps_en": [
+    {
+      "step_id": "S1",
+      "what_to_do": "For every cache unit and every changed receding observation in held-out rollouts, replace that unit-timestep with its cached value while keeping the remaining Fast-WAM Optional-IDM graph fixed. Record the paired action and predicted-video deviations, indexed by the observation-change level d, against the uncached reference outputs.",
+      "why_this_makes_sense": "This supplies the missing causal intervention: it separates local hidden-state change from the downstream effect of one stale unit."
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "Aggregate the paired samples into the unit-specific risk envelope `r_u(d)`. Compare the observed distribution across units with a unit-label permutation null that preserves the risk values and change levels. Keep the calibrated envelopes and the pass/fail heterogeneity evidence gate.",
+      "why_this_makes_sense": "The method needs evidence that risk is genuinely heterogeneous. Without this gate, a global drift rule and the proposed high-risk tail cannot be distinguished by mechanism."
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "Using the passed risk envelopes, unit costs, dependency graph, and target risk budget or matched skip rate, solve the refresh-versus-reuse selection. Refresh the calibrated high-risk tail and reuse the remaining units, producing unit refresh indicators and a risk-budgeted cache schedule.",
+      "why_this_makes_sense": "This turns the heterogeneous measurement into the load-bearing cache operation rather than another descriptive cache score."
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "Refresh the selected units and invalidate every graph descendant before recomputing the paired action/video outputs. Using matched uncached and control rollouts, measure downstream error, native GPU latency, and task success, and record the envelope-permutation control result.",
+      "why_this_makes_sense": "Recomputing all descendants tests the allocation in the actual Fast-WAM graph instead of relying on an isolated intermediate metric."
+    }
+  ],
+  "plain_method_steps_zh": [
+    {
+      "step_id": "S1",
+      "what_to_do": "在 held-out rollout 中，针对每个 cache unit 和每个发生变化的 receding observation，把该单位在该时间点替换成缓存值，同时固定其余 Fast-WAM Optional-IDM 计算图。以 uncached reference outputs 为基准，记录动作输出和预测视频输出的联合偏差，并按观测变化幅度 d 编号。",
+      "why_this_makes_sense": "这一步提供缺失的因果干预，把局部隐藏状态变化与某个旧缓存单位造成的下游影响分开。"
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "把联合偏差样本汇总为单位级风险包络 `r_u(d)`。然后与 unit-label permutation null 比较单位之间的观测分布；置换时保留风险值和变化幅度。保存校准后的风险包络，并给出异质性证据的通过或失败结果。",
+      "why_this_makes_sense": "方法需要先证明风险确实存在异质性。没有这道门，global drift rule 与提出的高风险尾部在机制上就无法区分。"
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "使用通过检验的风险包络、unit costs、dependency graph，以及目标 risk budget 或匹配的 skip rate，求解 refresh-versus-reuse 选择。刷新校准后的高风险尾部，复用其余单位，并输出 unit refresh indicators 和 risk-budgeted cache schedule。",
+      "why_this_makes_sense": "这一步把异质性测量变成方法的核心 caching 操作，而不是另一个只描述缓存的分数。"
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "刷新选中的单位，并在重新计算联合动作/视频输出前让所有图后继失效。使用匹配的 uncached rollout 和 control rollout，测量下游误差、native GPU latency 与 task success，同时记录 envelope-permutation control 的结果。",
+      "why_this_makes_sense": "重新计算全部后继，可以检验这项分配是否在真实 Fast-WAM 计算图中成立，而不是只改善某个孤立的中间指标。"
+    }
+  ],
+  "plain_method_modules_en": [
+    {
+      "module_id": "Background",
+      "purpose_oneline": "Set up the existing Fast-WAM Optional-IDM graph and obtain per-unit intervention measurements.",
+      "step_ids": ["S1"]
+    },
+    {
+      "module_id": "M1_risk_envelope",
+      "purpose_oneline": "Test heterogeneous paired downstream risk and turn the calibrated risk envelope into a refresh allocation.",
+      "step_ids": ["S2", "S3"]
+    },
+    {
+      "module_id": "M2_validation",
+      "purpose_oneline": "Apply dependency-complete refresh and evaluate paired error, native latency, task success, and the permutation control.",
+      "step_ids": ["S4"]
+    }
+  ],
+  "plain_method_modules_zh": [
+    {
+      "module_id": "Background",
+      "purpose_oneline": "建立现有 Fast-WAM Optional-IDM 计算图，并取得每个单位的干预测量。",
+      "step_ids": ["S1"]
+    },
+    {
+      "module_id": "M1_risk_envelope",
+      "purpose_oneline": "检验联合下游风险的异质性，并把校准后的风险包络变成刷新分配。",
+      "step_ids": ["S2", "S3"]
+    },
+    {
+      "module_id": "M2_validation",
+      "purpose_oneline": "执行覆盖完整后继的刷新，并评估联合误差、native latency、task success 和置换 control。",
+      "step_ids": ["S4"]
+    }
+  ]
+}

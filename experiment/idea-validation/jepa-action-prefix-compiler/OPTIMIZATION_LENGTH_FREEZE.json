@@ -1,0 +1,392 @@
+{
+  "schema": "jepa-action-prefix-compiler.optimization-length-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "dino-wm-pusht-action-prefix-compiler-optimization-length-1500",
+  "purpose": "Diagnose whether the fixed WIDE+QUERY NativeDinoPrefixStudent is primarily limited by optimization length when context coverage, action-query coverage, architecture, initialization, optimizer, and evaluation are held fixed.",
+  "research_question": {
+    "primary": "Does continuous optimization from 500 to 1500 steps materially improve held-out planner-candidate ranking for the fixed WIDE+QUERY student?",
+    "secondary": "Does the step-1500 student satisfy the inherited predictor-level full-replacement fidelity, native-latent, causality, and latency gates?",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; candidates within a block are repeated measurements, not independent replicates",
+    "primary_comparison": "step1500 minus step500 on the same 16 held-out blocks",
+    "intermediate_step": "step1000 is a descriptive diagnostic only",
+    "no_adaptive_stopping": true,
+    "no_posthoc_retuning": true
+  },
+  "parent_contract": {
+    "freeze": "experiment/idea-validation/jepa-action-prefix-compiler/QUERY_COVERAGE_FREEZE.json",
+    "freeze_schema": "jepa-action-prefix-compiler.query-coverage-freeze",
+    "result_reference": "experiment/idea-validation/jepa-action-prefix-compiler/RESULT_QUERY_COVERAGE.zh.md",
+    "schedule_reference": "experiment/idea-validation/jepa-action-prefix-compiler/run_dino_pusht_query_coverage.py",
+    "source_commit": "0a9492fa12044b852ae9e001cc74604b79c8bb0c",
+    "inherited_contract": [
+      "official DINO-WM PushT backend",
+      "frozen encoder and predictor",
+      "NativeDinoPrefixStudent hidden_dim=128",
+      "128 train contexts and 8 held-out contexts from the frozen CPU manifest",
+      "50% logged + 25% Gaussian planner-init + 25% one-step CEM elite-resample action bank",
+      "M=64, K=8, variance floor=0.05",
+      "training_seed=20260925, action_query_seed=20260926, role_schedule_seed=20260927",
+      "AdamW learning rate=3e-4 and batch_size=32",
+      "8 contexts x 2 seeds x 300 identical held-out candidates"
+    ],
+    "intentional_change": "Replace the four-arm 500-step query-coverage run with one continuous WIDE+QUERY arm trained for 1500 optimizer updates; no other treatment is introduced.",
+    "old_500_result_role": "non-gated historical sanity reference only; it cannot trigger early stopping, retuning, or a changed decision threshold"
+  },
+  "scope": {
+    "backend": "official DINO-WM PushT",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "teacher_targets": "frozen teacher rollout for every frozen training action prefix",
+    "student_receives_goal": false,
+    "goal_used_for": [
+      "training-only one-step CEM proposal generation",
+      "held-out teacher objective for candidate ranking"
+    ],
+    "closed_loop": false,
+    "cem_execution": false,
+    "training_only_one_step_cem_proposal_generation": true,
+    "planner_integration": false,
+    "environment_interaction": false,
+    "lewm_transfer": false,
+    "checkpoint_update": false,
+    "planner_update": false,
+    "heldout_evaluation_during_training": false,
+    "heldout_evaluation_after_final_training_only": true
+  },
+  "source_and_manifest": {
+    "reproduction_root": "experiment/reproduction/dino-wm-wall",
+    "official_config": "source/conf/plan_pusht.yaml",
+    "manifest_schema": "jepa-action-prefix-compiler.query-coverage-manifest",
+    "manifest_preparer": "experiment/idea-validation/jepa-action-prefix-compiler/prepare_query_coverage_assets.py",
+    "manifest_path_policy": "Use the staged CPU-prepared manifest supplied at run time; do not regenerate, reorder, subsample, or replace it after this freeze.",
+    "train_contract": {
+      "contexts": 128,
+      "episodes": 32,
+      "examples_per_episode": 4,
+      "selection": "all train examples in frozen manifest"
+    },
+    "heldout_contract": {
+      "contexts": 8,
+      "episodes": 8,
+      "selection": "all held-out contexts in frozen manifest order"
+    },
+    "episode_overlap": false,
+    "heldout_exclusion": "No held-out episode, context, observation, action, seed, goal, or evaluation candidate may enter training, CEM-bank construction, or schedule generation."
+  },
+  "model_contract": {
+    "student_class": "NativeDinoPrefixStudent",
+    "student_arm": "WIDE-QUERY",
+    "hidden_dim": 128,
+    "horizon": 5,
+    "frameskip": 5,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "anchor_input": "cached native DINO observation latent z_t",
+    "action_input": "five normalized action tokens with tensor shape [batch,5,10]; each 10-D token packs frameskip=5 primitive 2-D actions",
+    "output": "five future native observation latents z[t+1:t+5]",
+    "future_action_leakage": false,
+    "goal_in_student_input": false,
+    "architecture_change": false,
+    "target_loss": "dense native-latent MSE only",
+    "forbidden_training_losses": [
+      "rank loss",
+      "listwise KL",
+      "goal loss",
+      "self-consistency loss",
+      "ground-truth future-frame target"
+    ]
+  },
+  "action_query_bank": {
+    "training_contexts": 128,
+    "mixture": {
+      "logged": 0.5,
+      "gaussian_planner_init": 0.25,
+      "one_step_cem_resample": 0.25
+    },
+    "rows_per_batch": {
+      "logged": 16,
+      "gaussian_planner_init": 8,
+      "one_step_cem_resample": 8,
+      "total": 32
+    },
+    "logged": {
+      "source": "selected train manifest example real five-token action prefix",
+      "preserve_values_exactly": true
+    },
+    "gaussian_planner_init": {
+      "distribution": "independent Normal(0,1) per packed action-token coordinate",
+      "shape": "[8,5,10] per update; 10=frameskip 5 x primitive action dim 2",
+      "rng": "CPU torch.Generator",
+      "goal_or_teacher_score": false
+    },
+    "one_step_cem_resample": {
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "candidate_distribution": "independent Normal(0,1) per packed action-token coordinate, shape [64,5,10]",
+      "scoring": "frozen teacher terminal prediction under the frozen official terminal goal objective for the same training context",
+      "elite_rule": "select the K lowest-cost candidates",
+      "statistics": "per-coordinate mean and population variance over the [8,5,10] elite tensor",
+      "variance_floor": 0.05,
+      "resample": "sample exactly one prefix from the diagonal Normal with elite mean and max(variance,0.05)",
+      "precompute_once_before_step1": true,
+      "student_result_used": false,
+      "heldout_source_allowed": false,
+      "multi_step_planner": false
+    },
+    "target_contract": "Every logged, Gaussian, and CEM-resampled training prefix is passed through the same frozen teacher rollout to produce detached dense native-latent targets; CEM candidate-scoring rollouts only construct the frozen proposal bank."
+  },
+  "randomness_and_schedule": {
+    "training_seed": 20260925,
+    "context_schedule_seed": 20260925,
+    "action_query_seed": 20260926,
+    "role_schedule_seed": 20260927,
+    "cem_context_seed_formula": "action_query_seed + 1009 * zero_based_train_context_ordinal",
+    "heldout_action_prefix_seeds": [
+      20264925,
+      20264926
+    ],
+    "timing_action_prefix_seed": 20270925,
+    "rng_policy": "Generate context indices, role permutations, Gaussian proposals, per-context CEM candidates/resamples, and held-out candidates with explicit CPU generators; transfer tensors to the selected GPU after generation.",
+    "seed_policy": "All seeds are fixed before execution; no result-dependent seed replacement, extra tuning run, or unregistered RNG draw is permitted.",
+    "context_schedule_compatibility": {
+      "historical_runner": "run_dino_pusht_query_coverage.py",
+      "historical_steps": 500,
+      "historical_generator": "Python random.Random(context_schedule_seed)",
+      "historical_call_order": "Generate all 500 NARROW rows first, then generate all 500 WIDE rows; each NARROW batch position calls randrange(8) and each WIDE batch position calls randrange(128).",
+      "burn_in_required": true,
+      "burn_in_rule": "Before generating any new WIDE index, consume exactly 500 * 32 calls to randrange(8), corresponding to the old runner's 500 * 32 NARROW context draws. Do not materialize or retain a NARROW schedule.",
+      "new_wide_rule": "From the post-burn-in state, for new training step s=1..1500 and batch position b=1..32, call randrange(128) exactly once and use that index.",
+      "replay_contract": "The new steps 1..500 WIDE context-index matrix must equal the old 500-step WIDE schedule generated after its NARROW schedule. No RNG call may be inserted between burn-in and the first WIDE draw.",
+      "forbidden_shortcut": "Do not seed a fresh generator for WIDE, generate 1500 NARROW schedules before WIDE, or use a result-dependent sampler."
+    },
+    "role_schedule": {
+      "generator": "CPU torch.Generator",
+      "seed": 20260927,
+      "base_roles": "[0]*16 + [1]*8 + [2]*8 where 0=logged, 1=Gaussian planner-init, 2=one-step CEM",
+      "per_step": "Apply one CPU randperm(32) to the base role vector for each of 1500 steps.",
+      "first_500_replay": "The first 500 role permutations must be the prefix produced by the old 500-step role schedule.",
+      "cuda_rng_dependency": false
+    },
+    "update_schedule": {
+      "single_arm": true,
+      "per_step_order": [
+        "WIDE-QUERY"
+      ],
+      "optimizer_updates": 1500
+    }
+  },
+  "training": {
+    "arm": "WIDE-QUERY",
+    "steps": 1500,
+    "batch_size": 32,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "same_initial_state_dict_as_parent_wide_query": true,
+    "initialization": "Create one NativeDinoPrefixStudent template using the frozen training seed, then clone its initial state dictionary into the single WIDE-QUERY student before any optimizer step.",
+    "per_update": "Materialize the frozen WIDE context schedule and 50/25/25 role schedule, select the frozen action-bank rows, compute detached-target dense native-latent MSE, and perform exactly one AdamW update.",
+    "teacher_targets_detached": true,
+    "student_encode_obs_calls": false,
+    "student_goal_calls": false,
+    "continuous_optimizer_state": true,
+    "optimizer_restart_between_snapshots": false,
+    "optimizer_step_reset_between_snapshots": false,
+    "gradient_accumulation": false,
+    "heldout_evaluation_before_step1500": false,
+    "checkpoint_schedule": [
+      {
+        "step": 500,
+        "filename": "wide_query_step0500.pt",
+        "role": "training snapshot only; not evaluated until after step1500"
+      },
+      {
+        "step": 1000,
+        "filename": "wide_query_step1000.pt",
+        "role": "training snapshot only; not evaluated until after step1500"
+      },
+      {
+        "step": 1500,
+        "filename": "wide_query_step1500.pt",
+        "role": "final training snapshot"
+      }
+    ],
+    "checkpoint_contents": [
+      "student state_dict",
+      "AdamW optimizer state_dict at the exact saved step",
+      "global_step",
+      "frozen seed and schedule metadata",
+      "CPU and CUDA RNG states needed for audit/replay",
+      "manifest and parent-freeze identifiers"
+    ],
+    "checkpoint_use": "Snapshots are record artifacts. Training continues in the same live process and optimizer state; no snapshot is reloaded to continue training."
+  },
+  "heldout_evaluation": {
+    "post_training_only": true,
+    "evaluation_order": "After step1500 update and final snapshot save, construct the held-out candidate tensors once, then evaluate snapshots at steps 500, 1000, and 1500 with identical candidates and goals.",
+    "ranking": {
+      "heldout_context_rule": "Use all eight held-out logged contexts in frozen manifest order.",
+      "block_count": 16,
+      "block_definition": "8 held-out contexts x 2 fresh action-prefix seeds",
+      "candidates_per_block": 300,
+      "candidate_distribution": "independent Normal(0,1) normalized packed action tokens with shape [300,5,10], matching the existing frozen predictor-level sampler",
+      "topk": 30,
+      "paired_comparison": "Within every block, the frozen teacher and steps 500, 1000, and 1500 use the identical candidate action tensor and goal.",
+      "primary_unit": "block, not candidate",
+      "candidate_generation_timing": "after final training only",
+      "candidate_reuse_across_snapshots": true
+    },
+    "latent_teacher_relative_mse": {
+      "contexts": "all 8 held-out contexts",
+      "actions": "each context's real logged action prefix",
+      "target": "frozen teacher rollout on those real prefixes",
+      "statistic": "mean across horizons and the 8 held-out contexts of each snapshot's dense relative native-latent MSE",
+      "primary_ratio": "step1500 mean relative MSE / step500 mean relative MSE",
+      "gate": "ratio <= 1.25",
+      "not_substitutable_by": "ranking metrics, training loss, or an intermediate snapshot"
+    },
+    "causality": {
+      "snapshot": 1500,
+      "procedure": "For each prefix horizon k, change only action tokens after k while keeping z_t and the first k tokens fixed.",
+      "metric": "maximum absolute difference in the output at horizon k",
+      "gate": "<= 0.000001"
+    },
+    "latency": {
+      "snapshot": 1500,
+      "boundary": "cached native observation latent plus normalized action prefix through either five-step frozen teacher rollout or one student forward",
+      "batch_size": 300,
+      "includes_encoder": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "reduction_definition": "1 - median(step1500 student_ms) / median(teacher_ms)",
+      "gate": ">= 0.20"
+    },
+    "telemetry": "During GPU execution, append utilization and VRAM samples every 30 seconds to the job artifact log."
+  },
+  "metrics_and_diagnostics": {
+    "per_block": [
+      "objective Spearman",
+      "top-30 overlap",
+      "teacher-relative latent MSE",
+      "per-horizon cosine"
+    ],
+    "optimization_effect": {
+      "comparison": "step1500 - step500",
+      "paired_blocks": 16,
+      "delta_definition": "For each block, subtract the step500 metric from the step1500 metric before taking medians and positive-block counts.",
+      "positive_definition": "A block is positive when its paired delta is strictly greater than zero.",
+      "required_median_spearman_delta": 0.05,
+      "required_median_top30_delta": 0.1,
+      "required_positive_spearman_blocks": 12,
+      "required_positive_top30_blocks": 12,
+      "interpretation": "This is the optimization-materially-helps level, not the full-replacement decision."
+    },
+    "step1000_diagnostic": {
+      "comparison": "step1000 - step500",
+      "report": [
+        "median Spearman delta",
+        "median top-30 delta",
+        "positive Spearman block count",
+        "positive top-30 block count",
+        "per-block paired deltas"
+      ],
+      "gating": "diagnostic_only"
+    },
+    "additional_trajectory_diagnostic": {
+      "comparisons": [
+        "step1500 - step1000",
+        "step1500 - step500"
+      ],
+      "report": [
+        "snapshot medians and minima",
+        "per-block Spearman and top-30 trajectories",
+        "latent teacher-relative MSE at steps 500, 1000, and 1500"
+      ],
+      "gating": "step1500 - step500 is the only optimization-effect gate"
+    }
+  },
+  "gates": {
+    "capacity_and_integrity": {
+      "all_snapshot_outputs_finite": true,
+      "final_training_finite": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "hidden_encode_obs": false,
+      "shape_dtype_device_match": true,
+      "oom_nan_or_silent_fallback": false
+    },
+    "optimization_materially_helps": {
+      "comparison": "step1500 - step500",
+      "median_spearman_delta_min": 0.05,
+      "median_top30_delta_min": 0.1,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision_label_if_pass": "optimization_materially_helps",
+      "decision_label_if_fail": "optimization_effect_not_established"
+    },
+    "absolute_fidelity_final": {
+      "snapshot": 1500,
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.8
+    },
+    "teacher_relative_mse_final": {
+      "comparison": "step1500 / step500 on all 8 held-out logged contexts",
+      "ratio_max": 1.25
+    },
+    "causality_final": {
+      "snapshot": 1500,
+      "maximum_future_action_leakage_abs": 0.000001
+    },
+    "latency_final": {
+      "snapshot": 1500,
+      "predictor_only_reduction_min": 0.2
+    },
+    "decision_levels": {
+      "optimization_materially_helps": "PASS iff the step1500-step500 paired block thresholds all pass; this label is reported independently of replacement readiness.",
+      "full_replacement": "GO iff capacity_and_integrity, step1500 absolute fidelity, step1500/step500 teacher-relative MSE ratio, final causality, and final predictor-only latency all pass. Otherwise NO-GO.",
+      "intermediate_results": "Step500 and step1000 held-out metrics are descriptive after-the-fact diagnostics only; they cannot early-stop, retune, relax gates, or trigger another run.",
+      "non_equivalence": "optimization_materially_helps PASS does not imply full_replacement GO; full_replacement GO does not require a PASS on the optimization-materially-helps attribution label if the final replacement gates pass."
+    }
+  },
+  "claim_boundary": {
+    "allowed_if_optimization_effect_pass": "Under the frozen DINO-WM PushT predictor contract and frozen 128-context WIDE+QUERY bank, continuous optimization from step500 to step1500 materially improves paired held-out candidate ranking under the stated block-level thresholds.",
+    "allowed_if_full_replacement_go": "The step1500 WIDE+QUERY student meets the frozen predictor-level replacement gates against the teacher, including absolute ranking fidelity, teacher-relative latent-MSE ratio, causality, and predictor-only latency.",
+    "one_step_cem_qualification": "The action coverage remains the frozen training-only M=64/K=8 one-step CEM elite-resample mixture; no claim about full multi-step goal-conditioned CEM integration is permitted.",
+    "forbidden": [
+      "closed-loop task success",
+      "multi-step CEM integration or full-plan latency",
+      "closed-loop planner success",
+      "LeWM transfer",
+      "all-JEPA universality",
+      "population-level inference",
+      "full-dataset training claim",
+      "causal claims beyond the frozen schedule and paired block comparison",
+      "claim that longer optimization alone proves model capacity is sufficient"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "model_loading_inference_benchmark_on_login": false,
+    "gpu_telemetry_seconds": 30,
+    "hash": false,
+    "do_not_run_during_freeze_creation": true,
+    "artifacts": [
+      "summary JSON",
+      "job log",
+      "job status",
+      "GPU info/usage/telemetry",
+      "wide_query_step0500.pt",
+      "wide_query_step1000.pt",
+      "wide_query_step1500.pt"
+    ],
+    "checkpoint_return": "Snapshots are audit artifacts; the primary reported artifacts are the summary, job log/status, GPU info, and telemetry."
+  }
+}

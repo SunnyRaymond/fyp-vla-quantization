@@ -1,0 +1,55 @@
+{
+  "recipe_application_check": {
+    "entries": [
+      {
+        "gap": "No retrieved frontier leaf establishes an output-preserving validity condition for reusing intermediate representations after a changed receding observation: C3ache reuses residuals on a fixed cross-chunk cadence, while the action and predicted-video consequences of a stale residual are not jointly bounded — stakes: a closed-loop robot can issue stale actions after contact or motion changes, wasting expensive rollouts or causing task failure; intellectually, reported cache speedups cannot be transferred to WAM-Optional-IDM control without knowing when the approximation becomes invalid.",
+        "sub_pattern": "C00 (Reframe as a Solvable Object)",
+        "tactical_pattern_quoted": "This cluster recasts an opaque transparency question about an already-trained model or dataset — which feature/datum/internal component is responsible, how uncertain a prediction is, what a hidden representation encodes — as a concrete measurement over a well-studied object: a manifold-constrained counterfactual optimization, a submodular subset selection, an expectation/estimator over marginal statistics, an additive decomposition into a (often sparse) basis, or an influence/Shapley score accumulated along the optimization trajectory. The decisive move is choosing the right unit of analysis and the right faithfulness constraint so the resulting scores reflect the model's actual computation rather than an off-distribution or post-hoc artifact — e.g., searching counterfactuals only on the learned data manifold, decomposing into monosemantic sparse directions before causal tracing, or embedding the explanatory predictors as the primary decision representation.",
+        "instantiation_in_core_mechanism": "The candidate fixes the unit as each native Fast-WAM cache unit u=(b,k), measures the concrete paired downstream discrepancy D_joint from a stale-value replay with all other graph inputs fixed, maps source change d to a monotone empirical upper envelope r_u(d), and validates faithfulness with the unit-label permutation null and held-out action/video outcomes. Its constrained risk-budgeted selective-refresh operator then consumes this measured object while enforcing descendant invalidation, so the mechanism performs C00's unit-and-faithfulness move rather than merely naming it.",
+        "verdict": "applied"
+      }
+    ],
+    "verdict": "applied",
+    "reasoning": "The C00 entry is applied: core_mechanism makes the native cache unit and paired stale-value discrepancy the measurement object, then uses causal intervention and controlled downstream outcomes as its faithfulness test."
+  },
+  "anti_pattern_check": {
+    "composition_set": [
+      "reframe_as_solvable_object",
+      "architectural_operator_substitution"
+    ],
+    "matched_pattern_id": null,
+    "required_mitigation_quoted": null,
+    "mitigation_substantively_delivered": "n/a",
+    "reasoning": "The composition contains no heterogeneous_decomposition component, so none of the three documented reject-favored compositions matches; the companion operator is not itself an anti-pattern trigger."
+  },
+  "paper_pointed_threat": {
+    "threat_paper_id": "openalex:W7203663435",
+    "threat_source": "collision_hits",
+    "threat_channel": "signature",
+    "subsumption_argument": "DriveCache reports that cache tolerance varies with ego translation and rotation, denoising progress, and consecutive reuse length, then uses a training-free action-aware controller with dynamic programming under a calibrated response budget and a causal drift-triggered refresh and replan. This directly threatens any broad novelty claim for action-aware budgeted caching with causal refresh. The supplied abstract does not, however, establish the candidate's narrower per-unit stale-value paired action/video envelope, unit-label heterogeneity null, or dependency-complete descendant invalidation, so it does not establish exact-mechanism overlap; the candidate must explicitly contrast these objects before claiming novelty.",
+    "addressable_via": "Add a differentiation_from_lit entry for DriveCache that contrasts its scene-level planned-motion schedule and causal drift replan with this candidate's per-unit paired-output stale replay, heterogeneity test, and dependency-complete invalidation.",
+    "parametric_family_concern": null
+  },
+  "falsification_structure_check": {
+    "minimal_experiment_named": "yes",
+    "outcome_metric_named": "yes",
+    "load_bearing_variable": "r_u(d)",
+    "negative_control_target": "outcome_metric",
+    "numeric_bar_provenance": "none",
+    "verdict": "sound",
+    "reasoning": "The falsification paragraph names a concrete held-out Fast-WAM comparison at matched skip rates, gives downstream action MSE, predicted-observation MSE, and task-success directions, and names r_u(d) as the load-bearing variable. Its envelope-permutation control targets downstream outcomes while preserving risk budget, skip rate, and dependency logic, and the paragraph contains no unsourced numeric outcome bar."
+  },
+  "blocking_findings_disposition": [],
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "The C00 reject audit is clear and its recipe signature is applied: the candidate defines native per-unit measurements, performs stale-value causal replay, and uses downstream controls, while the anti-pattern composition does not match any hard-floor pair. The falsification structure is sound, but the signature collision DriveCache already combines action-aware cache allocation, a calibrated response budget, and causal refresh/replanning; because that threat is addressable in differentiation_from_lit rather than exact-mechanism overlap, the safe verdict is revise.",
+  "revision_targets": [
+    {
+      "scope": "tactical",
+      "field": "differentiation_from_lit",
+      "issue": "paper_pointed_threat: DriveCache is a recent signature-channel threat to the broad action-aware, response-budgeted, causally refreshed caching framing.",
+      "fix_direction": "Add one explicit DriveCache comparison that concedes its planned-motion, scene-level dynamic-programming schedule and causal drift replan, then states the candidate-specific contribution as per-unit stale-value intervention, paired action/video risk envelope, unit-label heterogeneity test, and dependency-complete descendant invalidation; do not claim that action-aware budgeted refresh alone is novel."
+    }
+  ],
+  "_brief_note": "gap_closure_reject_check details omitted for context economy — full report at D:\\Downloads\\Final Year Project\\ideaspark_run\\fast-wam-temporal-feature-cache\\phase3_critique\\phase3_critique_output.json; read it ONLY if a revision_target's `issue` cites a specific reject lesson you need verbatim."
+}
