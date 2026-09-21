@@ -1,0 +1,108 @@
+{
+  "schema": "lewm.delta-oracle.freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_id": "lewm-pusht-delta-subspace-oracle-v1",
+  "question": "Can LeWM PushT 192-D latent transitions be represented in a reusable low-dimensional subspace without changing planner decisions materially?",
+  "source": {
+    "lewm_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel_cem_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "checkpoint": "pusht/lewm_object.ckpt",
+    "dataset": "pusht_expert_train.h5",
+    "prepared_rows_source_job": "24564619.pbs101"
+  },
+  "representation_contract": {
+    "planner_latent": "192-D LeWM CLS vector",
+    "matrix_low_rank_per_transition": "not_applicable_to_a_single_192-D_transition; only the five-step trajectory stack is tested with an offline oracle SVD",
+    "tested_structure": "reusable centered PCA subspace fitted only on calibration delta vectors",
+    "per_trajectory_oracle_lower_bound": {
+      "delta_stack": "5x192 horizon-by-feature matrix for one trajectory/candidate",
+      "ranks": [1, 2, 3, 4, 5],
+      "basis_scope": "fit separately from that trajectory's own full-model delta stack",
+      "reusable": false,
+      "runtime_or_acceleration_evidence": false
+    },
+    "world_model_step_primitive_actions": 5,
+    "rollout_horizon": 5,
+    "packed_action_dim": 10
+  },
+  "split": {
+    "calibration_contexts": 256,
+    "heldout_contexts": 8,
+    "episode_disjoint": true,
+    "observed_offsets": [0, 5, 10, 15, 20, 25],
+    "model_calibration_queries_per_context": 4,
+    "heldout_candidate_banks_per_context": 2,
+    "heldout_candidates_per_bank": 300
+  },
+  "ranks": [0, 4, 8, 16, 32, 64, 96, 128, 160, 192],
+  "oracle_svd_ranks": [1, 2, 3, 4, 5],
+  "step1": {
+    "primary_basis": "model-delta calibration PCA",
+    "secondary_basis": "observed-delta calibration PCA",
+    "per_trajectory_oracle": "For each observed or model-rollout trajectory, form its 5x192 delta stack and compute a separate rank-1..5 SVD reconstruction. This is an offline lower-bound diagnostic, not a reusable basis and not a deployable predictor.",
+    "report": [
+      "per-trajectory oracle rank-1..5 explained energy and reconstruction error",
+      "calibration singular spectrum and cumulative centered variance",
+      "held-out relative MSE and cosine by rank",
+      "held-out metrics by horizon",
+      "cross-basis reconstruction in both directions"
+    ],
+    "structure_gate": {
+      "applies_to": "reusable model-delta calibration PCA on held-out data; not to the per-trajectory oracle",
+      "maximum_rank": 64,
+      "minimum_heldout_centered_variance_retained": 0.95,
+      "maximum_heldout_relative_mse": 0.05
+    }
+  },
+  "step2": {
+    "per_trajectory_oracle_definition": "run the full LeWM predictor, form each candidate's 5x192 full-model delta stack, fit that candidate's own rank-1..5 SVD, cumulatively reconstruct future latents, and apply the unchanged official criterion. This is a hindsight lower bound only; it is never treated as a reusable basis or acceleration path.",
+    "primary_reusable_basis_definition": "run the full LeWM predictor, project each full-model delta through the frozen model-delta calibration PCA basis, cumulatively reconstruct future latents, and apply the unchanged official criterion/CEM",
+    "basis_arms": [
+      "model-delta calibration PCA (primary reusable basis)",
+      "observed-delta calibration PCA (cross-basis control)",
+      "deterministic random orthonormal basis (negative control)"
+    ],
+    "candidate_metrics": [
+      "candidate-cost Spearman",
+      "top-30 overlap",
+      "argmin agreement with full teacher",
+      "selected first-action normalized L2 against full teacher",
+      "teacher-objective regret of the approximate-selected candidate"
+    ],
+    "candidate_gate": {
+      "minimum_median_spearman": 0.99,
+      "minimum_block_spearman": 0.95,
+      "minimum_median_top30_overlap": 0.90,
+      "minimum_block_top30_overlap": 0.75,
+      "minimum_median_argmin_agreement": 0.75,
+      "maximum_median_selected_first_action_normalized_l2": 0.15,
+      "teacher_objective_regret": "report for every block; no separate threshold because it remains in native official objective units"
+    },
+    "cem": {
+      "mode": "official_fixed_observation_cem_only",
+      "closed_loop": false,
+      "acceleration_benchmark": false,
+      "timing_claim": "none",
+      "observations": 2,
+      "seeds": [20300921, 20300922],
+      "plan_config": {"horizon": 5, "receding_horizon": 5, "action_block": 5},
+      "solver": {"batch_size": 1, "num_samples": 300, "var_scale": 1.0, "n_steps": 30, "topk": 30, "device": "cuda"},
+      "eligible_approximate_arm": "reusable model-delta calibration PCA only; per-trajectory oracle SVD is diagnostic and never eligible for CEM replacement",
+      "run_policy": "baseline and rank-192 exact-control plus the two smallest reusable-basis ranks passing the candidate gate; if none pass, do not run approximate-rank CEM",
+      "maximum_first_action_normalized_l2": 0.15,
+      "maximum_first_action_absolute_difference": 0.25
+    },
+    "negative_control": "deterministic random orthonormal basis at rank 64 on held-out candidate banks",
+    "no_speed_claim": true
+  },
+  "execution": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "refuse_login_hostname": true,
+    "gpu_telemetry_seconds": 30,
+    "downloads_installs_hashes": false,
+    "closed_loop_environment": false
+  },
+  "claim_boundary": "This is a representation and fixed-observation planner oracle diagnostic. It does not demonstrate a cheap predictor, inference acceleration, or closed-loop PushT success."
+}

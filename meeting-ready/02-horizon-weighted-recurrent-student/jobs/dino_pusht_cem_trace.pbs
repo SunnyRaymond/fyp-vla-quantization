@@ -1,0 +1,102 @@
+#!/bin/bash
+#PBS -N dino_student_cem_trace
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+CONTROL_ROOT=${DINO_STUDENT_TRACE_ROOT:?DINO_STUDENT_TRACE_ROOT is required}
+RUNNER=${DINO_STUDENT_TRACE_RUNNER:-$CONTROL_ROOT/run_dino_pusht_cem_trace.py}
+FREEZE=${DINO_STUDENT_TRACE_FREEZE:-$CONTROL_ROOT/CEM_TRACE_DIAGNOSIS_FREEZE.json}
+PARENT_JOB=${DINO_STUDENT_TRACE_PARENT_JOB:-24544733.pbs101}
+PARENT_ROOT=${DINO_STUDENT_TRACE_PARENT_ROOT:-$ROOT/artifacts/dino-pusht-student-closed-loop-$PARENT_JOB}
+PARENT_SUMMARY=${DINO_STUDENT_TRACE_PARENT_SUMMARY:-$PARENT_ROOT/closed_loop_summary.json}
+PLAN_TARGETS=${DINO_STUDENT_TRACE_PLAN_TARGETS:-$PARENT_ROOT/plan_targets.pkl}
+STUDENT_CHECKPOINT=${DINO_STUDENT_CHECKPOINT:-$ROOT/artifacts/jepa-action-prefix-dino-pusht-horizon-weighted-24510395.pbs101/horizon_weighted_recurrent_step1500.pt}
+TEACHER_CHECKPOINT=${DINO_PUSHT_CHECKPOINT:-$ROOT/checkpoints/outputs/pusht/checkpoints/model_latest.pth}
+CHECKPOINT_CONFIG=${DINO_PUSHT_CHECKPOINT_CONFIG:-$ROOT/checkpoints/outputs/pusht/hydra.yaml}
+DATA_ROOT=${DINO_PUSHT_DATA_ROOT:-$ROOT/data/pusht_noise}
+DEPS_ROOT=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+DEPS_MARKER=${DINO_PUSHT_DEPS_MARKER:-$ROOT/PUSHT_DEPS_READY_V5}
+RUNTIME_ARCHIVE=${DINO_RUNTIME_ARCHIVE:-$ROOT/runtime-complete.tar}
+JOB_ID=${PBS_JOBID:-unassigned}
+OUT=${DINO_STUDENT_TRACE_OUT:-$ROOT/artifacts/dino-pusht-student-cem-trace-$JOB_ID}
+WORK=${TMPDIR:-/tmp}/dino-pusht-student-cem-trace-$JOB_ID
+PYTHON=$WORK/runtime/venv/bin/python
+TIMEOUT_SECONDS=${DINO_STUDENT_TRACE_TIMEOUT_SECONDS:-5100}
+
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+for FILE in "$RUNNER" "$CONTROL_ROOT/run_dino_pusht_closed_loop.py" "$CONTROL_ROOT/cache_core.py" "$FREEZE" "$PARENT_SUMMARY" "$PLAN_TARGETS" "$STUDENT_CHECKPOINT" "$TEACHER_CHECKPOINT" "$CHECKPOINT_CONFIG" "$DEPS_MARKER" "$RUNTIME_ARCHIVE"; do
+  test -f "$FILE"
+done
+test -d "$DATA_ROOT"
+test -d "$DEPS_ROOT"
+test ! -e "$OUT"
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+write_status() {
+  local rc=$?
+  stop_gpu_monitor
+  if [ ! -s "$OUT/job_status.txt" ]; then
+    printf '%s\n' "job_id=$JOB_ID" "status=wrapper_failed" "runner_exit_code=$rc" > "$OUT/job_status.txt"
+  fi
+}
+trap write_status EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$RUNTIME_ARCHIVE" -C "$WORK"
+test -x "$PYTHON"
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export MPLBACKEND=Agg SDL_VIDEODRIVER=dummy
+export TORCH_HOME=$WORK/runtime/torch
+export PYTHONPATH="$CONTROL_ROOT:$DEPS_ROOT:$ROOT/source${PYTHONPATH:+:$PYTHONPATH}"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | tee "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 30 2>&1 | tee -a "$OUT/gpu_usage.csv" &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s "$TIMEOUT_SECONDS" \
+  "$PYTHON" "$RUNNER" \
+  --root "$ROOT" --output "$OUT" --freeze "$FREEZE" \
+  --parent-summary "$PARENT_SUMMARY" --plan-targets "$PLAN_TARGETS" \
+  --student-checkpoint "$STUDENT_CHECKPOINT" \
+  --teacher-checkpoint "$TEACHER_CHECKPOINT" \
+  --checkpoint-config "$CHECKPOINT_CONFIG" --data-root "$DATA_ROOT"
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/cem_trace_summary.json" ]; then
+  STATUS=completed
+  FINAL_RC=0
+else
+  STATUS=failed
+  FINAL_RC=$RUNNER_RC
+  [ "$FINAL_RC" -ne 0 ] || FINAL_RC=1
+fi
+printf '%s\n' "$RUNNER_RC" > "$OUT/runner_exit_status.txt"
+printf '%s\n' "job_id=$JOB_ID" "status=$STATUS" "summary=$OUT/cem_trace_summary.json" "final_exit_code=$FINAL_RC" > "$OUT/job_status.txt"
+printf '%s\n' "$FINAL_RC" > "$OUT/final_exit_status.txt"
+stop_gpu_monitor
+trap - EXIT
+exit "$FINAL_RC"

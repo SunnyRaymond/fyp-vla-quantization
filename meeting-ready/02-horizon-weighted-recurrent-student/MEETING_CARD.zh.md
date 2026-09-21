@@ -48,8 +48,55 @@
 - “CEM 或 closed-loop success 已改善”；
 - “结果已经证明适用于 LeWM/Fast-LeWM 或所有 JEPA-style WM”。
 
+## LeWM transfer 更新
+
+同一个 horizon-weighted recurrent mechanism 已在 official LeWM compact latent 上完成
+predictor-level 测试（job `24564619.pbs101`）：
+
+| 项目 | 结果 |
+|---|---:|
+| student / teacher latency | `1.85293 / 23.5295 ms` |
+| predictor latency reduction | `92.1251%`（约 `12.70×`） |
+| Spearman median / minimum | `0.415374 / -0.404356` |
+| top-30 median / minimum | `0.266667 / 0` |
+| relative latent MSE median | `0.012116` |
+| predictor feasibility | **NO-GO** |
+
+这说明机制的速度优势能迁移到 LeWM，但 ranking fidelity 没有迁移成功；高 latent cosine
+仍不足以支持 replacement。按实验边界未运行 official LeWM CEM。详见
+[lewm-transfer/RESULT_LEWM_RECURRENT_STUDENT.zh.md](lewm-transfer/RESULT_LEWM_RECURRENT_STUDENT.zh.md)。
+
+## Closed-loop 更新
+
+已训练的 horizon-weighted `step1500` student 已接入 official DINO-WM PushT CEM + MPC + environment evaluator。冻结的 8-case、最多 12 MPC rounds paired pilot（job `24544733.pbs101`）得到：
+
+| arm | success |
+|---|---:|
+| official DINO-WM teacher | `8/8` |
+| horizon-weighted recurrent student | `2/8` |
+
+paired table 为 `both success=2`、`teacher only=6`、`student only=0`。Progression gate 要求 student 至少 `7/8` 且最多落后 teacher 1 例，结果为 **FAIL**，因此停止扩到 50 cases。
+
+这不是 official 50-case reproduction；它是 bounded exploratory no-go signal。Student 总 planner walltime 更长是因为 6 个失败例跑满 12 rounds，不能解释为 predictor forward 变慢。
+
+## CEM trace diagnosis
+
+对上述 6 个 teacher-only success cases，在相同 initial observation 上用 paired innovations 重跑 30-step CEM trace：
+
+| metric（case-level median） | iter 1 | iter 30 |
+|---|---:|---:|
+| teacher-pool Spearman | `0.975736` | `0.421793` |
+| teacher-pool top-30 overlap | `0.766667` | `0.083333` |
+| student-pool teacher-shadow Spearman | `0.975736` | `0.238582` |
+| student-pool shadow top-30 overlap | `0.766667` | `0.066667` |
+| first-action RMS drift | `0.135645` | `0.731702` |
+
+最可能的问题是 student 没有稳定保留 CEM 所需的 local elite ordering；第一次 top-30 selection 已分叉，之后 proposal feedback 将误差放大。这个结果仍是 fixed-observation mechanism diagnosis，不是新的 success-rate evidence，也没有定位到某个 architecture component。
+
 ## 关键材料
 
 - 正式 horizon 结果：[reports/RESULT_HORIZON_WEIGHTED.zh.md](reports/RESULT_HORIZON_WEIGHTED.zh.md)
 - recurrent 基座结果：[reports/RESULT_RECURRENT_STUDENT.zh.md](reports/RESULT_RECURRENT_STUDENT.zh.md)
+- PushT closed-loop 结果：[reports/RESULT_CLOSED_LOOP_PUSHT.zh.md](reports/RESULT_CLOSED_LOOP_PUSHT.zh.md)
+- CEM trace diagnosis：[reports/RESULT_CEM_TRACE_DIAGNOSIS.zh.md](reports/RESULT_CEM_TRACE_DIAGNOSIS.zh.md)
 - 后续 continuation：[CONTINUE_EXPERIMENTS.zh.md](CONTINUE_EXPERIMENTS.zh.md)

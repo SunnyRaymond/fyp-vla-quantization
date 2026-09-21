@@ -1,6 +1,6 @@
 # 组会材料入口
 
-这里把目前两条最重要、互相独立的加速路线整理成两个可继续实验的 bundle。原实验目录保留不动；从现在起，组会阅读和后续修改优先从这里进入。
+这里把目前三条重要、互相独立的路线整理成可继续实验的 bundle。原实验目录保留不动；从现在起，组会阅读和后续修改优先从这里进入。
 
 ## 1. Iteration cache：跨模型与 planner 验证矩阵
 
@@ -26,7 +26,21 @@
 
 核心结论：shared recurrent latent-transition student 将 predictor latency 降到 `10.719 ms`，相对 teacher reduction 为 `99.6936%`；recurrent architecture 的 ranking 改善方向一致，horizon weighting 继续提供很小但稳定的正向信号，不过仍未通过 frozen replacement gate。
 
-## 两条路线的关系
+## 3. LeWM latent-delta oracle（已完成）
+
+目录：[03-lewm-latent-delta-oracle](03-lewm-latent-delta-oracle/)
+
+先看：
+
+1. [MEETING_CARD.zh.md](03-lewm-latent-delta-oracle/MEETING_CARD.zh.md)
+2. [Step 1 结果](03-lewm-latent-delta-oracle/reports/RESULT_STEP1_COMPRESSIBILITY.zh.md)
+3. [Step 2 结果](03-lewm-latent-delta-oracle/reports/RESULT_STEP2_ORACLE_RANK.zh.md)
+4. [README.zh.md](03-lewm-latent-delta-oracle/README.zh.md)
+5. [PROTOCOL.zh.md](03-lewm-latent-delta-oracle/PROTOCOL.zh.md)
+
+核心结论：Step 1 的 `rank≤64` reusable model-delta structure gate **FAIL**；Step 2 的 fixed candidate ranking 从 model-PCA rank `64` 起通过，但相同 rank `64/96` 接入 official fixed-observation CEM 后均未保留 first action。该 oracle 先完整运行 LeWM，不是 speedup，也没有 closed-loop 结论。
+
+## 前两条加速路线的关系
 
 | 路线 | 优化对象 | 是否近似 teacher | 当前证据 |
 |---|---|---|---|

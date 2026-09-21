@@ -1,0 +1,78 @@
+{
+  "schema": "horizon-weighted-recurrent-student.pusht-closed-loop-freeze",
+  "schema_version": 1,
+  "stage": "paired_exploratory_pilot_8",
+  "student": {
+    "checkpoint_job": "24510395.pbs101",
+    "checkpoint_filename": "horizon_weighted_recurrent_step1500.pt",
+    "checkpoint_schema": "jepa-action-prefix-compiler.dino-pusht-horizon-weighted-checkpoint",
+    "step": 1500,
+    "hidden_dim": 256,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "packed_action_dim": 10
+  },
+  "official_pusht": {
+    "seed": 99,
+    "n_evals": 8,
+    "goal_source": "dset",
+    "goal_H": 5,
+    "max_mpc_rounds": 12,
+    "n_taken_actions": 5,
+    "objective": {
+      "alpha": 1,
+      "base": 2,
+      "mode": "last"
+    },
+    "cem": {
+      "horizon": 5,
+      "topk": 30,
+      "num_samples": 300,
+      "var_scale": 1,
+      "opt_steps": 30,
+      "eval_every": 1
+    }
+  },
+  "comparison": {
+    "arms": [
+      "official_dino_wm_teacher",
+      "horizon_weighted_recurrent_student"
+    ],
+    "paired_targets": true,
+    "paired_target_preparation": "prepare once with the official workspace and reuse unchanged observations, states, environment, evaluator seeds, and goal states",
+    "planner_seed_per_arm": 20260940,
+    "primary_metrics": [
+      "per_episode_success",
+      "paired_success_table"
+    ],
+    "secondary_metrics": [
+      "state_distance",
+      "model_action_length",
+      "environment_steps",
+      "planner_walltime_seconds"
+    ],
+    "timing_role": "diagnostic only because realized planner work depends on success and stopping",
+    "progression_gate": {
+      "student_success_count_min": 7,
+      "student_deficit_to_teacher_max": 1,
+      "next_stage_if_pass": "consider a separately frozen official 50-case run",
+      "next_stage_if_fail": "stop expansion and report the bounded closed-loop no-go signal"
+    }
+  },
+  "execution": {
+    "pbs_compute_node_only": true,
+    "gpu_telemetry_seconds": 30,
+    "downloads_installs_builds": false,
+    "timeout_seconds": 6900
+  },
+  "claim_boundary": {
+    "allowed": "An eight-case paired exploratory PushT comparison of the trained step-1500 horizon-weighted recurrent student against the official DINO-WM teacher under identical target preparation and planner settings.",
+    "forbidden": [
+      "population-level PushT superiority",
+      "official 50-case reproduction",
+      "confirmatory statistical inference",
+      "closed-loop latency speedup when realized MPC work differs",
+      "LeWM or Fast-LeWM transfer"
+    ]
+  }
+}

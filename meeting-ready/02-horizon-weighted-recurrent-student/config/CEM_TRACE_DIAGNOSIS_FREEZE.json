@@ -1,0 +1,64 @@
+{
+  "schema": "horizon-weighted-recurrent-student.cem-trace-diagnosis-freeze",
+  "schema_version": 1,
+  "parent_closed_loop_job": "24544733.pbs101",
+  "student": {
+    "checkpoint_job": "24510395.pbs101",
+    "checkpoint_filename": "horizon_weighted_recurrent_step1500.pt",
+    "checkpoint_schema": "jepa-action-prefix-compiler.dino-pusht-horizon-weighted-checkpoint",
+    "step": 1500,
+    "hidden_dim": 256,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "packed_action_dim": 10
+  },
+  "cases": {
+    "indices": [0, 1, 2, 4, 5, 7],
+    "eval_seeds": [1, 100, 199, 397, 496, 694],
+    "selection_rule": "all and only student failures from the frozen 8-case paired pilot; teacher succeeded on every selected case"
+  },
+  "cem": {
+    "iterations": 30,
+    "checkpoints": [1, 5, 10, 30],
+    "num_samples": 300,
+    "topk": 30,
+    "horizon": 5,
+    "packed_action_dim": 10,
+    "initial_mu": 0.0,
+    "initial_sigma": 1.0,
+    "innovation_seed_base": 20261100,
+    "candidate_zero_is_mu": true,
+    "std_unbiased": true
+  },
+  "design": {
+    "independent_unit": "PushT case",
+    "nested_measurements": "300 candidates within CEM iteration; candidates are not independent replicates",
+    "pairing": "teacher and student use identical CPU-generated standard-normal innovations for each case and iteration",
+    "teacher_pool_probe": "score the teacher arm's exact candidate pool with both teacher and student",
+    "student_pool_shadow": "score the student arm's exact candidate pool with student and frozen teacher",
+    "free_run": "teacher and student update separate mu/sigma distributions from their own costs"
+  },
+  "diagnostic_thresholds": {
+    "shared_pool_spearman_min": 0.99,
+    "shared_pool_top30_min": 0.95,
+    "shadow_pool_top30_min": 0.95,
+    "iter30_to_iter1_first_action_rms_ratio_min": 2.0,
+    "iter30_first_action_rms_floor": 0.05
+  },
+  "execution": {
+    "pbs_compute_node_only": true,
+    "gpu_telemetry_seconds": 30,
+    "downloads_installs_builds": false,
+    "timeout_seconds": 5100
+  },
+  "claim_boundary": {
+    "allowed": "A fixed-initial-state CEM mechanism diagnosis on the six failed cases from paired pilot 24544733.pbs101.",
+    "forbidden": [
+      "new closed-loop success rate",
+      "causal attribution to spatial mean pooling",
+      "population-level inference from candidates",
+      "latency or deployment memory claim",
+      "evidence beyond the frozen six failed cases"
+    ]
+  }
+}

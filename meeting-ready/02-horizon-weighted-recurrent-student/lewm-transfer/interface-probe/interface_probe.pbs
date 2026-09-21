@@ -1,0 +1,60 @@
+#!/bin/bash
+#PBS -N lewm_if_probe
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+CONTROL=${LEWM_INTERFACE_PROBE_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/interface-probe}
+FREEZE=${LEWM_INTERFACE_PROBE_FREEZE:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/01-iteration-cache-cross-model-planners/cases/lewm-pusht-cem/LEWM_PUSHT_ITERATION_CACHE_FREEZE.json}
+STUDENT_FREEZE=${LEWM_INTERFACE_PROBE_STUDENT_FREEZE:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/LEWM_RECURRENT_STUDENT_FREEZE.json}
+OUT=${LEWM_INTERFACE_PROBE_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -f "$CONTROL/interface_probe.py"
+test -f "$FREEZE"
+test -f "$STUDENT_FREEZE"
+test -f "$STABLEWM_HOME/pusht/lewm_object.ckpt"
+test -x "$PYTHON_BIN"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+echo "INTERFACE_PROBE_JOB=$PBS_JOBID"
+echo "HOST=$HOST"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup() {
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+"$PYTHON_BIN" "$CONTROL/interface_probe.py" \
+  --lewm-root "$LEWM_ROOT" \
+  --stablewm-home "$STABLEWM_HOME" \
+  --output "$OUT" \
+  --freeze "$FREEZE" \
+  --student-freeze "$STUDENT_FREEZE"
+
+printf 'EXIT_STATUS=0\n' > "$OUT/job_status"
+cleanup
+trap - EXIT

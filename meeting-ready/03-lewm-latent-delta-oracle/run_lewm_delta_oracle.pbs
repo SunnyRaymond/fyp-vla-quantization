@@ -1,0 +1,63 @@
+#!/bin/bash
+#PBS -N lewm_delta_oracle
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=64gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+
+CONTROL=${LEWM_DELTA_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/03-lewm-latent-delta-oracle}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+SOURCE_ROWS=${LEWM_DELTA_PREPARED_ROWS:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/artifacts/24564619.pbs101/prepared_rows.pt}
+SOURCE_MANIFEST=${LEWM_DELTA_CONTEXT_MANIFEST:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/artifacts/24564619.pbs101/context_manifest.json}
+ITER_CONTROL=${LEWM_ITER_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/01-iteration-cache-cross-model-planners/cases/lewm-pusht-cem}
+OUT=${LEWM_DELTA_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -x "$PYTHON_BIN"
+test -f "$CONTROL/run_lewm_delta_oracle.py"
+test -f "$CONTROL/LEWM_DELTA_ORACLE_FREEZE.json"
+test -f "$SOURCE_ROWS"
+test -f "$SOURCE_MANIFEST"
+test -f "$ITER_CONTROL/run_lewm_pusht_iteration.py"
+test -f "$STABLEWM_HOME/pusht/lewm_object.ckpt"
+test -f "$STABLEWM_HOME/pusht_expert_train.h5"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$ITER_CONTROL:${PYTHONPATH:-}"
+export STABLEWM_HOME
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+echo "LEWM_DELTA_JOB=$PBS_JOBID"
+echo "HOST=$HOST"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup() { kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; }
+trap cleanup EXIT
+
+"$PYTHON_BIN" "$CONTROL/run_lewm_delta_oracle.py" \
+  --lewm-root "$LEWM_ROOT" \
+  --stablewm-home "$STABLEWM_HOME" \
+  --dataset "$STABLEWM_HOME/pusht_expert_train.h5" \
+  --prepared-rows "$SOURCE_ROWS" \
+  --manifest "$SOURCE_MANIFEST" \
+  --freeze "$CONTROL/LEWM_DELTA_ORACLE_FREEZE.json" \
+  --output "$OUT"
+
+printf 'EXIT_STATUS=0\n' > "$OUT/job_status"
+cleanup
+trap - EXIT

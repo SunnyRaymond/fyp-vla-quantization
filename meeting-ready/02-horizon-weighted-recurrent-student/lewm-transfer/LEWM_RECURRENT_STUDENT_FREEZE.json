@@ -1,0 +1,363 @@
+{
+  "schema": "jepa-action-prefix-compiler.lewm-horizon-weighted-recurrent-transfer-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "implementation_status": "protocol_only_not_executed",
+  "experiment_id": "lewm-pusht-horizon-weighted-recurrent-student-transfer",
+  "purpose": "Evaluate the current best horizon-weighted recurrent compact-latent student on the official LeWM PushT backend through the frozen predictor-level gate only.",
+  "research_question": {
+    "primary": "Can a shared h256 residual recurrent transition with predicted-latent feedback and fixed later-horizon weighting replace the expensive LeWM autoregressive predictor closely enough for planner-facing use?",
+    "mechanism": "The student learns dense future LeWM CLS latents from the frozen official predictor, but rolls forward using its own predicted 192-D latent at every step. The only LeWM-specific additions are a shared 3-latent history adapter and raw packed-action projection.",
+    "unit_of_analysis": "one held-out context x one fresh action-prefix seed block; candidates inside a block are nested measurements, not independent replicates",
+    "primary_comparison": "student versus the read-only official LeWM teacher on identical contexts, candidate prefixes, teacher targets, objective, and held-out seeds",
+    "scope": "action-conditioned predictor only; stop at the predictor-level gate"
+  },
+  "evidence_boundary": {
+    "source_backend": "official LeWorldModel PushT",
+    "official_source": "https://github.com/lucas-maes/le-wm",
+    "source_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel_cem_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "official_files": [
+      "jepa.py",
+      "module.py",
+      "config/eval/pusht.yaml",
+      "config/eval/solver/cem.yaml",
+      "stable_worldmodel/solver/cem.py"
+    ],
+    "fast_lewm": {
+      "status": "not_run",
+      "comparison_boundary": "Fast-LeWM is a retrained model-redesign baseline with a different multi-horizon predictor interface. This transfer experiment does not reproduce it, load its checkpoint, or claim a measured Fast-LeWM comparison."
+    },
+    "dino_wm_transfer": "The DINO-WM student result supplies the mechanism and gates; its weights, visual/proprio heads, patch-token dimensions, and DINO data are not reused here."
+  },
+  "scope": {
+    "backend": "official LeWM PushT",
+    "latent_kind": "compact CLS latent",
+    "latent_dim": 192,
+    "policy_initial_history_length": 1,
+    "predictor_max_history_length": 3,
+    "horizon": 5,
+    "primitive_action_dim": 2,
+    "packed_action_token_dim": 10,
+    "packed_action_shape": [5, 10],
+    "student_hidden_dim": 256,
+    "student_class": "LeWMCompactRecurrentTransitionStudent",
+    "source_encoder_frozen": true,
+    "source_predictor_frozen": true,
+    "student_receives_goal": false,
+    "student_encode_obs_calls": false,
+    "student_contains_teacher_or_source_parameters": false,
+    "student_contains_cem_or_criterion": false,
+    "teacher_forcing": false,
+    "free_running_feedback": true,
+    "closed_loop_environment": false,
+    "stage_b_official_cem": false,
+    "observation_encoder_scope": "out of scope; use cached official LeWM latent history for predictor timing",
+    "predictor_scope": "action-conditioned predictor only until predictor gate; no observation-encoder claim"
+  },
+  "student": {
+    "name": "horizon_weighted_compact_recurrent",
+    "class": "LeWMCompactRecurrentTransitionStudent",
+    "hidden_dim": 256,
+    "architecture": {
+      "history_adapter": "one shared Linear(3*192,256) adapter over a rolling latest-3 LeWM latent window; at the official policy start H=1, repeat-left-pad the single current latent to length 3, then replace padded entries naturally as predictions are appended; no attention and no per-horizon copies",
+      "latent_projection": "Linear(192,256)",
+      "action_projection": "Linear(10,256) on the official normalized raw packed action token",
+      "shared_transition": "LayerNorm(256) -> Linear(256,1024) -> GELU -> Linear(1024,256)",
+      "latent_update": "one shared LayerNorm(256) and Linear(256,192) residual output",
+      "feedback": "after each step, the predicted 192-D latent is appended to a rolling length-3 history and is used by the next step",
+      "step_equation": "c_k=history_adapter([z_{k-2},z_{k-1},z_k]); u_k=latent_projection(z_k)+action_projection(a_k)+c_k; d_k=shared_transition(u_k); zhat_{k+1}=z_k+latent_update(LN(latent_projection(z_k)+d_k))",
+      "parameter_count_expectation": "approximately 0.78M trainable parameters; report the exact count from the implementation"
+    },
+    "minimal_lewm_adapters": [
+      "192-D latent input/output projection",
+      "latest-3 latent flattening adapter with deterministic repeat-left-padding for the official H=1 policy start",
+      "raw packed action 10-D projection"
+    ],
+    "forbidden": [
+      "teacher or source predictor module inside the student",
+      "LeWM encoder inside the student",
+      "goal input",
+      "CEM objective inside the student",
+      "teacher forcing",
+      "ground-truth future latent replacement",
+      "per-horizon cell copies",
+      "spatial/token attention",
+      "planner-aware rank loss",
+      "hyperparameter sweep",
+      "result-dependent snapshot selection"
+    ]
+  },
+  "teacher_targets": {
+    "teacher": "frozen official LeWM autoregressive predictor at the pinned source commit/checkpoint",
+    "input": "the same official H=1 current latent and the same five-token normalized packed action prefix; the teacher uses its native variable sequence lengths 1,2,3 while the student repeat-left-pads its fixed latest-3 adapter at the first two steps",
+    "target": "detached dense future 192-D CLS latents z_{t+1}...z_{t+5}",
+    "collection": "run the official teacher autoregressively for each fixed query row before student training; store only small manifests/targets required by the compute job",
+    "goal": "used only by the external official LeWM criterion during planner evaluation; never passed into the student",
+    "student_inference_teacher_dependency": false,
+    "student_target_gradients": false
+  },
+  "shared_data_and_schedule": {
+    "asset_contract": {
+      "checkpoint": "$STABLEWM_HOME/pusht/lewm/config.json and weights.pt, or the equivalent official object checkpoint resolved by the pinned LeWM loader",
+      "dataset": "$STABLEWM_HOME/pusht_expert_train.h5",
+      "no_download_in_runner": true,
+      "no_checkpoint_return": true
+    },
+    "context_manifest": {
+      "source": "official LeWM PushT training HDF5",
+      "train_context_target": 256,
+      "heldout_contexts": 8,
+      "episode_disjoint_split": true,
+      "selection": "deterministic CPU selection from valid single-current-frame anchors with at least 25 following primitive actions; record exact episode, timestep, current-frame ID, and logged future-action span in a manifest before training",
+      "insufficient_source_data": "If the pinned dataset cannot supply the requested episode-disjoint contexts, fail preflight; do not duplicate contexts or silently change the split.",
+      "reuse": "The same manifest is used by teacher target generation, training, held-out evaluation, and predictor timing."
+    },
+    "action_query_slate": {
+      "queries_per_context": 4,
+      "slots": [
+        "primary_logged",
+        "gaussian_planner_init_a",
+        "gaussian_planner_init_b",
+        "one_step_cem_resample"
+      ],
+      "primitive_action_shape": [25, 2],
+      "packed_action_shape": [5, 10],
+      "candidate_count_M": 64,
+      "elite_count_K": 8,
+      "variance_floor": 0.05,
+      "official_action_low": [-1.0, -1.0],
+      "official_action_high": [1.0, 1.0],
+      "gaussian_std": 0.22360679774997896,
+      "gaussian_std_rule": "sqrt(variance_floor); frozen before the first training run",
+      "generation": "Create once with the frozen CPU action-slate seed. Gaussian slots are clipped to the official action range; the one-step CEM slot is generated using only the frozen official teacher objective.",
+      "student_output_not_used_to_generate_bank": true,
+      "pairwise_distinct_required": true,
+      "same_bank_for_all_arms": true
+    },
+    "context_schedule": {
+      "train_context_pool": 256,
+      "contexts_per_update": 8,
+      "effective_query_rows_per_update": 32,
+      "updates": 1500,
+      "snapshot_steps": [500, 1000, 1500],
+      "generation": "CPU permutation of the frozen train-context ordinals; consume eight consecutive contexts per update",
+      "precomputed_before_training": true,
+      "no_within_update_duplicates": true,
+      "same_as_optional_uniform_ablation": true
+    },
+    "seeds": {
+      "initialization": 20300901,
+      "training": 20300902,
+      "context_manifest": 20300903,
+      "context_schedule": 20300904,
+      "action_slate": 20300905,
+      "teacher_targets": 20300906,
+      "heldout_action_prefix": [20300907, 20300908],
+      "predictor_timing": 20300909,
+      "official_cem_behavior": [20300910, 20300911],
+      "official_cem_timing": [20300912, 20300913, 20300914, 20300915, 20300916],
+      "cpu_generator_policy": "Generate all manifests, slates, teacher targets, held-out candidates, and timing actions with explicit CPU generators before GPU transfer."
+    },
+    "training": {
+      "steps": 1500,
+      "snapshot_steps": [500, 1000, 1500],
+      "batch_contexts": 8,
+      "effective_query_rows": 32,
+      "optimizer": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.01,
+      "betas": [0.9, 0.999],
+      "eps": 1e-08,
+      "scheduler": null,
+      "early_stop": false,
+      "teacher_forcing": false,
+      "retune_after_observation": false,
+      "loss": {
+        "per_horizon": "192-D latent MSE on the free-running predicted latent",
+        "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+        "weight_formula": "w_h=(h+1)/3 for h=0..4",
+        "mean_weight": 1.0,
+        "total": "(1/5) * sum_h w_h * MSE(zhat_{t+h+1}, z_teacher_{t+h+1})",
+        "uniform_ablation": "Optional single uniform-weight recurrent arm using the same manifest, schedule, initialization seed, and 1500 updates; do not expand to a multi-arm sweep."
+      }
+    }
+  },
+  "stage_a_predictor_evaluation": {
+    "role": "primary predictor feasibility and planner-fidelity gate",
+    "heldout": {
+      "contexts": 8,
+      "fresh_action_prefix_seeds": [20300907, 20300908],
+      "blocks": 16,
+      "candidates_per_block": 300,
+      "topk": 30,
+      "candidate_bank": "fixed before evaluation, identical for teacher and student, with official normalized action range and exact candidate order",
+      "pairing_key": "(heldout_context_id, action_prefix_seed)",
+      "primary_snapshot": "step_1500",
+      "descriptive_snapshots": [500, 1000, 1500],
+      "primary_unit": "held-out block, not individual candidate"
+    },
+    "metrics": [
+      "official LeWM terminal objective Spearman",
+      "top-30 overlap against official teacher",
+      "teacher-relative latent MSE",
+      "per-horizon latent MSE and cosine",
+      "logged-action latent fidelity",
+      "predictor-only latency"
+    ],
+    "objective": "Use the unmodified official LeWM goal-distance/criterion implementation outside the student. The student remains goal-free.",
+    "latency": {
+      "boundary": "cached official H=1 current latent plus five normalized packed action tokens -> five-step predictor rollout; teacher history grows 1-to-3 and student uses deterministic repeat-left-padding before its rolling window is full",
+      "batch_size": 300,
+      "warmup_repeats": 3,
+      "technical_repeats": 10,
+      "cuda_synchronize_before_after": true,
+      "includes_encoder": false,
+      "includes_goal_encoding": false,
+      "includes_cem": false,
+      "includes_environment": false,
+      "reduction": "1 - median(student_ms) / median(official_teacher_ms)"
+    },
+    "causality": {
+      "procedure": "For unchanged prefix lengths 1,2,3,4, alter only later packed action tokens and compare outputs through the unchanged prefix.",
+      "threshold": 0.000001,
+      "all_prefix_lengths_required": true
+    }
+  },
+  "stage_b_official_lewm_cem": {
+    "condition": "DISABLED by the user for this experiment. Stop after the predictor-level gate and do not submit or execute an official-CEM benchmark.",
+    "role": "deferred protocol reference only; not executed and not claimed",
+    "implementation": "Use the pinned official stable-worldmodel CEM solver and PushT policy preprocessing. Replace only the candidate-cost predictor call with the trained student wrapper; preserve action sampling, criterion, top-k selection, mean/variance updates, callbacks, and RNG order.",
+    "official_solver": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "action_block": 5,
+      "num_samples": 300,
+      "num_iterations": 30,
+      "topk": 30,
+      "var_scale": 1.0,
+      "device": "cuda",
+      "fixed_observation_ids": ["pusht_obs_00", "pusht_obs_01"],
+      "environment_interaction": false,
+      "goal_embedding": "encoded once by the frozen official LeWM policy and used only by the external criterion"
+    },
+    "paired_runs": {
+      "behavior_seeds": [20300910, 20300911],
+      "timing_seeds": [20300912, 20300913, 20300914, 20300915, 20300916],
+      "teacher_and_student_same_rng": true,
+      "trace_all_30_iterations": true,
+      "timing_warmup_repeats": 3,
+      "timing_technical_repeats": 10
+    },
+    "required_metrics": [
+      "returned first action and final action",
+      "per-iteration candidate-cost Spearman",
+      "per-iteration elite-set Jaccard and overlap",
+      "per-iteration mean drift",
+      "per-iteration variance drift",
+      "full solve latency",
+      "peak memory",
+      "failure/NaN/OOM status"
+    ],
+    "latency_boundary": "one complete official CEM solve from solve entry through returned action, including all 30 predictor iterations, sampling, criterion, top-k/update, and solver overhead; excludes environment interaction",
+    "viability_gates": {
+      "integrity": "teacher and student use identical fixed observations, goals, candidate RNG, solver config, and callback trace contract",
+      "first_action_median_l2_max": 0.15,
+      "first_action_max_abs_max": 0.25,
+      "terminal_elite_jaccard_median_min": 0.50,
+      "full_solve_latency_reduction_min": 0.20,
+      "peak_memory_ratio_max": 1.10,
+      "decision": "PASS only if integrity, first-action, terminal-elite, latency, memory, and finite-output requirements all pass; otherwise full_cem_viability is NO-GO."
+    },
+    "interpretation": "Candidate/elite/mean-var drift is reported per iteration even when the viability gate fails. Stage B does not establish closed-loop PushT success."
+  },
+  "gates": {
+    "integrity": {
+      "all_outputs_finite": true,
+      "training_finite": true,
+      "future_action_leakage_max_abs": 0.000001,
+      "student_has_no_goal_input": true,
+      "student_has_no_encoder_calls": true,
+      "student_has_no_teacher_or_source_parameters": true,
+      "one_shared_transition": true,
+      "no_per_horizon_parameter_copies": true,
+      "same_manifest_and_action_slate": true,
+      "same_teacher_target_rows": true,
+      "same_heldout_candidate_bank": true,
+      "same_seed_values": true,
+      "no_oom_nan_or_silent_fallback": true
+    },
+    "convergence": {
+      "last10_to_first_training_mse_ratio_max": 0.8,
+      "uses": "weighted dense latent training loss",
+      "no_early_stop": true
+    },
+    "predictor_feasibility": {
+      "comparison": "student step1500 against the read-only official LeWM teacher",
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.80,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.50,
+      "median_relative_latent_mse_max": 0.25,
+      "predictor_only_latency_reduction_min": 0.20,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "decision": "PASS only when integrity, convergence, causality, all ranking/fidelity thresholds, and latency pass."
+    },
+    "strict_predictor_replacement": {
+      "median_spearman_min": 0.99,
+      "minimum_spearman_min": 0.95,
+      "median_top30_min": 0.95,
+      "minimum_top30_min": 0.80,
+      "decision": "A descriptive stronger replacement claim; not required to trigger Stage B, but report independently."
+    },
+    "optional_uniform_ablation": {
+      "scope": "one uniform-weight recurrent arm only",
+      "purpose": "diagnose whether later-horizon weighting transfers as a loss effect on LeWM",
+      "not_required_for_stage_b": true,
+      "no_sweep": true
+    },
+    "decision_levels": {
+      "predictor_feasibility": "GO only if the predictor feasibility gate passes; this is the terminal decision for the current experiment.",
+      "strict_predictor_replacement": "GO only if the strict predictor thresholds also pass.",
+      "full_cem_viability": "NOT RUN by user instruction; no planner-level viability claim is permitted.",
+      "claim_boundary": "A failed relative or strict gate is a frozen-cell NO-GO, not permission to retune weights, width, steps, seeds, or candidate banks."
+    }
+  },
+  "required_summary_fields": {
+    "source": ["lewm_commit", "stable_worldmodel_cem_commit", "checkpoint_identity", "dataset_identity"],
+    "student": ["architecture", "latent_dim", "history_length", "action_dim", "hidden_dim", "parameter_count", "teacher_or_source_parameters_absent", "teacher_forcing_disabled"],
+    "pairing": ["manifest_ids", "initialization_seed", "context_schedule_equal", "slate_bank_equal", "teacher_target_bank_equal", "heldout_candidate_bank_equal", "paired_block_ids"],
+    "training": ["weighted_loss_by_step", "per_horizon_mse", "last10_to_first_ratio", "snapshot_steps", "finite_and_no_fallback"],
+    "stage_a": ["per_block_teacher", "per_block_student", "paired_deltas", "absolute_ranking", "latent_fidelity", "causality", "predictor_latency", "gates"],
+    "stage_b": ["executed_or_skipped_reason", "first_action", "elite_trace", "mean_var_trace", "full_planner_latency", "peak_memory", "viability_gate"],
+    "decisions": ["predictor_feasibility", "strict_predictor_replacement", "full_cem_viability", "claim_boundary"]
+  },
+  "claim_boundary": {
+    "allowed_if_predictor_feasibility_pass": "Under the pinned official LeWM PushT predictor contract, the specified compact h256 horizon-weighted recurrent student is feasible on the frozen predictor-level held-out protocol.",
+    "allowed_if_strict_predictor_replacement_pass": "The student satisfies the stronger frozen predictor-level ranking, latent-fidelity, causality, and latency thresholds on this LeWM PushT cell.",
+    "allowed_if_full_cem_viability_pass": "On the fixed official LeWM PushT CEM boundary and fixed observations/seeds, the student preserves the registered first-action/elite behavior thresholds while reducing full-solve latency.",
+    "forbidden": [
+      "encode_obs speedup claim",
+      "closed-loop PushT success claim",
+      "Fast-LeWM empirical comparison claim",
+      "all-JEPA universality claim",
+      "population-level inference from 16 nested blocks",
+      "claim that LeWM and DINO-WM weights are interchangeable",
+      "native low-bit deployment claim",
+      "selection of step500 or step1000 after observing results"
+    ]
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "download_install_extract_compile_on_login": false,
+    "hash": false,
+    "gpu_telemetry_seconds": 30,
+    "do_not_submit_during_freeze_creation": true,
+    "checkpoint_return": "No checkpoint retrieval is required as the primary result artifact.",
+    "primary_artifacts": ["stage-A summary JSON", "stage-B summary JSON if executed", "job log", "job status", "GPU telemetry"],
+    "environment_closed_loop": "not authorized by this protocol"
+  }
+}

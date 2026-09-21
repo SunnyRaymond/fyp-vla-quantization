@@ -1,0 +1,41 @@
+#!/bin/bash
+#PBS -N lewm_stu_pre
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+CONTROL=${LEWM_PREFLIGHT_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/preflight}
+OUT=${LEWM_PREFLIGHT_OUT:-$STAGE_ROOT/artifacts/$PBS_JOBID}
+
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -f "$CONTROL/inspect_lewm_student_inputs.py"
+test -f "$STABLEWM_HOME/pusht/lewm_object.ckpt"
+test -f "$STABLEWM_HOME/pusht_expert_train.h5"
+test -x "$PYTHON_BIN"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+
+"$PYTHON_BIN" "$CONTROL/inspect_lewm_student_inputs.py" \
+  --lewm-root "$LEWM_ROOT" \
+  --stablewm-home "$STABLEWM_HOME" \
+  --output "$OUT"
+printf 'EXIT_STATUS=0\n' > "$OUT/job_status"

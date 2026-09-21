@@ -1,0 +1,153 @@
+{
+  "schema": "horizon-weighted-recurrent-student.pusht-closed-loop-summary",
+  "schema_version": 1,
+  "stage": "paired_smoke",
+  "freeze": "/scratch/users/ntu/yguo017/dino-wm-wall/student_closed_loop_v1/control/CLOSED_LOOP_SMOKE_FREEZE.json",
+  "student_checkpoint": "/scratch/users/ntu/yguo017/dino-wm-wall/artifacts/jepa-action-prefix-dino-pusht-horizon-weighted-24510395.pbs101/horizon_weighted_recurrent_step1500.pt",
+  "teacher_checkpoint": "/scratch/users/ntu/yguo017/dino-wm-wall/checkpoints/outputs/pusht/checkpoints/model_latest.pth",
+  "target_manifest": {
+    "seed": 99,
+    "eval_seeds": [
+      1,
+      100
+    ],
+    "n_evals": 2,
+    "goal_source": "dset",
+    "obs_shapes": {
+      "visual": [
+        2,
+        1,
+        224,
+        224,
+        3
+      ],
+      "proprio": [
+        2,
+        1,
+        4
+      ]
+    },
+    "goal_shapes": {
+      "visual": [
+        2,
+        1,
+        224,
+        224,
+        3
+      ],
+      "proprio": [
+        2,
+        1,
+        4
+      ]
+    }
+  },
+  "official_settings": {
+    "seed": 99,
+    "n_evals": 2,
+    "goal_source": "dset",
+    "goal_H": 5,
+    "max_mpc_rounds": 12,
+    "n_taken_actions": 5,
+    "objective": {
+      "alpha": 1,
+      "base": 2,
+      "mode": "last"
+    },
+    "cem": {
+      "horizon": 5,
+      "topk": 30,
+      "num_samples": 300,
+      "var_scale": 1,
+      "opt_steps": 30,
+      "eval_every": 1
+    }
+  },
+  "arms": {
+    "official_dino_wm_teacher": {
+      "arm": "official_dino_wm_teacher",
+      "success_count": 2,
+      "n_evals": 2,
+      "success_rate": 1.0,
+      "planner_walltime_seconds": 75.6699282519985,
+      "peak_memory_mib": 18424.23583984375,
+      "episodes": [
+        {
+          "case_index": 0,
+          "eval_seed": 1,
+          "success": true,
+          "state_distance": 28.605751037597656,
+          "model_action_length": 5,
+          "environment_steps": 25
+        },
+        {
+          "case_index": 1,
+          "eval_seed": 100,
+          "success": true,
+          "state_distance": 11.814061164855957,
+          "model_action_length": 5,
+          "environment_steps": 25
+        }
+      ]
+    },
+    "horizon_weighted_recurrent_student": {
+      "arm": "horizon_weighted_recurrent_student",
+      "success_count": 1,
+      "n_evals": 2,
+      "success_rate": 0.5,
+      "planner_walltime_seconds": 200.48149400693364,
+      "peak_memory_mib": 1835.18994140625,
+      "episodes": [
+        {
+          "case_index": 0,
+          "eval_seed": 1,
+          "success": false,
+          "state_distance": 91.36534118652344,
+          "model_action_length": null,
+          "environment_steps": 300
+        },
+        {
+          "case_index": 1,
+          "eval_seed": 100,
+          "success": true,
+          "state_distance": 13.802233695983887,
+          "model_action_length": 5,
+          "environment_steps": 25
+        }
+      ]
+    }
+  },
+  "paired_episodes": [
+    {
+      "case_index": 0,
+      "eval_seed": 1,
+      "teacher_success": true,
+      "student_success": false,
+      "student_minus_teacher_state_distance": 62.75959014892578
+    },
+    {
+      "case_index": 1,
+      "eval_seed": 100,
+      "teacher_success": true,
+      "student_success": true,
+      "student_minus_teacher_state_distance": 1.9881725311279297
+    }
+  ],
+  "paired_success_table": {
+    "both_success": 1,
+    "teacher_only": 1,
+    "student_only": 0,
+    "both_fail": 0
+  },
+  "claim_boundary": {
+    "allowed": "A bounded paired engineering smoke of the trained step-1500 horizon-weighted recurrent student against the official DINO-WM teacher on two identically prepared PushT cases.",
+    "forbidden": [
+      "population-level PushT superiority",
+      "official 50-case reproduction",
+      "statistically conclusive success-rate difference",
+      "closed-loop latency speedup from a two-case fixed-order smoke",
+      "LeWM or Fast-LeWM transfer"
+    ]
+  },
+  "gpu": "NVIDIA A100-SXM4-40GB"
+}
