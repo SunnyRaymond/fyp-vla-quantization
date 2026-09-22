@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--action-low", type=float, nargs=2, default=None, metavar=("X", "Y"))
     parser.add_argument("--action-high", type=float, nargs=2, default=None, metavar=("X", "Y"))
     parser.add_argument("--gaussian-std", type=float, default=None)
+    parser.add_argument(
+        "--student-variant",
+        choices=("baseline", "action_history_adaln"),
+        default="baseline",
+        help="student architecture; baseline preserves the original recurrent arm",
+    )
     parser.add_argument("--mode", choices=("status", "run"), default="status")
     return parser.parse_args()
 
@@ -62,6 +68,19 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected a JSON object: {path}")
     return value
+
+
+def load_freeze(path: Path) -> dict[str, Any]:
+    """Load a normal freeze or a small overlay that points at one."""
+    value = load_json(path)
+    base_name = value.get("base_freeze")
+    if not base_name:
+        return value
+    base_path = (path.parent / str(base_name)).resolve()
+    base = load_json(base_path)
+    overlay = {key: item for key, item in value.items() if key != "base_freeze"}
+    base["experiment_overlay"] = overlay
+    return base
 
 
 def write_json(path: Path, value: Mapping[str, Any]) -> None:
@@ -222,6 +241,22 @@ def _left_pad_history(history: Any, length: int = HISTORY_LENGTH) -> Any:
     return torch.cat((pad, history), dim=1)
 
 
+def _left_pad_action_history(actions: Any, length: int = HISTORY_LENGTH) -> Any:
+    """Pad an action prefix without exposing any future action token."""
+    import torch
+
+    if actions.ndim != 3 or actions.shape[-1] != ACTION_DIM:
+        raise ValueError(f"packed action history must be [B,L,{ACTION_DIM}]")
+    if actions.shape[1] < 1:
+        raise ValueError("action history cannot be empty")
+    if actions.shape[1] > length:
+        return actions[:, -length:]
+    if actions.shape[1] == length:
+        return actions
+    pad = actions[:, :1].expand(-1, length - actions.shape[1], -1)
+    return torch.cat((pad, actions), dim=1)
+
+
 class LeWMCompactRecurrentTransitionStudent:  # constructed lazily to keep status mode dependency-free
     """Shared h256 residual recurrent student on 192-D LeWM compact latents."""
 
@@ -262,6 +297,71 @@ class LeWMCompactRecurrentTransitionStudent:  # constructed lazily to keep statu
                 return torch.stack(outputs, dim=1)
 
         return _Impl()
+
+
+class LeWMActionHistoryAdaLNStudent:  # constructed lazily to keep status mode dependency-free
+    """Shared h256 recurrent student with zero-init action-history AdaLN."""
+
+    def __new__(cls) -> Any:
+        import torch
+        import torch.nn as nn
+
+        class _Impl(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.history_adapter = nn.Linear(HISTORY_LENGTH * LATENT_DIM, HIDDEN_DIM)
+                self.latent_projection = nn.Linear(LATENT_DIM, HIDDEN_DIM)
+                self.action_projection = nn.Linear(ACTION_DIM, HIDDEN_DIM)
+                self.action_history_conditioner = nn.Sequential(
+                    nn.Linear(HISTORY_LENGTH * ACTION_DIM, HIDDEN_DIM // 2),
+                    nn.SiLU(),
+                    nn.Linear(HIDDEN_DIM // 2, HIDDEN_DIM * 2),
+                )
+                # Identity at initialization, matching the teacher's AdaLN-zero
+                # convention while keeping the fast path attention-free.
+                nn.init.zeros_(self.action_history_conditioner[-1].weight)
+                nn.init.zeros_(self.action_history_conditioner[-1].bias)
+                # Keep the baseline transition modules and initialization
+                # unchanged; only insert the conditioner after its LayerNorm.
+                self.shared_transition = nn.Sequential(
+                    nn.LayerNorm(HIDDEN_DIM),
+                    nn.Linear(HIDDEN_DIM, HIDDEN_DIM * 4),
+                    nn.GELU(),
+                    nn.Linear(HIDDEN_DIM * 4, HIDDEN_DIM),
+                )
+                self.output_norm = nn.LayerNorm(HIDDEN_DIM)
+                self.latent_update = nn.Linear(HIDDEN_DIM, LATENT_DIM)
+
+            def forward(self, latent_history: Any, packed_actions: Any) -> Any:
+                if packed_actions.ndim != 3 or packed_actions.shape[-1] != ACTION_DIM:
+                    raise ValueError("packed actions must have shape [B,T,10]")
+                history = _left_pad_history(latent_history)
+                state = history[:, -1]
+                outputs = []
+                for step in range(int(packed_actions.shape[1])):
+                    history_condition = self.history_adapter(history.reshape(history.shape[0], -1))
+                    latent_hidden = self.latent_projection(state)
+                    action_hidden = self.action_projection(packed_actions[:, step])
+                    transition_input = self.shared_transition[0](history_condition + latent_hidden + action_hidden)
+                    action_history = _left_pad_action_history(packed_actions[:, : step + 1])
+                    shift, scale = self.action_history_conditioner(
+                        action_history.reshape(action_history.shape[0], -1)
+                    ).chunk(2, dim=-1)
+                    transition = self.shared_transition[1:](transition_input * (1 + scale) + shift)
+                    state = state + self.latent_update(self.output_norm(latent_hidden + transition))
+                    outputs.append(state)
+                    history = torch.cat((history[:, 1:], state[:, None]), dim=1)
+                return torch.stack(outputs, dim=1)
+
+        return _Impl()
+
+
+def make_student(variant: str) -> Any:
+    if variant == "baseline":
+        return LeWMCompactRecurrentTransitionStudent()
+    if variant == "action_history_adaln":
+        return LeWMActionHistoryAdaLNStudent()
+    raise ValueError(f"unknown student variant: {variant}")
 
 
 def student_parameter_count() -> int:
@@ -654,7 +754,7 @@ def validate_query_slate(rows: Sequence[Mapping[str, Any]]) -> None:
             raise ValueError("training query slate action shape must be [4,5,10]")
 
 
-def train_student(rows: Sequence[Mapping[str, Any]], settings: Mapping[str, Any], output: Path) -> dict[str, Any]:
+def train_student(rows: Sequence[Mapping[str, Any]], settings: Mapping[str, Any], output: Path, variant: str) -> dict[str, Any]:
     """Train the fixed student on precomputed detached teacher rows."""
     import torch
 
@@ -662,7 +762,7 @@ def train_student(rows: Sequence[Mapping[str, Any]], settings: Mapping[str, Any]
     if len(train_rows) < settings["batch_contexts"]:
         raise ValueError("prepared rows are smaller than one training batch")
     torch.manual_seed(int(settings["seeds"]["initialization"]))
-    student = LeWMCompactRecurrentTransitionStudent().to("cuda")
+    student = make_student(variant).to("cuda")
     optimizer = torch.optim.AdamW(student.parameters(), lr=3e-4, weight_decay=0.01, betas=(0.9, 0.999), eps=1e-8)
     generator = torch.Generator(device="cpu").manual_seed(int(settings["seeds"]["context_schedule"]))
     histories: list[dict[str, Any]] = []
@@ -753,11 +853,11 @@ def _stage_a_metrics_for_block(model: Any, student: Any, row: Mapping[str, Any],
     }
 
 
-def stage_a_evaluate(model: Any, snapshots: Mapping[str, Mapping[str, Any]], rows: Sequence[Mapping[str, Any]], settings: Mapping[str, Any]) -> dict[str, Any]:
+def stage_a_evaluate(model: Any, snapshots: Mapping[str, Mapping[str, Any]], rows: Sequence[Mapping[str, Any]], settings: Mapping[str, Any], variant: str) -> dict[str, Any]:
     heldout = [row for row in rows if row.get("split") == "heldout"]
     evaluation: dict[str, Any] = {}
     for snapshot_name in ("step_500", "step_1000", "step_1500"):
-        student = LeWMCompactRecurrentTransitionStudent().to("cuda")
+        student = make_student(variant).to("cuda")
         student.load_state_dict(snapshots[snapshot_name], strict=True)
         student.eval()
         blocks = []
@@ -866,9 +966,9 @@ def run(args: argparse.Namespace, freeze: Mapping[str, Any], settings: Mapping[s
         raise ValueError("prepared rows must be a list")
     row_meta = validate_prepared_rows(rows, freeze)
     validate_query_slate([item for item in rows if item.get("split") == "train"])
-    result = train_student(rows, settings, args.output.resolve())
-    evaluation = stage_a_evaluate(official_model, result["snapshots"], rows, settings)
-    final_student = LeWMCompactRecurrentTransitionStudent().to("cuda")
+    result = train_student(rows, settings, args.output.resolve(), args.student_variant)
+    evaluation = stage_a_evaluate(official_model, result["snapshots"], rows, settings, args.student_variant)
+    final_student = make_student(args.student_variant).to("cuda")
     final_student.load_state_dict(result["snapshots"]["step_1500"], strict=True)
     final_student.eval()
     heldout = [row for row in rows if row.get("split") == "heldout"]
@@ -887,7 +987,7 @@ def run(args: argparse.Namespace, freeze: Mapping[str, Any], settings: Mapping[s
         "manifest": str(manifest_path),
         "manifest_counts": {"train": len(manifest["splits"]["train"]), "heldout": len(manifest["splits"]["heldout"])},
         "prepared_row_counts": row_meta,
-        "student": {"class": "LeWMCompactRecurrentTransitionStudent", "latent_dim": LATENT_DIM, "history_length": HISTORY_LENGTH, "official_policy_history_h": contract.observation_history_h, "action_dim": ACTION_DIM, "hidden_dim": HIDDEN_DIM, "parameter_count": result["parameter_count"], "teacher_forcing": False, "goal_input": False, "encode_obs_calls": False},
+        "student": {"class": type(final_student).__name__, "variant": args.student_variant, "latent_dim": LATENT_DIM, "history_length": HISTORY_LENGTH, "official_policy_history_h": contract.observation_history_h, "action_dim": ACTION_DIM, "hidden_dim": HIDDEN_DIM, "parameter_count": result["parameter_count"], "teacher_forcing": False, "goal_input": False, "encode_obs_calls": False, "attention": False, "action_history_conditioner": args.student_variant == "action_history_adaln", "conditioner_identity_init": args.student_variant == "action_history_adaln", "base_transition_unchanged": args.student_variant == "action_history_adaln", "base_path_zero_init_equivalence": args.student_variant == "action_history_adaln"},
         "training": {"steps": settings["steps"], "snapshot_steps": list(SNAPSHOT_STEPS), "horizon_weights": list(HORIZON_WEIGHTS), "last10_to_first_ratio": result["last10_to_first_ratio"], "per_step": result["per_step"]},
         "pairing": {"initialization_seed": settings["seeds"]["initialization"], "training_seed": settings["seeds"]["training"], "context_manifest_seed": settings["seeds"]["context_manifest"], "context_schedule_seed": settings["seeds"]["context_schedule"], "action_slate_seed": settings["seeds"]["action_slate"], "heldout_action_prefix_seeds": settings["seeds"]["heldout_action_prefix"], "same_manifest_and_teacher_targets": True, "same_heldout_candidate_bank": True},
         "stage_a": {"status": "COMPLETE", "candidate_count": 300, "blocks": 16, "topk": 30, "evaluation": evaluation, "causality": causality, "predictor_latency": latency},
@@ -903,7 +1003,7 @@ def run(args: argparse.Namespace, freeze: Mapping[str, Any], settings: Mapping[s
 def main() -> int:
     args = parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    freeze = load_json(args.freeze.resolve())
+    freeze = load_freeze(args.freeze.resolve())
     settings = validate_freeze(freeze)
     # The protocol is Markdown, not a machine schema; retain the path and
     # only check its title before status/run handling.

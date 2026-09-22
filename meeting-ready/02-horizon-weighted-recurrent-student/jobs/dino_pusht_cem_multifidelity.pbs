@@ -1,0 +1,187 @@
+#!/bin/bash
+#PBS -N dino_student_cem_multifid
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+# Compute-node-only wrapper for the frozen CEM multi-fidelity diagnosis.
+# Login nodes are limited to submission, qstat, and light control operations.
+# This wrapper deliberately does not download, install, or compile.  It extracts
+# the already staged runtime archive only after entering the PBS allocation.
+
+ROOT=${DINO_WM_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall}
+BUNDLE_ROOT=${DINO_APC_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
+SRC_ROOT=${DINO_APC_SRC_ROOT:-$BUNDLE_ROOT/src}
+CONFIG_ROOT=${DINO_APC_CONFIG_ROOT:-$BUNDLE_ROOT/config}
+
+RUNNER=${DINO_PUSHT_CEM_MULTIFIDELITY_RUNNER:-$SRC_ROOT/run_dino_pusht_cem_multifidelity.py}
+FREEZE=${DINO_PUSHT_CEM_MULTIFIDELITY_FREEZE:-$CONFIG_ROOT/CEM_MULTIFIDELITY_FREEZE.json}
+
+# These defaults follow the historical CEM trace PBS contract.  The files are
+# checked on the compute node and can be overridden when the staged parent job
+# uses a different output naming convention.
+PARENT_JOB=${DINO_STUDENT_TRACE_PARENT_JOB:-24544733.pbs101}
+PARENT_ROOT=${DINO_STUDENT_TRACE_PARENT_ROOT:-$ROOT/artifacts/dino-pusht-student-closed-loop-$PARENT_JOB}
+PARENT_SUMMARY=${DINO_STUDENT_TRACE_PARENT_SUMMARY:-$PARENT_ROOT/closed_loop_summary.json}
+PLAN_TARGETS=${DINO_STUDENT_TRACE_PLAN_TARGETS:-$PARENT_ROOT/plan_targets.pkl}
+
+STUDENT_CHECKPOINT=${DINO_STUDENT_CHECKPOINT:-$ROOT/artifacts/jepa-action-prefix-dino-pusht-horizon-weighted-24510395.pbs101/horizon_weighted_recurrent_step1500.pt}
+TEACHER_CHECKPOINT=${DINO_PUSHT_CHECKPOINT:-$ROOT/checkpoints/outputs/pusht/checkpoints/model_latest.pth}
+CHECKPOINT_CONFIG=${DINO_PUSHT_CHECKPOINT_CONFIG:-$ROOT/checkpoints/outputs/pusht/hydra.yaml}
+DATA_ROOT=${DINO_PUSHT_DATA_ROOT:-$ROOT/data/pusht_noise}
+DEPS_ROOT=${DINO_PUSHT_DEPS_ROOT:-$ROOT/artifacts/pusht-python-overlay-pusht-v5}
+DEPS_MARKER=${DINO_PUSHT_DEPS_MARKER:-$ROOT/PUSHT_DEPS_READY_V5}
+RUNTIME_ARCHIVE=${DINO_RUNTIME_ARCHIVE:-$ROOT/runtime-complete.tar}
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+OUT_ROOT=${DINO_PUSHT_CEM_MULTIFIDELITY_OUT_ROOT:-$ROOT/artifacts}
+OUT="$OUT_ROOT/dino-pusht-student-cem-multifidelity-$JOB_ID"
+WORK=${TMPDIR:-/tmp}/dino-pusht-student-cem-multifidelity-$JOB_ID
+RUNTIME_ROOT="$WORK/runtime"
+PYTHON="$RUNTIME_ROOT/venv/bin/python"
+TIMEOUT_SECONDS=${DINO_PUSHT_CEM_MULTIFIDELITY_TIMEOUT_SECONDS:-5100}
+PREFILTER_M_SPEC=${DINO_PUSHT_CEM_MULTIFIDELITY_PREFILTER_M:-"60 120"}
+read -r -a PREFILTER_M_VALUES <<< "$PREFILTER_M_SPEC"
+
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*)
+    echo "refusing probable login host: $HOST" >&2
+    exit 2
+    ;;
+esac
+
+test "${#PREFILTER_M_VALUES[@]}" -gt 0
+
+for FILE in \
+  "$RUNNER" "$FREEZE" "$PARENT_SUMMARY" "$PLAN_TARGETS" \
+  "$STUDENT_CHECKPOINT" "$TEACHER_CHECKPOINT" "$CHECKPOINT_CONFIG" "$DEPS_MARKER" "$RUNTIME_ARCHIVE"; do
+  test -f "$FILE"
+done
+test -d "$DATA_ROOT"
+test -d "$DEPS_ROOT"
+test ! -e "$OUT"
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+
+write_fallback_status() {
+  local rc=$?
+  stop_gpu_monitor
+  if [ ! -s "$OUT/job_status.txt" ]; then
+    printf '%s\n' \
+      "job_id=$JOB_ID" \
+      "status=wrapper_failed" \
+      "runner_exit_code=$rc" \
+      "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/job_status.txt"
+    printf '%s\n' "$rc" > "$OUT/final_exit_status.txt"
+    touch "$OUT/DINO_PUSHT_CEM_MULTIFIDELITY_FAILED"
+  fi
+}
+trap write_fallback_status EXIT
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "parent_job=$PARENT_JOB" \
+  "runner=$RUNNER" \
+  "freeze=$FREEZE" \
+  "parent_summary=$PARENT_SUMMARY" \
+  "plan_targets=$PLAN_TARGETS" \
+  "student_checkpoint=$STUDENT_CHECKPOINT" \
+  "teacher_checkpoint=$TEACHER_CHECKPOINT" \
+  "checkpoint_config=$CHECKPOINT_CONFIG" \
+  "data_root=$DATA_ROOT" \
+  "deps_root=$DEPS_ROOT" \
+  "runtime_archive=$RUNTIME_ARCHIVE" \
+  "runtime_root=$RUNTIME_ROOT" \
+  "python=$PYTHON" \
+  "prefilter_m=$PREFILTER_M_SPEC" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$RUNTIME_ARCHIVE" -C "$WORK"
+test -x "$PYTHON"
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export MPLBACKEND=Agg SDL_VIDEODRIVER=dummy
+export TORCH_HOME="$WORK/runtime/torch"
+export PYTHONPATH="$DEPS_ROOT:$SRC_ROOT:$ROOT/source${PYTHONPATH:+:$PYTHONPATH}"
+
+"$PYTHON" - <<'PY'
+import torch
+
+if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+    raise SystemExit("CUDA is unavailable in the staged Python environment")
+print(f"cuda_device_count={torch.cuda.device_count()}")
+print(f"cuda_device_name={torch.cuda.get_device_name(0)}")
+PY
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+# Keep the 30-second utilization/VRAM samples both as structured telemetry and
+# in job.log, as required for GPU jobs.
+nvidia-smi \
+  --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total \
+  --format=csv -l 30 \
+  | tee -a "$OUT/gpu_usage.csv" &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s "$TIMEOUT_SECONDS" \
+  "$PYTHON" "$RUNNER" \
+  --root "$ROOT" \
+  --output "$OUT" \
+  --freeze "$FREEZE" \
+  --parent-summary "$PARENT_SUMMARY" \
+  --plan-targets "$PLAN_TARGETS" \
+  --student-checkpoint "$STUDENT_CHECKPOINT" \
+  --teacher-checkpoint "$TEACHER_CHECKPOINT" \
+  --checkpoint-config "$CHECKPOINT_CONFIG" \
+  --data-root "$DATA_ROOT" \
+  --prefilter-m "${PREFILTER_M_VALUES[@]}"
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 124 ] || [ "$RUNNER_RC" -eq 137 ] || [ "$RUNNER_RC" -eq 143 ]; then
+  STATUS=timeout
+elif [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/cem_multifidelity_summary.json" ]; then
+  STATUS=completed
+else
+  STATUS=failed
+fi
+
+printf '%s\n' "$RUNNER_RC" > "$OUT/runner_exit_status.txt"
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "status=$STATUS" \
+  "summary=$OUT/cem_multifidelity_summary.json" \
+  "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/job_status.txt"
+
+if [ "$STATUS" = completed ]; then
+  FINAL_RC=0
+  touch "$OUT/DINO_PUSHT_CEM_MULTIFIDELITY_COMPLETE"
+else
+  FINAL_RC=$RUNNER_RC
+  [ "$FINAL_RC" -ne 0 ] || FINAL_RC=1
+  touch "$OUT/DINO_PUSHT_CEM_MULTIFIDELITY_FAILED"
+fi
+printf '%s\n' "$FINAL_RC" > "$OUT/final_exit_status.txt"
+printf '%s\n' "final_exit_code=$FINAL_RC" >> "$OUT/job_status.txt"
+stop_gpu_monitor
+trap - EXIT
+exit "$FINAL_RC"

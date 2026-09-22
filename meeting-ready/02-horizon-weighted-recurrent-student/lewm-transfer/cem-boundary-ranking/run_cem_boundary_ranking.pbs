@@ -1,0 +1,105 @@
+#!/bin/bash
+#PBS -N lewm_cem_boundary
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+CONTROL=${LEWM_CEM_BOUNDARY_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=${LEWM_CEM_BOUNDARY_SUBDIR:-$CONTROL/lewm-transfer/cem-boundary-ranking}
+CEM_CONTROL=${LEWM_CEM_BOUNDARY_CEM_SUBDIR:-$CONTROL/lewm-transfer/cem-distribution-distill}
+STATE_CONTROL=${LEWM_CEM_BOUNDARY_STATE_SUBDIR:-$CONTROL/lewm-transfer/state-coverage}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+RUNNER=${LEWM_CEM_BOUNDARY_RUNNER:-$EXPERIMENT/run_cem_boundary_ranking.py}
+FREEZE=${LEWM_CEM_BOUNDARY_FREEZE:-$EXPERIMENT/FREEZE.json}
+PROTOCOL=${LEWM_CEM_BOUNDARY_PROTOCOL:-$EXPERIMENT/PROTOCOL.zh.md}
+PROBE=${LEWM_INTERFACE_PROBE_JSON:-$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json}
+MANIFEST_512=${LEWM_CEM_BOUNDARY_MANIFEST_512:-$STATE_CONTROL/artifacts/24926383.pbs101/context_manifest_512.json}
+MIXED_ROWS=${LEWM_CEM_BOUNDARY_MIXED_ROWS:-$CEM_CONTROL/artifacts/25239551.pbs101/cem_distribution_train_rows.pt}
+ANCHOR_CHECKPOINT=${LEWM_CEM_BOUNDARY_ANCHOR_CHECKPOINT:-$CONTROL/lewm-transfer/anchor-aligned-bank/artifacts/25223859.pbs101/anchor_aligned_bank_step3000.pt}
+PRIOR_CHECKPOINT=${LEWM_CEM_BOUNDARY_PRIOR_CHECKPOINT:-$CEM_CONTROL/artifacts/25239551.pbs101/treatment_step1000.pt}
+PRIOR_SUMMARY=${LEWM_CEM_BOUNDARY_PRIOR_SUMMARY:-$CEM_CONTROL/artifacts/25239551.pbs101/cem_distribution_distill_summary.json}
+TEMPORAL_FREEZE=${LEWM_TEMPORAL_FREEZE:-$CONTROL/lewm-transfer/temporal-balanced-train/LEWM_TEMPORAL_BALANCED_TRAIN_FREEZE.json}
+DATASET=${LEWM_STUDENT_DATASET:-$STABLEWM_HOME/pusht_expert_train.h5}
+OUT=${LEWM_CEM_BOUNDARY_OUT:-$EXPERIMENT/artifacts/$JOB_ID}
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+
+for FILE in "$RUNNER" "$FREEZE" "$PROTOCOL" "$PROBE" "$MANIFEST_512" "$MIXED_ROWS" "$ANCHOR_CHECKPOINT" "$PRIOR_CHECKPOINT" "$PRIOR_SUMMARY" "$TEMPORAL_FREEZE" "$DATASET" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+
+mkdir -p "$OUT"
+status=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "runner=$RUNNER" \
+  "freeze=$FREEZE" \
+  "protocol=$PROTOCOL" \
+  "manifest_512=$MANIFEST_512" \
+  "mixed_rows=$MIXED_ROWS" \
+  "anchor_checkpoint=$ANCHOR_CHECKPOINT" \
+  "prior_checkpoint=$PRIOR_CHECKPOINT" \
+  "prior_summary=$PRIOR_SUMMARY" \
+  "dataset=$DATASET" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 \
+  >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 1740 \
+  "$PYTHON_BIN" "$RUNNER" \
+  --lewm-root "$LEWM_ROOT" --stablewm-home "$STABLEWM_HOME" --output "$OUT" \
+  --freeze "$FREEZE" --protocol "$PROTOCOL" --interface-probe "$PROBE" \
+  --manifest-512 "$MANIFEST_512" --mixed-rows "$MIXED_ROWS" \
+  --anchor-checkpoint "$ANCHOR_CHECKPOINT" --prior-checkpoint "$PRIOR_CHECKPOINT" \
+  --prior-summary "$PRIOR_SUMMARY" --temporal-freeze "$TEMPORAL_FREEZE" \
+  --dataset "$DATASET" --mode run
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/cem_boundary_ranking_summary.json" ]; then
+  status=0
+  printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"
+else
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+fi
+stop_gpu_monitor
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+exit "$status"

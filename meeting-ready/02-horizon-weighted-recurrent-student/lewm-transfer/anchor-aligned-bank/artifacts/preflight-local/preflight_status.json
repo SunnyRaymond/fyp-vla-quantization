@@ -1,0 +1,44 @@
+{
+  "schema": "lewm.anchor-aligned-bank.runner",
+  "status": "PASS",
+  "model_work_started": false,
+  "reference_import": "PASS",
+  "torch_import": "PASS",
+  "interface": {
+    "observation_history_h": 1,
+    "official_future_prediction_count": 5,
+    "student_probe_future_count": 5,
+    "official_predicted_emb_shape": [
+      1,
+      2,
+      6,
+      192
+    ],
+    "candidate_shape": [
+      1,
+      2,
+      5,
+      10
+    ],
+    "semantics_equal": true,
+    "raw_action_dim": 2
+  },
+  "fresh_selection": "valid[552:560]",
+  "fresh_blocks": 48,
+  "training_contexts": 512,
+  "training_candidates": 64,
+  "paired_noise_contract": "replay dense.prepare_dense_rows original CPU generator: count1, count1, count64, then randn(HORIZON,ACTION_DIM) per context; clone generator state before count64 for treatment; verify replayed control bank equals cached original before clipping-noise pairing is claimed",
+  "temporal_candidate_contract": {
+    "official_action_low": [
+      -1.0,
+      -1.0
+    ],
+    "official_action_high": [
+      1.0,
+      1.0
+    ],
+    "gaussian_std": 0.22360679774997896
+  },
+  "checkpoint_policy": "reused reconstructed control checkpoint; treatment trained from seed 20300901",
+  "pbs_compute_only": true
+}

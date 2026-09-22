@@ -1,0 +1,136 @@
+{
+  "schema": "lewm-recurrent-student.state-action-prefix-gru-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_name": "lewm_state_action_prefix_gru_confirmatory_predictor",
+  "hypothesis": "A shared lightweight state-action prefix GRU can improve recurrent-student predictor fidelity on fresh temporal anchors while retaining the balanced-base h256 transition and its latency advantage.",
+  "design": {
+    "training_arms": ["balanced_base", "state_action_prefix_gru"],
+    "training_rows": 512,
+    "updates": 3000,
+    "control": "Phase 5 balanced temporal training reproduced with LeWMCompactRecurrentTransitionStudent h256, 512 contexts, early/middle/late counts 171/171/170, online terminal step 3000",
+    "treatment": "same h256 base modules and free-running path plus one shared prefix hidden state of 64 dimensions",
+    "treatment_only_change": "state-action prefix GRU modules",
+    "base_modules": ["history_adapter", "latent_projection", "action_projection", "shared_transition", "output_norm", "latent_update"],
+    "prefix_modules": ["prefix_init", "prefix_state_projection", "prefix_gru", "prefix_projection"],
+    "prefix_initialization": "tanh(Linear(192,64)(initial current latent))",
+    "prefix_update": "GRUCell(concat(packed_action[10], Linear(192,64)(current predicted state)), prefix_hidden)",
+    "prefix_injection": "Linear(64,256)(prefix_hidden) added to history_condition + latent_hidden + action_hidden before shared_transition",
+    "prefix_sharing": "one GRU and linears shared over all five horizon steps",
+    "forbidden": ["attention", "goal input", "teacher forcing", "encoder input", "per-horizon prefix copies", "hidden_dim expansion", "EMA", "tail weighting", "sweep"],
+    "base_owned_initial_state_bitwise_equal": true
+  },
+  "training": {
+    "optimizer": "AdamW(lr=0.0003, weight_decay=0.01, betas=(0.9,0.999), eps=1e-8)",
+    "batch_contexts": 8,
+    "train_candidates": 64,
+    "score_top_count": 12,
+    "score_top_weight": 2.0,
+    "score_other_weight": 1.0,
+    "score_std_floor": 0.000001,
+    "score_smooth_l1_beta": 1.0,
+    "score_loss_weight": 0.1,
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "initialization_seed": 20300901,
+    "prefix_initialization_seed": 20300906,
+    "training_seed": 20300902,
+    "context_schedule_seed": 20300904,
+    "candidate_slate_seed": 20300905,
+    "snapshot_steps": [500, 1000, 1500, 3000],
+    "early_stop": false,
+    "result_dependent_snapshot_selection": false
+  },
+  "training_selection": {
+    "source": "Phase 5 temporal-balanced formal 512 manifest and prepared rows",
+    "episode_ids_reused_verbatim": true,
+    "ordinal_anchor_rule": "ordinal mod 3: 0=early, 1=middle, 2=late",
+    "anchor_rule": {"early": 0, "middle": "floor((episode_length-26)/2)", "late": "episode_length-26"},
+    "target_counts": {"early": 171, "middle": 171, "late": 170},
+    "result_dependent_selection": false,
+    "same_control_candidate_slates": true,
+    "teacher_targets": "base reused verbatim; fresh balanced-base and treatment targets are not changed by architecture"
+  },
+  "fresh_evaluation": {
+    "selection_seed": 20300903,
+    "selection_algorithm": "same shuffled valid episode list; exclude old heldout valid[:8], Phase 5 train valid[8:520], prior fresh valid[520:528] and valid[528:536]",
+    "episodes": 8,
+    "selection_slice": "valid[536:544]",
+    "contexts_per_episode": 3,
+    "anchors": ["early", "middle", "late"],
+    "contexts": 24,
+    "action_prefix_seeds": [20300937, 20300938],
+    "forbidden_action_prefix_seeds": [20300907, 20300908, 20300917, 20300918, 20300927, 20300928],
+    "blocks": 48,
+    "candidates_per_block": 300,
+    "nested_structure": "episode -> anchor stratum -> action-prefix seed block; episode is replicate",
+    "candidate_is_not_an_independent_statistical_unit": true,
+    "rows_and_targets": "generated on PBS compute node only; not returned"
+  },
+  "evaluation": {
+    "primary_snapshot": "step_3000",
+    "descriptive_snapshots": [500, 1000, 1500, 3000],
+    "topk": 30,
+    "causality_tolerance": 0.000001,
+    "predictor_latency_warmup": 3,
+    "predictor_latency_repeats": 10,
+    "official_action_low": [-1.0, -1.0],
+    "official_action_high": [1.0, 1.0],
+    "gaussian_std": 0.22360679774997896
+  },
+  "gates": {
+    "inherited_absolute_predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.80,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.50,
+      "median_relative_latent_mse_max": 0.25,
+      "positive_spearman_blocks_min": 36,
+      "positive_top30_blocks_min": 36,
+      "latency_reduction_min": 0.20,
+      "integrity_convergence_causality_required": true
+    },
+    "stratum_protection": {
+      "strata": ["early", "middle", "late"],
+      "blocks_per_stratum": 16,
+      "median_spearman_min": 0.95,
+      "median_top30_min": 0.75,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "minimum_thresholds_repeated": false
+    },
+    "mechanism_secondary": {
+      "paired_unit": "episode after median over six anchor x seed blocks",
+      "spearman_episode_median_delta_min": 0.0,
+      "top30_episode_median_delta_min": 0.0,
+      "joint_nonworsening_improvement_min_episodes": 5,
+      "cannot_replace_absolute_gate": true
+    },
+    "latency_guard_secondary": {
+      "treatment_overhead_vs_balanced_base_max": 0.35,
+      "teacher_reduction_min": 0.20,
+      "cannot_replace_absolute_gate": true
+    }
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "hidden_dim_changed": false,
+    "ema_tested": false,
+    "tail_weighting_tested": false,
+    "attention_tested": false,
+    "extra_arms_or_sweep": false,
+    "checkpoint_return": false,
+    "prepared_rows_return": false,
+    "test_used_for_design": false
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "gpu_telemetry_seconds": 5,
+    "single_bounded_gpu_job": true,
+    "do_not_submit_until_freeze_and_preflight_complete": true
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "schema": "lewm-recurrent-student.state-context-coverage-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "base_freeze": "../LEWM_RECURRENT_STUDENT_FREEZE.json",
+  "experiment_name": "lewm_score_distill_state_context_coverage_phase2",
+  "hypothesis": "At the same score-distill student, loss, initialization, batch size, candidate bank and held-out protocol, expanding episode-disjoint train context coverage improves held-out ranking beyond merely doubling optimization steps.",
+  "design": {
+    "reference": "completed score-distill formal result: 256 train contexts x 1500 updates",
+    "new_arms": ["256x3000", "512x1500", "512x3000"],
+    "factor_contexts": [256, 512],
+    "factor_updates": [1500, 3000],
+    "reference_reused_not_retrained": true,
+    "candidate_is_not_an_independent_statistical_unit": true,
+    "heldout_contexts": 8,
+    "heldout_blocks": 16,
+    "candidates_per_heldout_block": 300
+  },
+  "training": {
+    "train_candidates": 64,
+    "score_top_count": 12,
+    "score_top_weight": 2.0,
+    "score_other_weight": 1.0,
+    "score_std_floor": 0.000001,
+    "score_smooth_l1_beta": 1.0,
+    "score_loss_weight": 0.1,
+    "batch_contexts": 8,
+    "optimizer": "AdamW(lr=0.0003, weight_decay=0.01, betas=(0.9,0.999), eps=1e-8)",
+    "loss": "horizon-weighted free-running latent MSE + 0.1 * context-normalized teacher-score SmoothL1",
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "same_initialization": true,
+    "same_optimizer": true,
+    "same_batch_size": true,
+    "same_loss": true,
+    "same_context_schedule_seed": 20300904,
+    "initialization_seed": 20300901,
+    "training_seed": 20300902,
+    "snapshot_steps": [500, 1000, 1500, 3000]
+  },
+  "context_manifest": {
+    "source": "official LeWM PushT training HDF5",
+    "selection_seed": 20300903,
+    "selection_algorithm": "shuffle valid episode IDs once; heldout=valid[:8]; train=valid[8:8+train_target]",
+    "old_train_target": 256,
+    "new_train_target": 512,
+    "heldout_target": 8,
+    "episode_disjoint": true,
+    "history_steps": [0],
+    "history_action_starts": [0],
+    "future_action_start": 0,
+    "goal_step_offset": 25,
+    "prefix_invariance_required": true,
+    "heldout_manifest_reused_verbatim": true,
+    "temporal_anchor_changed": false
+  },
+  "evaluation": {
+    "candidate_generation_and_evaluation": "identical to score-distill Phase 1",
+    "fresh_action_prefix_seeds": [20300907, 20300908],
+    "blocks": 16,
+    "candidates_per_block": 300,
+    "topk": 30,
+    "primary_reference": "256x1500 score_distill formal result",
+    "primary_treatment": "512x1500",
+    "paired_unit": "heldout context x fresh action-prefix seed block"
+  },
+  "treatment_gate": {
+    "arm": "512x1500",
+    "spearman_median_min": 0.974011,
+    "top30_median_min": 0.816667,
+    "relative_latent_mse_median_max": 0.0175,
+    "positive_top30_blocks_exact": 16,
+    "minimum_top30_strictly_positive": true
+  },
+  "absolute_predictor_gate": {
+    "inherited_from": "../LEWM_RECURRENT_STUDENT_FREEZE.json",
+    "report_for_each_new_arm": true,
+    "result_does_not_authorize_planner_or_closed_loop": true
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "student_structure_changed": false,
+    "loss_changed": false,
+    "candidate_bank_changed": false,
+    "heldout_manifest_changed": false,
+    "new_contexts_must_be_episode_disjoint": true,
+    "no_result_dependent_selection": true
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "new_512_data_generated_only_in_guarded_pbs_job": true,
+    "gpu_telemetry_seconds": 5,
+    "no_checkpoint_return": true,
+    "do_not_submit_until_freeze_and_preflight_complete": true
+  }
+}

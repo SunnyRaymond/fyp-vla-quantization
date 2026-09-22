@@ -1,0 +1,133 @@
+{
+  "schema": "lewm-recurrent-student.ema-temporal-confirm-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_name": "lewm_ema_temporal_confirmatory_predictor",
+  "base_freeze": "../LEWM_RECURRENT_STUDENT_FREEZE.json",
+  "authoritative_phase2": {
+    "freeze": "../state-coverage/LEWM_STATE_COVERAGE_FREEZE.json",
+    "formal_job": "24926383.pbs101",
+    "formal_summary": "../state-coverage/artifacts/24926383.pbs101/lewm_state_coverage_summary.json",
+    "formal_manifest_512": "../state-coverage/artifacts/24926383.pbs101/context_manifest_512.json",
+    "formal_prepared_rows_512": "../state-coverage/artifacts/24926383.pbs101/prepared_512/prepared_rows.pt",
+    "reference_retrained": false
+  },
+  "hypothesis": "在同一条训练 trajectory 上维护 decay=0.999 的 EMA；相对于 concurrent online control，EMA 在真正 fresh、episode-disjoint 且包含 early/middle/late temporal anchors 的 predictor evaluation 上保持或改善 ranking fidelity。",
+  "design": {
+    "training_arms": ["single_trajectory_online_control_and_ema_primary"],
+    "training_rows": 512,
+    "updates": 3000,
+    "architecture": "LeWMCompactRecurrentTransitionStudent h256 shared recurrent no attention no conditioner",
+    "objective": "unchanged horizon-weighted free-running latent MSE + 0.1 * context-normalized teacher-score SmoothL1 mean over contexts",
+    "same_trajectory": true,
+    "online_role": "concurrent control",
+    "ema_role": "primary",
+    "candidate_is_not_an_independent_statistical_unit": true
+  },
+  "training": {
+    "optimizer": "AdamW(lr=0.0003, weight_decay=0.01, betas=(0.9,0.999), eps=1e-8)",
+    "batch_contexts": 8,
+    "train_candidates": 64,
+    "score_top_count": 12,
+    "score_top_weight": 2.0,
+    "score_other_weight": 1.0,
+    "score_std_floor": 0.000001,
+    "score_smooth_l1_beta": 1.0,
+    "score_loss_weight": 0.1,
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "initialization_seed": 20300901,
+    "training_seed": 20300902,
+    "context_schedule_seed": 20300904,
+    "ema_decay": 0.999,
+    "ema_initialization": "clone shared step-0 online state before optimizer step 1",
+    "ema_update": "after every optimizer step: ema = 0.999 * ema + 0.001 * online",
+    "snapshot_steps": [500, 1000, 1500, 3000],
+    "early_stop": false,
+    "result_dependent_snapshot_selection": false
+  },
+  "fresh_evaluation": {
+    "selection_seed": 20300903,
+    "selection_algorithm": "shuffle valid episode IDs once; old heldout=valid[:8]; old train=valid[8:520]; fresh=valid[520:528]",
+    "old_heldout_exclusion": true,
+    "old_train_exclusion": true,
+    "episodes": 8,
+    "contexts_per_episode": 3,
+    "anchors": {
+      "early": "0",
+      "middle": "floor(late/2)",
+      "late": "max valid start = episode_length - 25 - 1",
+      "validity": "current frame at anchor, actions anchor..anchor+24, goal frame anchor+25 all within the same episode"
+    },
+    "contexts": 24,
+    "action_prefix_seeds": [20300917, 20300918],
+    "seed_reuse_forbidden": [20300907, 20300908],
+    "blocks": 48,
+    "candidates_per_block": 300,
+    "nested_structure": "episode -> anchor stratum -> action-prefix seed block; episode is replicate",
+    "rows_and_targets": "generated on PBS compute node only; not returned",
+    "train_bank_reuse": "Phase 2 formal 512 prepared rows reused verbatim"
+  },
+  "evaluation": {
+    "primary_snapshot": "step_3000",
+    "descriptive_snapshots": [500, 1000, 1500, 3000],
+    "topk": 30,
+    "causality_tolerance": 0.000001,
+    "predictor_latency_warmup": 3,
+    "predictor_latency_repeats": 10,
+    "latency_boundary": "cached official H=1 latent plus five packed action tokens through five-step predictor; excludes encoder/CEM/environment",
+    "official_action_low": [-1.0, -1.0],
+    "official_action_high": [1.0, 1.0],
+    "gaussian_std": 0.22360679774997896
+  },
+  "gates": {
+    "inherited_absolute_predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.80,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.50,
+      "median_relative_latent_mse_max": 0.25,
+      "positive_spearman_blocks_min": 36,
+      "positive_top30_blocks_min": 36,
+      "latency_reduction_min": 0.20,
+      "integrity_convergence_causality_required": true
+    },
+    "stratum_protection": {
+      "strata": ["early", "middle", "late"],
+      "blocks_per_stratum": 16,
+      "median_spearman_min": 0.95,
+      "median_top30_min": 0.75,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "minimum_thresholds_repeated": false,
+      "role": "protect each temporal stratum from being hidden by the overall median; overall minimum thresholds remain only at the inherited overall gate"
+    },
+    "ema_mechanism_secondary": {
+      "paired_unit": "episode after median over its six anchor x seed blocks",
+      "spearman_episode_median_delta_min": 0.0,
+      "top30_episode_median_delta_min": 0.0,
+      "joint_nonworsening_improvement_min_episodes": 5,
+      "joint_rule": "episode counts if EMA improves Spearman with top30 non-worse OR improves top30 with Spearman non-worse; ties are non-worse but neither metric improvement alone is sufficient",
+      "cannot_replace_absolute_gate": true
+    },
+    "primary": "EMA terminal step 3000 must pass overall inherited absolute gate and early/middle/late stratum protection gate; online is concurrent descriptive control; mechanism comparison is secondary only"
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "hidden_dim_changed": false,
+    "tail_weighting_tested": false,
+    "extra_arms_or_sweep": false,
+    "checkpoint_return": false,
+    "prepared_rows_return": false
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "gpu_telemetry_seconds": 5,
+    "single_bounded_gpu_job": true,
+    "do_not_submit_until_freeze_and_preflight_complete": true
+  }
+}

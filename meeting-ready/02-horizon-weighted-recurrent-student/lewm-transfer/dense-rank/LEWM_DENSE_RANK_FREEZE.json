@@ -1,0 +1,38 @@
+{
+  "base_freeze": "../LEWM_RECURRENT_STUDENT_FREEZE.json",
+  "experiment_name": "lewm_dense_query_rank_distillation",
+  "hypothesis": "Keeping the h256 shared recurrent student fixed while increasing train query coverage to 64 candidates/context and adding a frozen-teacher elite-boundary pairwise rank loss improves top-30 candidate overlap.",
+  "training": {
+    "train_candidates": 64,
+    "rank_top_fraction": 0.10,
+    "rank_top_count": 6,
+    "rank_boundary_count": 6,
+    "rank_temperature": 0.5,
+    "rank_loss_weight": 0.1,
+    "rank_shuffle_seed": 20300910,
+    "rank_loss": "context-normalized pairwise logistic; teacher top 6 versus ranks 7..12; lower official criterion is better",
+    "arms": ["dense_latent", "dense_rank", "shuffled_rank"],
+    "same_initial_state": true,
+    "same_context_schedule": true,
+    "same_train_candidate_bank": true,
+    "same_heldout_candidate_bank": true
+  },
+  "screening_gate": {
+    "dense_rank_top30_median_delta_min": 0.10,
+    "dense_rank_top30_improved_blocks_min": 10,
+    "dense_rank_minimum_top30_non_decrease": true,
+    "dense_rank_positive_top30_count_non_decrease": true,
+    "dense_rank_spearman_median_non_decrease": true,
+    "shuffled_rank_cannot_match_dense_rank": true
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "student_structure_changed": false,
+    "hidden_size_sweep": false,
+    "attention": false,
+    "conditioner": false
+  }
+}

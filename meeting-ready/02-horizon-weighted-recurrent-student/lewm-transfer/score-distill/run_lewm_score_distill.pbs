@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -N lewm_score_distill
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=48gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;; esac
+
+CONTROL=${LEWM_SCORE_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+SCORE_CONTROL=${LEWM_SCORE_SUBDIR:-$CONTROL/lewm-transfer/score-distill}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+FREEZE=${LEWM_SCORE_FREEZE:-$SCORE_CONTROL/LEWM_SCORE_DISTILL_FREEZE.json}
+PROTOCOL=${LEWM_SCORE_PROTOCOL:-$SCORE_CONTROL/PROTOCOL_LEWM_SCORE_DISTILL.zh.md}
+PROBE=${LEWM_INTERFACE_PROBE_JSON:-$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json}
+MANIFEST=${LEWM_SCORE_MANIFEST:-$CONTROL/lewm-transfer/artifacts/24564619.pbs101/context_manifest.json}
+PREPARED_ROWS=${LEWM_SCORE_PREPARED_ROWS:-$CONTROL/lewm-transfer/dense-rank/artifacts/24908446.pbs101/prepared_rows.pt}
+OUT=${LEWM_SCORE_OUT:-$SCORE_CONTROL/artifacts/$PBS_JOBID}
+DATASET=${LEWM_STUDENT_DATASET:-$STABLEWM_HOME/pusht_expert_train.h5}
+
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+test -f "$SCORE_CONTROL/run_lewm_score_distill.py"
+test -f "$CONTROL/lewm-transfer/run_lewm_recurrent_student.py"
+test -f "$FREEZE"; test -f "$PROTOCOL"; test -f "$PROBE"; test -f "$MANIFEST"
+test -f "$PREPARED_ROWS"; test -f "$DATASET"; test -f "$STABLEWM_HOME/pusht/lewm_object.ckpt"; test -x "$PYTHON_BIN"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+echo "LEWM_SCORE_DISTILL_JOB=$PBS_JOBID"
+echo "HOST=$HOST"
+echo "PREPARED_ROWS=$PREPARED_ROWS"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup() { kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; }
+trap cleanup EXIT
+
+"$PYTHON_BIN" "$SCORE_CONTROL/run_lewm_score_distill.py" \
+  --lewm-root "$LEWM_ROOT" --stablewm-home "$STABLEWM_HOME" --output "$OUT" \
+  --freeze "$FREEZE" --protocol "$PROTOCOL" --interface-probe "$PROBE" \
+  --dataset "$DATASET" --manifest "$MANIFEST" --prepared-rows "$PREPARED_ROWS" \
+  --action-low -1.0 -1.0 --action-high 1.0 1.0 --gaussian-std 0.22360679774997896 --mode run
+
+printf 'EXIT_STATUS=0\n' > "$OUT/job_status"
+cleanup
+trap - EXIT

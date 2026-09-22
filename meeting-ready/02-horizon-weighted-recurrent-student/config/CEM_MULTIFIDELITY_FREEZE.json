@@ -1,0 +1,86 @@
+{
+  "schema": "horizon-weighted-recurrent-student.cem-trace-diagnosis-freeze",
+  "schema_version": 1,
+  "experiment_id": "teacher-verified-cem-multifidelity-v1",
+  "parent_closed_loop_job": "24544733.pbs101",
+  "parent_trace_job": "24560503.pbs101",
+  "student": {
+    "checkpoint_job": "24510395.pbs101",
+    "checkpoint_filename": "horizon_weighted_recurrent_step1500.pt",
+    "checkpoint_schema": "jepa-action-prefix-compiler.dino-pusht-horizon-weighted-checkpoint",
+    "step": 1500,
+    "hidden_dim": 256,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "packed_action_dim": 10
+  },
+  "cases": {
+    "indices": [0, 1, 2, 4, 5, 7],
+    "eval_seeds": [1, 100, 199, 397, 496, 694],
+    "selection_rule": "all and only student failures from frozen paired pilot 24544733.pbs101; teacher succeeded on every selected case",
+    "independent_unit": "PushT case",
+    "nested_measurements": "CEM iterations and candidates are repeated measurements, not independent replicates"
+  },
+  "cem": {
+    "iterations": 30,
+    "checkpoints": [1, 5, 10, 30],
+    "num_samples": 300,
+    "topk": 30,
+    "horizon": 5,
+    "packed_action_dim": 10,
+    "initial_mu": 0.0,
+    "initial_sigma": 1.0,
+    "innovation_seed_base": 20261100,
+    "candidate_zero_is_mu": true,
+    "std_unbiased": true
+  },
+  "multifidelity": {
+    "prefilter_m": [60, 120],
+    "force_candidate_zero_into_superset": true,
+    "teacher_scores_only_verified_superset_for_update": true,
+    "full_teacher_shadow_checkpoints": [1, 5, 10, 30],
+    "offline_iteration1_calibration": {
+      "source_job": "24560503.pbs101",
+      "m60_teacher_top30_containment_median": 0.9833333333333333,
+      "m60_teacher_top30_containment_minimum": 0.4,
+      "m120_teacher_top30_containment_median": 1.0,
+      "m120_teacher_top30_containment_minimum": 0.9666666666666667,
+      "interpretation": "post-hoc bandwidth calibration only; not independent validation evidence"
+    },
+    "gates": {
+      "iteration": 30,
+      "first_action_rms_median_max": 0.15,
+      "first_action_coordinate_abs_max_max": 0.25,
+      "selected_teacher_cost_regret_median_le_student_only": true,
+      "cases_not_worse_than_student_min": 4,
+      "all_cases_complete": true,
+      "all_outputs_finite": true,
+      "silent_fallback": false
+    },
+    "decision_rule": "M=60 and M=120 are evaluated in one bounded paired job. A sparse arm is fixed-observation GO only if every validity gate and every primary/supporting gate passes. M=300 is the teacher reference, not a teacher-saving intervention."
+  },
+  "diagnostic_thresholds": {
+    "shared_pool_spearman_min": 0.99,
+    "shared_pool_top30_min": 0.95,
+    "shadow_pool_top30_min": 0.95,
+    "iter30_to_iter1_first_action_rms_ratio_min": 2.0,
+    "iter30_first_action_rms_floor": 0.05
+  },
+  "execution": {
+    "pbs_compute_node_only": true,
+    "gpu_telemetry_seconds": 30,
+    "downloads_installs_builds": false,
+    "timeout_seconds": 5100
+  },
+  "claim_boundary": {
+    "allowed": "A fixed-observation teacher-verified CEM mechanism experiment on the six preselected teacher-success/student-failure cases from paired pilot 24544733.pbs101.",
+    "forbidden": [
+      "closed-loop success claim",
+      "population-level inference from the six selected cases",
+      "LeWM CEM or closed-loop claim",
+      "native deployment memory claim",
+      "causal attribution to one student architecture component",
+      "counting candidates or iterations as independent replicates"
+    ]
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "schema": "lewm.compiled-world-model.freeze",
+  "schema_version": 1,
+  "status": "frozen_before_results",
+  "question": "Can a context-compiled factorization share context computation across LeWM PushT candidates without being dominated by a matched dense-prefix predictor?",
+  "source_idea": "meeting-ready/01_Compiled_World_Model_LeWM_PushT.md",
+  "data": {
+    "training_rows": "job25223859 anchor_aligned_train_rows.pt",
+    "training_contexts": 512,
+    "candidates_per_context": 64,
+    "parent_episode_disjoint": true,
+    "development_slice": "valid[552:560]",
+    "development_seeds": [20300967, 20300968],
+    "final_test_slice": "valid[592:600]",
+    "final_test_seeds": [20301201, 20301202],
+    "selection_seed": 20300903,
+    "anchors": ["early", "middle", "late"],
+    "blocks_per_split": 48
+  },
+  "models": {
+    "B1": "dense causal action-prefix MLP G(c,u_1:h)",
+    "B2": "b_h(c)+B_h phi(u_1:h,h), with B_h global and context-independent",
+    "B3": "b_h(c)+B_h(c) phi(u_1:h,h), context compiler executed once per context",
+    "B4": "same trained B3 weights with exact terminal quadratic contraction",
+    "ranks": [32, 96, 192],
+    "latent_dim": 192,
+    "horizon": 5,
+    "packed_action_dim": 10,
+    "hidden_dim": 256,
+    "future_action_leakage_forbidden": true,
+    "goal_input_forbidden_in_predictors": true
+  },
+  "training": {
+    "updates": 1500,
+    "batch_contexts": 4,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "loss": "mean-normalized horizon-weighted latent MSE only",
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "initialization_seed": 20301203,
+    "schedule_seed": 20301204,
+    "same_context_schedule_and_rows": true,
+    "no_ranking_loss": true,
+    "no_early_stop": true
+  },
+  "rank_selection": {
+    "split": "development only",
+    "rule": "lexicographic maximum of median Spearman, median top30 overlap, then negative median relative latent MSE; ties choose lower rank",
+    "final_test_not_used_for_selection": true
+  },
+  "e0": {
+    "causal_prefix_tolerance": 1e-6,
+    "batch_chunk_tolerance": 1e-6,
+    "fp64_compiled_cost_abs_tolerance": 1e-9,
+    "fp32_compiled_cost_abs_tolerance": 0.005,
+    "trained_b3_compiled_cost_abs_tolerance": 0.01,
+    "compiled_vs_explicit_argmin_must_match": true,
+    "official_terminal_quadratic_form_must_match": true
+  },
+  "final_gates": {
+    "absolute_quality": {
+      "spearman_median_min": 0.9,
+      "top30_overlap_median_min": 0.7,
+      "relative_latent_mse_median_max": 0.1,
+      "finite_required": true
+    },
+    "context_dependence_B3_vs_B2": {
+      "episode_median_spearman_delta_min": 0.0,
+      "episode_median_top30_delta_min": 0.0,
+      "joint_strict_improvement_episodes_min": 5
+    },
+    "not_dominated_by_B1": {
+      "spearman_median_tolerance": 0.02,
+      "top30_median_tolerance": 0.05,
+      "thirty_query_latency_must_be_lower": true
+    },
+    "efficiency": {
+      "B3_explicit_thirty_query_speedup_vs_B1_min": 1.0,
+      "B4_compiled_thirty_query_speedup_vs_B3_explicit_min": 1.0,
+      "B4_compiled_thirty_query_speedup_vs_official_teacher_min": 1.5,
+      "p95_must_not_exceed_reference": true
+    }
+  },
+  "timing": {
+    "candidate_count": 300,
+    "queries_per_solve": 30,
+    "warmup": 3,
+    "repeats": 5,
+    "cuda_synchronize": true,
+    "include_prepare_or_compile": true,
+    "separate_prepare_and_query": true,
+    "boundary": "cached H=1 latent and goal through predictor/criterion only; excludes encoder, CEM update, transfers, and environment"
+  },
+  "scope": {
+    "single_bounded_gpu_job": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "joint_encoder_training": "NOT_RUN_BY_SCOPE",
+    "fallback_router_or_mixture": "NOT_RUN_BY_SCOPE",
+    "no_threshold_or_seed_sweep": true
+  },
+  "execution": {
+    "pbs_compute_only": true,
+    "guard": "nonempty PBS_JOBID and hostname not login/head/submit",
+    "login_node_control_only": true,
+    "gpu_telemetry_seconds": 5,
+    "return_small_reports_only": true,
+    "preserve_host_key_verification": true
+  }
+}

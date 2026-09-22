@@ -1,0 +1,128 @@
+{
+  "schema": "lewm-recurrent-student.cem-boundary-ranking-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_results",
+  "experiment_name": "lewm_cem_elite_boundary_pairwise_ranking",
+  "question": "在相同 CEM mixed training rows 与相同起点/预算下，增加 teacher top30 边界 pairwise loss 是否降低 fresh CEM teacher-cost regret",
+  "model_and_start": {
+    "architecture": "LeWMCompactRecurrentTransitionStudent h256",
+    "anchor_start_checkpoint_job": "25223859.pbs101",
+    "anchor_start_checkpoint_filename": "anchor_aligned_bank_step3000.pt",
+    "anchor_start_provenance_source": "anchor_aligned_bank_treatment",
+    "original_phase6_checkpoint_claim": false,
+    "same_anchor_start_for_new_treatment": true,
+    "control_is_historical_reuse": true,
+    "historical_control_job": "25239551.pbs101",
+    "historical_control_arm": "treatment",
+    "historical_control_checkpoint_filename": "treatment_step1000.pt",
+    "historical_control_rows_filename": "cem_distribution_train_rows.pt",
+    "historical_control_summary_filename": "cem_distribution_distill_summary.json",
+    "historical_control_artifact_dir": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101",
+    "historical_control_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "historical_control_rows_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/cem_distribution_train_rows.pt",
+    "historical_control_summary_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/cem_distribution_distill_summary.json",
+    "historical_control_is_not_concurrent": true
+  },
+  "training": {
+    "contexts": 512,
+    "batch_contexts": 8,
+    "candidates_per_context": 64,
+    "extra_updates": 1000,
+    "training_seed": 20300982,
+    "context_schedule_seed": 20300984,
+    "optimizer": "AdamW(lr=0.0003, weight_decay=0.01, betas=(0.9,0.999), eps=1e-8)",
+    "control_rows": "historical CEM mixed rows: positions 0:32 original anchor bank plus fixed round10/20/30 tail positions 32:64",
+    "treatment_rows": "exactly the same historical CEM mixed rows",
+    "latent_loss": "unchanged recurrent horizon-weighted latent MSE",
+    "score_loss": "unchanged score_distill_loss with existing SCORE_LOSS_WEIGHT",
+    "same_optimizer_schedule_and_budget": true
+  },
+  "boundary_pairwise": {
+    "teacher_cost_order": "torch.argsort(teacher_cost, stable=True), lower cost is better",
+    "positive_rank_interval": [20, 30],
+    "negative_rank_interval": [30, 40],
+    "positive_count": 10,
+    "negative_count": 10,
+    "cross_pairs_per_context": 100,
+    "teacher_std": "population std (unbiased=False); any raw per-context std <= 1e-6 aborts the run as invalid, otherwise use the raw std",
+    "loss": "per-context mean over 100 softplus((student_cost_positive-student_cost_negative)/teacher_std) values, then batch mean",
+    "lambda": 0.05,
+    "lambda_selection_basis": "prespecified once: this is an added auxiliary beside the existing 0.1*score_loss; at zero pair separation softplus(0)=0.693, so lambda*loss is about 0.0347, matching the job25239551 initial score contribution about 0.0325; not the historical dense-rank replacement weight",
+    "temperature": 1.0,
+    "degenerate_std_abort": true,
+    "teacher_cost_detached": true,
+    "student_cost_lower_is_better": true,
+    "only_treatment_changes_pairwise_term": true,
+    "pair_selection_is_test_independent": true
+  },
+  "cem_collection": {
+    "iterations": 30,
+    "saved_checkpoints": [10, 20, 30],
+    "num_samples": 300,
+    "topk": 30,
+    "horizon": 5,
+    "packed_action_dim": 10,
+    "initial_mu": 0.0,
+    "initial_sigma": 1.0,
+    "candidate_zero_is_pre_update_mu": true,
+    "std_unbiased": true,
+    "selection_operator": "torch.topk(cost, k=30, largest=False), matching pinned stable-worldmodel LeWM solver",
+    "eval_innovation_seed_base": 20301003
+  },
+  "fresh_evaluation": {
+    "selection_slice": "valid[568:576]",
+    "excluded_valid_prefix": 568,
+    "selection_seed": 20300903,
+    "episodes": 8,
+    "contexts_per_episode": 3,
+    "anchors": ["early", "middle", "late"],
+    "blocks": 48,
+    "action_prefix_seeds": [20301001, 20301002],
+    "shared_student_driven_cem_banks": true,
+    "cem_driver": "frozen anchor-aligned step3000 student",
+    "cem_iterations": 30,
+    "cem_saved_rounds": [10, 20, 30],
+    "cem_candidates": 300,
+    "cem_topk": 30,
+    "eval_innovation_seed_base": 20301003,
+    "teacher_labels_shared": true,
+    "secondary_forgetting_bank": "same fresh rows standard current-anchor 300-candidate banks"
+  },
+  "metrics": {
+    "primary": "standardized teacher-cost regret of student top30 from full 300 candidates",
+    "standardized_regret": "(teacher_mean(student_top30)-teacher_mean(teacher_top30))/max(population_std(teacher_cost_300),1e-6)",
+    "primary_pairing": "episode median over 18 CEM blocks (3 rounds x 3 anchors x 2 seeds), then 8 episode medians",
+    "secondary": ["Spearman", "top30_overlap", "relative_latent_MSE", "recall_at_60", "recall_at_120", "full_elite_containment", "boundary_inversion_rate", "teacher_boundary_gap"],
+    "boundary_inversion": "fraction of 100 pairs with student_cost_positive >= student_cost_negative",
+    "teacher_boundary_gap": "mean(teacher_cost_negative)-mean(teacher_cost_positive)"
+  },
+  "gates": {
+    "primary_mechanism": {
+      "treatment_minus_control_median_delta_max": -0.05,
+      "strictly_improved_episodes_min": 5,
+      "each_round_episode_median_delta_max": 0.0
+    },
+    "forgetting_guard": {
+      "treatment_minus_control_median_delta_max": 0.05,
+      "maximum_episode_delta": 0.2
+    },
+    "finite_and_pairing": true,
+    "secondary_metrics_are_descriptive": true
+  },
+  "scope": {
+    "fixed_observation_candidate_ranking_only": true,
+    "official_cem_deployment": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "student_on_policy_claim": false,
+    "do_not_sweep_lambda_or_pairs": true
+  },
+  "external_context_reference": "arXiv:2609.00065; use latest DOI metadata for any formal citation, without a version suffix; this is method context only and not LeWM/PushT evidence",
+  "execution": {
+    "single_bounded_pbs_job": true,
+    "queue": "normal",
+    "select": "1:ncpus=16:mem=110GB:ngpus=1",
+    "walltime": "00:30:00",
+    "telemetry_seconds": 5,
+    "compute_only_model_data_training_io": true
+  }
+}

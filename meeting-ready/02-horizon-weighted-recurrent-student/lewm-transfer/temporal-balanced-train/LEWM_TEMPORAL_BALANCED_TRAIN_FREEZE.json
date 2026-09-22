@@ -1,0 +1,123 @@
+{
+  "schema": "lewm-recurrent-student.temporal-balanced-train-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_name": "lewm_temporal_balanced_train_confirmatory_predictor",
+  "hypothesis": "Phase 3 fresh multi-anchor observation suggests that the original anchor=0 training distribution may under-cover middle/late temporal states; balancing early/middle/late training anchors may improve fresh multi-anchor predictor fidelity without changing model, loss, compute budget, or candidate bank.",
+  "design": {
+    "training_arms": ["step0_train", "balanced_temporal_train"],
+    "training_rows": 512,
+    "updates": 3000,
+    "architecture": "LeWMCompactRecurrentTransitionStudent h256 shared recurrent no attention no conditioner",
+    "objective": "unchanged horizon-weighted free-running latent MSE + 0.1 * context-normalized teacher-score SmoothL1 mean over contexts",
+    "control": "original 512 episode IDs, one anchor=0 per episode, online terminal step 3000",
+    "treatment": "same 512 episode IDs and ordinal contexts; ordinal mod 3 maps to early/middle/late with counts 171/171/170",
+    "treatment_only_change": "training anchor distribution",
+    "candidate_bank": "control candidate actions reused verbatim by ordinal; treatment teacher targets/objectives recomputed at the balanced state",
+    "candidate_is_not_an_independent_statistical_unit": true
+  },
+  "training": {
+    "optimizer": "AdamW(lr=0.0003, weight_decay=0.01, betas=(0.9,0.999), eps=1e-8)",
+    "batch_contexts": 8,
+    "train_candidates": 64,
+    "score_top_count": 12,
+    "score_top_weight": 2.0,
+    "score_other_weight": 1.0,
+    "score_std_floor": 0.000001,
+    "score_smooth_l1_beta": 1.0,
+    "score_loss_weight": 0.1,
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "initialization_seed": 20300901,
+    "training_seed": 20300902,
+    "context_schedule_seed": 20300904,
+    "candidate_slate_seed": 20300905,
+    "snapshot_steps": [500, 1000, 1500, 3000],
+    "early_stop": false,
+    "result_dependent_snapshot_selection": false
+  },
+  "training_selection": {
+    "source": "Phase 2 formal 512 train manifest",
+    "episode_ids_reused_verbatim": true,
+    "ordinal_anchor_rule": "ordinal mod 3: 0=early, 1=middle, 2=late",
+    "anchor_rule": {"early": 0, "middle": "floor((episode_length-26)/2)", "late": "episode_length-26"},
+    "target_counts": {"early": 171, "middle": 171, "late": 170},
+    "result_dependent_selection": false,
+    "source_results_used_for_design": "Phase 3 observation only; fresh valid[520:528] metrics were not used to select episodes or anchors"
+  },
+  "fresh_evaluation": {
+    "selection_seed": 20300903,
+    "selection_algorithm": "same shuffled valid episode list; exclude old heldout valid[:8] and original train valid[8:520]; use valid[528:536]",
+    "excluded_fresh_phase3": "valid[520:528]",
+    "episodes": 8,
+    "contexts_per_episode": 3,
+    "anchors": ["early", "middle", "late"],
+    "contexts": 24,
+    "action_prefix_seeds": [20300927, 20300928],
+    "forbidden_action_prefix_seeds": [20300907, 20300908, 20300917, 20300918],
+    "blocks": 48,
+    "candidates_per_block": 300,
+    "nested_structure": "episode -> anchor stratum -> action-prefix seed block; episode is replicate",
+    "rows_and_targets": "generated on PBS compute node only; not returned"
+  },
+  "evaluation": {
+    "primary_snapshot": "step_3000",
+    "descriptive_snapshots": [500, 1000, 1500, 3000],
+    "topk": 30,
+    "causality_tolerance": 0.000001,
+    "predictor_latency_warmup": 3,
+    "predictor_latency_repeats": 10,
+    "official_action_low": [-1.0, -1.0],
+    "official_action_high": [1.0, 1.0],
+    "gaussian_std": 0.22360679774997896
+  },
+  "gates": {
+    "inherited_absolute_predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.80,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.50,
+      "median_relative_latent_mse_max": 0.25,
+      "positive_spearman_blocks_min": 36,
+      "positive_top30_blocks_min": 36,
+      "latency_reduction_min": 0.20,
+      "integrity_convergence_causality_required": true
+    },
+    "stratum_protection": {
+      "strata": ["early", "middle", "late"],
+      "blocks_per_stratum": 16,
+      "median_spearman_min": 0.95,
+      "median_top30_min": 0.75,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "minimum_thresholds_repeated": false
+    },
+    "balanced_mechanism_secondary": {
+      "paired_unit": "episode after median over six anchor x seed blocks",
+      "spearman_episode_median_delta_min": 0.0,
+      "top30_episode_median_delta_min": 0.0,
+      "joint_nonworsening_improvement_min_episodes": 5,
+      "cannot_replace_absolute_gate": true
+    }
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "hidden_dim_changed": false,
+    "ema_tested": false,
+    "tail_weighting_tested": false,
+    "extra_arms_or_sweep": false,
+    "checkpoint_return": false,
+    "prepared_rows_return": false,
+    "test_used_for_design": false
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "gpu_telemetry_seconds": 5,
+    "single_bounded_gpu_job": true,
+    "do_not_submit_until_freeze_and_preflight_complete": true
+  }
+}

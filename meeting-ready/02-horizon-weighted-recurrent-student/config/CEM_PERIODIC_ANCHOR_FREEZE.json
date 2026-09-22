@@ -1,0 +1,106 @@
+{
+  "schema": "horizon-weighted-recurrent-student.cem-periodic-anchor-freeze",
+  "schema_version": 1,
+  "experiment_id": "cem-periodic-teacher-anchor-p5-v1",
+  "parent_closed_loop_job": "24544733.pbs101",
+  "historical_reference_job": "24910110.pbs101",
+  "student": {
+    "checkpoint_job": "24510395.pbs101",
+    "checkpoint_filename": "horizon_weighted_recurrent_step1500.pt",
+    "checkpoint_schema": "jepa-action-prefix-compiler.dino-pusht-horizon-weighted-checkpoint",
+    "step": 1500,
+    "hidden_dim": 256,
+    "visual_dim": 384,
+    "proprio_dim": 10,
+    "packed_action_dim": 10
+  },
+  "cases": {
+    "indices": [0, 1, 2, 4, 5, 7],
+    "eval_seeds": [1, 100, 199, 397, 496, 694],
+    "selection_rule": "all and only teacher-success/student-failure cases from frozen paired pilot 24544733.pbs101",
+    "independent_unit": "PushT case",
+    "nested_measurements": "CEM iterations and candidates are repeated measurements, not independent replicates"
+  },
+  "cem": {
+    "iterations": 30,
+    "checkpoints": [1, 5, 10, 15, 20, 25, 30],
+    "num_samples": 300,
+    "topk": 30,
+    "horizon": 5,
+    "packed_action_dim": 10,
+    "initial_mu": 0.0,
+    "initial_sigma": 1.0,
+    "innovation_seed_base": 20261100,
+    "candidate_zero_is_mu": true,
+    "std_unbiased": true,
+    "innovation_device": "cpu",
+    "anchor_rounds_1_based": [5, 10, 15, 20, 25],
+    "anchor_round_30": false
+  },
+  "arms": {
+    "student_only": {
+      "update_rule": "student scores all 300 candidates and selects student top30 every round"
+    },
+    "periodic_teacher_anchor_P5": {
+      "update_rule": "student scores all 300; teacher scores all 300 only on anchor rounds; student top30 otherwise"
+    },
+    "shuffled_anchor_P5": {
+      "update_rule": "same teacher costs as periodic anchors, but a frozen CPU permutation breaks cost-action correspondence before top30 selection"
+    }
+  },
+  "shuffle": {
+    "permutation_seed_base": 2026110000,
+    "device": "cpu",
+    "scope": "one frozen permutation per case and anchor round, shared by the two anchor arms"
+  },
+  "historical_reference": {
+    "source": "historical job 24910110.pbs101 provenance only",
+    "role": "freeze case/seed/checkpoint identity",
+    "runtime_dependency": false,
+    "case_json_loaded": false
+  },
+  "teacher_reference": {
+    "source": "official teacher recomputed once per case in the current compute job",
+    "rounds": 30,
+    "shared_common_cpu_innovations": true,
+    "reference_teacher_calls_per_case": 30,
+    "reference_teacher_candidates_per_case": 9000,
+    "budget_accounting": "diagnostic/reference budget; excluded from intervention-arm budgets"
+  },
+  "gates": {
+    "validity": {
+      "all_cases_complete": true,
+      "all_rounds_complete": true,
+      "all_outputs_finite": true,
+      "silent_fallback": false,
+      "teacher_reference_zero_drift": true
+    },
+    "iteration30_first_action_rms_median_max": 0.15,
+    "iteration30_first_action_coordinate_abs_max_max": 0.25,
+    "treatment_vs_student_iter30_rms_median_strictly_lower": true,
+    "treatment_vs_student_iter30_rms_cases_not_worse_min": 4,
+    "treatment_vs_student_trajectory_auc_median_strictly_lower": true,
+    "treatment_vs_student_trajectory_auc_cases_not_worse_min": 4,
+    "treatment_vs_student_iter30_regret_median_le": true,
+    "treatment_vs_student_iter30_regret_cases_not_worse_min": 4,
+    "negative_control_not_reproduce_both": true
+  },
+  "execution": {
+    "fixed_observation_only": true,
+    "closed_loop": false,
+    "pbs_compute_node_only": true,
+    "gpu_telemetry_seconds": 30,
+    "downloads_installs_builds": false,
+    "timeout_seconds": 6600
+  },
+  "claim_boundary": {
+    "allowed": "A fixed-observation CEM mechanism diagnosis on six preselected PushT cases with periodic teacher anchors.",
+    "forbidden": [
+      "closed-loop success claim",
+      "environment interaction",
+      "population-level inference from six cases",
+      "counting candidates or iterations as independent replicates",
+      "native deployment memory or latency claim"
+    ]
+  }
+}

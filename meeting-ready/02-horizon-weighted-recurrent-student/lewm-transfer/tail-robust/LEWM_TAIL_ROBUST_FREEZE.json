@@ -1,0 +1,131 @@
+{
+  "base_freeze": "../LEWM_RECURRENT_STUDENT_FREEZE.json",
+  "schema": "lewm-recurrent-student.tail-robust-freeze",
+  "schema_version": 1,
+  "status": "frozen",
+  "experiment_name": "lewm_score_distill_tail_robust_phase3",
+  "authoritative_phase2": {
+    "freeze": "../state-coverage/LEWM_STATE_COVERAGE_FREEZE.json",
+    "formal_summary": "../state-coverage/artifacts/24926383.pbs101/lewm_state_coverage_summary.json",
+    "formal_manifest_512": "../state-coverage/artifacts/24926383.pbs101/context_manifest_512.json",
+    "formal_prepared_rows_512": "../state-coverage/artifacts/24926383.pbs101/prepared_512/prepared_rows.pt",
+    "reference_retrained": false
+  },
+  "hypothesis": "A fixed 0.999 EMA terminal model, with an optional context-level top-2 tail emphasis applied only to the score-distillation component, can reduce held-out worst-block failures without changing the recurrent student, latent objective, data bank, or schedule.",
+  "historical_reference": {
+    "arm": "512x3000",
+    "formal_job": "24926383.pbs101",
+    "summary": "../state-coverage/artifacts/24926383.pbs101/lewm_state_coverage_summary.json",
+    "retrain": false,
+    "selection_use": "fixed no-regression comparison only; not used to choose an arm or snapshot",
+    "terminal_metrics": {
+      "spearman_median": 0.978317,
+      "top30_median": 0.866667,
+      "relative_latent_mse_median_max": 0.0175
+    }
+  },
+  "design": {
+    "new_arms": ["ema_score", "ema_tail_score"],
+    "train_contexts": 512,
+    "updates": 3000,
+    "paired_unit": "heldout context x fresh action-prefix seed block",
+    "heldout_contexts": 8,
+    "heldout_blocks": 16,
+    "candidates_per_heldout_block": 300,
+    "candidate_is_not_an_independent_statistical_unit": true,
+    "same_candidate_bank": true,
+    "same_initialization": true,
+    "same_context_schedule": true,
+    "same_online_optimizer": true
+  },
+  "training": {
+    "objective": "horizon-weighted free-running latent MSE + 0.1 * context-normalized teacher-score SmoothL1",
+    "batch_contexts": 8,
+    "train_candidates": 64,
+    "score_top_count": 12,
+    "score_top_weight": 2.0,
+    "score_other_weight": 1.0,
+    "score_std_floor": 0.000001,
+    "score_smooth_l1_beta": 1.0,
+    "score_loss_weight": 0.1,
+    "optimizer": "AdamW(lr=0.0003, weight_decay=0.01, betas=(0.9,0.999), eps=1e-8)",
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "initialization_seed": 20300901,
+    "training_seed": 20300902,
+    "context_schedule_seed": 20300904,
+    "snapshot_steps": [500, 1000, 1500, 3000],
+    "ema_decay": 0.999,
+    "ema_initialization": "clone the shared step-0 student state",
+    "ema_update": "after every optimizer step, ema = 0.999 * ema + 0.001 * online",
+    "terminal_evaluation": "EMA snapshot only; online model is not used for terminal selection"
+  },
+  "tail_aggregation": {
+    "applies_to": "score-distillation component only",
+    "per_context_loss": "mean over the 64 candidate SmoothL1 terms after each context's normalization and top-12 weighting",
+    "ema_score": "mean(per_context_score_loss)",
+    "ema_tail_score": "0.75 * mean(per_context_score_loss) + 0.25 * mean(top2(per_context_score_loss))",
+    "top_count": 2,
+    "top_direction": "largest loss values; worst contexts are emphasized",
+    "latent_loss": "unchanged recurrent_loss batch mean over all contexts and candidates",
+    "candidate_replication": false
+  },
+  "evaluation": {
+    "heldout_action_prefix_seeds": [20300907, 20300908],
+    "topk": 30,
+    "primary_snapshot": "ema_step_3000",
+    "descriptive_snapshots": [500, 1000, 1500, 3000],
+    "causality_tolerance": 0.000001,
+    "predictor_latency_repeats": 10,
+    "predictor_latency_warmup": 3,
+    "latency_boundary": "cached official H=1 latent plus five packed action tokens through five-step predictor; excludes encoder/CEM/environment"
+  },
+  "gates": {
+    "inherited_absolute_predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.80,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.50,
+      "median_relative_latent_mse_max": 0.25,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "latency_reduction_min": 0.20,
+      "integrity_convergence_causality_required": true
+    },
+    "no_regression_vs_512x3000": {
+      "spearman_median_min": 0.978317,
+      "top30_median_min": 0.866667,
+      "relative_latent_mse_median_max": 0.0175
+    },
+    "primary": "ema_tail_score must pass both inherited_absolute_predictor and no_regression_vs_512x3000; ema_score is a paired EMA-effect diagnostic"
+  },
+  "data_reuse": {
+    "source": "Phase 2 formal 512 prepared rows and 512 context manifest from 24926383.pbs101",
+    "train_rows": 512,
+    "heldout_rows": 8,
+    "regenerate_manifest": false,
+    "regenerate_prepared_rows": false,
+    "heldout_bank_reused_verbatim": true,
+    "result_dependent_selection": false
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "student_architecture_changed": false,
+    "student_loss_latent_component_changed": false,
+    "candidate_bank_changed": false,
+    "heldout_manifest_changed": false,
+    "candidate_is_not_a_replicate": true,
+    "no_extra_arms_or_tuning": true
+  },
+  "execution_constraints": {
+    "pbs_compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "login_node_heavy_work": false,
+    "gpu_telemetry_seconds": 5,
+    "no_checkpoint_return": true,
+    "single_bounded_gpu_job": true,
+    "do_not_submit_until_freeze_and_preflight_complete": true
+  }
+}

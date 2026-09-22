@@ -1,0 +1,93 @@
+{
+  "schema": "lewm.anchor-aligned-bank.freeze",
+  "schema_version": 1,
+  "status": "frozen_before_results",
+  "question": "Does aligning training candidate actions to each balanced temporal anchor improve held-out teacher-elite recall without changing the student or training budget?",
+  "arms": ["balanced_base", "anchor_aligned_bank"],
+  "training": {
+    "contexts": 512,
+    "anchor_counts": {"early": 171, "middle": 171, "late": 170},
+    "anchor_rule": "same original ordinal mod 3 mapping; early=0, middle=floor((length-26)/2), late=length-26",
+    "architecture": "LeWMCompactRecurrentTransitionStudent",
+    "hidden_dim": 256,
+    "batch_contexts": 8,
+    "candidates": 64,
+    "updates": 3000,
+    "snapshot": "step_3000",
+    "initialization_seed": 20300901,
+    "training_seed": 20300902,
+    "context_schedule_seed": 20300904,
+    "candidate_slate_seed": 20300905,
+    "optimizer_and_loss": "unchanged state-action-prefix-gru balanced_base train_arm; AdamW and horizon-weighted free-running latent MSE plus 0.1 context-normalized score SmoothL1",
+    "control": "reuse saved reconstructed balanced_base checkpoint and balanced rows from job25213164; historical training, paired fresh evaluation, preserve reconstructed provenance",
+    "treatment": "same state, goal, context IDs and training recipe; center candidate actions on the current anchor logged actions and recompute teacher targets/costs",
+    "paired_noise": "replay dense.prepare_dense_rows original CPU generator: count1, count1, count64, then randn(HORIZON,ACTION_DIM) per context; clone generator state before count64 for treatment; verify replayed control bank equals cached original before clipping-noise pairing is claimed",
+    "action_low": [-1.0, -1.0],
+    "action_high": [1.0, 1.0],
+    "gaussian_std": 0.22360679774997896,
+    "no_early_stop_or_snapshot_selection": true,
+    "save_treatment_checkpoint_and_rows_on_compute": true
+  },
+  "evaluation": {
+    "selection_seed": 20300903,
+    "selection_slice": [552, 560],
+    "excluded_prefix": 552,
+    "episodes": 8,
+    "anchors": ["early", "middle", "late"],
+    "action_prefix_seeds": [20300967, 20300968],
+    "blocks": 48,
+    "candidates": 300,
+    "elite_count": 30,
+    "primary_k": 120,
+    "descriptive_k": 60,
+    "same_candidate_banks_for_both_arms": true,
+    "replicate": "episode; six anchor-by-seed blocks nested within each episode",
+    "metrics": ["spearman", "top30_overlap", "relative_latent_mse", "recall_at_60", "recall_at_120", "full_elite_containment", "elite_mean_cost_regret", "standardized_elite_mean_cost_regret"],
+    "regret_standardization": "raw regret divided by max(population std of full teacher costs in the same 300-candidate block,1e-6)",
+    "mechanism_gate": {
+      "median_episode_paired_recall120_delta_strictly_positive": true,
+      "strictly_improved_episodes_min": 5,
+      "bad_block_recall_threshold": 0.80,
+      "treatment_bad_block_count_strictly_less_than_control": true,
+      "treatment_worst_block_recall_not_lower": true,
+      "median_episode_paired_standardized_regret_delta_max": 0.0,
+      "finite_interface_and_paired_noise_required": true
+    },
+    "separate_absolute_screening_gate": {
+      "median_recall120_min": 0.95,
+      "minimum_block_recall120_min": 0.80,
+      "each_stratum_median_recall120_min": 0.95,
+      "not_a_predictor_replacement_gate": true
+    }
+  },
+  "timing": {
+    "arms": ["teacher300", "teacher120", "teacher60", "student300_control", "student300_treatment", "hybrid120_control", "hybrid120_treatment"],
+    "blocks": 48,
+    "warmup": 3,
+    "repeats": 10,
+    "order_seed": 20300969,
+    "primary_metric": "CUDA-synchronized wall-clock milliseconds",
+    "same_gpu_cached_state_goal": true,
+    "teacher_subset_selection": "first 120 or 60 candidates in the common bank, timing only; never a quality comparison with full300",
+    "teacher_and_student_only_include_elite_selection": true,
+    "shadow_teacher_excluded_from_hybrid_timing": true,
+    "diagnostic_only_for_training_mechanism": true
+  },
+  "scope": {
+    "single_valid_gpu_job": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "warm_start_or_new_architecture": "NOT_RUN_BY_SCOPE",
+    "no_threshold_seed_width_or_k_sweep": true,
+    "old_no_go_unchanged": true
+  },
+  "execution": {
+    "pbs_compute_only": true,
+    "guard": "nonempty PBS_JOBID and hostname not login/head/submit; never spoof allocation",
+    "login_node_control_only": true,
+    "gpu_telemetry_seconds": 5,
+    "return_small_reports_only": true,
+    "preserve_host_key_verification": true,
+    "usage_reset_stop": "main codex usedPercent currently83; if it becomes0 stop agent work immediately and leave handoff; Luna reserve already0 is not a trigger"
+  }
+}

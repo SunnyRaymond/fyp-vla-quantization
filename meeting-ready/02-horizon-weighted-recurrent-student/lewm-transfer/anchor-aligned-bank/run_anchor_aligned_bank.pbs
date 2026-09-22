@@ -1,0 +1,108 @@
+#!/bin/bash
+#PBS -N lewm_anchor_bank
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+test -n "$JOB_ID"
+
+CONTROL=${LEWM_ANCHOR_BANK_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+ANCHOR_CONTROL=${LEWM_ANCHOR_BANK_SUBDIR:-$CONTROL/lewm-transfer/anchor-aligned-bank}
+BALANCED_CONTROL=${LEWM_TEMPORAL_SUBDIR:-$CONTROL/lewm-transfer/temporal-balanced-train}
+STATE_CONTROL=${LEWM_STATE_SUBDIR:-$CONTROL/lewm-transfer/state-coverage}
+STATE_GRU_CONTROL=${LEWM_STATE_GRU_SUBDIR:-$CONTROL/lewm-transfer/state-action-prefix-gru}
+SCREEN_CONTROL=${LEWM_TEACHER_SCREENING_SUBDIR:-$CONTROL/lewm-transfer/teacher-screening}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+RUNNER=${LEWM_ANCHOR_BANK_RUNNER:-$ANCHOR_CONTROL/run_anchor_aligned_bank.py}
+FREEZE=${LEWM_ANCHOR_BANK_FREEZE:-$ANCHOR_CONTROL/FREEZE.json}
+PROTOCOL=${LEWM_ANCHOR_BANK_PROTOCOL:-$ANCHOR_CONTROL/PROTOCOL.zh.md}
+TEMPORAL_FREEZE=${LEWM_TEMPORAL_FREEZE:-$BALANCED_CONTROL/LEWM_TEMPORAL_BALANCED_TRAIN_FREEZE.json}
+PROBE=${LEWM_INTERFACE_PROBE_JSON:-$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json}
+MANIFEST_512=${LEWM_ANCHOR_BANK_MANIFEST_512:-$STATE_CONTROL/artifacts/24926383.pbs101/context_manifest_512.json}
+PREPARED_ROWS_512=${LEWM_ANCHOR_BANK_PREPARED_ROWS_512:-$STATE_CONTROL/artifacts/24926383.pbs101/prepared_512/prepared_rows.pt}
+BALANCED_ROWS=${LEWM_BALANCED_PREPARED_ROWS:-$SCREEN_CONTROL/artifacts/25213164.pbs101/prepared_balanced_rows_reconstructed.pt}
+CONTROL_CHECKPOINT=${LEWM_BALANCED_BASE_CHECKPOINT:-$SCREEN_CONTROL/artifacts/25213164.pbs101/balanced_base_step3000_reconstructed.pt}
+DATASET=${LEWM_STUDENT_DATASET:-$STABLEWM_HOME/pusht_expert_train.h5}
+OUT=${LEWM_ANCHOR_BANK_OUT:-$ANCHOR_CONTROL/artifacts/$JOB_ID}
+
+test -n "${PBS_NODEFILE:-}"
+test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+
+for FILE in "$RUNNER" "$FREEZE" "$PROTOCOL" "$TEMPORAL_FREEZE" "$PROBE" "$MANIFEST_512" "$PREPARED_ROWS_512" "$BALANCED_ROWS" "$CONTROL_CHECKPOINT" "$DATASET" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+
+mkdir -p "$OUT"
+status=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "runner=$RUNNER" \
+  "freeze=$FREEZE" \
+  "protocol=$PROTOCOL" \
+  "temporal_freeze=$TEMPORAL_FREEZE" \
+  "manifest_512=$MANIFEST_512" \
+  "prepared_rows_512=$PREPARED_ROWS_512" \
+  "balanced_rows=$BALANCED_ROWS" \
+  "control_checkpoint=$CONTROL_CHECKPOINT" \
+  "dataset=$DATASET" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 \
+  >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 780 \
+  "$PYTHON_BIN" "$RUNNER" \
+  --lewm-root "$LEWM_ROOT" --stablewm-home "$STABLEWM_HOME" --output "$OUT" \
+  --freeze "$FREEZE" --protocol "$PROTOCOL" --temporal-freeze "$TEMPORAL_FREEZE" --interface-probe "$PROBE" \
+  --manifest-512 "$MANIFEST_512" --prepared-rows-512 "$PREPARED_ROWS_512" \
+  --prepared-balanced-rows "$BALANCED_ROWS" --balanced-base-checkpoint "$CONTROL_CHECKPOINT" \
+  --dataset "$DATASET" --mode run
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/anchor_aligned_bank_summary.json" ]; then
+  status=0
+  printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"
+else
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+fi
+stop_gpu_monitor
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+exit "$status"

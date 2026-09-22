@@ -1,0 +1,110 @@
+#!/bin/bash
+#PBS -N lewm_selective_tiebreak
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+CONTROL=${LEWM_TIEBREAK_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=${LEWM_TIEBREAK_SUBDIR:-$CONTROL/lewm-transfer/selective-teacher-correction-tiebreak}
+OLD_EXPERIMENT=${LEWM_TIEBREAK_OLD_SUBDIR:-$CONTROL/lewm-transfer/selective-teacher-correction}
+CEM_CONTROL=${LEWM_TIEBREAK_CEM_SUBDIR:-$CONTROL/lewm-transfer/cem-distribution-distill}
+STATE_CONTROL=${LEWM_TIEBREAK_STATE_SUBDIR:-$CONTROL/lewm-transfer/state-coverage}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+RUNNER=${LEWM_TIEBREAK_RUNNER:-$EXPERIMENT/run_selective_teacher_correction_tiebreak.py}
+FREEZE=${LEWM_TIEBREAK_FREEZE:-$EXPERIMENT/FREEZE.json}
+PROTOCOL=${LEWM_TIEBREAK_PROTOCOL:-$EXPERIMENT/PROTOCOL.zh.md}
+PROBE=${LEWM_INTERFACE_PROBE_JSON:-$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json}
+MANIFEST_512=${LEWM_TIEBREAK_MANIFEST_512:-$STATE_CONTROL/artifacts/24926383.pbs101/context_manifest_512.json}
+ANCHOR_CHECKPOINT=${LEWM_TIEBREAK_ANCHOR_CHECKPOINT:-$CONTROL/lewm-transfer/anchor-aligned-bank/artifacts/25223859.pbs101/anchor_aligned_bank_step3000.pt}
+MAIN_CHECKPOINT=${LEWM_TIEBREAK_MAIN_CHECKPOINT:-$CEM_CONTROL/artifacts/25239551.pbs101/treatment_step1000.pt}
+SENTINEL_CHECKPOINT=${LEWM_TIEBREAK_SENTINEL_CHECKPOINT:-$CEM_CONTROL/artifacts/25239551.pbs101/control_step1000.pt}
+HISTORICAL_SUMMARY=${LEWM_TIEBREAK_HISTORICAL_SUMMARY:-$CEM_CONTROL/artifacts/25239551.pbs101/cem_distribution_distill_summary.json}
+CALIBRATION_SUMMARY=${LEWM_TIEBREAK_CALIBRATION_SUMMARY:-$OLD_EXPERIMENT/artifacts/25269182.pbs101/selective_teacher_correction_summary.json}
+CALIBRATION_BANK=${LEWM_TIEBREAK_CALIBRATION_BANK:-$OLD_EXPERIMENT/artifacts/25269182.pbs101/fresh_calibration_cem_trajectory_banks.pt}
+TEMPORAL_FREEZE=${LEWM_TEMPORAL_FREEZE:-$CONTROL/lewm-transfer/temporal-balanced-train/LEWM_TEMPORAL_BALANCED_TRAIN_FREEZE.json}
+DATASET=${LEWM_STUDENT_DATASET:-$STABLEWM_HOME/pusht_expert_train.h5}
+OUT=${LEWM_TIEBREAK_OUT:-$EXPERIMENT/artifacts/$JOB_ID}
+
+# Login/control execution is refused before any model/data access.
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+
+for FILE in "$RUNNER" "$FREEZE" "$PROTOCOL" "$OLD_EXPERIMENT/run_selective_teacher_correction.py" "$OLD_EXPERIMENT/PROTOCOL.zh.md" "$PROBE" "$MANIFEST_512" "$ANCHOR_CHECKPOINT" "$MAIN_CHECKPOINT" "$SENTINEL_CHECKPOINT" "$HISTORICAL_SUMMARY" "$CALIBRATION_SUMMARY" "$CALIBRATION_BANK" "$TEMPORAL_FREEZE" "$DATASET" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+
+mkdir -p "$OUT"
+status=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "runner=$RUNNER" \
+  "freeze=$FREEZE" \
+  "protocol=$PROTOCOL" \
+  "calibration_summary=$CALIBRATION_SUMMARY" \
+  "calibration_bank=$CALIBRATION_BANK" \
+  "anchor_checkpoint=$ANCHOR_CHECKPOINT" \
+  "main_checkpoint=$MAIN_CHECKPOINT" \
+  "sentinel_checkpoint=$SENTINEL_CHECKPOINT" \
+  "historical_summary=$HISTORICAL_SUMMARY" \
+  "dataset=$DATASET" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 \
+  >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 1740 \
+  "$PYTHON_BIN" "$RUNNER" \
+  --lewm-root "$LEWM_ROOT" --stablewm-home "$STABLEWM_HOME" --output "$OUT" \
+  --freeze "$FREEZE" --protocol "$PROTOCOL" --interface-probe "$PROBE" \
+  --manifest-512 "$MANIFEST_512" --anchor-checkpoint "$ANCHOR_CHECKPOINT" \
+  --main-checkpoint "$MAIN_CHECKPOINT" --sentinel-checkpoint "$SENTINEL_CHECKPOINT" \
+  --historical-summary "$HISTORICAL_SUMMARY" --calibration-summary "$CALIBRATION_SUMMARY" \
+  --temporal-freeze "$TEMPORAL_FREEZE" --dataset "$DATASET" --mode run
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/selective_teacher_correction_tiebreak_summary.json" ]; then
+  status=0
+  printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"
+else
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+fi
+stop_gpu_monitor
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+exit "$status"
