@@ -1,0 +1,72 @@
+#!/bin/bash
+#PBS -N fw_ckpt_dl
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=4gb
+#PBS -l walltime=08:00:00
+#PBS -j oe
+
+set -eo pipefail
+
+case "${PBS_JOBID:-}" in
+  '') echo 'Refusing download: PBS_JOBID is missing.' >&2; exit 64 ;;
+esac
+case "$(hostname -s)" in
+  *login*|asp2a-login*) echo 'Refusing download: login node is not a compute allocation.' >&2; exit 64 ;;
+esac
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-smoke
+CHECKPOINT="$ROOT/checkpoints/libero_optional_idm_2cam224.clean.pt"
+LOG="$ROOT/logs/checkpoint_download_${PBS_JOBID}.log"
+URL=https://huggingface.co/yuanty/fastwam/resolve/main/libero_optional_idm_2cam224.pt
+EXPECTED_BYTES=12041735545
+
+mkdir -p "$ROOT/checkpoints" "$ROOT/logs"
+exec > >(tee -a "$LOG") 2>&1
+
+source /etc/profile
+printf 'date='; date
+printf 'host='; hostname
+if [ -x /usr/bin/aria2c ]; then
+  DOWNLOADER=/usr/bin/aria2c
+elif [ -x /usr/bin/wget ]; then
+  DOWNLOADER=/usr/bin/wget
+else
+  echo 'No supported downloader on compute node' >&2
+  exit 1
+fi
+printf 'downloader=%s\n' "$DOWNLOADER"
+printf 'target=%s\n' "$CHECKPOINT"
+
+if [ "$DOWNLOADER" = /usr/bin/aria2c ]; then
+  "$DOWNLOADER" \
+    --continue=true \
+    --max-connection-per-server=8 \
+    --split=8 \
+    --min-split-size=16M \
+    --file-allocation=none \
+    --max-tries=0 \
+    --retry-wait=10 \
+    --timeout=60 \
+    --summary-interval=30 \
+    --dir="$ROOT/checkpoints" \
+    --out=libero_optional_idm_2cam224.clean.pt \
+    "$URL"
+else
+  "$DOWNLOADER" \
+    --continue \
+    --tries=0 \
+    --timeout=60 \
+    --waitretry=10 \
+    --retry-connrefused \
+    --progress=dot:mega \
+    --output-document="$CHECKPOINT" \
+    "$URL"
+fi
+
+actual=$(stat -c %s "$CHECKPOINT")
+allocated=$(du -B1 "$CHECKPOINT" | awk '{print $1}')
+printf 'actual_bytes=%s allocated_bytes=%s expected_bytes=%s\n' "$actual" "$allocated" "$EXPECTED_BYTES"
+test "$actual" = "$EXPECTED_BYTES"
+touch "$ROOT/checkpoints/libero_optional_idm_2cam224.clean.COMPLETE"
+printf 'download_complete=%s\n' "$CHECKPOINT"

@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -N gptq_prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/gptq-reproduction
+cd "$ROOT"
+mkdir -p logs cache
+exec > >(tee "logs/prepare-$PBS_JOBID.log") 2>&1
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+BOOT=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/venvs/bootstrap/bin
+export UV_CACHE_DIR="$ROOT/cache/uv" HF_HOME="$ROOT/cache/huggingface"
+export OMP_NUM_THREADS=4 TOKENIZERS_PARALLELISM=false PYTHONUNBUFFERED=1
+"$BOOT/uv" venv --python "$BOOT/python" "$ROOT/venv"
+"$BOOT/uv" pip install --python "$ROOT/venv/bin/python" 'torch==2.1.2' --index-url https://download.pytorch.org/whl/cu118
+"$BOOT/uv" pip install --python "$ROOT/venv/bin/python" 'numpy==1.26.4' 'transformers==4.31.0' 'datasets==2.14.7' 'pyarrow==14.0.2' 'huggingface-hub==0.24.7' 'accelerate==0.21.0'
+"$ROOT/venv/bin/python" -m pip freeze > environment.txt || "$BOOT/uv" pip freeze --python "$ROOT/venv/bin/python" > environment.txt
+timeout 45m "$ROOT/venv/bin/python" prepare.py

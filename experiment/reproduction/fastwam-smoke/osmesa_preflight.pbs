@@ -1,0 +1,35 @@
+#!/bin/bash
+#PBS -N fw_osmesa_check
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+ROOT=/scratch/users/ntu/yguo017/fastwam-smoke
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+date
+hostname
+cp "$ROOT/osmesa_preflight.pbs" "$ROOT/render_preflight.py" "$ARTIFACTS/"
+timeout --signal=TERM --kill-after=15s 480s apptainer exec --cleanenv \
+  --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \
+  --env "PYTHONPATH=$ROOT/libero-compat:$ROOT/libero:$ROOT/FastWAM:$ROOT/FastWAM/src" \
+  --env "LIBERO_CONFIG_PATH=$ROOT/libero-config" \
+  --env "ARTIFACTS=$ARTIFACTS" \
+  --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+  --env OMP_NUM_THREADS=4,OPENBLAS_NUM_THREADS=4,LP_NUM_THREADS=4 \
+  --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1 \
+  "$SIF" "$ROOT/venv/bin/python" "$ROOT/render_preflight.py"
+touch "$ARTIFACTS/SUCCESS"

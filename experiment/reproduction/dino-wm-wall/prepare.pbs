@@ -1,0 +1,39 @@
+#!/bin/bash
+#PBS -N dino_wall_prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=20gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+mkdir -p "$ROOT/artifacts/$PBS_JOBID" "$ROOT/cache" "$ROOT/downloads" "$ROOT/data" "$ROOT/checkpoints"
+exec > >(tee -a "$ROOT/artifacts/$PBS_JOBID/job.log") 2>&1
+export UV_CACHE_DIR="$ROOT/cache/uv"
+export UV_PYTHON_INSTALL_DIR="$ROOT/cache/python"
+export UV_HTTP_TIMEOUT=120
+export OMP_NUM_THREADS=4
+UV=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/venvs/bootstrap/bin/uv
+"$UV" venv --python 3.10 "$ROOT/venv"
+"$UV" pip install --python "$ROOT/venv/bin/python" 'torch==2.3.0' 'torchvision==0.18.0' 'numpy==1.26.4' 'gym==0.23.1' 'hydra-core==1.2.0' 'omegaconf==2.3.0' 'wandb==0.13.1' 'protobuf==3.20.3' 'submitit==1.5.1' 'einops==0.4.1' 'decord==0.6.0' 'imageio==2.34.1' 'imageio-ffmpeg==0.4.9' 'matplotlib==3.5.3' 'scipy==1.13.1' 'psutil==5.9.8' 'tqdm==4.66.4' 'h5py==3.11.0' 'opencv-python-headless==4.6.0.66' 'omegaconf==2.3.0' 'accelerate==0.26.1'
+curl -fL --retry 3 --max-time 1500 -C - https://osf.io/download/xvzs4/ -o "$ROOT/downloads/outputs.zip"
+curl -fL --retry 3 --max-time 1500 -C - https://osf.io/download/49rnx/ -o "$ROOT/downloads/wall_single.zip"
+"$ROOT/venv/bin/python" - <<'PY'
+from pathlib import Path
+import zipfile
+root=Path('/scratch/users/ntu/yguo017/dino-wm-wall')
+for archive,dest in [('outputs.zip','checkpoints'),('wall_single.zip','data')]:
+    with zipfile.ZipFile(root/'downloads'/archive) as z:
+        members=[i for i in z.infolist() if not i.filename.startswith('__MACOSX/')]
+        if archive=='outputs.zip':
+            members=[i for i in members if '/wall/' in '/'+i.filename or i.filename.rstrip('/') in ('outputs','outputs/wall')]
+        print(archive, len(members), sum(i.file_size for i in members), flush=True)
+        for i in members:
+            target=(root/dest/i.filename).resolve()
+            if not target.is_relative_to((root/dest).resolve()): raise ValueError(i.filename)
+            z.extract(i,root/dest)
+"""Zip extraction verifies CRC during reads; no extra SHA inventory."""
+PY
+"$UV" pip freeze --python "$ROOT/venv/bin/python" > "$ROOT/artifacts/$PBS_JOBID/requirements-resolved.txt"
+find "$ROOT/checkpoints" -type f -printf '%P %s bytes\n'
+touch "$ROOT/PREPARED"

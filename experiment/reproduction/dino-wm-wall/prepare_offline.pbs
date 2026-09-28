@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -N dino_wall_offline
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=20gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+WORK=${TMPDIR:-/tmp}/dino-wall-prepare-$PBS_JOBID
+mkdir -p "$WORK/runtime" "$ROOT/artifacts/$PBS_JOBID"
+exec > >(tee -a "$ROOT/artifacts/$PBS_JOBID/job.log") 2>&1
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+BOOT=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/venvs/bootstrap
+UV=$BOOT/bin/uv
+export UV_CACHE_DIR="$WORK/uv-cache" UV_HTTP_TIMEOUT=120
+export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+date
+tar -xf /scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/source/wheelhouse-manylinux_2_28.tar -C "$WORK"
+"$UV" venv --python "$BOOT/bin/python" "$WORK/runtime/venv"
+"$UV" pip install --find-links "$WORK/wheelhouse-manylinux_2_28" --python "$WORK/runtime/venv/bin/python" 'torch==2.2.0' 'torchvision==0.17.0' 'numpy==1.26.4' 'gym==0.23.1' 'hydra-core==1.3.2' 'omegaconf==2.3.0' 'wandb==0.13.1' 'protobuf==3.20.3' 'submitit==1.5.1' 'einops==0.4.1' 'decord==0.6.0' 'imageio==2.34.1' 'imageio-ffmpeg==0.4.9' 'matplotlib==3.7.5' 'scipy==1.13.1' 'psutil==5.9.8' 'tqdm==4.66.4' 'h5py==3.11.0' 'opencv-python-headless==4.6.0.66' 'accelerate==0.26.1' 'setuptools==70.0.0'
+date
+"$WORK/runtime/venv/bin/python" -c 'import torch,hydra,wandb; print(torch.__version__,hydra.__version__)'
+"$UV" pip freeze --python "$WORK/runtime/venv/bin/python" > "$ROOT/artifacts/$PBS_JOBID/requirements-resolved.txt"
+tar -cf "$ROOT/runtime.tar.partial" -C "$WORK" runtime
+mv "$ROOT/runtime.tar.partial" "$ROOT/runtime.tar"
+touch "$ROOT/NODE_ENV_READY"
+date

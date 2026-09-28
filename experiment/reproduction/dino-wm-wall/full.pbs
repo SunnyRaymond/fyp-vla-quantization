@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N dino_wall_full
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+OUT="$ROOT/artifacts/$PBS_JOBID"
+WORK=${TMPDIR:-/tmp}/dino-wall-full-$PBS_JOBID
+mkdir -p "$OUT" "$WORK"
+exec > >(tee -a "$OUT/job.log") 2>&1
+test -f "$ROOT/ASSETS_READY"
+test -f "$ROOT/SMOKE_VERIFIED"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+tar -xf "$ROOT/runtime-complete.tar" -C "$WORK"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8
+export TORCH_HOME="$WORK/runtime/torch" MPLBACKEND=Agg
+export PYTHONPATH="$ROOT/source"
+cp "$ROOT/control/evaluate_wall.py" "$ROOT/control/verify_results.py" "$OUT/"
+cp "$ROOT/checkpoints/outputs/wall_single/hydra.original.yaml" "$OUT/checkpoint-config-original.yaml"
+cp "$ROOT/asset_validation.json" "$OUT/"
+nvidia-smi > "$OUT/nvidia-smi.txt"
+date
+/usr/bin/time -v timeout --signal=TERM 230m "$WORK/runtime/venv/bin/python" "$ROOT/control/evaluate_wall.py" --root "$ROOT" --output "$OUT" --n-evals 50 --max-mpc 12
+"$WORK/runtime/venv/bin/python" "$ROOT/control/verify_results.py" "$OUT" --expected 50
+touch "$OUT/VERIFIED"
+date

@@ -1,0 +1,681 @@
+{
+  "schema_version": 1,
+  "status": "USER_CANCELLED_FORMAL; preparation and calibration retained; goal closed",
+  "benchmark": "PLDM official Two-Rooms / Wall pipeline",
+  "source": {
+    "repository": "https://github.com/vladisai/PLDM",
+    "commit": "1bd7e564ecd961205bc18b23067b19e9ca24ac90",
+    "remote_upstream": "/scratch/users/ntu/yguo017/pldm-reproduction/upstream",
+    "remote_staged": "/scratch/users/ntu/yguo017/pldm-reproduction/staged/pldm",
+    "upstream_modified": false,
+    "staged_runtime_compatibility_patches": 32,
+    "patch_scope": "Only traceback-triggered Python 3.11 mutable dataclass fields changed to field(default_factory=the_same_constructor); original/replacement lines are recorded in staged_source_identity.json.",
+    "algorithm_or_scientific_config_changes": false
+  },
+  "data": {
+    "official_release_member": "good_quality_data_no_images.npz",
+    "remote_rendered_path": "/scratch/users/ntu/yguo017/pldm-reproduction/datasets/good_quality_data_memmap",
+    "rendered_transition_count": 3686400,
+    "training_window_samples": 3072000,
+    "window_length": 16,
+    "state_dtype": "uint8 on disk; torch.float32 in the real loader batch",
+    "paper_scope_limit": "The released member has 3,686,400 transitions; the paper describes approximately 3M. The unpublished historical wall-visual-config_rand_expert_40-v0 file is not proven equivalent, so this does not claim bit-equivalence or a verbatim Table 2 reproduction.",
+    "data_reduction": false
+  },
+  "cpu_preparation": {
+    "job_id": "25571604.pbs101",
+    "queue": "normal",
+    "request": "4 CPUs, 24 GB RAM, 15 minutes",
+    "render_job_id": "25570653.pbs101",
+    "render_report": "/scratch/users/ntu/yguo017/pldm-reproduction/reports/25570653.pbs101/PREPARATION.json",
+    "pbs_state": "F",
+    "exit_status": 0,
+    "stageout_status": 1,
+    "status": "PASS",
+    "report": "/scratch/users/ntu/yguo017/pldm-reproduction/reports/25571604.pbs101/PREPARATION.json",
+    "runtime_python": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python",
+    "runtime": {
+      "python": "3.11.7",
+      "torch": "2.8.0+cu128",
+      "numpy": "1.26.4",
+      "scipy": "1.10.0",
+      "pandas": "2.0.1",
+      "pytz": "2022.7.1",
+      "zarr": "2.14.2",
+      "numcodecs": "0.12.1",
+      "gym": "0.23.1",
+      "gym-notices": "0.0.8",
+      "arm_pytorch_utilities": "0.4.3",
+      "pytorch-seed": "0.2.0",
+      "statsmodels": "0.14.4",
+      "patsy": "1.0.1"
+    },
+    "training_loader": {
+      "status": "PASS",
+      "dataset_samples": 3072000,
+      "batch_size": 64,
+      "updates_per_pass": 48000,
+      "configured_epochs": 2,
+      "actual_epoch_indices": [
+        0,
+        1,
+        2
+      ],
+      "actual_passes": 3,
+      "expected_optimizer_updates": 144000,
+      "normalizer_and_loader_build_seconds": 277.73,
+      "first_batch_seconds": 2.68,
+      "first_batch_shape": [
+        64,
+        16,
+        2,
+        65,
+        65
+      ]
+    },
+    "probing_loader_metadata": {
+      "status": "PASS",
+      "train_batches_per_pass": 156,
+      "validation_batches_per_enabled_pass": 156,
+      "predictor_epochs": 20,
+      "encoder_epochs": 30,
+      "training_passes": 50,
+      "training_batch_work": 7800,
+      "validation_batch_work": 312,
+      "shape_probe_batches": 2,
+      "probe_batches_generated_during_cpu_preparation": false
+    },
+    "config_gate": {
+      "status": "PASS",
+      "training_seed": 101,
+      "quick_debug": false,
+      "objectives": [
+        "VICReg",
+        "IDM"
+      ],
+      "eval_envs": 100,
+      "eval_steps": 200,
+      "eval_batch": 20,
+      "mppi_samples": 2000,
+      "replan_every": 1,
+      "probing_predictor_epochs": 20,
+      "probing_encoder_epochs": 30,
+      "wandb": false
+    },
+    "shared_runtime_modified": false
+  },
+  "cost_calibration": {
+    "job_id": "25571685.pbs101",
+    "queue": "gdev",
+    "request": "1 GPU, 16 CPUs, 110 GB RAM, 15 minutes",
+    "pbs_state": "F",
+    "exit_status": 2,
+    "stageout_status": 1,
+    "walltime_used": "00:13:15",
+    "cpu_time_used": "00:00:39",
+    "memory_used": "1898524kb",
+    "status": "PARTIAL_INTERNAL_TIME_LIMIT",
+    "result_path": "/scratch/users/ntu/yguo017/pldm-reproduction/reports/calibration-25571685.pbs101/CALIBRATION.json",
+    "local_raw_report": "CALIBRATION.25571685.json",
+    "planned_training_updates": 110,
+    "actual_training_updates": 107,
+    "actual_warmup_updates": 10,
+    "actual_timed_updates": 97,
+    "stop_reason": "internal_calibration_time_limit",
+    "training_error": null,
+    "timed_update_seconds": {
+      "mean": 2.9990486047643516,
+      "median": 2.6056440400425345,
+      "p95": 3.3655558501370244,
+      "use_for_formal_resource_estimate": false,
+      "reason": "Fewer than the planned 110 updates completed; planner cost probe was skipped."
+    },
+    "compile_timing": {
+      "compile_model": true,
+      "train_py_wrapper_call_seconds": 18.593,
+      "meaning": "train.py times only torch.compile(model) wrapper construction; PyTorch compiles lazily on first invocation, so this is not end-to-end compile time.",
+      "first_warmup_update_seconds": 16.729810626013204,
+      "first_update_compile_time_isolated": false
+    },
+    "gpu": {
+      "visible_uuid": "GPU-e6f4ed92-545b-476f-d00e-491441df423a",
+      "name": "NVIDIA A100-SXM4-40GB",
+      "training_peak_allocated_bytes": 7038008320,
+      "training_peak_reserved_bytes": 7111442432,
+      "telemetry": "Per-GPU 5-second NVML records matched CUDA_VISIBLE_DEVICES and Torch cuda:0; most observed utilization samples were 0%, with occasional 15%/19% samples."
+    },
+    "native_planner_cost_probe": "SKIPPED_TRAINING_INCOMPLETE",
+    "calibration_checkpoint_saved": false,
+    "planned_native_planner_cost_calls": "1 warmup plus up to 3 steady B=20, H=96, S=2000 plan() calls if time remains; no full validation or quality measurement.",
+    "gpu_telemetry": "PBS script samples per-GPU index, UUID, name, utilization, and memory every 5 seconds; startup verifies CUDA_VISIBLE_DEVICES against the NVML device corresponding to Torch cuda:0.",
+    "calibration_checkpoint_is_formal_result": false,
+    "next_calibration_amendment": {
+      "status": "PASS_COST_CALIBRATION",
+      "same_frozen_scientific_configuration": true,
+      "request": "normal queue, 1 GPU, 16 CPUs, 110 GB RAM, 30 minutes",
+      "training_deadline_seconds_from_process_start": 1200,
+      "planner_deadline_seconds_from_process_start": 1710,
+      "outer_timeout_seconds": 1740,
+      "timing_split": [
+        "batch_wait_seconds around next(official_iterator)",
+        "update_body_seconds_including_cuda_completion after next()"
+      ],
+      "cuda_synchronization": "Reuse the existing per-update terminal synchronize; no additional benchmark or sync.",
+      "planner_probe_model_mode": "eval, matching Trainer.validate()",
+      "independent_output_and_complete_110_update_calibration_checkpoint": true,
+      "submitted": true,
+      "storage_mode": {
+        "previous_attempt": "25571685.pbs101 used lazy_load=true and remains a preserved 107/110-update PARTIAL report.",
+        "candidate_config_value": "data.offline_wall_config.lazy_load=false",
+        "native_default": false,
+        "states_shape": [
+          40960,
+          90,
+          2,
+          65,
+          65
+        ],
+        "states_dtype": "uint8",
+        "states_host_array_bytes": 31150080000,
+        "expected_materialization": "Full host ndarray only; existing __getitem__ continues per-sample conversion to device.",
+        "gate": "One Trainer init; compare 64 deterministic boundary-covering windows from eager base and shallow-copy mmap(states.npy) using the same default_collate and existing Normalizer; require every runtime WallSample._fields raw field (states, locations, actions, bias_angle, wall_x, door_y, including empty tensors) to be torch.equal, normalized states/actions/locations plus any fields retained by Normalizer to be torch.equal, and unchanged Python/NumPy/Torch CPU/CUDA RNG states.",
+        "no_second_trainer_or_normalizer_scan": true,
+        "formal_acceptance": "PENDING_GATE_AND_ROOT_REVIEW"
+      },
+      "trainer_init_rss_measurement": true,
+      "root_review_status": "Root approved the completed calibration and final formal PBS script; one 4-hour formal submission is authorized.",
+      "job_id": "25572720.pbs101",
+      "initial_pbs_state": "R",
+      "actual_queue_observed": "gdev",
+      "queue_routing_note": "The scheduler routes a normal request for a <=2h GPU allocation to gdev; this is expected.",
+      "initial_allocation_observed": {
+        "state": "R",
+        "host": "x1000c1s0b0n1",
+        "gpus": 1,
+        "cpus": 16,
+        "memory": "110 GB",
+        "walltime": "00:30:00"
+      },
+      "terminal_pbs": {
+        "job_id": "25572720.pbs101",
+        "state": "F",
+        "exit_status": 0,
+        "stageout_status": 1,
+        "queue_requested": "normal",
+        "queue_actual": "gdev",
+        "queue_routing_note": "Expected route for a normal-requested GPU allocation under 2 hours.",
+        "host": "x1000c1s0b0n1",
+        "exec_host": "x1000c1s0b0n1/1*16",
+        "walltime_used": "00:05:06",
+        "cpu_time_used": "00:01:07",
+        "memory_used": "32086060kb",
+        "request": "1 GPU, 16 CPUs, 110 GB RAM, 30 minutes"
+      },
+      "remote_report": "/scratch/users/ntu/yguo017/pldm-reproduction/reports/calibration-25572720.pbs101/CALIBRATION.json",
+      "local_report": "CALIBRATION.25572720.json",
+      "local_job_log": "job.25572720.log",
+      "storage_equivalence_gate": {
+        "status": "PASS",
+        "sample_count": 64,
+        "windows_per_trajectory": 75,
+        "raw_fields": [
+          "states",
+          "locations",
+          "actions",
+          "bias_angle",
+          "wall_x",
+          "door_y"
+        ],
+        "raw_field_equal": {
+          "states": true,
+          "locations": true,
+          "actions": true,
+          "bias_angle": true,
+          "wall_x": true,
+          "door_y": true
+        },
+        "normalized_fields": [
+          "states",
+          "locations",
+          "actions",
+          "bias_angle",
+          "wall_x",
+          "door_y"
+        ],
+        "normalized_field_equal": {
+          "states": true,
+          "locations": true,
+          "actions": true,
+          "bias_angle": true,
+          "wall_x": true,
+          "door_y": true
+        },
+        "rng_states_unchanged": true,
+        "elapsed_seconds": 2.867528598057106,
+        "eager_states": {
+          "type": "ndarray",
+          "shape": [
+            40960,
+            90,
+            2,
+            65,
+            65
+          ],
+          "dtype": "uint8",
+          "nbytes": 31150080000,
+          "current_process_rss_bytes_after_gate": 32107233280
+        },
+        "mmap_states": {
+          "type": "memmap",
+          "shape": [
+            40960,
+            90,
+            2,
+            65,
+            65
+          ],
+          "dtype": "uint8"
+        },
+        "formal_storage_override_decision": "ELIGIBLE_FOR_ROOT_REVIEW_AFTER_PASS"
+      },
+      "training_measurement": {
+        "status": "PASS",
+        "configured_epochs": 2,
+        "actual_epoch_indices": [
+          0,
+          1,
+          2
+        ],
+        "actual_passes": 3,
+        "optimizer_updates_per_epoch": 48000,
+        "expected_official_updates": 144000,
+        "completed_updates": 110,
+        "warmup_updates": 10,
+        "timed_updates": 100,
+        "timed_update_summary": {
+          "count": 100,
+          "mean_seconds": 0.044063788512721656,
+          "median_seconds": 0.04406490141991526,
+          "p95_seconds": 0.04423265715595335
+        },
+        "batch_wait_summary": {
+          "count": 100,
+          "mean_seconds": 0.005847792460117489,
+          "median_seconds": 0.005840483587235212,
+          "p95_seconds": 0.005943822755943984
+        },
+        "update_body_summary": {
+          "count": 100,
+          "mean_seconds": 0.03821482157334685,
+          "median_seconds": 0.038211488048546016,
+          "p95_seconds": 0.03834560131654144
+        },
+        "estimated_full_official_training_update_seconds": 6345.185545831919,
+        "full_training_estimate_basis": "144,000 official updates multiplied by the complete 100-timed-update mean; includes measured iterator wait and update body with the existing CUDA completion sync.",
+        "trainer_initialization_seconds": 61.637050312012434,
+        "checkpoint_save_seconds": 0.2141383730340749,
+        "native_validation_calls": 0
+      },
+      "probing_cost_proxy": {
+        "status": "PROXY_REPORTED",
+        "measured": false,
+        "actual_batch_work": 8114,
+        "proxy_seconds": 357.5335799922235,
+        "limitation": "Not a measured prober cost or guaranteed upper bound. The full training update includes backbone backward work, while probing uses different forwards and may add visualization/plotting. Retain extra walltime margin and do not call this a measured evaluation estimate."
+      },
+      "native_planner_cost_probe": {
+        "status": "PASS",
+        "model_mode": "eval",
+        "model_mode_matches_native_validate": true,
+        "warmup_calls": 1,
+        "steady_calls": 3,
+        "batch_size": 20,
+        "horizon": 96,
+        "mppi_samples": 2000,
+        "call_seconds": [
+          1.6525796209461987,
+          1.2928028400056064,
+          1.2942961691878736,
+          1.296016518957913
+        ],
+        "steady_mean_seconds": 1.294371842717131,
+        "all_shapes_finite": true,
+        "output_shapes": {
+          "actions_shape": [
+            20,
+            96,
+            2
+          ],
+          "pred_encs_shape": [
+            97,
+            20,
+            512
+          ],
+          "pred_obs_shape": [
+            97,
+            20,
+            512
+          ]
+        },
+        "native_plan_calls_per_evaluation_from_source": 1000,
+        "planning_only_h96_proxy_seconds": 1294.371842717131,
+        "linear_transition_scaled_proxy_seconds": 986.9585300718123,
+        "limitation": "linear transition scaling omits 1000-call overhead, environment stepping, trained-prober projection, native probing, reporting, and early termination",
+        "prober_used": false,
+        "projected_cost": false
+      },
+      "calibration_checkpoint": {
+        "path": "/scratch/users/ntu/yguo017/pldm-reproduction/calibration_output/tworooms-calibration-25572720.pbs101/epoch=0_sample_step=7040.ckpt",
+        "bytes": 26675552,
+        "formal_checkpoint_reuse": false
+      },
+      "gpu_telemetry": {
+        "samples": 52,
+        "interval_seconds": 5,
+        "uuid": "GPU-25f8c476-f27a-b55e-ad08-27dd0ae063fe",
+        "name": "NVIDIA A100-SXM4-40GB",
+        "nvml_index": 0,
+        "torch_device": "cuda:0"
+      },
+      "component_planning_sum_seconds": 8058.728018853285,
+      "formal_resource_review": "APPROVED_AFTER_CALIBRATION; cost proxies are not a guaranteed full-run upper bound, and the approved 4-hour allocation retains margin for unmeasured work.",
+      "formal_run_submitted": false
+    },
+    "latest_attempt": {
+      "pbs": {
+        "job_id": "25572720.pbs101",
+        "state": "F",
+        "exit_status": 0,
+        "stageout_status": 1,
+        "queue_requested": "normal",
+        "queue_actual": "gdev",
+        "queue_routing_note": "Expected route for a normal-requested GPU allocation under 2 hours.",
+        "host": "x1000c1s0b0n1",
+        "exec_host": "x1000c1s0b0n1/1*16",
+        "walltime_used": "00:05:06",
+        "cpu_time_used": "00:01:07",
+        "memory_used": "32086060kb",
+        "request": "1 GPU, 16 CPUs, 110 GB RAM, 30 minutes"
+      },
+      "storage_gate": {
+        "status": "PASS",
+        "sample_count": 64,
+        "windows_per_trajectory": 75,
+        "raw_fields": [
+          "states",
+          "locations",
+          "actions",
+          "bias_angle",
+          "wall_x",
+          "door_y"
+        ],
+        "raw_field_equal": {
+          "states": true,
+          "locations": true,
+          "actions": true,
+          "bias_angle": true,
+          "wall_x": true,
+          "door_y": true
+        },
+        "normalized_fields": [
+          "states",
+          "locations",
+          "actions",
+          "bias_angle",
+          "wall_x",
+          "door_y"
+        ],
+        "normalized_field_equal": {
+          "states": true,
+          "locations": true,
+          "actions": true,
+          "bias_angle": true,
+          "wall_x": true,
+          "door_y": true
+        },
+        "rng_states_unchanged": true,
+        "elapsed_seconds": 2.867528598057106,
+        "eager_states": {
+          "type": "ndarray",
+          "shape": [
+            40960,
+            90,
+            2,
+            65,
+            65
+          ],
+          "dtype": "uint8",
+          "nbytes": 31150080000,
+          "current_process_rss_bytes_after_gate": 32107233280
+        },
+        "mmap_states": {
+          "type": "memmap",
+          "shape": [
+            40960,
+            90,
+            2,
+            65,
+            65
+          ],
+          "dtype": "uint8"
+        },
+        "formal_storage_override_decision": "ELIGIBLE_FOR_ROOT_REVIEW_AFTER_PASS"
+      },
+      "training": {
+        "status": "PASS",
+        "configured_epochs": 2,
+        "actual_epoch_indices": [
+          0,
+          1,
+          2
+        ],
+        "actual_passes": 3,
+        "optimizer_updates_per_epoch": 48000,
+        "expected_official_updates": 144000,
+        "completed_updates": 110,
+        "warmup_updates": 10,
+        "timed_updates": 100,
+        "timed_update_summary": {
+          "count": 100,
+          "mean_seconds": 0.044063788512721656,
+          "median_seconds": 0.04406490141991526,
+          "p95_seconds": 0.04423265715595335
+        },
+        "batch_wait_summary": {
+          "count": 100,
+          "mean_seconds": 0.005847792460117489,
+          "median_seconds": 0.005840483587235212,
+          "p95_seconds": 0.005943822755943984
+        },
+        "update_body_summary": {
+          "count": 100,
+          "mean_seconds": 0.03821482157334685,
+          "median_seconds": 0.038211488048546016,
+          "p95_seconds": 0.03834560131654144
+        },
+        "estimated_full_official_training_update_seconds": 6345.185545831919,
+        "full_training_estimate_basis": "144,000 official updates multiplied by the complete 100-timed-update mean; includes measured iterator wait and update body with the existing CUDA completion sync.",
+        "trainer_initialization_seconds": 61.637050312012434,
+        "checkpoint_save_seconds": 0.2141383730340749,
+        "native_validation_calls": 0
+      },
+      "probing_proxy": {
+        "status": "PROXY_REPORTED",
+        "measured": false,
+        "actual_batch_work": 8114,
+        "proxy_seconds": 357.5335799922235,
+        "limitation": "Not a measured prober cost or guaranteed upper bound. The full training update includes backbone backward work, while probing uses different forwards and may add visualization/plotting. Retain extra walltime margin and do not call this a measured evaluation estimate."
+      },
+      "planner_cost_probe": {
+        "status": "PASS",
+        "model_mode": "eval",
+        "model_mode_matches_native_validate": true,
+        "warmup_calls": 1,
+        "steady_calls": 3,
+        "batch_size": 20,
+        "horizon": 96,
+        "mppi_samples": 2000,
+        "call_seconds": [
+          1.6525796209461987,
+          1.2928028400056064,
+          1.2942961691878736,
+          1.296016518957913
+        ],
+        "steady_mean_seconds": 1.294371842717131,
+        "all_shapes_finite": true,
+        "output_shapes": {
+          "actions_shape": [
+            20,
+            96,
+            2
+          ],
+          "pred_encs_shape": [
+            97,
+            20,
+            512
+          ],
+          "pred_obs_shape": [
+            97,
+            20,
+            512
+          ]
+        },
+        "native_plan_calls_per_evaluation_from_source": 1000,
+        "planning_only_h96_proxy_seconds": 1294.371842717131,
+        "linear_transition_scaled_proxy_seconds": 986.9585300718123,
+        "limitation": "linear transition scaling omits 1000-call overhead, environment stepping, trained-prober projection, native probing, reporting, and early termination",
+        "prober_used": false,
+        "projected_cost": false
+      },
+      "calibration_checkpoint": {
+        "path": "/scratch/users/ntu/yguo017/pldm-reproduction/calibration_output/tworooms-calibration-25572720.pbs101/epoch=0_sample_step=7040.ckpt",
+        "bytes": 26675552,
+        "formal_checkpoint_reuse": false
+      },
+      "component_planning_sum_seconds": 8058.728018853285
+    }
+  },
+  "formal_run": {
+    "job_id": "25572927.pbs101",
+    "status": "USER_CANCELLED_BEFORE_RUNNING",
+    "frozen_scope": "Full released dataset; official seqlen90_3M configuration with epochs=2 and actual epoch indices 0,1,2; all 144,000 optimizer updates; native 100-environment, 200-step, B=20, S=2000, replan-every-step evaluation; official probing remains enabled.",
+    "formal_checkpoint": null,
+    "native_summary": null,
+    "native_wall_planning_result": null,
+    "native_wall_planning_report": null,
+    "resource_status": "APPROVED_AFTER_CALIBRATION; normal request with 1 GPU, 16 CPUs, 110 GB RAM, 4h walltime, 230m inner timeout and 10m cleanup/stageout margin.",
+    "resource_request": {
+      "queue": "normal",
+      "gpus": 1,
+      "cpus": 16,
+      "memory_gb": 110,
+      "pbs_walltime": "04:00:00",
+      "inner_timeout": "03:50:00",
+      "cleanup_and_stageout_margin": "00:10:00"
+    },
+    "resource_approval": "Root approved the 4-hour resource/storage amendment and final PBS script for one formal submission.",
+    "initial_resource_placeholder_preserved": "02:00:00",
+    "storage_override": "data.offline_wall_config.lazy_load=false; exact 64-window raw/normalized six-field equality gate passed.",
+    "execution_policy": {
+      "start_from_scratch": true,
+      "resume_if_possible": false,
+      "eval_at_beginning": false,
+      "eval_during_training": false,
+      "official_native_final_validate": true,
+      "calibration_checkpoint_reuse": false,
+      "eval_only_substitution": false
+    },
+    "pbs_initial_status": {
+      "query": "qstat -fx 25572927.pbs101",
+      "job_state": "Q",
+      "requested_queue": "normal",
+      "actual_scheduler_queue": "g1",
+      "scheduler_comment": "Not Running: User has reached queue g1 running job limit.",
+      "resources": {
+        "gpus": 1,
+        "cpus": 16,
+        "memory_gb": 110,
+        "walltime": "04:00:00"
+      },
+      "terminal_exit_status": null,
+      "stageout_status": null,
+      "policy": "Keep this PBS handle and monitor read-only; do not cancel, reorder, bypass, or resubmit."
+    },
+    "closure": {
+      "date": "2026-09-27",
+      "qdel": "successful",
+      "job_state": "F",
+      "scheduler_comment": "Not Running: User has reached queue g1 running job limit. and terminated",
+      "exit_status": null,
+      "stageout_status": null,
+      "formal_training_started": false,
+      "monitoring": "stopped",
+      "resubmission": "not authorized; cancelled by user"
+    }
+  },
+  "result_collection": {
+    "remote_script": "/scratch/users/ntu/yguo017/pldm-reproduction/collect_native_result.py",
+    "status": "NOT_RUN; formal job cancelled before running; no formal result to collect",
+    "invocation_condition": "No collection for this cancelled formal run.",
+    "completion_evidence": "Fresh official final summary with custom_step=143999 and six wall_medium metrics, native evaluator result/report files, native trainer exit marker, checkpoint metadata, source identity, and actual PBS terminal status.",
+    "scope": "Small-control-file reads only; it does not load checkpoint weights or dataset arrays."
+  },
+  "attempt_history": [
+    {
+      "job_id": "25570893.pbs101",
+      "status": "FAIL",
+      "reason": "Observed missing arm_pytorch_utilities; resolved in an isolated task overlay."
+    },
+    {
+      "job_id": "25570961.pbs101",
+      "status": "FAIL",
+      "reason": "Observed missing pytorch_seed; resolved in an isolated task overlay."
+    },
+    {
+      "job_id": "25570989.pbs101",
+      "status": "FAIL",
+      "reason": "Observed missing statsmodels; resolved with its exact official pin in an isolated overlay."
+    },
+    {
+      "job_id": "25571058.pbs101",
+      "status": "FAIL",
+      "reason": "Observed statsmodels API import failure against inherited SciPy; prompted the isolated official NumPy/SciPy pin."
+    },
+    {
+      "job_id": "25571214.pbs101",
+      "status": "FAIL",
+      "reason": "After the isolated SciPy/NumPy pin, observed statsmodels 0.14.4 incompatibility with inherited pandas 3.0.6; prompted official pandas pin."
+    },
+    {
+      "job_id": "25571355.pbs101",
+      "status": "FAIL",
+      "reason": "Python 3.11 rejected a mutable dataclass default; exact staged-only repair work continued in later allocations."
+    },
+    {
+      "job_id": "25571532.pbs101",
+      "status": "FAIL",
+      "reason": "Six fresh imports each surfaced an exact mutable dataclass default; five fields were repaired before the next batch."
+    },
+    {
+      "job_id": "25571561.pbs101",
+      "status": "FAIL",
+      "reason": "Another six fresh imports; five exact fields were repaired before the next batch."
+    },
+    {
+      "job_id": "25571588.pbs101",
+      "status": "FAIL",
+      "reason": "The remaining four exact fields were repaired; the config gate then exposed an Enum display-only mismatch in the CPU probe, not a config change."
+    },
+    {
+      "job_id": "25571604.pbs101",
+      "status": "PASS",
+      "reason": "Fresh imports, pinned config composition, full actual CPU loader and probing-loader metadata gates passed."
+    },
+    {
+      "job_id": "25572720.pbs101",
+      "status": "PASS_COST_CALIBRATION",
+      "reason": "Native eager uint8 storage equivalence gate passed on 64 windows; complete 110-update timing, calibration-only checkpoint, and 1+3 cost-only native MPPI calls recorded. No native evaluation or quality result."
+    }
+  ],
+  "evidence_boundary": "CPU preparation and complete cost calibration passed. User cancelled queued formal job 25572927.pbs101 before training; qdel succeeded and qstat confirmed F with terminated comment. No formal checkpoint, native evaluation, task-success result, Exit_status or Stageout_status was observed. Goal closed under revised user scope."
+}

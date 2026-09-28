@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# CPU-only official LpWM imports and loader-length preflight.
+#PBS -N lpwm-cpu-loader
+#PBS -q normal
+#PBS -P personal-yguo017
+#PBS -l select=1:ncpus=8:mem=64gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+OUT=/scratch/users/ntu/yguo017/experiment/reproduction/lpwm
+REPO="$OUT/lpworldmodel-bdd812d"
+COMMIT=bdd812d9432cccda8c350086006401b436f91982
+DINO_ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+DATA="$DINO_ROOT/data"
+PY=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+OVERLAY="$OUT/runtime-overlay-minimal"
+LOG="$OUT/cpu-loader-${PBS_JOBID:-missing}.log"
+
+fail() { echo "PREFLIGHT_INVALID: $*"; exit 2; }
+[[ -n "${PBS_JOBID:-}" ]] || fail "PBS_JOBID missing"
+[[ -s "${PBS_NODEFILE:-}" ]] || fail "PBS_NODEFILE missing or empty"
+HOST=$(hostname -f 2>/dev/null || hostname)
+[[ "$HOST" != *login* ]] || fail "login host rejected: $HOST"
+awk -v h="$HOST" 'BEGIN{ok=0} {n=$1; sub(/\..*/,"",n); x=h; sub(/\..*/,"",x); if(tolower(n)==tolower(x))ok=1} END{exit !ok}' "$PBS_NODEFILE" || fail "host is not listed in PBS_NODEFILE: $HOST"
+[[ -x "$PY" ]] || fail "verified existing Python runtime unavailable: $PY"
+[[ -f "$REPO/SOURCE_COMMIT" && "$(cat "$REPO/SOURCE_COMMIT")" == "$COMMIT" ]] || fail "pinned source archive marker missing or mismatched"
+[[ -f "$REPO/train.py" && -f "$REPO/plan.py" ]] || fail "official train/plan entrypoints missing"
+[[ -f "$DINO_ROOT/PUSHT_ASSETS_READY" ]] || fail "official DINO-WM PushT asset marker missing"
+[[ -f "$DATA/pusht_noise/train/seq_lengths.pkl" && -f "$DATA/pusht_noise/val/seq_lengths.pkl" ]] || fail "expected PushT metadata absent"
+
+mkdir -p "$OUT" "$OVERLAY"
+exec > >(tee -a "$LOG") 2>&1
+echo "PBS_JOBID=$PBS_JOBID HOST=$HOST NODEFILE=$PBS_NODEFILE"
+echo "START_UTC=$(date -u +%FT%TZ)"
+echo "OFFICIAL_SOURCE_ARCHIVE_COMMIT=$COMMIT"
+echo "OFFICIAL_DINO_ASSET_MARKER=$(cat "$DINO_ROOT/PUSHT_ASSETS_READY")"
+stat -c "OFFICIAL_OSF_ARCHIVE_SIZE_BYTES=%s MTIME=%y" "$DINO_ROOT/artifacts/pusht-assets-23952308.pbs101/downloads/official-pusht-noise.zip"
+echo "PYTHON=$PY"
+echo "OVERLAY=$OVERLAY"
+
+# Keep the existing shared Python environment read-only. Only add the small
+# official runtime packages known to be absent; do not resolve/install their
+# full dependency tree or replace torch/numpy/hydra.
+"$PY" -m pip install --disable-pip-version-check --no-deps --target "$OVERLAY" \
+  accelerate==0.26.1 gym==0.23.1 gym-notices==0.0.8 decord==0.6.0 \
+  submitit==1.5.1 hydra-submitit-launcher==1.2.0
+
+export DATASET_DIR="$DATA"
+export PYTHONPATH="$OVERLAY:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+cd "$REPO"
+"$PY" - <<'PY'
+import importlib, os, sys, time
+print("PYTHON_VERSION=" + sys.version.replace("\n", " "))
+import torch
+print(f"TORCH_VERSION={torch.__version__}")
+print(f"TORCH_CUDA_AVAILABLE={torch.cuda.is_available()}")
+
+imports = {}
+for name in ("accelerate", "gym", "decord", "submitit"):
+    try:
+        module = importlib.import_module(name)
+        print(f"OVERLAY_IMPORT_{name}=PASS:{getattr(module, '__version__', 'version-unreported')}:{module.__file__}")
+    except Exception as exc:
+        print(f"OVERLAY_IMPORT_{name}=FAIL:{type(exc).__name__}:{exc}")
+for name in ("train", "plan"):
+    try:
+        importlib.import_module(name)
+        imports[name] = True
+        print(f"OFFICIAL_IMPORT_{name}=PASS")
+    except Exception as exc:
+        imports[name] = False
+        print(f"OFFICIAL_IMPORT_{name}=FAIL:{type(exc).__name__}:{exc}")
+print(f"OFFICIAL_ENTRYPOINT_IMPORTS_READY={int(all(imports.values()))}")
+
+# Match scripts/train.sh's defaults for this frozen protocol. The official
+# PushT factory loads only state/action/velocity tensors and trajectory lengths;
+# no __getitem__ is called, so no observation video/image is read.
+from datasets.pusht_dset import load_pusht_slice_train_val
+import torch.utils.data
+import numpy as np
+np.random.seed(0)
+torch.manual_seed(0)
+started = time.monotonic()
+datasets, trajectories = load_pusht_slice_train_val(
+    transform=None,
+    n_rollout=None,
+    data_path=os.path.join(os.environ["DATASET_DIR"], "pusht_noise"),
+    normalize_action=True,
+    split_ratio=0.9,
+    num_hist=3,
+    num_pred=1,
+    frameskip=5,
+    with_velocity=True,
+)
+print(f"OFFICIAL_LOADER_INIT_SECONDS={time.monotonic() - started:.3f}")
+for split in ("train", "valid"):
+    batch_size = 64
+    num_workers = 20
+    loader = torch.utils.data.DataLoader(
+        datasets[split], batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, collate_fn=None,
+    )
+    traj = trajectories[split]
+    print(f"{split.upper()}_TRAJECTORIES_ACTUAL={len(traj)}")
+    print(f"{split.upper()}_SLICES_ACTUAL={len(datasets[split])}")
+    print(f"{split.upper()}_DATALOADER_BATCHES_ACTUAL={len(loader)}")
+    print(f"{split.upper()}_BATCH_SIZE={batch_size}")
+    print(f"{split.upper()}_NUM_WORKERS={num_workers}")
+print("TRAIN_EPOCHS=2")
+print(f"TRAIN_TOTAL_BATCHES_2_EPOCHS={2 * len(torch.utils.data.DataLoader(datasets['train'], batch_size=64, shuffle=False, num_workers=20))}")
+print("LOADER_ITEMS_ITERATED=0; IMAGE_VIDEO_READS=0")
+print("ACTUAL_LOADER_LENGTHS_VALID=1")
+PY
+
+echo "END_UTC=$(date -u +%FT%TZ)"
+echo "CPU_LOADER_PREFLIGHT_COMPLETE=1"

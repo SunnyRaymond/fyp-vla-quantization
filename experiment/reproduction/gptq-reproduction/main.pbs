@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -N gptq_opt67b
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:30:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/gptq-reproduction
+cd "$ROOT"
+test -f SMOKE_PASSED
+exec > >(tee "logs/main-$PBS_JOBID.log") 2>&1
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export HF_HOME="$ROOT/cache/huggingface" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+export OMP_NUM_THREADS=4 PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
+nvidia-smi
+for method in fp16 rtn4 gptq4 gptq3; do
+  if test -f "results/opt-6.7b-$method.json"; then continue; fi
+  timeout 1200s venv/bin/python run.py --model opt-6.7b --method "$method"
+done
+touch MAIN_PASSED

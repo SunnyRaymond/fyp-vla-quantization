@@ -1,0 +1,203 @@
+#!/bin/bash
+#PBS -N pldm_cpu_resume
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/pldm-reproduction
+JOB_ID=${PBS_JOBID:-}
+NODEFILE=${PBS_NODEFILE:-}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -n "$JOB_ID" || { echo 'Refusing CPU work without PBS_JOBID' >&2; exit 64; }
+test -n "$NODEFILE" && test -f "$NODEFILE" || { echo 'Refusing CPU work without PBS_NODEFILE' >&2; exit 64; }
+case "$HOST" in
+  *login*|*head*|*submit*) echo "Refusing probable login host: $HOST" >&2; exit 64 ;;
+esac
+if ! awk -v host="$HOST" '{ node=tolower($1); sub(/\..*/, "", node); if (node == host) found=1 } END { exit !found }' "$NODEFILE"; then
+  echo "Current host $HOST is not listed in PBS_NODEFILE" >&2
+  exit 64
+fi
+
+OUT="$ROOT/reports/$JOB_ID"
+mkdir -p "$OUT"
+cp "$ROOT/resume_cpu_probe.py" "$ROOT/FREEZE.json" "$ROOT/PROTOCOL.zh.md" "$OUT/"
+exec > >(tee -a "$ROOT/logs/cpu-resume-$JOB_ID.log") 2>&1
+trap 'rc=$?; printf "job_id=%s\nexit_code=%s\nfinished_utc=%s\nhost=%s\n" "$JOB_ID" "$rc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HOST" > "$OUT/job_status.txt.tmp-$JOB_ID"; mv "$OUT/job_status.txt.tmp-$JOB_ID" "$OUT/job_status.txt"' EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+export PLDM_ROOT="$ROOT"
+export PLDM_PYTHON=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+SCI_TARGET="$ROOT/runtime_overlay/numpy-1.26.4-scipy-1.10.0-pinned"
+SCI_STAGE="$ROOT/runtime_overlay/numpy-scipy-stage-$JOB_ID"
+if [ ! -d "$SCI_TARGET" ]; then
+  test ! -e "$SCI_STAGE" || { echo "Refusing to reuse incomplete isolated overlay stage: $SCI_STAGE" >&2; exit 65; }
+  timeout --signal=TERM --kill-after=15s 15m "$PLDM_PYTHON" -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --only-binary=:all: --target "$SCI_STAGE" numpy==1.26.4 scipy==1.10.0
+  mv "$SCI_STAGE" "$SCI_TARGET"
+fi
+PANDAS_TARGET="$ROOT/runtime_overlay/pandas-2.0.1-pinned"
+PANDAS_STAGE="$ROOT/runtime_overlay/pandas-stage-$JOB_ID"
+if [ ! -d "$PANDAS_TARGET" ]; then
+  test ! -e "$PANDAS_STAGE" || { echo "Refusing to reuse incomplete isolated overlay stage: $PANDAS_STAGE" >&2; exit 65; }
+  timeout --signal=TERM --kill-after=10s 5m "$PLDM_PYTHON" -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --only-binary=:all: --target "$PANDAS_STAGE" pandas==2.0.1 pytz==2022.7.1
+  mv "$PANDAS_STAGE" "$PANDAS_TARGET"
+fi
+ARM_TARGET="$ROOT/runtime_overlay/arm-pytorch-utilities-0.4.3"
+ARM_STAGE="$ROOT/runtime_overlay/arm-stage-$JOB_ID"
+if [ ! -d "$ARM_TARGET" ]; then
+  test ! -e "$ARM_STAGE" || { echo "Refusing to reuse incomplete isolated overlay stage: $ARM_STAGE" >&2; exit 65; }
+  timeout --signal=TERM --kill-after=15s 10m "$PLDM_PYTHON" -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --target "$ARM_STAGE" arm_pytorch_utilities==0.4.3
+  mv "$ARM_STAGE" "$ARM_TARGET"
+fi
+SEED_TARGET="$ROOT/runtime_overlay/pytorch-seed-0.2.0"
+SEED_STAGE="$ROOT/runtime_overlay/pytorch-seed-stage-$JOB_ID"
+if [ ! -d "$SEED_TARGET" ]; then
+  test ! -e "$SEED_STAGE" || { echo "Refusing to reuse incomplete isolated overlay stage: $SEED_STAGE" >&2; exit 65; }
+  timeout --signal=TERM --kill-after=15s 10m "$PLDM_PYTHON" -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --target "$SEED_STAGE" pytorch-seed==0.2.0
+  mv "$SEED_STAGE" "$SEED_TARGET"
+fi
+SM_TARGET="$ROOT/runtime_overlay/statsmodels-patsy-pinned"
+SM_STAGE="$ROOT/runtime_overlay/statsmodels-patsy-stage-$JOB_ID"
+if [ ! -d "$SM_TARGET" ]; then
+  test ! -e "$SM_STAGE" || { echo "Refusing to reuse incomplete isolated overlay stage: $SM_STAGE" >&2; exit 65; }
+  timeout --signal=TERM --kill-after=15s 10m "$PLDM_PYTHON" -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --only-binary=:all: --target "$SM_STAGE" statsmodels==0.14.4 patsy==1.0.1
+  mv "$SM_STAGE" "$SM_TARGET"
+fi
+export PYTHONPATH="$ROOT/staged:$SCI_TARGET:$PANDAS_TARGET:$SM_TARGET:$SEED_TARGET:$ARM_TARGET:/scratch/users/ntu/yguo017/experiment/reproduction/lpwm/runtime-overlay-minimal:$ROOT/runtime_overlay/numpy-1.26.4:$ROOT/runtime_overlay/zarr-2.14.2-pinned:$ROOT/runtime_overlay/gdown:$ROOT/runtime_overlay/html-parser"
+
+printf 'job_id=%s\nhost=%s\nnodefile=%s\nroot=%s\n' "$JOB_ID" "$HOST" "$NODEFILE" "$ROOT"
+date -u +%Y-%m-%dT%H:%M:%SZ
+module list 2>&1
+python -m py_compile "$ROOT/resume_cpu_probe.py"
+cd "$ROOT/staged/pldm"
+CPU_PROBE_DEADLINE=$((SECONDS + 600))
+for attempt in 1 2 3 4 5 6; do
+  remaining=$((CPU_PROBE_DEADLINE - SECONDS))
+  if [ "$remaining" -le 0 ]; then
+    echo 'CPU import/config/loader probe reached its internal 10-minute deadline' >&2
+    exit 124
+  fi
+  set +e
+  timeout --signal=TERM --kill-after=10s "${remaining}s" "$PLDM_PYTHON" "$ROOT/resume_cpu_probe.py"
+  probe_rc=$?
+  set -e
+  if [ "$probe_rc" -eq 0 ]; then
+    exit 0
+  fi
+  FAILED_REPORT="$OUT/PREPARATION.import-round-$attempt.json"
+  cp "$OUT/PREPARATION.json" "$FAILED_REPORT"
+  if [ "$attempt" -eq 6 ]; then
+    echo 'Reached the six fresh-import attempts; final failure report is preserved' >&2
+    exit "$probe_rc"
+  fi
+  set +e
+  timeout --signal=TERM --kill-after=5s 90s "$PLDM_PYTHON" - "$ROOT" "$JOB_ID" "$FAILED_REPORT" <<'PY'
+import importlib.metadata
+import json, os, re, subprocess, sys
+from pathlib import Path
+root, job_id, report_path = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
+failed = json.loads(report_path.read_text(encoding="utf-8"))
+error = failed.get("error", {})
+message = error.get("message", "")
+identity_path = root / "staged_source_identity.json"
+identity = json.loads(identity_path.read_text(encoding="utf-8"))
+if identity.get("source_sha") != "1bd7e564ecd961205bc18b23067b19e9ca24ac90" or identity.get("algorithm_or_config_changes") != []:
+    raise SystemExit("Refusing retry; staged source identity gate failed")
+
+if "mutable default" in message and "use default_factory" in message:
+    sys.path.insert(0, str(root))
+    from prepare_cpu import compatibility_patch_for_error
+    record = compatibility_patch_for_error(root / "staged", message)
+    if record is None:
+        raise SystemExit(f"No exact one-field Python 3.11 compatibility patch matched: {message}")
+    identity.setdefault("patches", []).append(record)
+    temporary = identity_path.with_name(identity_path.name + f".tmp-{job_id}")
+    temporary.write_text(json.dumps(identity, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, identity_path)
+    print("STAGED_COMPATIBILITY_PATCH=" + json.dumps(record), flush=True)
+    sys.exit(0)
+
+missing = re.search(r"No module named ['\"]([^'\"]+)['\"]", message)
+if missing is None:
+    print(f"STOP_AFTER_OBSERVED_ERROR {error.get('type')}: {message}", flush=True)
+    sys.exit(42)
+module_name = missing.group(1).split(".", 1)[0]
+approved = {
+    "dateutil": ("python-dateutil", "2.8.2"),
+    "pytz": ("pytz", "2022.7.1"),
+    "tzdata": ("tzdata", "2024.2"),
+    "six": ("six", "1.16.0"),
+}
+if module_name not in approved:
+    print(f"STOP_AFTER_UNAPPROVED_MISSING_MODULE {module_name}: {message}", flush=True)
+    sys.exit(42)
+distribution, version = approved[module_name]
+requirements = (root / "upstream" / "requirements.txt").read_text(encoding="utf-8")
+normalized = distribution.lower().replace("_", "-")
+pins = {}
+for line in requirements.splitlines():
+    match = re.match(r"^([A-Za-z0-9_.-]+)==([^;\s]+)$", line.strip())
+    if match:
+        pins[match.group(1).lower().replace("_", "-")] = match.group(2)
+if pins.get(normalized) != version:
+    print(f"STOP_PIN_NOT_CONFIRMED_IN_OFFICIAL_REQUIREMENTS {distribution}=={version}", flush=True)
+    sys.exit(42)
+reports = root / "reports" / job_id
+prior = sorted(reports.glob("observed-dependency-*.json"))
+if len(prior) >= 3:
+    print("STOP_AFTER_THREE_OBSERVED_SMALL_DEPENDENCY_INSTALLS", flush=True)
+    sys.exit(42)
+index = len(prior) + 1
+overlay_root = root / "runtime_overlay"
+target = overlay_root / f"observed-{job_id}-{normalized}-{version}"
+stage = overlay_root / f"observed-stage-{job_id}-{normalized}-{version}"
+if target.exists() or stage.exists():
+    raise SystemExit(f"Refusing to reuse dependency install target/stage: {target} {stage}")
+stage.mkdir(parents=True)
+command = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location", "--no-deps", "--only-binary=:all:", "--target", str(stage), f"{distribution}=={version}"]
+try:
+    result = subprocess.run(command, text=True, capture_output=True, timeout=60, check=False)
+except subprocess.TimeoutExpired as exc:
+    raise SystemExit(f"Observed exact-pin wheel install exceeded 60 seconds for {distribution}=={version}") from exc
+if result.returncode:
+    raise SystemExit(f"Observed exact-pin wheel install failed for {distribution}=={version}; exit={result.returncode}; stderr={result.stderr[-1200:]}")
+found = {d.metadata.get("Name", "").lower().replace("_", "-"): d.version for d in importlib.metadata.Distribution.discover(path=[str(stage)])}
+if found.get(normalized) != version:
+    raise SystemExit(f"Installed isolated distribution metadata mismatch: {distribution}=={found.get(normalized)}")
+os.replace(stage, target)
+record = {
+    "status": "INSTALLED_OBSERVED_OFFICIAL_PIN",
+    "trigger_module_not_found": module_name,
+    "trigger_message": message,
+    "distribution": distribution,
+    "version": version,
+    "overlay": str(target),
+    "install_mode": "binary wheel only, --no-deps, isolated task overlay",
+    "shared_runtime_modified": False,
+}
+record_path = reports / f"observed-dependency-{index}.json"
+temp = record_path.with_name(record_path.name + f".tmp-{job_id}")
+temp.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+os.replace(temp, record_path)
+print("OBSERVED_DEPENDENCY_INSTALLED=" + json.dumps(record), flush=True)
+sys.exit(43)
+PY
+  patch_rc=$?
+  set -e
+  if [ "$patch_rc" -eq 42 ]; then
+    exit "$probe_rc"
+  fi
+  if [ "$patch_rc" -eq 43 ]; then
+    echo 'Installed one observed official pinned pure-Python dependency in a task overlay; starting a fresh import process' >&2
+    continue
+  fi
+  if [ "$patch_rc" -ne 0 ]; then
+    echo "Exact staged compatibility patcher failed: $patch_rc" >&2
+    exit "$patch_rc"
+  fi
+  "$PLDM_PYTHON" -m py_compile "$ROOT/staged/pldm/evaluation/evaluator.py"
+done

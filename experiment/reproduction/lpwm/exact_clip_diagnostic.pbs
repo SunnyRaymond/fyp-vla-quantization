@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+#PBS -N lpwm-clip-diag
+#PBS -q normal
+#PBS -P personal-yguo017
+#PBS -l select=1:ncpus=8:mem=64gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+
+OUT=/scratch/users/ntu/yguo017/experiment/reproduction/lpwm
+REPO="$OUT/lpworldmodel-bdd812d"
+COMMIT=bdd812d9432cccda8c350086006401b436f91982
+DINO_ROOT=/scratch/users/ntu/yguo017/dino-wm-wall
+DATA="$DINO_ROOT/data"
+ARCHIVE="$DINO_ROOT/artifacts/pusht-assets-23952308.pbs101/downloads/official-pusht-noise.zip"
+PY=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+OVERLAY="$OUT/runtime-overlay-minimal"
+LOG="$OUT/exact-clip-diag-${PBS_JOBID:-missing}.log"
+
+fail() { echo "DIAGNOSTIC_INVALID: $*"; exit 2; }
+[[ -n "${PBS_JOBID:-}" ]] || fail "PBS_JOBID missing"
+[[ -s "${PBS_NODEFILE:-}" ]] || fail "PBS_NODEFILE missing or empty"
+HOST=$(hostname -f 2>/dev/null || hostname)
+[[ "$HOST" != *login* ]] || fail "login host rejected: $HOST"
+awk -v h="$HOST" 'BEGIN{ok=0} {n=$1; sub(/\..*/,"",n); x=h; sub(/\..*/,"",x); if(tolower(n)==tolower(x))ok=1} END{exit !ok}' "$PBS_NODEFILE" || fail "host is not listed in PBS_NODEFILE: $HOST"
+[[ -x "$PY" ]] || fail "verified existing Python runtime unavailable: $PY"
+[[ -f "$REPO/SOURCE_COMMIT" && "$(cat "$REPO/SOURCE_COMMIT")" == "$COMMIT" ]] || fail "pinned source marker mismatch"
+[[ -f "$REPO/datasets/pusht_dset.py" ]] || fail "pinned official loader missing"
+[[ -f "$ARCHIVE" ]] || fail "expected official OSF archive missing at recorded path"
+[[ -f "$DATA/pusht_noise/train/seq_lengths.pkl" ]] || fail "training metadata absent"
+
+mkdir -p "$OUT"
+exec > >(tee -a "$LOG") 2>&1
+echo "PBS_JOBID=$PBS_JOBID HOST=$HOST NODEFILE=$PBS_NODEFILE"
+echo "START_UTC=$(date -u +%FT%TZ)"
+echo "SOURCE_COMMIT=$COMMIT"
+echo "DATA_ROOT=$DATA/pusht_noise"
+echo "ASSET_MARKER=$(cat "$DINO_ROOT/PUSHT_ASSETS_READY" 2>/dev/null || echo MISSING)"
+stat -c "OSF_ARCHIVE_SIZE_BYTES=%s MTIME=%y PATH=%n" "$ARCHIVE"
+for rel in \
+  train/obses/episode_9956.mp4 \
+  train/obses/episode_2930.mp4 \
+  train/obses/episode_000.mp4 \
+  val/obses/episode_000.mp4; do
+  path="$DATA/pusht_noise/$rel"
+  if [[ -e "$path" ]]; then
+    stat -c "CLIP_PRESENT SIZE_BYTES=%s MTIME=%y PATH=%n" "$path"
+    readlink -f "$path" | sed 's/^/CLIP_RESOLVED_PATH=/'
+  else
+    echo "CLIP_MISSING PATH=$path"
+  fi
+done
+for dir in \
+  "$DATA/pusht_noise/train/obses" \
+  /scratch/users/ntu/yguo017/lewm-pusht-iteration/data/pusht_noise/train/obses \
+  /scratch/users/ntu/yguo017/lewm-pusht-iteration/datasets/pusht_noise/train/obses; do
+  if [[ -d "$dir" ]]; then
+    echo "KNOWN_CLIP_DIR_PRESENT PATH=$(readlink -f "$dir")"
+  else
+    echo "KNOWN_CLIP_DIR_ABSENT PATH=$dir"
+  fi
+done
+
+export DATASET_DIR="$DATA"
+export PYTHONPATH="$OVERLAY:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+cd "$REPO"
+"$PY" - <<'PY'
+import importlib.util
+import json
+import os
+import shutil
+import subprocess
+import zipfile
+from pathlib import Path, PurePosixPath
+
+import numpy as np
+
+data_root = Path(os.environ["DATASET_DIR"]) / "pusht_noise"
+archive_path = Path("/scratch/users/ntu/yguo017/dino-wm-wall/artifacts/pusht-assets-23952308.pbs101/downloads/official-pusht-noise.zip")
+clip_names = {"episode_9956.mp4", "episode_2930.mp4", "episode_000.mp4"}
+split_roots = [
+    data_root / "train" / "obses",
+    Path("/scratch/users/ntu/yguo017/lewm-pusht-iteration/data/pusht_noise/train/obses"),
+    Path("/scratch/users/ntu/yguo017/lewm-pusht-iteration/datasets/pusht_noise/train/obses"),
+    data_root / "val" / "obses",
+]
+
+print("ARCHIVE_EXACT_MEMBER_CHECK_BEGIN")
+with zipfile.ZipFile(archive_path) as zf:
+    matched = []
+    for info in zf.infolist():
+        path = PurePosixPath(info.filename)
+        if path.name not in clip_names or "obses" not in path.parts:
+            continue
+        if not any(split in path.parts for split in ("train", "val")):
+            continue
+        matched.append(info)
+    for info in matched:
+        print(f"ARCHIVE_MEMBER path={info.filename} size_bytes={info.file_size} compressed_bytes={info.compress_size}")
+        with zf.open(info, "r") as member:
+            header = member.read(16)
+        print(f"ARCHIVE_MEMBER_HEADER path={info.filename} bytes={header.hex()}")
+    if not matched:
+        print("ARCHIVE_MEMBER_MATCHES=0")
+print(f"ARCHIVE_MEMBER_MATCHES={len(matched)}")
+
+print("EXACT_LOCAL_CLIP_READ_BEGIN")
+decord = None
+try:
+    import decord
+    decord.bridge.set_bridge("native")
+    print(f"DECORD_IMPORT=PASS version={getattr(decord, '__version__', 'unknown')} path={decord.__file__}")
+except Exception as exc:
+    print(f"DECORD_IMPORT=FAIL {type(exc).__name__}: {exc}")
+for root in split_roots:
+    for name in sorted(clip_names):
+        path = root / name
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        with path.open("rb") as handle:
+            header = handle.read(16)
+        print(f"LOCAL_CLIP_HEADER path={path} size_bytes={stat.st_size} bytes={header.hex()}")
+        if shutil.which("ffprobe"):
+            try:
+                result = subprocess.run(
+                    ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,nb_frames", "-of", "csv=p=0", str(path)],
+                    capture_output=True, text=True, timeout=20, check=True,
+                )
+                print(f"FFPROBE_PASS path={path} info={result.stdout.strip()}")
+            except Exception as exc:
+                print(f"FFPROBE_FAIL path={path} {type(exc).__name__}: {exc}")
+        if decord is not None:
+            try:
+                reader = decord.VideoReader(str(path), num_threads=1)
+                n = len(reader)
+                frame = reader[0].asnumpy()
+                print(f"DECORD_READ_PASS path={path} frames={n} first_frame_shape={frame.shape}")
+            except Exception as exc:
+                print(f"DECORD_READ_FAIL path={path} {type(exc).__name__}: {exc}")
+
+print("OFFICIAL_DATASET_GETITEM_CHECK_BEGIN")
+try:
+    from datasets.pusht_dset import load_pusht_slice_train_val
+    import torch
+    np.random.seed(0)
+    torch.manual_seed(0)
+    datasets, trajectories = load_pusht_slice_train_val(
+        transform=None,
+        n_rollout=None,
+        data_path=str(data_root),
+        normalize_action=True,
+        split_ratio=0.9,
+        num_hist=3,
+        num_pred=1,
+        frameskip=5,
+        with_velocity=True,
+    )
+    train_ds = datasets["train"]
+    train_trajectories = trajectories["train"]
+    print(f"OFFICIAL_LOADER_COUNTS train_trajectories={len(train_trajectories)} train_slices={len(train_ds)}")
+    print(f"OFFICIAL_SPLIT_INDICES_TYPE={type(train_trajectories.indices).__name__}")
+    for episode_id in (9956, 2930):
+        try:
+            subset_idx = train_trajectories.indices.index(episode_id)
+        except ValueError:
+            print(f"OFFICIAL_TRAIN_GETITEM_SKIP episode={episode_id} reason=not_in_train_split")
+            continue
+        slice_positions = np.flatnonzero(train_ds.slices[:, 0] == subset_idx)
+        if len(slice_positions) == 0:
+            print(f"OFFICIAL_TRAIN_GETITEM_SKIP episode={episode_id} reason=no_slice")
+            continue
+        item_index = int(slice_positions[0])
+        try:
+            item = train_ds[item_index]
+            obs, act, state = item
+            print(f"OFFICIAL_TRAIN_GETITEM_PASS episode={episode_id} item_index={item_index} obs_shapes={json.dumps({k: list(v.shape) for k,v in obs.items()})} act_shape={list(act.shape)} state_shape={list(state.shape)}")
+        except Exception as exc:
+            print(f"OFFICIAL_TRAIN_GETITEM_FAIL episode={episode_id} item_index={item_index} {type(exc).__name__}: {exc}")
+except Exception as exc:
+    print(f"OFFICIAL_LOADER_DIAGNOSTIC_FAIL {type(exc).__name__}: {exc}")
+print("DIAGNOSTIC_READ_ONLY=1; NO_FILES_CREATED_IN_DATASET=1; NO_CLIPS_SKIPPED=1")
+PY
+
+echo "END_UTC=$(date -u +%FT%TZ)"
+echo "EXACT_CLIP_DIAGNOSTIC_COMPLETE=1"

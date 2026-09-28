@@ -1,0 +1,86 @@
+#!/bin/bash
+#PBS -N pldm_cost_calib30
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/pldm-reproduction
+JOB_ID=${PBS_JOBID:-}
+NODEFILE=${PBS_NODEFILE:-}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -n "$JOB_ID" || { echo 'Refusing GPU work without PBS_JOBID' >&2; exit 64; }
+test -n "$NODEFILE" && test -f "$NODEFILE" || { echo 'Refusing GPU work without PBS_NODEFILE' >&2; exit 64; }
+case "$HOST" in
+  *login*|*head*|*submit*) echo "Refusing probable login host: $HOST" >&2; exit 64 ;;
+esac
+if ! awk -v host="$HOST" '{ node=tolower($1); sub(/\..*/, "", node); if (node == host) found=1 } END { exit !found }' "$NODEFILE"; then
+  echo "Current host $HOST is not listed in PBS_NODEFILE" >&2
+  exit 64
+fi
+
+OUT="$ROOT/reports/calibration-$JOB_ID"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+GPU_SAMPLER_PID=
+finish() {
+  rc=$?
+  if [ -n "${GPU_SAMPLER_PID:-}" ]; then
+    kill "$GPU_SAMPLER_PID" 2>/dev/null || true
+    wait "$GPU_SAMPLER_PID" 2>/dev/null || true
+  fi
+  printf 'job_id=%s\nprocess_exit_code=%s\nfinished_utc=%s\nhost=%s\n' "$JOB_ID" "$rc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HOST" > "$OUT/runner_status.txt.tmp-$JOB_ID"
+  mv "$OUT/runner_status.txt.tmp-$JOB_ID" "$OUT/runner_status.txt"
+}
+trap finish EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+export WANDB_MODE=disabled MPLBACKEND=Agg
+export PLDM_ROOT="$ROOT"
+export PLDM_PYTHON=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+EXTRA_DEP_PATHS=$("$PLDM_PYTHON" - "$ROOT/PREPARATION.json" <<'PY'
+import json, sys
+prep = json.load(open(sys.argv[1], encoding="utf-8"))
+print(":".join(record["overlay"] for record in prep.get("observed_dependency_installs", [])))
+PY
+)
+export PLDM_CALIBRATION_SECONDS=1200
+export PLDM_PLANNER_CALIBRATION_DEADLINE_SECONDS=1710
+export PYTHONPATH="$ROOT/staged${EXTRA_DEP_PATHS:+:$EXTRA_DEP_PATHS}:$ROOT/runtime_overlay/numpy-1.26.4-scipy-1.10.0-pinned:$ROOT/runtime_overlay/pandas-2.0.1-pinned:$ROOT/runtime_overlay/statsmodels-patsy-pinned:$ROOT/runtime_overlay/pytorch-seed-0.2.0:$ROOT/runtime_overlay/arm-pytorch-utilities-0.4.3:$ROOT/runtime_overlay/numpy-1.26.4:$ROOT/runtime_overlay/zarr-2.14.2-pinned:$ROOT/runtime_overlay/gdown:$ROOT/runtime_overlay/html-parser:/scratch/users/ntu/yguo017/experiment/reproduction/lpwm/runtime-overlay-minimal"
+
+printf 'job_id=%s\nhost=%s\nnodefile=%s\nroot=%s\n' "$JOB_ID" "$HOST" "$NODEFILE" "$ROOT"
+date -u +%Y-%m-%dT%H:%M:%SZ
+module list 2>&1
+nvidia-smi --query-gpu=index,uuid,name,timestamp,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits
+"$PLDM_PYTHON" - <<'PY'
+import csv, io, json, os, subprocess, torch
+if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+    raise SystemExit("GPU identity gate failed: no CUDA device visible to PyTorch")
+visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+rows = list(csv.reader(io.StringIO(subprocess.check_output(["nvidia-smi", "--query-gpu=index,uuid,name", "--format=csv,noheader"], text=True))))
+devices = [{"index": row[0].strip(), "uuid": row[1].strip(), "name": row[2].strip()} for row in rows if len(row) >= 3]
+if not devices:
+    raise SystemExit("GPU identity gate failed: NVML returned no GPU rows")
+token = visible.split(",", 1)[0].strip() if visible else ""
+selected = next((d for d in devices if token and token in (d["index"], d["uuid"])), devices[0] if not token else None)
+if selected is None:
+    raise SystemExit(f"GPU identity gate failed: first CUDA_VISIBLE_DEVICES token {token!r} has no NVML index/UUID match: {devices}")
+torch_name = torch.cuda.get_device_properties(0).name.strip()
+if torch_name != selected["name"]:
+    raise SystemExit(f"GPU identity gate failed: torch cuda:0 name={torch_name!r} does not match selected NVML device={selected}")
+print("GPU_IDENTITY_GATE=" + json.dumps({"CUDA_VISIBLE_DEVICES": visible or "<unset>", "torch_logical_device": "cuda:0", "torch_device_name": torch_name, "nvml_device": selected}, sort_keys=True), flush=True)
+PY
+nvidia-smi --query-gpu=index,uuid,name,timestamp,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits --loop=5 >> "$OUT/job.log" 2>&1 &
+GPU_SAMPLER_PID=$!
+
+set +e
+cd "$ROOT/staged/pldm"
+timeout --signal=INT --kill-after=20s 29m "$PLDM_PYTHON" "$ROOT/calibrate_gpu.py"
+rc=$?
+set -e
+printf 'calibration_exit_code=%s\n' "$rc"
+exit "$rc"

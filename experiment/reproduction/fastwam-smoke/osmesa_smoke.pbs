@@ -1,0 +1,69 @@
+#!/bin/bash
+#PBS -N fw_osmesa_smoke
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+ROOT=/scratch/users/ntu/yguo017/fastwam-smoke
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUTPUT="$ROOT/smoke_output/$PBS_JOBID"
+mkdir -p "$ARTIFACTS" "$OUTPUT"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+date
+hostname
+cp "$ROOT/osmesa_smoke.pbs" "$ROOT/render_preflight.py" "$ARTIFACTS/"
+printf 'renderer=OSMesa CPU; inference=allocated CUDA GPU\nPBS_CUDA_VISIBLE_DEVICES=%s\n' "$CUDA_VISIBLE_DEVICES"
+run_python() {
+  apptainer exec --cleanenv --nv \
+    --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+    --env "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES" \
+    --env "PYTHONPATH=$ROOT/libero-compat:$ROOT/libero:$ROOT/FastWAM:$ROOT/FastWAM/src" \
+    --env "LIBERO_CONFIG_PATH=$ROOT/libero-config" \
+    --env "ARTIFACTS=$ARTIFACTS" \
+    --env "DIFFSYNTH_MODEL_BASE_PATH=$ROOT/model-cache" \
+    --env DIFFSYNTH_DOWNLOAD_SOURCE=huggingface,DIFFSYNTH_SKIP_DOWNLOAD=true,HF_HUB_OFFLINE=1 \
+    --env "HF_HOME=$ROOT/cache/huggingface" \
+    --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+    --env OMP_NUM_THREADS=8,OPENBLAS_NUM_THREADS=8,LP_NUM_THREADS=8 \
+    --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1,TOKENIZERS_PARALLELISM=false \
+    "$SIF" "$ROOT/venv/bin/python" "$@"
+}
+run_python - <<'PY'
+import os, torch
+mask = os.environ['CUDA_VISIBLE_DEVICES']
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count() == 1
+actual = str(torch.cuda.get_device_properties(0).uuid)
+assert actual.removeprefix('GPU-').lower() == mask.removeprefix('GPU-').lower(), (mask, actual)
+print('GPU identity verified:', actual, torch.cuda.get_device_name(0), flush=True)
+PY
+run_python "$ROOT/render_preflight.py" | tee "$ARTIFACTS/preflight.log"
+test -f "$ROOT/checkpoints/libero_optional_idm_2cam224.clean.VERIFIED"
+cd "$ROOT/FastWAM"
+# PBS enforces the outer time limit; evaluation runs only after a real env render.
+run_python experiments/libero/eval_libero_single.py \
+  task=libero_optional_idm_2cam224_1e-4 \
+  ckpt="$ROOT/checkpoints/libero_optional_idm_2cam224.clean.pt" \
+  EVALUATION.dataset_stats_path="$ROOT/checkpoints/libero_optional_idm_2cam224_dataset_stats.json" \
+  EVALUATION.task_suite_name=libero_goal EVALUATION.task_id=0 EVALUATION.num_trials=1 \
+  EVALUATION.sigma_shift=1.0 +EVALUATION.action_infer_mode=first_frame \
+  EVALUATION.compile_action_infer=false EVALUATION.output_dir="$OUTPUT" gpu_id=0 \
+  2>&1 | tee "$ARTIFACTS/eval.log"
+test -n "$(find "$OUTPUT" -type f -name '*.mp4' -size +0c -print -quit)"
+test -n "$(find "$OUTPUT" -type f -name '*results.json' -size +0c -print -quit)"
+find "$OUTPUT" -type f -printf '%P\t%s\n' > "$ARTIFACTS/output-manifest.tsv"
+touch "$ARTIFACTS/SUCCESS"
+date

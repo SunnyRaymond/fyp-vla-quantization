@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N oft_libero_cache
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero
+ARCHIVE="$ROOT/source/uv-cache-linux.tar"
+TARGET="$ROOT/cache/uv-wsl"
+PARTIAL="$ROOT/cache/uv-wsl.partial-$PBS_JOBID"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+
+mkdir -p "$PARTIAL" "$ARTIFACTS"
+cp "$PBS_O_WORKDIR/prepare_cache.pbs" "$ARTIFACTS/"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+test "$(stat -c %s "$ARCHIVE")" = 7688110080
+test ! -e "$TARGET"
+tar -xf "$ARCHIVE" -C "$PARTIAL" --strip-components=1
+test -d "$PARTIAL/archive-v0"
+test -d "$PARTIAL/environments-v2"
+mv "$PARTIAL" "$TARGET"
+du -sh "$TARGET" | tee "$ARTIFACTS/cache-size.txt"
+touch "$ARTIFACTS/SUCCESS"

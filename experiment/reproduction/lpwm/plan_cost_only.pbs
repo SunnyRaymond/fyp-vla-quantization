@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# One native sparse LpWM plan case using only an isolated calibration checkpoint.
+# Cost-only: no outcome metrics are copied into this report or used for decisions.
+#PBS -N lpwm-plan-cost
+#PBS -q normal
+#PBS -P personal-yguo017
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+BASE=/scratch/users/ntu/yguo017/experiment/reproduction/lpwm
+REPO="$BASE/lpworldmodel-bdd812d"
+COMMIT=bdd812d9432cccda8c350086006401b436f91982
+PY=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+MIN_OVERLAY="$BASE/runtime-overlay-minimal"
+PUSHT_OVERLAY=/scratch/users/ntu/yguo017/dino-wm-wall/artifacts/pusht-python-overlay-pusht-v5
+DATA=/scratch/users/ntu/yguo017/dino-wm-wall/data
+CAL_ROOT="$BASE/calibration_runs/25571046.pbs101"
+CKPT_BASE="$CAL_ROOT/checkpoints"
+RUN_NAME=costcal_sparse_mlp_var_pd384
+
+fail() { echo "PLAN_COST_INVALID: $*"; exit 2; }
+[[ -n "${PBS_JOBID:-}" ]] || fail "PBS_JOBID missing"
+[[ -s "${PBS_NODEFILE:-}" ]] || fail "PBS_NODEFILE missing or empty"
+HOST=$(hostname -f 2>/dev/null || hostname)
+[[ "$HOST" != *login* ]] || fail "login host rejected: $HOST"
+awk -v h="$HOST" 'BEGIN{ok=0} {n=$1; sub(/\..*/,"",n); x=h; sub(/\..*/,"",x); if(tolower(n)==tolower(x))ok=1} END{exit !ok}' "$PBS_NODEFILE" || fail "host is not listed in PBS_NODEFILE: $HOST"
+[[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != "-1" ]] || fail "allocated CUDA device is not visible"
+[[ -x "$PY" ]] || fail "verified existing Python runtime unavailable: $PY"
+[[ -f "$REPO/SOURCE_COMMIT" && "$(cat "$REPO/SOURCE_COMMIT")" == "$COMMIT" ]] || fail "pinned source marker mismatch"
+[[ -d "$PUSHT_OVERLAY/skimage" && -d "$MIN_OVERLAY/gym" ]] || fail "validated runtime overlays absent"
+[[ -s "$CKPT_BASE/outputs/$RUN_NAME/checkpoints/model_latest.pth" ]] || fail "isolated sparse calibration checkpoint missing"
+command -v nvidia-smi >/dev/null 2>&1 || fail "nvidia-smi unavailable"
+command -v timeout >/dev/null 2>&1 || fail "timeout utility unavailable"
+
+JOB_ROOT="$BASE/plan-cost-runs/$PBS_JOBID"
+[[ ! -e "$JOB_ROOT" ]] || fail "refusing to reuse per-job output directory"
+mkdir -p "$JOB_ROOT"
+JOBLOG="$JOB_ROOT/job.log"
+PLANLOG="$JOB_ROOT/native-plan.log"
+REPORT="$JOB_ROOT/plan_cost.json"
+exec > >(tee -a "$JOBLOG") 2>&1
+echo "PBS_JOBID=$PBS_JOBID HOST=$HOST NODEFILE=$PBS_NODEFILE"
+echo "START_UTC=$(date -u +%FT%TZ)"
+echo "SOURCE_COMMIT=$COMMIT"
+echo "CALIBRATION_ONLY_CHECKPOINT=$CKPT_BASE/outputs/$RUN_NAME/checkpoints/model_latest.pth"
+echo "PLAN_EVALS=1 SEED=99 GOAL_H=5 CEM=300/30/30 MPC_MAX_ITER=10"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+echo "NVML_ALL_GPU_IDENTITY_BEGIN"
+nvidia-smi --query-gpu=index,uuid,name,memory.total --format=csv
+echo "NVML_ALL_GPU_IDENTITY_END"
+
+# This probe touches only the allocated Torch device and logs its logical identity.
+export PATH="$(dirname "$PY"):$PATH"
+export PYTHONPATH="$PUSHT_OVERLAY:$MIN_OVERLAY:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONUNBUFFERED=1 SDL_VIDEODRIVER=dummy WANDB_MODE=offline
+export TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
+"$PY" - <<'PY'
+import os, torch
+assert torch.cuda.is_available(), "torch.cuda.is_available() is false"
+index = torch.cuda.current_device()
+props = torch.cuda.get_device_properties(index)
+print(f"TORCH_CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}")
+print(f"TORCH_LOGICAL_DEVICE=cuda:{index}")
+print(f"TORCH_DEVICE_NAME={props.name}")
+print(f"TORCH_DEVICE_TOTAL_MEMORY_BYTES={props.total_memory}")
+print(f"TORCH_ALLOCATED_BYTES_BEFORE_PLAN={torch.cuda.memory_allocated(index)}")
+print(f"TORCH_RESERVED_BYTES_BEFORE_PLAN={torch.cuda.memory_reserved(index)}")
+PY
+
+# Required five-second NVML sampling, including all visible card identities.
+(
+  while true; do
+    printf 'GPU_TELEMETRY_UTC=%s ' "$(date -u +%FT%TZ)"
+    nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits | tr '\n' ';'
+    printf '\n'
+    sleep 5
+  done
+) >> "$JOBLOG" 2>&1 &
+TELEMETRY_PID=$!
+stop_telemetry() { kill "$TELEMETRY_PID" 2>/dev/null || true; wait "$TELEMETRY_PID" 2>/dev/null || true; }
+trap stop_telemetry EXIT
+
+cd "$REPO"
+[[ "$PWD" == "$REPO" ]] || fail "failed to enter pinned official repository"
+echo "OFFICIAL_PLAN_CWD=$PWD"
+PLAN_START=$(date +%s.%N)
+set +e
+SEED=99 GOAL_H=5 DATASET_DIR="$DATA" CKPT_BASE="$CKPT_BASE" WANDB_MODE=offline \
+  timeout --signal=TERM --kill-after=45 780 \
+  scripts/plan.sh plan_lewm.yaml "$RUN_NAME" latest 1 10 > "$PLANLOG" 2>&1
+PLAN_RC=$?
+set -e
+PLAN_END=$(date +%s.%N)
+
+# Keep this report strictly cost-only; the native plan stdout (including any
+# per-case metric text) stays in the remote log and is not parsed here.
+"$PY" - "$REPORT" "$PLAN_START" "$PLAN_END" "$PLAN_RC" "$PBS_JOBID" "$HOST" "$CUDA_VISIBLE_DEVICES" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+start, end, rc = float(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4])
+payload = {
+    "schema": "lpwm-bounded-native-plan-cost-v1",
+    "status": "PLAN_COST_PASS" if rc == 0 else "PLAN_COST_INCOMPLETE",
+    "pbs_job_id": sys.argv[5],
+    "execution_host": sys.argv[6],
+    "cuda_visible_devices": sys.argv[7],
+    "source_commit": "bdd812d9432cccda8c350086006401b436f91982",
+    "checkpoint_source": "nonformal 25571046 sparse calibration only",
+    "official_entrypoint": "scripts/plan.sh plan_lewm.yaml costcal_sparse_mlp_var_pd384 latest 1 10",
+    "n_evals": 1,
+    "seed": 99,
+    "goal_H": 5,
+    "cem_candidates": 300,
+    "cem_elites": 30,
+    "cem_opt_steps": 30,
+    "mpc_max_replanning_iterations": 10,
+    "exit_code": rc,
+    "wall_seconds": end - start,
+    "outcome_metrics_exported_or_read": False,
+    "checkpoint_is_formal_reproduction_weight": False,
+    "runtime_overlay": "existing PushT v5 overlay before LpWM minimal overlay",
+}
+path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+print("PLAN_COST_REPORT=" + json.dumps(payload, sort_keys=True))
+PY
+echo "PLAN_LOG=$PLANLOG"
+echo "REPORT=$REPORT"
+echo "END_UTC=$(date -u +%FT%TZ)"
+if [[ "$PLAN_RC" -ne 0 ]]; then
+  echo "PLAN_COST_SAMPLE_INCOMPLETE exit_code=$PLAN_RC"
+  exit 3
+fi
+echo "PLAN_COST_SAMPLE_COMPLETE"

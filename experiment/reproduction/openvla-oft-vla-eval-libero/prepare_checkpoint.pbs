@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N oft_libero_ckpt
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero
+BOOTSTRAP="$ROOT/venvs/bootstrap"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+
+mkdir -p "$ROOT/cache/huggingface" "$ROOT/cache/uv-tools" "$ARTIFACTS"
+cp "$PBS_O_WORKDIR/prepare_checkpoint.pbs" "$ARTIFACTS/"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PATH="$BOOTSTRAP/bin:/usr/bin:/bin:$PATH"
+export HF_HOME="$ROOT/cache/huggingface"
+export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
+export HF_HUB_DOWNLOAD_TIMEOUT=120
+export UV_CACHE_DIR="$ROOT/cache/uv-tools"
+
+"$BOOTSTRAP/bin/uvx" --from huggingface_hub hf download \
+  moojink/openvla-7b-oft-finetuned-libero-spatial \
+  --cache-dir "$HUGGINGFACE_HUB_CACHE"
+
+du -sh "$HUGGINGFACE_HUB_CACHE"
+touch "$ARTIFACTS/SUCCESS"

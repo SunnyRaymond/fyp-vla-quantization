@@ -1,0 +1,126 @@
+#!/bin/bash
+#PBS -N fw_libero_smoke
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -eo pipefail
+
+echo 'Superseded: use osmesa_smoke.pbs; the old global EGL resolver is disabled.' >&2
+exit 64
+
+case "${PBS_JOBID:-}" in
+  '') echo 'Refusing smoke: PBS_JOBID is missing.' >&2; exit 64 ;;
+esac
+case "$(hostname -s)" in
+  *login*|asp2a-login*) echo 'Refusing smoke: login node is not a compute allocation.' >&2; exit 64 ;;
+esac
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-smoke
+SRC="$ROOT/FastWAM"
+LIBERO_SRC="$ROOT/libero"
+LIBERO_COMPAT="$ROOT/libero-compat"
+VENV="$ROOT/venv"
+MODEL_BASE="$ROOT/model-cache"
+LIBERO_CONFIG="$ROOT/libero-config"
+CHECKPOINT="$ROOT/checkpoints/libero_optional_idm_2cam224.clean.pt"
+STATS="$ROOT/checkpoints/libero_optional_idm_2cam224_dataset_stats.json"
+OUTPUT="$ROOT/smoke_output/$PBS_JOBID"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+
+mkdir -p "$ARTIFACTS" "$OUTPUT"
+cp "$ROOT/smoke_libero_goal.pbs" "$ARTIFACTS/"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=16
+export MKL_NUM_THREADS=16
+export TOKENIZERS_PARALLELISM=false
+export GIT_PYTHON_REFRESH=quiet
+export MUJOCO_GL=egl
+export PYOPENGL_PLATFORM=egl
+export LIBERO_CONFIG_PATH="$LIBERO_CONFIG"
+# The reusable SIF contains the current LIBERO package layout (`libero`),
+# while this pinned FastWAM revision imports the legacy `libero.libero` path.
+# Add a tiny compatibility namespace without modifying the extracted package.
+mkdir -p "$LIBERO_COMPAT/libero/libero"
+cat > "$LIBERO_COMPAT/libero/__init__.py" <<'PY'
+# Compatibility namespace for FastWAM's legacy `libero.libero` imports.
+PY
+cat > "$LIBERO_COMPAT/libero/libero/__init__.py" <<PY
+import os
+_real_package = "$LIBERO_SRC/libero"
+__path__ = [_real_package]
+_real_init = os.path.join(_real_package, "__init__.py")
+with open(_real_init, "rb") as _fh:
+    exec(compile(_fh.read(), _real_init, "exec"), globals(), globals())
+PY
+export PYTHONPATH="$LIBERO_COMPAT:$LIBERO_SRC:${PYTHONPATH:-}"
+export DIFFSYNTH_MODEL_BASE_PATH="$MODEL_BASE"
+export DIFFSYNTH_DOWNLOAD_SOURCE=huggingface
+export DIFFSYNTH_SKIP_DOWNLOAD=true
+export HF_HOME="$ROOT/cache/huggingface"
+export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
+export TORCH_HOME="$ROOT/cache/torch"
+source "$ROOT/resolve_egl_device.sh"
+resolve_egl_device > "$ARTIFACTS/egl-device-map.txt" 2>&1
+cat "$ARTIFACTS/egl-device-map.txt"
+prepare_robosuite_uuid_patch > "$ARTIFACTS/robosuite-compat.txt"
+cat "$ARTIFACTS/robosuite-compat.txt"
+
+date
+hostname
+module list 2>&1 | tee "$ARTIFACTS/modules.txt"
+nvidia-smi | tee "$ARTIFACTS/nvidia-smi.txt"
+df -h "$ROOT" | tee "$ARTIFACTS/filesystems.txt"
+
+test -x "$VENV/bin/python"
+test -f "$SRC/experiments/libero/eval_libero_single.py"
+test -f "$CHECKPOINT"
+test -f "$ROOT/checkpoints/libero_optional_idm_2cam224.clean.VERIFIED"
+test -f "$STATS"
+test -f "$LIBERO_CONFIG/config.yaml"
+test -f "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors/Wan2.2_VAE.safetensors"
+test -f "$MODEL_BASE/DiffSynth-Studio/Wan-Series-Converted-Safetensors/models_t5_umt5-xxl-enc-bf16.safetensors"
+test -f "$MODEL_BASE/Wan-AI/Wan2.1-T2V-1.3B/google/umt5-xxl/tokenizer_config.json"
+"$VENV/bin/python" - <<'PY' | tee "$ARTIFACTS/runtime-versions.txt"
+import torch, torchvision, mujoco, robosuite, libero, fastwam
+print("torch", torch.__version__)
+print("torchvision", torchvision.__version__)
+print("cuda_available", torch.cuda.is_available())
+print("cuda_device_count", torch.cuda.device_count())
+print("mujoco", mujoco.__version__)
+print("imports=ok")
+PY
+
+cd "$SRC"
+set +e
+timeout --signal=TERM --kill-after=60s 5400s \
+  "$VENV/bin/python" experiments/libero/eval_libero_single.py \
+    task=libero_optional_idm_2cam224_1e-4 \
+    ckpt="$CHECKPOINT" \
+    EVALUATION.dataset_stats_path="$STATS" \
+    EVALUATION.task_suite_name=libero_goal \
+    EVALUATION.task_id=0 \
+    EVALUATION.num_trials=1 \
+    EVALUATION.sigma_shift=1.0 \
+    +EVALUATION.action_infer_mode=first_frame \
+    EVALUATION.compile_action_infer=false \
+    EVALUATION.output_dir="$OUTPUT" \
+    gpu_id=0 \
+  2>&1 | tee "$ARTIFACTS/eval.log"
+status=${PIPESTATUS[0]}
+set -e
+printf '%s\n' "$status" > "$ARTIFACTS/exit_code.txt"
+find "$OUTPUT" -type f -printf '%P\t%s bytes\n' | sort > "$ARTIFACTS/output-manifest.tsv" || true
+if [ "$status" -eq 0 ] && find "$OUTPUT" -type f \( -name '*.mp4' -o -name '*results.json' \) -print -quit | grep -q .; then
+  touch "$ARTIFACTS/SUCCESS"
+else
+  echo "Smoke failed or produced no MP4/results (exit=$status)." >&2
+  exit "$status"
+fi
+date

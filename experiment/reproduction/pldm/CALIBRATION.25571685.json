@@ -1,0 +1,567 @@
+{
+  "status": "PARTIAL",
+  "job_id": "25571685.pbs101",
+  "host": "x1000c1s0b0n0",
+  "started_utc": "2026-09-26T20:45:09.313507+00:00",
+  "source_sha": "1bd7e564ecd961205bc18b23067b19e9ca24ac90",
+  "remote_root": "/scratch/users/ntu/yguo017/pldm-reproduction",
+  "scope": "10 warmup + 100 timed official PLDM optimizer updates plus bounded cost-only native MPPI planner samples when time permits; no native evaluation or quality claim",
+  "prep_job_id": "25571604.pbs101",
+  "dataset_path": "/scratch/users/ntu/yguo017/pldm-reproduction/datasets/good_quality_data_memmap",
+  "released_frame_count": 3686400,
+  "released_observation_dtype": "uint8",
+  "module_origins": {
+    "pldm.train": "/scratch/users/ntu/yguo017/pldm-reproduction/staged/pldm/train.py",
+    "pldm.data.dataset_factory": "/scratch/users/ntu/yguo017/pldm-reproduction/staged/pldm/data/dataset_factory.py",
+    "pldm.models.hjepa": "/scratch/users/ntu/yguo017/pldm-reproduction/staged/pldm/models/hjepa.py",
+    "pldm_envs.wall.data.offline_wall": "/scratch/users/ntu/yguo017/pldm-reproduction/staged/pldm_envs/wall/data/offline_wall.py",
+    "zarr": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/zarr-2.14.2-pinned/zarr/__init__.py",
+    "numcodecs": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/zarr-2.14.2-pinned/numcodecs/__init__.py",
+    "gym": "/scratch/users/ntu/yguo017/experiment/reproduction/lpwm/runtime-overlay-minimal/gym/__init__.py",
+    "gym_notices": "/scratch/users/ntu/yguo017/experiment/reproduction/lpwm/runtime-overlay-minimal/gym_notices/__init__.py",
+    "arm_pytorch_utilities": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/arm-pytorch-utilities-0.4.3/arm_pytorch_utilities/__init__.py",
+    "pytorch_seed": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/pytorch-seed-0.2.0/pytorch_seed/__init__.py",
+    "statsmodels": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/statsmodels-patsy-pinned/statsmodels/__init__.py",
+    "statsmodels.api": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/statsmodels-patsy-pinned/statsmodels/api.py",
+    "patsy": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/statsmodels-patsy-pinned/patsy/__init__.py",
+    "numpy": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/numpy-1.26.4-scipy-1.10.0-pinned/numpy/__init__.py",
+    "scipy": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/numpy-1.26.4-scipy-1.10.0-pinned/scipy/__init__.py",
+    "pandas": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/pandas-2.0.1-pinned/pandas/__init__.py",
+    "pytz": "/scratch/users/ntu/yguo017/pldm-reproduction/runtime_overlay/pandas-2.0.1-pinned/pytz/__init__.py"
+  },
+  "observed_dependency_origins": {},
+  "runtime": {
+    "python": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python",
+    "python_version": "3.11.7 (main, Jan 13 2024, 14:16:17) [GCC 11.4.0]",
+    "torch": "2.8.0+cu128",
+    "numpy": "1.26.4",
+    "scipy": "1.10.0",
+    "pandas": "2.0.1",
+    "pytz": "2022.7.1",
+    "zarr": "2.14.2",
+    "numcodecs": "0.12.1",
+    "gym": "0.23.1",
+    "gym-notices": "0.0.8",
+    "arm_pytorch_utilities": "0.4.3",
+    "pytorch-seed": "0.2.0",
+    "statsmodels": "0.14.4",
+    "patsy": "1.0.1",
+    "cuda_device": "NVIDIA A100-SXM4-40GB",
+    "cuda_visible_devices": "GPU-e6f4ed92-545b-476f-d00e-491441df423a",
+    "gpu_identity": {
+      "CUDA_VISIBLE_DEVICES": "GPU-e6f4ed92-545b-476f-d00e-491441df423a",
+      "torch_logical_device": "cuda:0",
+      "torch_device_name": "NVIDIA A100-SXM4-40GB",
+      "nvml_device": {
+        "index": "0",
+        "uuid": "GPU-e6f4ed92-545b-476f-d00e-491441df423a",
+        "name": "NVIDIA A100-SXM4-40GB"
+      }
+    },
+    "staged_compatibility_patches": [
+      {
+        "path": "pldm/data/enums.py",
+        "field": "dot_config",
+        "default_class": "pldm_envs.wall.data.single.DotDatasetConfig",
+        "original_line": "    dot_config: DotDatasetConfig = DotDatasetConfig()",
+        "replacement_line": "    dot_config: DotDatasetConfig = field(default_factory=DotDatasetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/data/enums.py",
+        "field": "wall_config",
+        "default_class": "pldm_envs.wall.data.wall.WallDatasetConfig",
+        "original_line": "    wall_config: WallDatasetConfig = WallDatasetConfig()",
+        "replacement_line": "    wall_config: WallDatasetConfig = field(default_factory=WallDatasetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/data/enums.py",
+        "field": "offline_wall_config",
+        "default_class": "pldm_envs.wall.data.offline_wall.OfflineWallDatasetConfig",
+        "original_line": "    offline_wall_config: OfflineWallDatasetConfig = OfflineWallDatasetConfig()",
+        "replacement_line": "    offline_wall_config: OfflineWallDatasetConfig = field(default_factory=OfflineWallDatasetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/data/enums.py",
+        "field": "wall_expert_config",
+        "default_class": "pldm_envs.wall.data.wall_expert.WallExpertDatasetConfig",
+        "original_line": "    wall_expert_config: WallExpertDatasetConfig = WallExpertDatasetConfig()",
+        "replacement_line": "    wall_expert_config: WallExpertDatasetConfig = field(default_factory=WallExpertDatasetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/data/enums.py",
+        "field": "d4rl_config",
+        "default_class": "pldm_envs.diverse_maze.enums.D4RLDatasetConfig",
+        "original_line": "    d4rl_config: D4RLDatasetConfig = D4RLDatasetConfig()",
+        "replacement_line": "    d4rl_config: D4RLDatasetConfig = field(default_factory=D4RLDatasetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/models/jepa.py",
+        "field": "backbone",
+        "default_class": "pldm.models.encoders.enums.BackboneConfig",
+        "original_line": "    backbone: BackboneConfig = BackboneConfig()",
+        "replacement_line": "    backbone: BackboneConfig = field(default_factory=BackboneConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/models/jepa.py",
+        "field": "predictor",
+        "default_class": "pldm.models.enums.PredictorConfig",
+        "original_line": "    predictor: PredictorConfig = PredictorConfig()",
+        "replacement_line": "    predictor: PredictorConfig = field(default_factory=PredictorConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/models/hjepa.py",
+        "field": "level1",
+        "default_class": "pldm.models.jepa.JEPAConfig",
+        "original_line": "    level1: JEPAConfig = JEPAConfig()",
+        "replacement_line": "    level1: JEPAConfig = field(default_factory=JEPAConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/probing/evaluator.py",
+        "field": "locations",
+        "default_class": "pldm.probing.evaluator.ProbeTargetConfig",
+        "original_line": "    locations: ProbeTargetConfig = ProbeTargetConfig()",
+        "replacement_line": "    locations: ProbeTargetConfig = field(default_factory=ProbeTargetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/probing/evaluator.py",
+        "field": "propio_pos",
+        "default_class": "pldm.probing.evaluator.ProbeTargetConfig",
+        "original_line": "    propio_pos: ProbeTargetConfig = ProbeTargetConfig()",
+        "replacement_line": "    propio_pos: ProbeTargetConfig = field(default_factory=ProbeTargetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/probing/evaluator.py",
+        "field": "propio_vel",
+        "default_class": "pldm.probing.evaluator.ProbeTargetConfig",
+        "original_line": "    propio_vel: ProbeTargetConfig = ProbeTargetConfig()",
+        "replacement_line": "    propio_vel: ProbeTargetConfig = field(default_factory=ProbeTargetConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/planners/enums.py",
+        "field": "sgd",
+        "default_class": "pldm.planning.planners.enums.SGDConfig",
+        "original_line": "    sgd: SGDConfig = SGDConfig()",
+        "replacement_line": "    sgd: SGDConfig = field(default_factory=SGDConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/planners/enums.py",
+        "field": "mppi",
+        "default_class": "pldm.planning.planners.enums.MPPIConfig",
+        "original_line": "    mppi: MPPIConfig = MPPIConfig()",
+        "replacement_line": "    mppi: MPPIConfig = field(default_factory=MPPIConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/planners/enums.py",
+        "field": "lfgbs",
+        "default_class": "pldm.planning.planners.enums.LFBGSConfig",
+        "original_line": "    lfgbs: LFBGSConfig = LFBGSConfig()",
+        "replacement_line": "    lfgbs: LFBGSConfig = field(default_factory=LFBGSConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/enums.py",
+        "field": "level1",
+        "default_class": "pldm.planning.planners.enums.PlannerConfig",
+        "original_line": "    level1: PlannerConfig = PlannerConfig()",
+        "replacement_line": "    level1: PlannerConfig = field(default_factory=PlannerConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/enums.py",
+        "field": "easy",
+        "default_class": "pldm.planning.enums.LevelConfig",
+        "original_line": "    easy: LevelConfig = LevelConfig()",
+        "replacement_line": "    easy: LevelConfig = field(default_factory=LevelConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/enums.py",
+        "field": "medium",
+        "default_class": "pldm.planning.enums.LevelConfig",
+        "original_line": "    medium: LevelConfig = LevelConfig()",
+        "replacement_line": "    medium: LevelConfig = field(default_factory=LevelConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/enums.py",
+        "field": "hard",
+        "default_class": "pldm.planning.enums.LevelConfig",
+        "original_line": "    hard: LevelConfig = LevelConfig()",
+        "replacement_line": "    hard: LevelConfig = field(default_factory=LevelConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/planning/enums.py",
+        "field": "ogbench",
+        "default_class": "pldm.planning.enums.LevelConfig",
+        "original_line": "    ogbench: LevelConfig = LevelConfig()",
+        "replacement_line": "    ogbench: LevelConfig = field(default_factory=LevelConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/evaluation/evaluator.py",
+        "field": "probing",
+        "default_class": "pldm.probing.evaluator.ProbingConfig",
+        "original_line": "    probing: ProbingConfig = ProbingConfig()",
+        "replacement_line": "    probing: ProbingConfig = field(default_factory=ProbingConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/evaluation/evaluator.py",
+        "field": "wall_planning",
+        "default_class": "pldm.planning.wall.enums.WallMPCConfig",
+        "original_line": "    wall_planning: WallMPCConfig = WallMPCConfig()",
+        "replacement_line": "    wall_planning: WallMPCConfig = field(default_factory=WallMPCConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/evaluation/evaluator.py",
+        "field": "d4rl_planning",
+        "default_class": "pldm.planning.d4rl.enums.D4RLMPCConfig",
+        "original_line": "    d4rl_planning: D4RLMPCConfig = D4RLMPCConfig()",
+        "replacement_line": "    d4rl_planning: D4RLMPCConfig = field(default_factory=D4RLMPCConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "vicreg",
+        "default_class": "pldm.objectives.vicreg.VICRegObjectiveConfig",
+        "original_line": "    vicreg: VICRegObjectiveConfig = VICRegObjectiveConfig()",
+        "replacement_line": "    vicreg: VICRegObjectiveConfig = field(default_factory=VICRegObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "vicreg_obs",
+        "default_class": "pldm.objectives.vicreg.VICRegObjectiveConfig",
+        "original_line": "    vicreg_obs: VICRegObjectiveConfig = VICRegObjectiveConfig()",
+        "replacement_line": "    vicreg_obs: VICRegObjectiveConfig = field(default_factory=VICRegObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "vicreg_propio",
+        "default_class": "pldm.objectives.vicreg.VICRegObjectiveConfig",
+        "original_line": "    vicreg_propio: VICRegObjectiveConfig = VICRegObjectiveConfig()",
+        "replacement_line": "    vicreg_propio: VICRegObjectiveConfig = field(default_factory=VICRegObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "idm",
+        "default_class": "pldm.objectives.idm.IDMObjectiveConfig",
+        "original_line": "    idm: IDMObjectiveConfig = IDMObjectiveConfig()",
+        "replacement_line": "    idm: IDMObjectiveConfig = field(default_factory=IDMObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "prediction",
+        "default_class": "pldm.objectives.prediction.PredictionObjectiveConfig",
+        "original_line": "    prediction: PredictionObjectiveConfig = PredictionObjectiveConfig()",
+        "replacement_line": "    prediction: PredictionObjectiveConfig = field(default_factory=PredictionObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "prediction_obs",
+        "default_class": "pldm.objectives.prediction.PredictionObjectiveConfig",
+        "original_line": "    prediction_obs: PredictionObjectiveConfig = PredictionObjectiveConfig()",
+        "replacement_line": "    prediction_obs: PredictionObjectiveConfig = field(default_factory=PredictionObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/objectives/__init__.py",
+        "field": "prediction_propio",
+        "default_class": "pldm.objectives.prediction.PredictionObjectiveConfig",
+        "original_line": "    prediction_propio: PredictionObjectiveConfig = PredictionObjectiveConfig()",
+        "replacement_line": "    prediction_propio: PredictionObjectiveConfig = field(default_factory=PredictionObjectiveConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/train.py",
+        "field": "data",
+        "default_class": "pldm.data.enums.DataConfig",
+        "original_line": "    data: DataConfig = DataConfig()",
+        "replacement_line": "    data: DataConfig = field(default_factory=DataConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/train.py",
+        "field": "objectives_l1",
+        "default_class": "pldm.objectives.ObjectivesConfig",
+        "original_line": "    objectives_l1: ObjectivesConfig = ObjectivesConfig()",
+        "replacement_line": "    objectives_l1: ObjectivesConfig = field(default_factory=ObjectivesConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/train.py",
+        "field": "hjepa",
+        "default_class": "pldm.models.hjepa.HJEPAConfig",
+        "original_line": "    hjepa: HJEPAConfig = HJEPAConfig()",
+        "replacement_line": "    hjepa: HJEPAConfig = field(default_factory=HJEPAConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      },
+      {
+        "path": "pldm/train.py",
+        "field": "eval_cfg",
+        "default_class": "pldm.evaluation.evaluator.EvalConfig",
+        "original_line": "    eval_cfg: EvalConfig = EvalConfig()",
+        "replacement_line": "    eval_cfg: EvalConfig = field(default_factory=EvalConfig)",
+        "reason": "Python 3.11 rejects this mutable dataclass instance default; default_factory preserves the same per-instance value."
+      }
+    ]
+  },
+  "config": {
+    "seed": 101,
+    "epochs": 2,
+    "quick_debug": false,
+    "n_steps": 16,
+    "objectives": [
+      "VICReg",
+      "IDM"
+    ],
+    "optimizer_type": "OptimizerType.Adam",
+    "base_lr": 0.0007,
+    "compile_model": true,
+    "data_path": "/scratch/users/ntu/yguo017/pldm-reproduction/datasets/good_quality_data_memmap",
+    "lazy_load": true,
+    "offline_dataset_device": "cuda",
+    "eval_at_beginning": false,
+    "eval_during_training": false,
+    "native_eval": {
+      "level": "medium",
+      "n_envs": 100,
+      "n_steps": 200,
+      "n_envs_batch_size": 20,
+      "replan_every": 1,
+      "max_plan_length": 96,
+      "mppi_samples": 2000,
+      "eval_mpcs_field_value_unused_by_official_evaluator": 20,
+      "planner_calls_per_invocation_from_source": 1000
+    }
+  },
+  "timing": {
+    "config_parse_seconds": 0.15862002200447023,
+    "trainer_initialization_seconds": 304.7032057251781,
+    "optimizer_updates_per_epoch": 48000,
+    "actual_epoch_indices": [
+      0,
+      1,
+      2
+    ],
+    "actual_passes": 3,
+    "expected_official_optimizer_updates": 144000,
+    "calibration_update_budget": {
+      "warmup": 10,
+      "timed": 100,
+      "total": 110
+    },
+    "internal_time_limit_seconds": 720.0,
+    "stop_reason": "internal_calibration_time_limit",
+    "training_error": null,
+    "expected_full_official_updates": 144000,
+    "calibration_updates_completed": 107,
+    "step_timing_records_completed": 107,
+    "warmup_updates_requested": 10,
+    "warmup_updates_completed": 10,
+    "timed_updates_requested": 100,
+    "timed_updates_completed": 97,
+    "per_update_wall_seconds_include": [
+      "official loader wait and normalization",
+      "official forward/loss/backward/optimizer/EMA/logging body",
+      "torch.cuda.synchronize completion"
+    ],
+    "warmup_seconds": [
+      16.729810626013204,
+      2.5430527220014483,
+      2.9623383169528097,
+      2.9602245211135596,
+      2.2341470108367503,
+      2.6318811238743365,
+      2.5731965580489486,
+      3.269633970921859,
+      3.043742934940383,
+      3.0472260990645736
+    ],
+    "timed_update_seconds": [
+      2.46193255786784,
+      3.5305473478510976,
+      2.3736187131144106,
+      3.4276990019716322,
+      2.6778990558814257,
+      2.8620162960141897,
+      2.37820918019861,
+      2.3796209029387683,
+      2.528405767865479,
+      2.442479012068361,
+      2.423014307161793,
+      2.467388855991885,
+      2.739397336030379,
+      2.552297963993624,
+      2.429702169029042,
+      2.9487742569763213,
+      2.6179782361723483,
+      2.5109918559901416,
+      2.4389079441316426,
+      2.3671086740214378,
+      2.691545099951327,
+      2.6410627840086818,
+      2.7165227751247585,
+      2.5130729088559747,
+      2.6160713511053473,
+      2.925789612112567,
+      2.924459879985079,
+      3.026620683958754,
+      2.6402233080007136,
+      2.297661978052929,
+      2.5931317638605833,
+      2.3715130409691483,
+      2.5407777258660644,
+      2.6957143091131,
+      2.5535102491267025,
+      31.50862049101852,
+      2.7316691719461232,
+      2.5526829920709133,
+      2.6063449098728597,
+      2.909547267947346,
+      3.7619500120636076,
+      2.3991692431736737,
+      2.783172340830788,
+      2.4850168358534575,
+      2.6410507729742676,
+      2.7794079349841923,
+      2.5382287530228496,
+      2.520701807923615,
+      2.4406572480220348,
+      2.684282830916345,
+      2.416779290884733,
+      2.6203064310830086,
+      2.2353037318680435,
+      8.78474324918352,
+      2.6056440400425345,
+      3.3500200621783733,
+      3.1181424409151077,
+      2.7006856619846076,
+      2.863233801908791,
+      2.7475612089037895,
+      2.9716243350412697,
+      2.460111106047407,
+      2.749105968978256,
+      2.4768366150092334,
+      2.620177138829604,
+      2.888802707893774,
+      2.865553949959576,
+      2.398276292020455,
+      2.4317759431432933,
+      2.4848839840851724,
+      2.5652415819931775,
+      2.427587642101571,
+      2.8392353809904307,
+      3.0145423559006304,
+      2.8234761129133403,
+      2.4212746149860322,
+      2.4140704879537225,
+      2.465421207016334,
+      2.944125317968428,
+      2.4295102739706635,
+      2.793284247163683,
+      2.8199284879956394,
+      2.3689261109102517,
+      2.2997787061613053,
+      2.67262055282481,
+      2.301496342057362,
+      2.3254327040631324,
+      2.563813098007813,
+      2.5489540968555957,
+      2.7355240730103105,
+      2.7275344831869006,
+      2.635211998131126,
+      2.622944986913353,
+      2.269086882006377,
+      2.5673467649612576,
+      2.452667576028034,
+      2.420941098127514
+    ],
+    "timing_summary": {
+      "mean_seconds": 2.9990486047643516,
+      "median_seconds": 2.6056440400425345,
+      "p95_seconds": 3.3655558501370244
+    },
+    "total_calibration_training_seconds": 332.93414708203636,
+    "optimizer_scheduler_setup_before_first_batch_seconds": 0.000445155194029212,
+    "estimated_official_training_update_seconds_at_timed_mean": 431862.9990860666,
+    "native_evaluation_calls": 0,
+    "planner_cost_probe": {
+      "status": "SKIPPED_TRAINING_INCOMPLETE",
+      "purpose": "cost only; no native evaluation or quality metric",
+      "calls": []
+    }
+  },
+  "probing_cost_estimate": {
+    "status": "PROXY_REPORTED",
+    "official_probe_metadata": {
+      "status": "PASS",
+      "source": "official DatasetFactory._create_wall_probing_datasets",
+      "train_loader_batches_per_pass": 156,
+      "validation_loader_batches_per_evaluator_pass": 156,
+      "configured_batch_size": 64,
+      "configured_sequence_depth": 16,
+      "pred_prober_training_epochs": 20,
+      "encoder_prober_training_epochs": 30,
+      "total_training_passes": 50,
+      "training_batches_across_50_passes": 7800,
+      "validation_passes_from_official_eval_flags": 2,
+      "validation_batches_across_enabled_eval_passes": 312,
+      "shape_probe_batches_in_official_methods": 2,
+      "total_batch_work_metadata_estimate": 8114,
+      "probe_batch_iteration_during_cpu_preparation": false,
+      "probe_data_device_override_for_length_only": {
+        "original": "cuda",
+        "preflight": "cpu"
+      },
+      "offline_normalizer_reused": true
+    },
+    "measured_probe_forward_or_prober_training": false,
+    "cost_proxy_basis": "Use the measured full official training update mean as a per-sample resource proxy scaled by actual probing/training batch sizes; no prober forward/train batch is timed in this allocation.",
+    "probe_train_and_validation_batch_work": 8114,
+    "probe_batch_size": 64,
+    "training_batch_size": 64,
+    "training_update_mean_seconds": 2.9990486047643516,
+    "probe_training_sample_equivalents_at_training_batch_size": 8114.0,
+    "conservative_extra_probing_seconds_proxy": 24334.28037905795,
+    "limitation": "Not a measured prober cost or guaranteed upper bound. The full training update includes backbone backward work, while probing uses different forwards and may add visualization/plotting. Retain extra walltime margin and do not call this a measured evaluation estimate."
+  },
+  "memory": {
+    "after_trainer_init_allocated_bytes": 12036608,
+    "after_trainer_init_reserved_bytes": 7094665216,
+    "training_peak_allocated_bytes": 7038008320,
+    "training_peak_reserved_bytes": 7111442432,
+    "after_training_allocated_bytes": 97440768,
+    "after_training_reserved_bytes": 7111442432
+  },
+  "calibration_checkpoint": {
+    "saved": false,
+    "reason": "only a complete 110-update calibration writes an isolated calibration checkpoint"
+  },
+  "planner_cost_probe": {
+    "status": "SKIPPED_TRAINING_INCOMPLETE",
+    "purpose": "cost only; no native evaluation or quality metric",
+    "calls": []
+  },
+  "training_status": "PARTIAL",
+  "ended_utc": "2026-09-26T20:57:10.355061+00:00"
+}
