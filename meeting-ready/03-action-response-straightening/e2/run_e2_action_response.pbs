@@ -1,0 +1,78 @@
+#!/bin/bash
+#PBS -N lewm_e2_action_response
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=48gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo "refusing run without PBS_JOBID" >&2; exit 2; }
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo "refusing run without PBS GPU allocation visibility" >&2; exit 2; }
+
+MEETING_READY=${LEWM_MEETING_READY_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready}
+CONTROL=${LEWM_ACTION_E2_DIR:-$MEETING_READY/03-action-response-straightening/e2}
+ADAPTER_SCRIPT=${LEWM_ACTION_E2_ADAPTER:-$MEETING_READY/02-horizon-weighted-recurrent-student/lewm-transfer/run_lewm_recurrent_student.py}
+FREEZE=${LEWM_ACTION_E2_FREEZE:-$MEETING_READY/02-horizon-weighted-recurrent-student/lewm-transfer/LEWM_RECURRENT_STUDENT_FREEZE.json}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+DATASET=${LEWM_ACTION_E2_DATASET:-$STABLEWM_HOME/pusht_expert_train.h5}
+OUT=${LEWM_ACTION_E2_OUT:-$CONTROL/artifacts/$PBS_JOBID}
+
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -f "$CONTROL/run_e2_action_response.py"
+test -f "$ADAPTER_SCRIPT"
+test -f "$FREEZE"
+test -f "$DATASET"
+test -f "$STABLEWM_HOME/pusht/lewm_object.ckpt"
+test -x "$PYTHON_BIN"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$CONTROL:${ADAPTER_SCRIPT%/*}:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+echo "LEWM_ACTION_E2_JOB=$PBS_JOBID"
+echo "HOST=$HOST"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+cleanup() {
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+"$PYTHON_BIN" "$CONTROL/run_e2_action_response.py" \
+  --mode run \
+  --stablewm-home "$STABLEWM_HOME" \
+  --dataset "$DATASET" \
+  --adapter-script "$ADAPTER_SCRIPT" \
+  --freeze "$FREEZE" \
+  --output "$OUT" \
+  --train-contexts "${E2_TRAIN_CONTEXTS:-16}" \
+  --heldout-contexts "${E2_HELDOUT_CONTEXTS:-8}" \
+  --train-episodes "${E2_TRAIN_EPISODES:-4}" \
+  --heldout-episodes "${E2_HELDOUT_EPISODES:-2}" \
+  --batch-contexts "${E2_BATCH_CONTEXTS:-4}" \
+  --updates "${E2_UPDATES:-100}" \
+  --learning-rate "${E2_LEARNING_RATE:-0.00005}" \
+  --weight-decay "${E2_WEIGHT_DECAY:-0.001}" \
+  --branch-weight "${E2_BRANCH_WEIGHT:-1.0}" \
+  --lambda-curvature "${E2_LAMBDA_CURVATURE:-0.0001}" \
+  --delta "${E2_DELTA:-0.02}" \
+  --encode-batch-contexts "${E2_ENCODE_BATCH_CONTEXTS:-2}"
+
+printf 'EXIT_STATUS=0\n' > "$OUT/job_status"
+cleanup
+trap - EXIT

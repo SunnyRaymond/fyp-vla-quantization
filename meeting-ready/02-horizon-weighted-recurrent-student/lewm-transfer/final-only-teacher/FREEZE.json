@@ -1,0 +1,94 @@
+{
+  "schema": "lewm-pusht-final-only-teacher.freeze",
+  "revision": 1,
+  "status": "FROZEN_BEFORE_EVALUATION",
+  "created_local_date": "2026-09-24",
+  "purpose": "Test whether a single official-teacher cost evaluation at CEM round 30 captures the benefit previously observed from seven late teacher rounds, without training or changing the student checkpoint.",
+  "provenance": {
+    "student_checkpoint": {
+      "path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+      "source_job_id": "25239551.pbs101",
+      "source": "cem_distribution_distill",
+      "arm": "treatment",
+      "extra_updates": 1000,
+      "start_checkpoint_job_id": "25223859.pbs101",
+      "start_checkpoint": "anchor_aligned_bank_step3000.pt",
+      "architecture": "LeWMCompactRecurrentTransitionStudent h256",
+      "parameter_count": 775872
+    },
+    "teacher": {
+      "path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+      "expected_size_bytes": 72345781,
+      "loader": "Existing validated load_official_checkpoint(cache_root); used only on round 30"
+    }
+  },
+  "task_and_protocol": {
+    "task_source_job_id": "25534994.pbs101",
+    "task_source_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json",
+    "task_count": 50,
+    "task_keys": ["row_index", "episode_idx", "start_step"],
+    "expected_unique_source_episode_count": 50,
+    "dataset": "pusht_expert_train",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "dataset_expected_size_bytes": 46300921856,
+    "preprocessing": "Reuse the exact successful baseline full-dataset action/proprio/state StandardScaler fits, NaN-row exclusions, goal-scaler reuse, and ImageNet/Resize224 pixel and goal transforms.",
+    "world_evaluator": "Pinned World.evaluate dataset mode and baseline callables; goal_offset_steps=25, eval_budget=50, world.max_episode_steps=100, video=None.",
+    "evaluator_boundary": "Upstream-protocol-aligned dataset evaluation, not verbatim upstream eval.py and not random-reset PushT.",
+    "solver": "Pinned CEMSolver; batch_size=1, num_samples=300, n_steps=30, topk=30, var_scale=1, CUDA, native torch.Generator seed 42, no per-call reseeding.",
+    "observation_pairing": "Reuse exact source rows and deterministic baseline preprocessing/evaluator. Require dataset row identity and all six prepared observation keys, and record their shapes/dtypes. Historical runs retained key/equality checks but not raw prepared tensors, so do not claim a new bytewise cross-job tensor comparison.",
+    "reference_outcomes_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/final-only-teacher/REFERENCE_OUTCOMES.json",
+    "reference_outcomes_sources": {
+      "student_only": "25536308.pbs101 treatment_step1000 arm; its 50 per-task outcomes were verified identical to 25536049.pbs101 student_only.",
+      "late_teacher7": "25536049.pbs101 late_teacher7 arm, 25/50, from the same task rows and evaluator; a separate valid run 25535873.pbs101 recorded 26/50, so the 25/50 vector is one descriptive reference, not a stable repeated outcome.",
+      "teacher_only_positive_control": "25536308.pbs101 teacher_only arm, 49/50, identical to baseline 25534994.pbs101."
+    }
+  },
+  "arm": {
+    "name": "final_only_round30",
+    "student_checkpoint": "current treatment_step1000",
+    "teacher_rounds_1_indexed": [30],
+    "rule": "At each actual pinned CEMSolver start_batch, use student cost for rounds 1-29 and official teacher cost only for round 30."
+  },
+  "primary_comparison": {
+    "arm": "final_only_round30",
+    "reference_arm": "student_only",
+    "unit": "Paired task/source episode; the exact 50 frozen source episodes each occur once.",
+    "test": "Exact two-sided McNemar test using frozen per-task student outcomes.",
+    "alpha_two_sided": 0.05,
+    "meaningful_direction_threshold_successes": 5,
+    "decision_rules": {
+      "final_only_practical_gain": "At least 5 more successes than student_only and exact p<0.05.",
+      "final_only_sufficient_for_late_gain": "Primary practical-gain gate passes and final_only_round30 reaches at least 20/50, within five successes of the one-time 25/50 late_teacher7 reference from 25536049.pbs101. Another valid late7 run was 26/50; this engineering gate is not statistical equivalence or a claim that late7 is stable.",
+      "final_only_gain_but_below_late_margin": "Primary practical-gain gate passes but final_only_round30 is more than 5 successes below late_teacher7.",
+      "no_gain_over_student": "Primary practical-gain gate does not pass while the frozen late_teacher7 reference remains at least 5 successes above student_only; conclude only that a single final score did not demonstrate the frozen gain, with multi-round feedback remaining a hypothesis.",
+      "otherwise": "INCONCLUSIVE; do not infer equivalence or causal mechanism."
+    }
+  },
+  "secondary_comparison": {
+    "reference_arm": "late_teacher7",
+    "test": "Exact two-sided McNemar test on the same 50 task rows.",
+    "interpretation": "Report paired difference and p-value descriptively against 25536049.pbs101 only; another valid run 25535873.pbs101 was 26/50. Do not call within-five point-estimate similarity statistical equivalence or late7 repeatability."
+  },
+  "validity_gates": [
+    "Reuse exactly the 50 selected baseline task keys in the same order; verify HDF5 episode_idx/step_idx; 50 unique source episodes and no missing/duplicate outcomes.",
+    "Validate the current treatment checkpoint path and provenance with the existing strict loader; do not substitute or retrain weights.",
+    "Verify seed 42, 300 candidates, 30 CEM rounds, and record pre-solve native generator state and candidate shapes.",
+    "At every actual CEM start_batch, validate exactly 30 route calls with teacher only at round 30; all other 29 calls use student cost.",
+    "Require all six prepared observation keys and record shape/dtype metadata; verify shared deterministic task rows and preprocessing. No bytewise historical observation claim.",
+    "All episode outcomes, route finite flags, output values, and solver timings finite.",
+    "Validate the frozen reference file against its source IDs; baseline teacher-only is 49/50 and exactly matches the successful current teacher positive-control vector.",
+    "PBS compute guards, successful runner exit, complete artifacts, and 5-second GPU utilization/memory telemetry all pass."
+  ],
+  "timing_boundary": "Record synchronized planner solve and full evaluation wall time for this arm only. Do not make a direct speedup claim against old jobs because arm count/run composition and runtime context differ; no latency gate is set.",
+  "failure_rule": "Any validity gate failure yields FAIL_CLOSED; preserve artifacts and do not resample, change teacher rounds, or retry under this freeze.",
+  "resources": {
+    "queue": "normal route to gdev",
+    "gpu": 1,
+    "ncpus": 16,
+    "memory": "110gb",
+    "walltime": "02:00:00",
+    "internal_timeout_seconds": 6900,
+    "gpu_telemetry": "nvidia-smi GPU utilization and memory every 5 seconds to job.log; terminate and wait for monitor PID on exit.",
+    "submission": "One bounded GPU PBS job after static checks pass."
+  }
+}

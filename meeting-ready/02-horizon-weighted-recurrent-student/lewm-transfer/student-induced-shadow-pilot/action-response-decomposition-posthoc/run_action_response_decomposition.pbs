@@ -1,0 +1,60 @@
+#!/bin/bash
+#PBS -N lewm_action_response_diag
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing login/submit host: $HOST" >&2; exit 2 ;; esac
+awk -F. -v host="$HOST" 'tolower($1) == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+
+CONTROL=${LEWM_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+TRANSFER=$CONTROL/lewm-transfer
+EXPERIMENT=$TRANSFER/student-induced-shadow-pilot/action-response-decomposition-posthoc
+SOURCE_EXPERIMENT=$TRANSFER/student-induced-shadow-pilot/latent-score-sensitivity-posthoc
+PARTIAL=$TRANSFER/student-induced-shadow-pilot/onpolicy-fullbank-ranker/partial-horizon-teacher-hybrid
+TRAIN_BANKS=$TRANSFER/student-induced-shadow-pilot/onpolicy-fullbank-ranker/artifacts/25538135.pbs101/train_banks.pt
+PYTHON_BIN=$STAGE_ROOT/venv/bin/python
+OUT=$EXPERIMENT/artifacts/$JOB_ID
+
+# Heavy reads and model work begin only after the PBS allocation guard.
+for FILE in "$EXPERIMENT/FREEZE.json" "$EXPERIMENT/runner.py" "$SOURCE_EXPERIMENT/runner.py" \
+  "$PARTIAL/FREEZE.json" "$PARTIAL/runner.py" "$TRAIN_BANKS" \
+  "$TRANSFER/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt" \
+  "$STAGE_ROOT/stablewm_home/pusht/lewm_object.ckpt"; do test -f "$FILE"; done
+test -x "$PYTHON_BIN"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+
+status=1
+GPU_MONITOR_PID=""
+cleanup() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$STAGE_ROOT/le-wm:$STAGE_ROOT/stable-worldmodel:$TRANSFER:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+printf 'job_id=%s\nhost=%s\nfreeze=%s\n' "$JOB_ID" "$HOST" "$EXPERIMENT/FREEZE.json" > "$OUT/execution_identity.txt"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+timeout --signal=TERM --kill-after=20s 1200 "$PYTHON_BIN" "$EXPERIMENT/runner.py" \
+  --freeze "$EXPERIMENT/FREEZE.json" --output-dir "$OUT"
+test -s "$OUT/action_response_decomposition_summary.json"
+status=0
+printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"

@@ -1,0 +1,28 @@
+{
+  "schema": "lewm-action-reset-diagnostic-freeze.v1",
+  "name": "official-pusht-action-space-reset-diagnostic",
+  "parent_experiment": "official-pusht-cem",
+  "parent_stage1_job": "25476081.pbs101",
+  "parent_stage1_status": "FAIL_CLOSED",
+  "purpose": "Identify why the prepared reset action differs across paired Stage 1 paths despite seeding world.envs.envs[0].action_space before World.reset(seed). Do not weaken or bypass the action-key pairing gate.",
+  "scope": {
+    "simulator_reset_seeds": [260922001, 260922008],
+    "main_path_labels": ["student_only", "uniform_teacher7", "late_teacher7", "teacher_only"],
+    "fidelity_path_labels": ["native_teacher_reference", "routed_teacher_reference"],
+    "maximum_world_resets": 12,
+    "per_seed_order": "Reproduce the frozen Stage 1 randomized main-path order and fidelity-path order using their existing order-seed bases.",
+    "operations": "Construct a fresh official stable_worldmodel.World for each path label, inspect the concrete EnvPool wrapper chain and action_space object identities, seed the concrete outer action space exactly as Stage 1 does, then call World.reset(seed) and capture world.infos['action'].",
+    "instrumentation": "Temporarily wrap Gymnasium Space.seed and Space.sample methods in this standalone process; delegate each call unchanged and record space identity, arguments, return summary, and order. Record exact low-dimensional action values; summarize any large samples with shape, dtype, min, max, and first eight values.",
+    "not_in_scope": ["model/checkpoint loading", "CEM/planner execution", "quality or latency measurement", "closed-loop episode evaluation", "changing the Stage 1 observation key set or gate"]
+  },
+  "resources": {
+    "queue": "normal",
+    "nodes": 1,
+    "cpus": 2,
+    "memory_gb": 16,
+    "walltime_minutes": 20,
+    "runner_timeout_seconds": 900,
+    "gpus": 0
+  },
+  "source_provenance": "The official World, EnvPool, and reset-wrapper sources are the staging snapshots used by the parent experiment. Their commit identifiers are staging provenance/reference only; this diagnostic reports the runtime import root and API identities without claiming exact-commit runtime verification."
+}

@@ -1,0 +1,52 @@
+{
+  "scope": "Rolling Ball Interception offline vanilla LeWM baseline",
+  "status": "frozen_before_training",
+  "source": {
+    "lewm": "lucas-maes/le-wm@8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel": "galilai-group/stable-worldmodel@10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "dataset": "cyx337/ReflexBench_dataset@9295b6e9878609a992047f0b8b65421a493299e7"
+  },
+  "data": {
+    "task_index": 3,
+    "camera": "observation.images.fixed_cam",
+    "image_size": 224,
+    "action_dim": 8,
+    "action_semantics": "absolute seven joint targets and binary gripper intent",
+    "fps": 25,
+    "frameskip": 1,
+    "history_size": 3,
+    "num_preds": 1,
+    "expected_episodes": 200,
+    "split_seed": 20260927,
+    "train_episodes": 180,
+    "validation_episodes": 20,
+    "normalization": "train-only unique action rows mean/unbiased std (ddof=1), floor 1e-6; official RGB transform",
+    "success_label": "not explicit in release; no assumed per-episode success gate"
+  },
+  "training": {
+    "seed": 0,
+    "epochs": 100,
+    "batch_size": 128,
+    "num_workers": 2,
+    "precision": "bf16",
+    "learning_rate": 0.00005,
+    "weight_decay": 0.001,
+    "gradient_clip_val": 1.0,
+    "loss": "official prediction MSE + 0.09 * official SIGReg",
+    "checkpoint_selection": "epoch100_last; best validation prediction MSE checkpoint is diagnostic only",
+    "selection_reason": "encoder scale changes during joint training; smallest latent MSE across epochs does not establish better task capability",
+    "no_task_success_claim": true
+  },
+  "task_adaptations": [
+    "frameskip 1 replaces official PushT frameskip 5 to match native 40 ms Rolling control",
+    "8-D absolute joint action replaces PushT action dimension",
+    "episode-disjoint 180/20 split replaces sample-level random split",
+    "training seed 0",
+    "fixed camera only"
+  ],
+  "closed_loop": {
+    "status": "not_executed",
+    "hardware_constraint": "only A100 available; native Isaac RGB path requires supported GPU with RT cores",
+    "goal_cost_and_cem_config": "offline adapter frozen in PLANNER_FREEZE.json; native RGB task smoke remains pending; no test future state"
+  }
+}

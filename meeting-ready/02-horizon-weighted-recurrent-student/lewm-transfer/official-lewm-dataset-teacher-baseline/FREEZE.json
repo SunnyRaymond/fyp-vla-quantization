@@ -1,0 +1,88 @@
+{
+  "schema": "lewm-pusht-dataset-teacher-baseline.freeze",
+  "revision": 2,
+  "status": "frozen_before_results",
+  "revision_reason": "Infrastructure-only correction after job 25531848.pbs101 failed before config, dataset, or model loading: stable_pretraining is installed under the staged virtual environment, not inside the le-wm source tree. Revision 2 requires Path(sys.prefix).resolve() to equal the exact staged $STAGE_ROOT/venv and requires stable_pretraining to resolve inside that venv; stable_worldmodel remains required inside the staged stable-worldmodel source root. The revision-1 freeze is preserved as FREEZE.revision1-attempt-25531848.json. No data, seed, preprocessing, checkpoint, solver, sample size, gate, or resource setting changes.",
+  "experiment_id": "official-lewm-pusht-dataset-teacher-baseline",
+  "question": "Does the pinned-upstream-protocol-aligned official LeWM teacher produce a non-floor success rate under the pinned upstream PushT dataset-driven evaluation?",
+  "scope": {
+    "arms": ["teacher_only"],
+    "training": false,
+    "benchmark_label": "pinned-upstream-protocol-aligned teacher baseline",
+    "verbatim_upstream_eval_py": false,
+    "loader_exception": "Use the project's previously validated load_official_checkpoint helper to load the existing serialized official object at stablewm_home/pusht/lewm_object.ckpt. No HF mirror, alternate checkpoint, or download is allowed.",
+    "output_exception": "World.evaluate receives video=None to avoid writing videos; task selection, preprocessing, policy, solver, callables, budget, and success evaluation remain aligned. The upstream small pusht_results.txt output is retained; selected-task and JSON result sidecars are additive."
+  },
+  "upstream_protocol": {
+    "repository": "https://github.com/lucas-maes/le-wm",
+    "commit_reference": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel_repository": "https://github.com/galilai-group/stable-worldmodel",
+    "stable_worldmodel_commit_reference": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "provenance_note": "Commit IDs are staging provenance/reference only. Remote source trees are staged snapshots without Git metadata; runtime guards check stable_worldmodel under the staged source root, stable_pretraining under the exact staged Python venv (sys.prefix), and API/config semantics, not exact commit identity.",
+    "config": "le-wm/config/eval/pusht.yaml",
+    "evaluation_source": "le-wm/eval.py",
+    "num_eval": 50,
+    "seed": 42,
+    "dataset": "pusht_expert_train",
+    "goal_offset_steps": 25,
+    "eval_budget": 50,
+    "world_max_episode_steps": 100,
+    "effective_rollout_budget": 50,
+    "image_size": 224,
+    "world_env_name": "swm/PushT-v1",
+    "plan_config": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "action_block": 5
+    },
+    "solver": {
+      "target": "stable_worldmodel.solver.CEMSolver",
+      "batch_size": 1,
+      "num_samples": 300,
+      "var_scale": 1.0,
+      "n_steps": 30,
+      "topk": 30,
+      "device": "cuda",
+      "seed": 42
+    },
+    "keys_to_cache": ["action", "proprio", "state"],
+    "preprocess": {
+      "action_proprio_state": "fit sklearn StandardScaler on all dataset rows after removing rows with any NaN in that column",
+      "goal_proprio_goal_state": "reuse the corresponding proprio/state scaler",
+      "pixels_goal": "ToImage, float32 scaled to [0,1], ImageNet Normalize, Resize(224)"
+    },
+    "selection": "Reproduce eval.py exactly: unique episode IDs; episode length=max(step_idx)+1; per-episode maximum start=length-goal_offset_steps-1; valid rows satisfy step_idx<=maximum; rng=default_rng(42); choice(len(valid_indices)-1, size=50, replace=False); sort selected row indices; retrieve episode ID and step_idx. Preserve the upstream len(valid_indices)-1 bound."
+  },
+  "checkpoint": {
+    "staging_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "expected_size_bytes": 72345781,
+    "loader": "meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/run_lewm_recurrent_student.py:load_official_checkpoint",
+    "post_load": ["to(cuda)", "eval()", "requires_grad_(False)", "interpolate_pos_encoding=True"]
+  },
+  "dataset_source": {
+    "staging_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "expected_size_bytes": 46300921856,
+    "cache_layout": "job-private cache/datasets/pusht_expert_train.h5 symlink to the staging file"
+  },
+  "outcomes_and_gates": {
+    "primary_outcome": "count of successful episodes among the exact 50 selected dataset rows, using World.evaluate episode_successes",
+    "validity": ["exactly 50 distinct selected row indices", "exactly 50 returned episode outcomes", "all reported numeric metrics finite", "PBS compute-node and imported source-root guards pass"],
+    "engineering_continuation_gate": "At least 5/50 successes makes this baseline eligible for a later same-task paired multi-arm design. 0-4/50 stops this line pending diagnosis. This is an engineering floor gate, not a statistical test or success claim.",
+    "no_extension": "No additional rows, reruns, four-arm evaluation, checkpoint substitution, or task selection based on outcomes in this experiment."
+  },
+  "task_unit_and_pairing": {
+    "unit": "one sampled dataset row (row_index, episode_idx, start_step)",
+    "persisted_before_rollout": "selected_tasks.json records all 50 exact task keys and source dataset metadata",
+    "later_comparison_rule": "If the engineering gate passes, any follow-up multi-arm comparison requires its own pre-results freeze and should reuse these exact task keys for every arm; preserve all transforms/scalers/callables/budget and freeze arm run order before outcomes. Record repeated source episode IDs and treat them as clusters in later inference."
+  },
+  "resources": {
+    "pbs_queue": "normal",
+    "queue_selection_reason": "The normal route queue is the authorized submission entry point and routes to gdev. qstat shows gdev is from_route_only, accepts 1 GPU and a 2-hour walltime; this frozen request fits that target. Direct qsub to gdev was rejected and created no job.",
+    "select": "1:ncpus=16:mem=110gb:ngpus=1",
+    "walltime": "02:00:00",
+    "internal_timeout_seconds": 6900,
+    "gpu_telemetry": "nvidia-smi utilization and memory every 5 seconds to job.log",
+    "monitor_cleanup": "trap terminates and waits for the direct nvidia-smi monitor PID"
+  },
+  "method_reference": "Kassis, Agarwal, He, Patel, and Brueckner, Scientific Agent Skills, arXiv:2609.00065 v2 (2026-09-02), https://doi.org/10.48550/arXiv.2609.00065"
+}

@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# One official from-scratch LpWM PushT arm plus its native 50-trajectory plan.
+# Submit once per arm with qsub -v LPWM_ARM=sparse|dense; no calibration weights.
+#PBS -N lpwm-formal
+#PBS -q normal
+#PBS -P personal-yguo017
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -j oe
+
+set -euo pipefail
+fail() { echo "FORMAL_INVALID: $*"; exit 2; }
+
+[[ -n "${PBS_JOBID:-}" ]] || fail "PBS_JOBID missing"
+[[ -s "${PBS_NODEFILE:-}" ]] || fail "PBS_NODEFILE missing or empty"
+HOST=$(hostname -f 2>/dev/null || hostname)
+[[ "$HOST" != *login* ]] || fail "login host rejected: $HOST"
+awk -v h="$HOST" 'BEGIN{ok=0} {n=$1; sub(/\..*/,"",n); x=h; sub(/\..*/,"",x); if(tolower(n)==tolower(x))ok=1} END{exit !ok}' "$PBS_NODEFILE" || fail "host is not listed in PBS_NODEFILE: $HOST"
+command -v nvidia-smi >/dev/null 2>&1 || fail "nvidia-smi unavailable"
+[[ "${LPWM_ARM:-}" == sparse || "${LPWM_ARM:-}" == dense ]] || fail "set exactly one mandatory LPWM_ARM=sparse or dense"
+
+BASE=/scratch/users/ntu/yguo017/experiment/reproduction/lpwm
+REPO="$BASE/lpworldmodel-bdd812d"
+COMMIT=bdd812d9432cccda8c350086006401b436f91982
+PY=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+OVERLAY="$BASE/runtime-overlay-minimal"
+PUSHT_OVERLAY=/scratch/users/ntu/yguo017/dino-wm-wall/artifacts/pusht-python-overlay-pusht-v5
+DATA=/scratch/users/ntu/yguo017/dino-wm-wall/data
+RECOVERY="$BASE/train-video-recovery-25570558.pbs101.json"
+FORMAL_ROOT="$BASE/formal_runs"
+
+if [[ "$LPWM_ARM" == sparse ]]; then
+  RUN_NAME=repro_sparse_pusht_mlp_var_pd384
+  LINK=reprelu TARGET_P=1 MU=0 MU_JSON=0 REG_WEIGHT=0.1 MUP_LR=5e-4
+else
+  RUN_NAME=repro_dense_pusht_mlp_var_pd384
+  LINK=identity TARGET_P=2 MU= MU_JSON=null REG_WEIGHT=0.01 MUP_LR=5e-5
+fi
+
+# Small source/runtime/data-status guards only; model and video payloads are not
+# opened until the official training command runs below in this PBS allocation.
+[[ -x "$PY" ]] || fail "verified shared Python runtime unavailable: $PY"
+[[ -f "$BASE/native_eval_postprocess.py" ]] || fail "native evaluator postprocessor source is unavailable"
+[[ -f "$REPO/SOURCE_COMMIT" && "$(cat "$REPO/SOURCE_COMMIT")" == "$COMMIT" ]] || fail "pinned official source marker mismatch"
+[[ -f "$REPO/train.py" && -f "$REPO/plan.py" && -f "$REPO/scripts/train.sh" && -f "$REPO/scripts/plan.sh" \
+   && -f "$REPO/conf/train_rdmreg.yaml" && -f "$REPO/conf/plan_lewm.yaml" ]] || fail "pinned official entrypoint/config missing"
+[[ -d "$OVERLAY/accelerate" && -d "$OVERLAY/gym" && -d "$OVERLAY/decord" ]] || fail "verified minimal runtime overlay unavailable"
+[[ -d "$PUSHT_OVERLAY/skimage" && -d "$PUSHT_OVERLAY/pymunk" ]] || fail "validated existing PushT v5 overlay unavailable"
+[[ -f "$DATA/pusht_noise/train/seq_lengths.pkl" && -f "$DATA/pusht_noise/val/seq_lengths.pkl" ]] || fail "official PushT metadata absent"
+[[ -d "$DATA/pusht_noise/train/obses" && -d "$DATA/pusht_noise/val/obses" ]] || fail "official PushT video directories absent"
+[[ -f "$RECOVERY" ]] || fail "successful full-video CPU recovery report absent: $RECOVERY"
+"$PY" - "$RECOVERY" "$COMMIT" <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+assert report.get("pbs_job_id") == "25570558.pbs101", "unexpected recovery job"
+assert report.get("source_commit") == sys.argv[2], "recovery source mismatch"
+assert report.get("archive_member_ids_exactly_cover_metadata") is True
+assert report.get("post_extraction_exact_name_and_size_coverage") is True
+assert report.get("archive_train_clip_member_count") == report.get("metadata_train_trajectory_count")
+assert report.get("metadata_modified") is False and report.get("existing_destination_files_overwritten") == 0
+assert set(report.get("official_factory_getitem", {})) >= {"train", "valid"}
+assert set(report.get("official_base_get_frames", {})) >= {"9956", "2930", "18684"}
+print("TRAIN_VIDEO_RECOVERY_AND_NATIVE_READ_GATES=PASS")
+PY
+
+JOB_ROOT="$FORMAL_ROOT/$PBS_JOBID/$LPWM_ARM"
+[[ ! -e "$JOB_ROOT" ]] || fail "refusing to reuse per-job output directory: $JOB_ROOT"
+CKPT_BASE="$JOB_ROOT/checkpoints"
+RUN_DIR="$CKPT_BASE/outputs/$RUN_NAME"
+JOBLOG="$JOB_ROOT/job.log"
+MANIFEST="$JOB_ROOT/run_manifest.json"
+TORCH_TELEMETRY_DIR="$JOB_ROOT/python-telemetry"
+mkdir -p "$JOB_ROOT"
+POSTPROCESSOR="$JOB_ROOT/native_eval_postprocess.py"
+cp "$BASE/native_eval_postprocess.py" "$POSTPROCESSOR"
+mkdir -p "$TORCH_TELEMETRY_DIR"
+exec > >(tee -a "$JOBLOG") 2>&1
+
+TRAIN_RC=
+PLAN_RC=
+PLAN_OUTPUT_PARENT="$REPO/plan_outputs"
+TELEMETRY_PID=
+write_manifest() {
+  local exit_code="$1"
+  "$PY" - "$MANIFEST" "$exit_code" "${TRAIN_RC:-}" "${PLAN_RC:-}" <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+def code(value): return None if not value else int(value)
+exit_code = int(sys.argv[2])
+payload.update({"status": "PASS" if exit_code == 0 else "INCOMPLETE",
+                "pbs_exit_status": exit_code,
+                "train_exit_code": code(sys.argv[3]),
+                "plan_exit_code": code(sys.argv[4]),
+                "checkpoint_latest_exists": pathlib.Path(payload["outputs"]["checkpoint_latest"]).is_file(),
+                "checkpoint_epoch2_exists": pathlib.Path(payload["outputs"]["checkpoint_epoch2"]).is_file()})
+path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+}
+finish() {
+  local rc=$?
+  set +e
+  if [[ -n "$TELEMETRY_PID" ]]; then kill "$TELEMETRY_PID" 2>/dev/null; wait "$TELEMETRY_PID" 2>/dev/null; fi
+  printf 'pbs_job_id=%s\narm=%s\nexit_status=%s\ntrain_exit_code=%s\nplan_exit_code=%s\n' \
+    "$PBS_JOBID" "$LPWM_ARM" "$rc" "${TRAIN_RC:-NOT_RUN}" "${PLAN_RC:-NOT_RUN}" > "$JOB_ROOT/job_status.txt"
+  if [[ -f "$MANIFEST" ]]; then write_manifest "$rc"; fi
+}
+trap finish EXIT
+
+cat > "$MANIFEST" <<EOF
+{
+  "schema": "lpwm-official-pusht-formal-arm-v1",
+  "status": "RUNNING",
+  "pbs_job_id": "$PBS_JOBID",
+  "execution_host": "$HOST",
+  "arm": "$LPWM_ARM",
+  "source_commit": "$COMMIT",
+  "source_path": "$REPO",
+  "source_marker": "$REPO/SOURCE_COMMIT",
+  "native_postprocessor_snapshot": "$POSTPROCESSOR",
+  "runtime_python": "$PY",
+  "training_runtime_overlay": "$OVERLAY",
+  "planning_runtime_overlay": "$PUSHT_OVERLAY:$OVERLAY",
+  "shared_venv_mutated": false,
+  "dataset_root": "$DATA",
+  "video_recovery_report": "$RECOVERY",
+  "training": {
+    "entrypoint": "scripts/train.sh pusht 5 3 2 64 <link> cls <target_p> b 20",
+    "run_name": "$RUN_NAME",
+    "predictor": "mlp_var",
+    "encoder": "vit_scratch",
+    "proj_dim": 384,
+    "action_emb_dim": 384,
+    "num_hist": 3,
+    "frameskip": 5,
+    "epochs": 2,
+    "batch_size": 64,
+    "num_workers": 20,
+    "seed": 0,
+    "regularizer": "rdmreg",
+    "link": "$LINK",
+    "target_p": $TARGET_P,
+    "mu": $MU_JSON,
+    "reg_weight": $REG_WEIGHT,
+    "mup": true,
+    "mup_lr": $MUP_LR
+  },
+  "evaluation": {
+    "entrypoint": "scripts/plan.sh plan_lewm.yaml <run_name> latest 50 10",
+    "seed": 99,
+    "n_evals": 50,
+    "goal_source": "dset",
+    "goal_H": 5,
+    "cem_candidates": 300,
+    "cem_elites": 30,
+    "cem_opt_steps": 30,
+    "mpc_max_replanning_iterations": 10,
+    "mpc_actions_per_replan": 5
+  },
+  "outputs": {
+    "job_root": "$JOB_ROOT",
+    "checkpoint_base": "$CKPT_BASE",
+    "training_run": "$RUN_DIR",
+    "checkpoint_latest": "$RUN_DIR/checkpoints/model_latest.pth",
+    "checkpoint_epoch2": "$RUN_DIR/checkpoints/model_2.pth",
+    "native_plan_output_parent": "$PLAN_OUTPUT_PARENT",
+    "native_plan_output_dir": null,
+    "native_plan_logs": null,
+    "checkpoint_source_contract": "train.py save_ckpt writes checkpoints/model_latest.pth and checkpoints/model_<epoch>.pth from the official run directory"
+  },
+  "resources": {"pbs_walltime": "12:00:00", "inner_timeout_seconds": 42600,
+                "gpu_telemetry_interval_seconds": 5}
+}
+EOF
+
+printf 'PBS_JOBID=%s\nHOST=%s\nARM=%s\nSOURCE_COMMIT=%s\nSTART_UTC=%s\n' \
+  "$PBS_JOBID" "$HOST" "$LPWM_ARM" "$COMMIT" "$(date -u +%FT%TZ)"
+printf 'RUN_NAME=%s\nCKPT_BASE=%s\nDATASET_DIR=%s\nRECOVERY_REPORT=%s\n' \
+  "$RUN_NAME" "$CKPT_BASE" "$DATA" "$RECOVERY"
+echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-UNSET}"
+echo "NVML_ALL_GPU_IDENTITY_BEGIN"
+nvidia-smi --query-gpu=index,uuid,name,memory.total --format=csv
+echo "NVML_ALL_GPU_IDENTITY_END"
+
+export PATH="$(dirname "$PY"):$PATH"
+export PYTHONPATH="$TORCH_TELEMETRY_DIR:$OVERLAY:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONUNBUFFERED=1 DATASET_DIR="$DATA" CKPT_BASE WANDB_MODE=offline SDL_VIDEODRIVER=dummy
+export TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
+"$PY" "$POSTPROCESSOR" --self-check
+"$PY" - <<'PY'
+import os, sys, torch
+print(f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', 'UNSET')}")
+if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+    raise SystemExit("PBS GPU allocation is not visible to Torch")
+index = torch.cuda.current_device()
+properties = torch.cuda.get_device_properties(index)
+print(f"TORCH_LOGICAL_DEVICE=cuda:{index}")
+print(f"TORCH_DEVICE_NAME={properties.name}")
+print(f"TORCH_DEVICE_TOTAL_MEMORY_BYTES={properties.total_memory}")
+print(f"TORCH_STARTUP_ALLOCATED_BYTES={torch.cuda.memory_allocated(index)}")
+print(f"TORCH_STARTUP_RESERVED_BYTES={torch.cuda.memory_reserved(index)}")
+PY
+
+cat > "$TORCH_TELEMETRY_DIR/sitecustomize.py" <<'PY'
+import atexit
+import os
+import sys
+
+role = os.environ.get("LPWM_GPU_TELEMETRY_PROCESS")
+entry = os.path.basename(sys.argv[0]) if sys.argv else ""
+if (role == "train" and entry == "train.py") or (role == "plan" and entry == "plan.py"):
+    import torch
+
+    if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+        raise RuntimeError("formal GPU process cannot access an allocated CUDA device")
+    device = torch.cuda.current_device()
+    props = torch.cuda.get_device_properties(device)
+    print(f"TORCH_PROCESS_ROLE={role} CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', 'UNSET')}", flush=True)
+    print(f"TORCH_PROCESS_LOGICAL_DEVICE=cuda:{device} NAME={props.name} TOTAL_MEMORY_BYTES={props.total_memory}", flush=True)
+    print(f"TORCH_PROCESS_START_ALLOCATED_BYTES={torch.cuda.memory_allocated(device)} RESERVED_BYTES={torch.cuda.memory_reserved(device)}", flush=True)
+    torch.cuda.reset_peak_memory_stats(device)
+
+    def report_gpu_peak():
+        try:
+            torch.cuda.synchronize(device)
+            print(f"TORCH_PROCESS_PEAK_ROLE={role} ALLOCATED_BYTES={torch.cuda.max_memory_allocated(device)} RESERVED_BYTES={torch.cuda.max_memory_reserved(device)}", flush=True)
+        except Exception as exc:
+            print(f"TORCH_PROCESS_PEAK_ROLE={role} REPORT_ERROR={type(exc).__name__}:{exc}", flush=True)
+
+    atexit.register(report_gpu_peak)
+PY
+
+(
+  while true; do
+    printf 'GPU_TELEMETRY_UTC=%s ' "$(date -u +%FT%TZ)"
+    nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits | tr '\n' ';'
+    printf '\n'
+    sleep 5
+  done
+) >> "$JOBLOG" 2>&1 &
+TELEMETRY_PID=$!
+unset LR LAMB_VAR LAMB_COV VAR_SPACE TRAIN_ENCODER SAVE_EVERY DEBUG WANDB_PROJECT ENCODER_OVERRIDE
+unset MU
+cd "$REPO"
+[[ "$PWD" == "$REPO" ]] || fail "failed to enter pinned official repository: $REPO"
+echo "OFFICIAL_SCRIPT_CWD=$PWD"
+
+JOB_START=$SECONDS
+remaining_seconds() { echo $((42600 - (SECONDS - JOB_START))); }
+REMAINING=$(remaining_seconds)
+(( REMAINING > 10 )) || fail "inner walltime reserve exhausted before training"
+set +e
+if [[ "$LPWM_ARM" == sparse ]]; then
+  timeout --signal=TERM --kill-after=60s "$REMAINING" env LPWM_GPU_TELEMETRY_PROCESS=train PREDICTOR=mlp_var PROJ_DIM=384 MUP=1 MUP_LR=5e-4 REG_WEIGHT=0.1 MU=0 SEED=0 RUN_NAME="$RUN_NAME" REGULARIZER=rdmreg scripts/train.sh pusht 5 3 2 64 reprelu cls 1 b 20 2>&1 | tee "$JOB_ROOT/train.log"
+else
+  timeout --signal=TERM --kill-after=60s "$REMAINING" env LPWM_GPU_TELEMETRY_PROCESS=train PREDICTOR=mlp_var PROJ_DIM=384 MUP=1 MUP_LR=5e-5 REG_WEIGHT=0.01 SEED=0 RUN_NAME="$RUN_NAME" REGULARIZER=rdmreg scripts/train.sh pusht 5 3 2 64 identity cls 2 b 20 2>&1 | tee "$JOB_ROOT/train.log"
+fi
+TRAIN_RC=${PIPESTATUS[0]}
+set -e
+[[ "$TRAIN_RC" -eq 0 ]] || exit "$TRAIN_RC"
+[[ -s "$RUN_DIR/checkpoints/model_latest.pth" && -s "$RUN_DIR/checkpoints/model_2.pth" ]] || fail "official two-epoch checkpoints missing"
+
+REMAINING=$(remaining_seconds)
+(( REMAINING > 10 )) || fail "inner walltime reserve exhausted before native planning"
+PLAN_START_EPOCH=$(date +%s)
+set +e
+export PYTHONPATH="$TORCH_TELEMETRY_DIR:$PUSHT_OVERLAY:$OVERLAY:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+timeout --signal=TERM --kill-after=60s "$REMAINING" env LPWM_GPU_TELEMETRY_PROCESS=plan SEED=99 GOAL_H=5 DATASET_DIR="$DATA" CKPT_BASE="$CKPT_BASE" WANDB_MODE=offline scripts/plan.sh plan_lewm.yaml "$RUN_NAME" latest 50 10 2>&1 | tee "$JOB_ROOT/plan.log"
+PLAN_RC=${PIPESTATUS[0]}
+set -e
+[[ "$PLAN_RC" -eq 0 ]] || exit "$PLAN_RC"
+"$PY" "$POSTPROCESSOR" "$JOB_ROOT/plan.log" "$REPO" "$RUN_NAME" "$MANIFEST" "$PLAN_START_EPOCH"
+[[ -s "$MANIFEST" && -s "$JOB_ROOT/final_eval_outcomes.json" && -s "$JOB_ROOT/final_eval_target_states.json" ]] || fail "native final_eval vector/target-state manifest output is missing"
+echo "OFFICIAL_NATIVE_PLAN_COMPLETED=1 RUN_NAME=$RUN_NAME N_EVALS=50"
+echo "END_UTC=$(date -u +%FT%TZ)"

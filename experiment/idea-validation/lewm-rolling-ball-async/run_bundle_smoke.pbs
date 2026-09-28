@@ -1,0 +1,70 @@
+#!/bin/bash
+#PBS -N rolling_bundle_verify
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+# Submit with the real export job ID in BUNDLE_JOB and afterok dependencies:
+# qsub -v BUNDLE_JOB=<export PBS_JOBID> -W depend=afterok:25578999.pbs101:<export PBS_JOBID> run_bundle_smoke.pbs
+
+set -euo pipefail
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT/source_snapshot"
+exec > >(tee -a "$OUT/job.log") 2>&1
+GPU_MONITOR_PID=""
+cleanup() {
+  rc=$?
+  if [ -n "$GPU_MONITOR_PID" ]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$OUT/wrapper_exit_status.txt"
+}
+trap cleanup EXIT
+printf 'not_started\n' > "$OUT/runner_exit_status.txt"
+
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+BUNDLE_JOB=${BUNDLE_JOB:?Pass the successful CPU export PBS job ID}
+case "$BUNDLE_JOB" in *[!0-9a-zA-Z.]*|'') exit 64;; esac
+BUNDLE_ROOT="$TASK_ROOT/bundles/rolling-ball-lewm-epoch100"
+FULL_CHECKPOINT="$TASK_ROOT/runs/25578999.pbs101/last.ckpt"
+printf 'job_id=%s\nhost=%s\nbundle_job=%s\nbundle_root=%s\n' \
+  "$JOB_ID" "$HOST" "$BUNDLE_JOB" "$BUNDLE_ROOT"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$OUT/source_snapshot:$TASK_ROOT/deps:$TASK_ROOT/source:$TASK_ROOT/upstream_lewm:$TASK_ROOT/upstream_stablewm:${PYTHONPATH:-}"
+for name in verify_bundle.py policy_server.py run_bundle_smoke.pbs PLANNER_FREEZE.json TRAIN_FREEZE.json; do
+  test -f "$TASK_ROOT/source/$name"
+  cp "$TASK_ROOT/source/$name" "$OUT/source_snapshot/"
+done
+
+nvidia-smi --id="$CUDA_VISIBLE_DEVICES" --query-gpu=name,memory.total,driver_version --format=csv > "$OUT/gpu_info.csv"
+nvidia-smi --id="$CUDA_VISIBLE_DEVICES" --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 1080 \
+  /scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python \
+  "$OUT/source_snapshot/verify_bundle.py" \
+  --full-root "$TASK_ROOT" \
+  --full-checkpoint "$FULL_CHECKPOINT" \
+  --bundle-root "$BUNDLE_ROOT" \
+  --bundle-job "$BUNDLE_JOB" \
+  --output "$OUT/verify_bundle.json"
+rc=$?
+set -e
+printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+if [ "$rc" -eq 0 ]; then test -s "$OUT/verify_bundle.json" || exit 3; fi
+exit "$rc"

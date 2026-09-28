@@ -1,0 +1,165 @@
+#!/bin/bash
+#PBS -N rolling_bundle_transfer
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:30:00
+#PBS -W depend=afterok:25579500.pbs101
+#PBS -j oe
+
+set -euo pipefail
+umask 077
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+BUNDLE="$TASK_ROOT/bundles/rolling-ball-lewm-epoch100.tar.gz"
+EXPECTED_BUNDLE_BYTES=74570166
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+test -f "$BUNDLE"
+LOCAL_BYTES=$(stat -c '%s' -- "$BUNDLE")
+test "$LOCAL_BYTES" = "$EXPECTED_BUNDLE_BYTES"
+
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+PRIVATE_KEY="$OUT/transfer_key_ed25519"
+PUBLIC_KEY="$PRIVATE_KEY.pub"
+FINGERPRINT_FILE="$OUT/transfer_key_fingerprint.txt"
+ENDPOINT_CONFIG="$OUT/autodl_endpoint.env"
+KNOWN_HOSTS="$OUT/autodl_known_hosts"
+READY_MARKER="$OUT/authorized.ready"
+RUNNER_STATUS="$OUT/runner_exit_status.txt"
+WRAPPER_STATUS="$OUT/wrapper_exit_status.txt"
+SUMMARY="$OUT/transfer_summary.json"
+FAILURE_CODE=not_started
+
+cleanup() {
+  rc=$?
+  if [ ! -e "$RUNNER_STATUS" ]; then printf '%s\n' "$rc" > "$RUNNER_STATUS"; fi
+  rm -f -- "$PRIVATE_KEY"
+  if [ ! -e "$SUMMARY" ]; then
+    printf '{"status":"FAIL","job_id":"%s","failure":"%s","closed_loop_evaluated":false}\n' \
+      "$JOB_ID" "$FAILURE_CODE" > "$SUMMARY"
+  fi
+  printf '%s\n' "$rc" > "$WRAPPER_STATUS"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT HUP
+
+FAILURE_CODE=ssh_keygen_failed
+if [ -e "$PRIVATE_KEY" ] || [ -e "$PUBLIC_KEY" ]; then
+  echo "Refusing to replace a key in this job directory" >&2
+  exit 73
+fi
+ssh-keygen -q -t ed25519 -N '' -C "rolling-bundle-$JOB_ID" -f "$PRIVATE_KEY"
+FINGERPRINT=$(ssh-keygen -lf "$PUBLIC_KEY" | awk '{print $2}')
+test -n "$FINGERPRINT"
+printf '%s\n' "$FINGERPRINT" > "$FINGERPRINT_FILE"
+printf 'job_id=%s\npubkey=%s\nfingerprint=%s\n' "$JOB_ID" "$PUBLIC_KEY" "$FINGERPRINT"
+
+FAILURE_CODE=authorization_timeout
+READY_TIMEOUT_SECONDS=900
+elapsed=0
+while [ "$elapsed" -lt "$READY_TIMEOUT_SECONDS" ]; do
+  if [ -s "$ENDPOINT_CONFIG" ] && [ -s "$KNOWN_HOSTS" ] && [ -s "$READY_MARKER" ]; then
+    break
+  fi
+  sleep 5
+  elapsed=$((elapsed + 5))
+done
+if [ ! -s "$ENDPOINT_CONFIG" ] || [ ! -s "$KNOWN_HOSTS" ] || [ ! -s "$READY_MARKER" ]; then
+  echo "Timed out waiting for endpoint config, pinned known_hosts, and authorization marker" >&2
+  exit 75
+fi
+FAILURE_CODE=authorization_marker_mismatch
+grep -Fxq "job_id=$JOB_ID" "$READY_MARKER"
+grep -Fxq "key_fingerprint=$FINGERPRINT" "$READY_MARKER"
+
+AUTODL_HOST=''
+AUTODL_USER=''
+AUTODL_PORT=''
+REMOTE_DIR=''
+declare -A seen=()
+while IFS='=' read -r key value || [ -n "${key:-}${value:-}" ]; do
+  value=${value%$'\r'}
+  [ -z "${key:-}" ] && continue
+  case "$key" in \#*) continue ;; esac
+  if [[ "$value" == *'='* ]] || [[ -n "${seen[$key]:-}" ]]; then
+    FAILURE_CODE=invalid_endpoint_config
+    echo "Malformed or duplicate endpoint config entry" >&2
+    exit 65
+  fi
+  seen[$key]=1
+  case "$key" in
+    AUTODL_HOST) AUTODL_HOST=$value ;;
+    AUTODL_USER) AUTODL_USER=$value ;;
+    AUTODL_PORT) AUTODL_PORT=$value ;;
+    REMOTE_DIR) REMOTE_DIR=$value ;;
+    *) FAILURE_CODE=invalid_endpoint_config; echo "Unexpected endpoint config key: $key" >&2; exit 65 ;;
+  esac
+done < "$ENDPOINT_CONFIG"
+
+FAILURE_CODE=invalid_endpoint_config
+[[ "$AUTODL_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+[[ "$AUTODL_USER" =~ ^[A-Za-z0-9._-]+$ ]]
+[[ "$AUTODL_PORT" =~ ^[0-9]{1,5}$ ]]
+[ "$AUTODL_PORT" -ge 1 ] && [ "$AUTODL_PORT" -le 65535 ]
+[[ "$REMOTE_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]]
+case "$REMOTE_DIR" in *'/../'*|*/..|*'/./'*|*/.) echo "REMOTE_DIR must not contain dot path segments" >&2; exit 65 ;; esac
+case "$REMOTE_DIR" in *'//'*) echo "REMOTE_DIR must not contain repeated slashes" >&2; exit 65 ;; esac
+
+KNOWN_HOST_LOOKUP="$AUTODL_HOST"
+if [ "$AUTODL_PORT" != 22 ]; then KNOWN_HOST_LOOKUP="[$AUTODL_HOST]:$AUTODL_PORT"; fi
+ssh-keygen -F "$KNOWN_HOST_LOOKUP" -f "$KNOWN_HOSTS" >/dev/null
+
+SSH_OPTIONS=(
+  -o BatchMode=yes
+  -o IdentitiesOnly=yes
+  -o StrictHostKeyChecking=yes
+  -o GlobalKnownHostsFile=/dev/null
+  -o "UserKnownHostsFile=$KNOWN_HOSTS"
+  -o ConnectTimeout=20
+  -i "$PRIVATE_KEY"
+)
+DEST="$AUTODL_USER@$AUTODL_HOST"
+BUNDLE_NAME=rolling-ball-lewm-epoch100.tar.gz
+REMOTE_FINAL="$REMOTE_DIR/$BUNDLE_NAME"
+REMOTE_PARTIAL="$REMOTE_FINAL.partial.$JOB_ID"
+
+FAILURE_CODE=remote_preflight_failed
+ssh "${SSH_OPTIONS[@]}" -p "$AUTODL_PORT" "$DEST" \
+  "mkdir -p -- '$REMOTE_DIR' && test ! -e '$REMOTE_FINAL' && test ! -e '$REMOTE_PARTIAL'"
+FAILURE_CODE=scp_failed
+scp -p -P "$AUTODL_PORT" "${SSH_OPTIONS[@]}" "$BUNDLE" "$DEST:$REMOTE_PARTIAL"
+FAILURE_CODE=remote_size_mismatch
+REMOTE_BYTES=$(ssh "${SSH_OPTIONS[@]}" -p "$AUTODL_PORT" "$DEST" "stat -c %s -- '$REMOTE_PARTIAL'")
+test "$REMOTE_BYTES" = "$LOCAL_BYTES"
+FAILURE_CODE=remote_rename_failed
+ssh "${SSH_OPTIONS[@]}" -p "$AUTODL_PORT" "$DEST" \
+  "mv -n -- '$REMOTE_PARTIAL' '$REMOTE_FINAL' && test ! -e '$REMOTE_PARTIAL' && test -f '$REMOTE_FINAL'"
+
+FAILURE_CODE=summary_write_failed
+cat > "$SUMMARY" <<EOF
+{
+  "status": "PASS",
+  "job_id": "$JOB_ID",
+  "source_archive": "$BUNDLE",
+  "source_bytes": $LOCAL_BYTES,
+  "remote_host": "$AUTODL_HOST",
+  "remote_user": "$AUTODL_USER",
+  "remote_path": "$REMOTE_FINAL",
+  "remote_bytes": $REMOTE_BYTES,
+  "host_key_check": "strict pinned known_hosts",
+  "upload": "scp to unique partial path then no-clobber rename",
+  "hash_checked": false,
+  "private_key_removed_on_exit": true,
+  "closed_loop_evaluated": false
+}
+EOF
+FAILURE_CODE=complete
+printf '0\n' > "$RUNNER_STATUS"
+exit 0

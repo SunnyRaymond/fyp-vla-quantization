@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+#PBS -N lewm_linear_response
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=64gb:ngpus=1
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+JOB_ID=$PBS_JOBID
+NODEFILE=$PBS_NODEFILE
+test -n "$JOB_ID" && test -n "$NODEFILE" && test -f "$NODEFILE" || {
+  echo "refusing run without PBS allocation" >&2
+  exit 2
+}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+awk -F. -v host="$HOST" 'tolower($1) == host {found=1} END {exit !found}' "$NODEFILE" || {
+  echo "refusing host outside PBS_NODEFILE: $HOST" >&2
+  exit 2
+}
+
+STAGE_ROOT=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+LEWM_ROOT=$STAGE_ROOT/le-wm
+PYTHON_BIN=$STAGE_ROOT/venv/bin/python
+TRANSFER=/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer
+CONTROL=$TRANSFER/linear-response-adapter
+OUT=$CONTROL/artifacts/$JOB_ID
+
+test ! -e "$OUT" || { echo "refusing to reuse output directory: $OUT" >&2; exit 2; }
+mkdir -p "$OUT"
+GPU_MONITOR_PID=""
+finish() {
+  rc=$?
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\n' "$rc" > "$OUT/job_status"
+}
+trap finish EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -x "$PYTHON_BIN"
+test -d "$LEWM_ROOT"
+test -f "$CONTROL/FREEZE.json"
+test -f "$CONTROL/PROTOCOL.zh.md"
+test -f "$CONTROL/runner.py"
+test -f "$CONTROL/self_check.py"
+test -f "$TRANSFER/terminal-response-loss/runner.py"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$STAGE_ROOT/stable-worldmodel:$TRANSFER:$CONTROL"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export LEWM_STAGE_ROOT="$STAGE_ROOT"
+export LEWM_REPO_ROOT="$LEWM_ROOT"
+export STABLEWM_HOME="$STAGE_ROOT/stablewm_home"
+
+printf 'job_id=%s\nhost=%s\nrunner=%s\n' "$JOB_ID" "$HOST" "$CONTROL/runner.py"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+"$PYTHON_BIN" "$CONTROL/self_check.py"
+set +e
+timeout --signal=TERM --kill-after=20s 2400 "$PYTHON_BIN" "$CONTROL/runner.py" \
+  --freeze "$CONTROL/FREEZE.json" --output-dir "$OUT"
+runner_status=$?
+set -e
+printf 'RUNNER_EXIT_STATUS=%s\n' "$runner_status"
+exit "$runner_status"

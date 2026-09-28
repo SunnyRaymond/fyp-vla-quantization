@@ -1,0 +1,44 @@
+{
+  "schema": "lewm-pusht-action-response-decomposition-posthoc-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-25",
+  "purpose": "Read-only terminal action-response and official-cost decomposition on existing student-generated train candidate banks.",
+  "source": {
+    "collection_job": "25538135.pbs101",
+    "train_banks_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot/onpolicy-fullbank-ranker/artifacts/25538135.pbs101/train_banks.pt",
+    "source_freeze_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot/onpolicy-fullbank-ranker/partial-horizon-teacher-hybrid/FREEZE.json",
+    "train_bank_count": 93,
+    "train_episode_count": 16,
+    "allowed_split": "train only; validation and reserved holdout banks must not be opened"
+  },
+  "models": {
+    "student_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt"
+  },
+  "method": {
+    "terminal_only": "For each candidate i, use the official teacher terminal zT_i, frozen student terminal zS_i, and saved goal g. Error e_i=zS_i-zT_i, common b=mean_i(e_i), action contrast q_i=e_i-b.",
+    "latent_identity": "mean_i ||e_i||^2 = ||b||^2 + mean_i ||q_i||^2",
+    "cost_identity": "CS_i-CT_i = 2 (zT_i-g) dot b + ||b||^2 + 2 (zT_i-g) dot q_i + 2 b dot q_i + ||q_i||^2",
+    "score_attribution": "After candidate-centering, common term is 2(zT_i-g) dot b; contrast-mediated term is 2(zT_i-g) dot q_i + 2 b dot q_i + ||q_i||^2. Their centered sum equals centered total cost error.",
+    "oracle_controls": "Remove-common uses zS_i-b; remove-contrast uses zS_i-q_i=zT_i+b. Both use teacher information and are nondeployable counterfactuals; compare their top30 recall and teacher-cost regret with frozen student and teacher.",
+    "boundary": "Descriptive inversion fraction among 10 teacher ranks 20..29 versus 10 ranks 30..39, computed within each saved bank.",
+    "aggregation": "Episode is the unit. Take median over available banks within episode before overall, t0/t25, or round 10/20/30 summaries. No p-values or GO gate. Episode 15946 has no t25 bank and remains missing."
+  },
+  "validity": {
+    "required_banks": 93,
+    "required_episodes": 16,
+    "required_rounds": [10, 20, 30],
+    "required_replan_steps": [0, 25],
+    "saved_cost_control": "All 93 k0 and 93 k5 recomputed official costs must match saved costs before a summary is written.",
+    "failure_action": "Fail closed on data identity, shapes, finiteness, saved cost alignment, or algebraic closure. Write no partial metric result."
+  },
+  "execution": {
+    "allocation": "One guarded PBS GPU compute-node job; never load models or banks on a login node or local machine.",
+    "walltime": "00:30:00",
+    "gpu_telemetry_seconds": 5,
+    "telemetry_destination": "job.log",
+    "data_handling": "Read only existing train_banks.pt and frozen checkpoints; do not collect episodes, train, run CEM, or open validation/holdout banks."
+  },
+  "claim_boundary": "Teacher is a reference, not environment truth. Oracle corrections use teacher latents. This is a descriptive fixed-bank predictor diagnostic, not a deployable repair, CEM result, planner speedup, or closed-loop success."
+}

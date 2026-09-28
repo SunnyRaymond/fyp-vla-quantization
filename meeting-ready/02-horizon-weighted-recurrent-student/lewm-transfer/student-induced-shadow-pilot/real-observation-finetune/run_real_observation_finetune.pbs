@@ -1,0 +1,93 @@
+#!/bin/bash
+#PBS -N lewm_realobs_ft
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+CONTROL=${LEWM_ROLLOUT_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+PILOT_DIR=$CONTROL/lewm-transfer/student-induced-shadow-pilot
+FINETUNE_DIR=$PILOT_DIR/real-observation-finetune
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+DATA_DIR=$STAGE_ROOT/artifacts/student-induced-shadow-pilot/real-observation-training-data/capture/25543623.pbs101
+ARCHIVE=$DATA_DIR/real_observation_training_data.npz
+COLLECTION_SUMMARY=$DATA_DIR/collection_summary_recovered.json
+CHECKPOINT=/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt
+FREEZE=$FINETUNE_DIR/FREEZE.json
+RUNNER=$FINETUNE_DIR/run_real_observation_finetune.py
+OUT=$STAGE_ROOT/artifacts/student-induced-shadow-pilot/real-observation-finetune/$JOB_ID
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+if ! awk -F. -v host="$HOST" 'tolower($1) == host { found = 1 } END { exit !found }' "$PBS_NODEFILE"; then
+  echo "host $HOST is not present in PBS_NODEFILE" >&2
+  exit 2
+fi
+if awk -F. 'tolower($1) ~ /login|head|submit/ { bad = 1 } END { exit !bad }' "$PBS_NODEFILE"; then
+  echo "PBS_NODEFILE contains a probable login/submit host" >&2
+  exit 2
+fi
+if [ "${PBS_NGPUS:-1}" = "0" ] || [ -z "${PBS_NGPUS:-1}" ]; then
+  echo "one GPU PBS allocation is required" >&2
+  exit 2
+fi
+
+# The allocation guard is complete. These checks only test paths; the runner
+# reads the checkpoint and NPZ after entering the compute job.
+for FILE in "$PYTHON_BIN" "$FREEZE" "$RUNNER" "$ARCHIVE" "$COLLECTION_SUMMARY" "$CHECKPOINT"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+if [ -e "$OUT" ]; then
+  echo "refusing to reuse existing output directory: $OUT" >&2
+  exit 2
+fi
+mkdir -p "$OUT"
+
+status=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "runner=$RUNNER" \
+  "freeze=$FREEZE" \
+  "initial_checkpoint=$CHECKPOINT" \
+  "collection_archive=$ARCHIVE" \
+  "collection_summary=$COLLECTION_SUMMARY" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=20s 1680 "$PYTHON_BIN" "$RUNNER" --freeze "$FREEZE" --archive "$ARCHIVE" --collection-summary "$COLLECTION_SUMMARY" --initial-checkpoint "$CHECKPOINT" --output "$OUT"
+status=$?
+set -e
+printf 'finished_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+exit "$status"

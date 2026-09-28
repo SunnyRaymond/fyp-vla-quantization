@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#PBS -N lewm_fresh_cost
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb:ngpus=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+# Allocation guard: keep all model, HDF5, and checkpoint access behind these checks.
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be set by PBS}
+test -f "$NODEFILE" || { echo "refusing run without PBS_NODEFILE" >&2; exit 2; }
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+awk -F. -v host="$HOST" 'tolower($1) == host {found=1} END {exit !found}' "$NODEFILE" || {
+  echo "refusing host outside PBS_NODEFILE: $HOST" >&2
+  exit 2
+}
+
+MEETING_READY=${LEWM_MEETING_READY_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready}
+TRANSFER=${LEWM_FRESH_COST_TRANSFER_DIR:-$MEETING_READY/02-horizon-weighted-recurrent-student/lewm-transfer}
+CONTROL=${LEWM_FRESH_COST_CONTROL_DIR:-$TRANSFER/fresh-cost-error-diagnostic}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+FREEZE=${LEWM_FRESH_COST_FREEZE:-$CONTROL/FREEZE.json}
+RUNNER=${LEWM_FRESH_COST_RUNNER:-$CONTROL/runner.py}
+OUT=${LEWM_FRESH_COST_OUT:-$CONTROL/artifacts/$JOB_ID}
+
+test ! -e "$OUT" || { echo "refusing to reuse output directory: $OUT" >&2; exit 2; }
+mkdir -p "$OUT"
+finish() {
+  rc=$?
+  if [ -n "${GPU_MONITOR_PID:-}" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\n' "$rc" > "$OUT/job_status"
+}
+trap finish EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+test -f "$RUNNER"
+test -f "$CONTROL/self_check.py"
+test -f "$FREEZE"
+test -f "$CONTROL/PROTOCOL.zh.md"
+test -x "$PYTHON_BIN"
+test -d "$LEWM_ROOT"
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$STAGE_ROOT/stable-worldmodel:$TRANSFER:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export LEWM_STAGE_ROOT="$STAGE_ROOT"
+export LEWM_REPO_ROOT="$LEWM_ROOT"
+export STABLEWM_HOME="$STAGE_ROOT/stablewm_home"
+
+printf 'job_id=%s\nhost=%s\nrunner=%s\nfreeze=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$FREEZE"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+"$PYTHON_BIN" "$CONTROL/self_check.py"
+
+# Keep 5 minutes for PBS cleanup and status recording inside the 20-minute allocation.
+set +e
+timeout --signal=TERM --kill-after=20s 900 "$PYTHON_BIN" "$RUNNER" \
+  --freeze "$FREEZE" --output-dir "$OUT"
+runner_status=$?
+set -e
+printf 'RUNNER_EXIT_STATUS=%s\n' "$runner_status"
+exit "$runner_status"

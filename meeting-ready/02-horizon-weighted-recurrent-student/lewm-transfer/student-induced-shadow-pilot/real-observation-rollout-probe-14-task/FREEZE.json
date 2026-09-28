@@ -1,0 +1,191 @@
+{
+  "schema": "lewm-pusht-real-observation-latent-alignment-14-task-extension-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_results",
+  "purpose": "Extend the completed two-task real-observation latent alignment probe to the remaining 14 frozen collection tasks without rerunning the first two.",
+  "source_freezes": {
+    "seeded_pilot": "../SEEDED_PILOT_FREEZE.json",
+    "base_pilot": "../PILOT_FREEZE.json",
+    "task_rule": "Exactly SEEDED_PILOT_FREEZE collection_tasks with selection_order 2 through 15 inclusive; selection_order 0 and 1 are prior evidence and are never rerun here."
+  },
+  "source_alignment": {
+    "lewm_repository": "https://github.com/lucas-maes/le-wm",
+    "lewm_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "lewm_action_pack_source": "run_lewm_recurrent_student.py:624-630 (5 raw 2-D actions -> one 10-D token)",
+    "lewm_h1_encode_source": "jepa.py:27-42 (pixels CLS embedding; action only adds act_emb)",
+    "stable_worldmodel_repository": "https://github.com/galilai-group/stable-worldmodel",
+    "stable_worldmodel_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "policy_source": "stable_worldmodel/policy.py:347-405 (5 tokens expanded to 25 single-env actions; one buffered action per get_action)",
+    "pusht_step_source": "stable_worldmodel/envs/pusht/env.py:303-323 (one env.step returns observation after physics stepping)"
+  },
+  "tasks": [
+    {
+      "selection_order": 2,
+      "episode_idx": 4340,
+      "row_index": 535694,
+      "start_step": 34
+    },
+    {
+      "selection_order": 3,
+      "episode_idx": 5233,
+      "row_index": 663119,
+      "start_step": 13
+    },
+    {
+      "selection_order": 4,
+      "episode_idx": 7753,
+      "row_index": 961135,
+      "start_step": 14
+    },
+    {
+      "selection_order": 5,
+      "episode_idx": 8155,
+      "row_index": 1003582,
+      "start_step": 9
+    },
+    {
+      "selection_order": 6,
+      "episode_idx": 16209,
+      "row_index": 2043974,
+      "start_step": 128
+    },
+    {
+      "selection_order": 7,
+      "episode_idx": 13660,
+      "row_index": 1724062,
+      "start_step": 48
+    },
+    {
+      "selection_order": 8,
+      "episode_idx": 15946,
+      "row_index": 1993227,
+      "start_step": 37
+    },
+    {
+      "selection_order": 9,
+      "episode_idx": 17552,
+      "row_index": 2204279,
+      "start_step": 20
+    },
+    {
+      "selection_order": 10,
+      "episode_idx": 13134,
+      "row_index": 1648172,
+      "start_step": 52
+    },
+    {
+      "selection_order": 11,
+      "episode_idx": 11784,
+      "row_index": 1476519,
+      "start_step": 85
+    },
+    {
+      "selection_order": 12,
+      "episode_idx": 14911,
+      "row_index": 1876582,
+      "start_step": 30
+    },
+    {
+      "selection_order": 13,
+      "episode_idx": 10651,
+      "row_index": 1315677,
+      "start_step": 19
+    },
+    {
+      "selection_order": 14,
+      "episode_idx": 16609,
+      "row_index": 2091616,
+      "start_step": 16
+    },
+    {
+      "selection_order": 15,
+      "episode_idx": 7042,
+      "row_index": 873959,
+      "start_step": 17
+    }
+  ],
+  "assets": {
+    "student_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5"
+  },
+  "protocol": {
+    "action_geometry": {
+      "raw_action_width": 2,
+      "packed_token_width": 10,
+      "raw_actions_per_token": 5,
+      "forecast_horizon_tokens": 5,
+      "receding_horizon_tokens": 5,
+      "env_steps_per_token": 5,
+      "env_steps_per_solve": 25
+    },
+    "evaluation": "Reuse the validated one-episode World.evaluate seeded-pilot path, reset seed override 42, native 50-step evaluation budget, goal offset 25, and unchanged student-only native CEM policy. No teacher shadow scoring, training, ranking treatment, or new CEM variant.",
+    "world_model_commits": "A packed 10-wide action token is five consecutive 2-D PushT actions. Official horizon=5, receding_horizon=5, action_block=5 expands to 25 env.step calls. Capture post-step pixels only at completed token boundaries.",
+    "solve_starts_global_env_steps": [
+      0,
+      25
+    ],
+    "relative_observation_steps_per_solve": [
+      5,
+      10,
+      15,
+      20,
+      25
+    ],
+    "global_observation_steps": [
+      5,
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50
+    ],
+    "observation_encoder": "The official LeWM JEPA.encode H=1 path on the same policy-transformed pixels; encode pixels only for emb, with no action token inserted into the current observation latent.",
+    "executed_action_alignment": "Re-transform each captured raw env action through the exact official fitted process['action'], pack each five transformed 2-D actions into one 10-wide token, and require max absolute difference <= 1e-5 from the corresponding native t0/t25 solver plan before computing any forecast error.",
+    "forecast_alignment": "From the official H=1 latent at each actual solve start, compare five-step official teacher rollout and frozen student rollout on the validated executed packed actions against official H=1 encodings of actual post-step pixels at relative steps 5/10/15/20/25.",
+    "terminal_rule": "Only horizons with five committed env.step calls and an actual post-step pixel frame are scored. A terminal/truncated transition at step 25 supplies t0 horizon 5 but may omit the t25 solve; an episode ending between token boundaries reports only earlier complete horizons. Never pad or infer missing observations.",
+    "dataset_reset": "Require absent dataset seed column and exactly one dataset World.reset(seed=None) intercepted and forwarded as seed 42, matching SEEDED_PILOT_FREEZE. Native CEM generator seed 42 continues from t0 to t25 without reseeding.",
+    "reserved_holdout": "No reserved_holdout task is evaluated, scored, or used for decisions. Official dataset-wide action/proprio/state preprocessing may read those columns, as allowed by the seeded pilot freeze."
+  },
+  "metrics": {
+    "per_forecast_and_horizon": [
+      "shape and finite flags",
+      "mean_squared_error = mean((predicted_latent - observed_latent)^2)",
+      "relative_mse = mean_squared_error / max(mean(observed_latent^2), 1e-8)"
+    ],
+    "must_not_compute_errors_before": [
+      "source task identity verified",
+      "initial/solve-start official H=1 pixel encode has shape [1,1,192]",
+      "actual observation is present at the exact expected global env step",
+      "each available forecast action token matches the corresponding transformed committed actions within 1e-5",
+      "student and teacher forecast shapes are [1,N,192] for N actually available complete horizons (N=5 for a complete rollout), and each observed H=1 latent shape is [1,1,192]"
+    ],
+    "episode_first_horizon5_aggregation": {
+      "per_task": "For each task, separately report t0 solve horizon 5 and, if present, t25 solve horizon 5: student relative_mse minus teacher relative_mse.",
+      "summaries": [
+        "student and teacher relative_mse medians across available tasks",
+        "count with student relative_mse > teacher relative_mse",
+        "count with student_minus_teacher_relative_mse >= 0.05",
+        "missing t25 horizon-5 task count"
+      ],
+      "aggregate_unit": "one value per episode/task, never pooled over pixels, horizons, or solves"
+    },
+    "combined_16_preregistered_decision": {
+      "evidence": "Combine these 14 distinct collection task results with the already completed first-two result from PBS job 25542215.pbs101; do not rerun or refit the first two.",
+      "support_further_research_if": "At least 12 of all 16 train tasks have t0 horizon-5 student relative_mse minus teacher relative_mse >= 0.05, and at least 12 of all 16 have t25 horizon-5 delta >= 0.05.",
+      "otherwise": "Stop the real-observation target direction after this diagnostic.",
+      "this_job_does_not_compute_combined_decision": true
+    }
+  },
+  "output": {
+    "filename": "real_observation_latent_alignment_14_task.json",
+    "raw_images_or_action_traces_written": false,
+    "artifact_directory": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-rollout-probe-14-task/<PBS_JOBID>",
+    "prior_two_task_evidence": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-rollout-probe/25542215.pbs101/real_observation_latent_alignment.json"
+  },
+  "claim_boundary": "A 14-task extension of a two-task mechanism diagnostic for real-observation latent target alignment under the controlled seeded protocol. This job evaluates only collection selection_order 2-15 and does not itself decide the combined 16-task criterion. It is not training, a CEM ranking result, an official unseeded baseline, or a closed-loop success claim."
+}

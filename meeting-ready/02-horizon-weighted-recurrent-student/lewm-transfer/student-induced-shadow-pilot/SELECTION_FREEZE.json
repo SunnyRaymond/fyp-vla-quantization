@@ -1,0 +1,61 @@
+{
+  "schema": "lewm-pusht-student-induced-shadow-episode-selection",
+  "schema_version": 1,
+  "status": "PRE_REGISTERED_FOR_PREFLIGHT",
+  "dataset": {
+    "path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "metadata_columns": ["ep_len", "ep_offset", "episode_idx[row_index]", "step_idx[row_index]"],
+    "goal_offset_steps": 25,
+    "pixels_actions_and_model_weights_read": false
+  },
+  "legacy_exclusions": {
+    "closed_loop_50": {
+      "source_job_id": "25534994.pbs101",
+      "source_file": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json",
+      "episode_ids": [1235, 1316, 1639, 1694, 1761, 1820, 2635, 3184, 3517, 3838, 4299, 5123, 6651, 6983, 7572, 8235, 8313, 8373, 8408, 8486, 8488, 9591, 9864, 10117, 10378, 10489, 11775, 12047, 12221, 12591, 12961, 13029, 13303, 13586, 14033, 14108, 14327, 14432, 14474, 14526, 15277, 15435, 15701, 16015, 16019, 16399, 16532, 17264, 17939, 18054],
+      "task_count": 50,
+      "verification": "Read this small control JSON on the compute node; assert exactly 50 task rows, 50 unique episode_idx values, and exact equality with episode_ids above. Do not read any other old result/freeze artifact."
+    },
+    "prior_valid_prefix": {
+      "source": "run_lewm_recurrent_student.py context-manifest episode selector, reconstructed from the HDF5 ep_len vector.",
+      "episode_length_threshold_inclusive": 26,
+      "shuffle_rng": "random.Random",
+      "shuffle_seed": 20300903,
+      "slice_start_inclusive": 0,
+      "slice_stop_exclusive": 600,
+      "exclusion_unit": "Build episode IDs [i for i, ep_len in enumerate(ep_len_column) if ep_len >= 26], shuffle with random.Random(20300903), and exclude the first 600 IDs."
+    }
+  },
+  "candidate_selection": {
+    "seed": 20260924,
+    "rng": "random.Random",
+    "episode_pool": "Episode IDs with ep_len >= 26 after removing the frozen closed-loop-50 IDs and reconstructed valid-prefix-600 IDs.",
+    "unique_source_episodes": 32,
+    "collection_count": 16,
+    "reserved_holdout_count": 16,
+    "rows_per_episode": 1,
+    "row_rule": "Shuffle sorted eligible episode IDs with the frozen RNG and take the first 32. For each selected episode, choose start_step uniformly from [0, ep_len - 26], then set row_index = ep_offset + start_step and verify episode_idx[row_index] and step_idx[row_index] by scalar metadata reads.",
+    "partition_rule": "First 16 selected episodes are collection; remaining 16 are reserved_holdout.",
+    "holdout_use": "Selection metadata only. The shadow diagnostic may access collection episodes only; reserved_holdout episodes remain untouched for a separately frozen future confirmation."
+  },
+  "shadow_diagnostic_freeze": {
+    "episodes_used": "collection only",
+    "paired_snapshots": ["t0", "t25"],
+    "t25_definition": "Rollout step 25: after exactly 25 actual environment transitions from the selected t0 state, following the official evaluator's unmodified student-only action-commit semantics; if an episode terminates earlier, record t25 as unavailable without replacement.",
+    "minimum_matched_episode_coverage": 12,
+    "primary_episode_unit": "source episode",
+    "episode_metric": "student standardized teacher-cost regret at rollout step 25 minus t0, on the naturally continued on-policy CEM distributions; interpret as combined simulator-state, history, and candidate-distribution drift, not a pure state effect",
+    "solver_rng": "Initialize each episode with native solver seed 42 and preserve generator continuation from t0 through rollout step 25; never reseed at t25.",
+    "shadow_only": "Teacher labels are computed after each snapshot and never affect actions or simulator transitions. A shadow-on versus shadow-off replay of the same collection task starts from the same simulator state and native solver seed 42; compare each solve's active task, pre-solve RNG state, candidate shape, selected action, and simulator state through t25 to verify shadow non-interference.",
+    "diagnostic_go_rule": "At least 12 of 16 collection episodes have both t0 and t25; median episode-level regret increase is at least +0.05; and at least ceil(0.75 * matched_episode_count) episodes have a strictly positive increase. Otherwise stop without training.",
+    "nested_samples_are_not_replicates": "Candidates, CEM rounds, and snapshots are aggregated within source episode; they do not increase the independent sample count."
+  },
+  "execution_limits": {
+    "pbs_queue": "normal",
+    "resource": "1 CPU node, 4 CPUs, 16 GB RAM, no GPU",
+    "walltime": "00:20:00",
+    "network": false,
+    "download_or_hash": false,
+    "dependency_install": false
+  }
+}

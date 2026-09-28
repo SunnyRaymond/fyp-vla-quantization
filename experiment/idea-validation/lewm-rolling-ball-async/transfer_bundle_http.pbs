@@ -1,0 +1,110 @@
+#!/bin/bash
+#PBS -N rolling_bundle_https
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:10:00
+#PBS -W depend=afterok:25579500.pbs101
+#PBS -j oe
+
+set -euo pipefail
+umask 077
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+BUNDLE="$TASK_ROOT/bundles/rolling-ball-lewm-epoch100.tar.gz"
+HEADER="$TASK_ROOT/source/http_upload.header"
+URL=https://u1193870-ba1d-c91a1edb.westb.seetacloud.com:8443
+EXPECTED_BYTES=74570166
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+test -f "$BUNDLE"
+LOCAL_BYTES=$(stat -c '%s' -- "$BUNDLE")
+test "$LOCAL_BYTES" = "$EXPECTED_BYTES"
+
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+RUNNER_STATUS="$OUT/runner_exit_status.txt"
+WRAPPER_STATUS="$OUT/wrapper_exit_status.txt"
+SUMMARY="$OUT/transfer_summary.json"
+FAILURE_CODE=not_started
+HEALTH_CODE=''
+UPLOAD_CODE=''
+LOCK_OWNED=0
+
+cleanup() {
+  rc=$?
+  if [ ! -e "$RUNNER_STATUS" ]; then printf '%s\n' "$rc" > "$RUNNER_STATUS"; fi
+  if [ "$LOCK_OWNED" = 1 ]; then rm -f -- "$HEADER"; fi
+  if [ ! -e "$SUMMARY" ]; then
+    printf '{"status":"FAIL","job_id":"%s","failure":"%s","health_http_status":"%s","upload_http_status":"%s","closed_loop_evaluated":false}\n' \
+      "$JOB_ID" "$FAILURE_CODE" "$HEALTH_CODE" "$UPLOAD_CODE" > "$SUMMARY"
+  fi
+  printf '%s\n' "$rc" > "$WRAPPER_STATUS"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT HUP
+
+# Hold one shared flock for the transfer lifetime; it is released by the OS at exit.
+LOCK_FILE="$TASK_ROOT/runs/.transfer_bundle_http.lock"
+exec 9>"$LOCK_FILE"
+FAILURE_CODE=another_transfer_active
+flock -n 9
+LOCK_OWNED=1
+
+FAILURE_CODE=temporary_header_missing_or_perms
+test -s "$HEADER"
+HEADER_MODE=$(stat -c '%a' -- "$HEADER")
+test "$HEADER_MODE" = 600
+FAILURE_CODE=receiver_health_failed
+HEALTH_CODE=$(curl --silent --show-error --fail --connect-timeout 20 --max-time 30 \
+  --max-filesize 65536 --header "@$HEADER" --output "$OUT/health.response.json" \
+  --write-out '%{http_code}' "$URL/health")
+test "$HEALTH_CODE" = 200
+
+FAILURE_CODE=receiver_upload_failed
+UPLOAD_CODE=$(curl --silent --show-error --fail --connect-timeout 20 --max-time 300 \
+  --max-filesize 65536 --header "@$HEADER" \
+  --header 'Content-Type: application/octet-stream' \
+  --data-binary "@$BUNDLE" --output "$OUT/upload.response.json" \
+  --write-out '%{http_code}' "$URL/upload")
+test "$UPLOAD_CODE" = 200
+
+FAILURE_CODE=receiver_response_invalid
+python_bin=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+test -x "$python_bin"
+"$python_bin" - "$OUT/upload.response.json" "$SUMMARY" "$JOB_ID" "$URL/upload" "$LOCAL_BYTES" "$HEALTH_CODE" "$UPLOAD_CODE" <<'PY'
+import json
+import sys
+
+response_path, summary_path, job_id, url, expected, health_code, upload_code = sys.argv[1:]
+expected = int(expected)
+with open(response_path, encoding="utf-8") as stream:
+    response = json.load(stream)
+if response.get("status") != "PASS" or type(response.get("bytes")) is not int or response["bytes"] != expected:
+    raise SystemExit("Receiver response did not confirm PASS and the expected byte count")
+summary = {
+    "status": "PASS",
+    "job_id": job_id,
+    "upload_url": url,
+    "archive_bytes": expected,
+    "receiver_bytes": response["bytes"],
+    "health_http_status": int(health_code),
+    "upload_http_status": int(upload_code),
+    "tls_verification": "curl default certificate and hostname validation",
+    "temporary_header_removed_on_exit": True,
+    "hash_checked": False,
+    "closed_loop_evaluated": False,
+}
+with open(summary_path, "w", encoding="utf-8") as stream:
+    json.dump(summary, stream, indent=2)
+    stream.write("\n")
+PY
+
+FAILURE_CODE=complete
+printf '0\n' > "$RUNNER_STATUS"
+exit 0

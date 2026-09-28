@@ -1,0 +1,105 @@
+{
+  "schema": "lewm-pusht-partial-horizon-independent-gate-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-25",
+  "purpose": "Independent episode-level predictor gate for inference-time partial-horizon teacher-prefix hybrids, using the eight tasks reserved and untouched by the prior ranker evaluation.",
+  "prior_use_audit": {
+    "source_freeze": "onpolicy-fullbank-ranker/FREEZE.json remaining 8 reserved_holdout_tasks",
+    "historical_use": "These eight episodes were not found in prior score, episode evaluation, model-output, or ranker-training artifacts. They were listed as the reserved untouched set and later used only as metadata exclusions in a separate episode-selection manifest. During static preparation, collection_manifest.json val/untouched task metadata was viewed; no validation/untouched banks, costs, model outputs, or evaluation results were opened or used for selection.",
+    "old_ranker_validation": "Uses the disjoint first eight reserved episodes; this gate does not read or score their banks or per-task outputs.",
+    "audit_limit": "Static audit covered workspace freezes, source, reports, and small JSON/TXT summaries; it did not load bank tensors or model-output archives."
+  },
+  "scope": {
+    "stage": "independent episode-level predictor gate on newly generated student-only CEM banks",
+    "training": false,
+    "treatment_identity": "Inference-time horizon hybrid only: teacher prefix, then frozen h256 student continuation from the latest teacher latent as H1.",
+    "episode_independence": "The eight task IDs were reserved and not scored before this freeze. The official dataset-wide preprocessing fit may include train columns for these task rows; this is task-level episode independence, not row-level preprocessing isolation.",
+    "not_authorized": ["adaptive CEM", "treatment planner evaluation", "closed-loop treatment evaluation"],
+    "after_gate": "A GO permits only a separately frozen adaptive-CEM evaluation; it does not authorize deployment or closed-loop evaluation."
+  },
+  "tasks": [
+    {"selection_order": 24, "episode_idx": 13588, "row_index": 1715403, "start_step": 10},
+    {"selection_order": 25, "episode_idx": 3470, "row_index": 424420, "start_step": 47},
+    {"selection_order": 26, "episode_idx": 3172, "row_index": 386709, "start_step": 16},
+    {"selection_order": 27, "episode_idx": 15736, "row_index": 1969655, "start_step": 13},
+    {"selection_order": 28, "episode_idx": 9675, "row_index": 1184480, "start_step": 19},
+    {"selection_order": 29, "episode_idx": 14269, "row_index": 1799976, "start_step": 6},
+    {"selection_order": 30, "episode_idx": 10122, "row_index": 1238036, "start_step": 27},
+    {"selection_order": 31, "episode_idx": 7147, "row_index": 885159, "start_step": 38}
+  ],
+  "models": {
+    "student_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "student_architecture": "LeWMCompactRecurrentTransitionStudent h256",
+    "student_provenance": {"source": "cem_distribution_distill", "arm": "treatment", "extra_updates": 1000},
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt"
+  },
+  "runtime": {
+    "control_root": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student",
+    "stage_root": "/scratch/users/ntu/yguo017/lewm-pusht-iteration",
+    "lewm_root": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/le-wm",
+    "stablewm_root": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stable-worldmodel",
+    "stablewm_home": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home",
+    "baseline_dir": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline",
+    "official_cem_dir": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-pusht-cem",
+    "adaptive_dir": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/adaptive-teacher-schedule",
+    "pilot_freeze_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot/PILOT_FREEZE.json",
+    "interface_probe_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5"
+  },
+  "collection": {
+    "reset_seed": 42,
+    "student_only_cem": true,
+    "horizon": 5,
+    "action_dim": 10,
+    "num_candidates": 300,
+    "topk": 30,
+    "iterations": 30,
+    "capture_rounds": [10, 20, 30],
+    "replan_steps": [0, 25],
+    "teacher_shadow": "Compute official teacher criterion costs for the same candidate arrays and captured contexts; never feed them to CEM.",
+    "noninterference": "For selection orders 24-27, run paired student-only episodes with shadow capture disabled/enabled from the same seed protocol; require exact equality of task/reset, RNG states, candidate arrays and solver updates, committed actions, post-step states, solve counts, and captured contexts. Stop before other tasks or scoring unless all four pairs pass.",
+    "bank_storage": "Write newly generated independent banks only under the current PBS artifact directory; do not read old ranker validation banks."
+  },
+  "arms": {
+    "k_values": [0, 1, 2, 5],
+    "definition": "For each of the same 300 candidate action sequences, use official LeWM predict for the first k horizons. If k<5, pass the latest teacher latent as a length-one state to the frozen h256 student for the remaining 5-k horizons. Concatenate predictions and score with the official criterion.",
+    "controls": {"k0": "all five horizons from treatment_step1000 student", "k5": "all five horizons from official teacher"},
+    "ranking": "torch.topk(cost, k=30, largest=False, sorted=True), matching the pinned official CEM elite operator."
+  },
+  "validity": {
+    "bank_count": "Exactly three full banks per reached t0/t25 replan: rounds 10/20/30; no task replacement.",
+    "minimum_t25_episodes": 6,
+    "required_cost_controls": "Recomputed k0 student and k5 teacher costs must match the same newly captured bank costs by torch.allclose for every bank before any hybrid quality result is reported.",
+    "rtol": 0.00001,
+    "atol": 0.000001,
+    "nonfinite_or_missing": "Fail closed; do not drop a bank or episode."
+  },
+  "metrics": {
+    "normalized_elite_regret": "(mean saved teacher cost for scorer top30 - mean saved teacher cost for teacher top30) / population_std of all 300 teacher costs; lower is better.",
+    "top30_recall": "Scorer top30 overlap with teacher top30 divided by 30.",
+    "latency": "Synchronized native predictor plus official criterion milliseconds per 300 candidates, including teacher/student switching; cached inputs resident on CUDA; exclude bank/model I/O and environment.",
+    "strata": "Report t0/t25 and rounds 10/20/30 separately. Episode is the statistical unit; median over that episode's available paired banks before summaries.",
+    "timing": {"warmups_per_arm_per_bank": 3, "repeats_per_arm_per_bank": 5, "arm_order": "Deterministically rotate the order across repeats."}
+  },
+  "gate": {
+    "go_if_either": "k1 or k2 meets every quality, timing, control, noninterference, and coverage condition.",
+    "minimum_exact_noninterference_pairs": 4,
+    "minimum_t25_episode_coverage": 6,
+    "episodes_with_strict_regret_improvement_min": 6,
+    "median_episode_regret_delta_max": -0.3,
+    "median_episode_latency_reduction_vs_k5_min": 0.3,
+    "round20_and_round30_median_episode_regret_delta_max": 0.0,
+    "episode_aggregation": "Within each episode take the median of paired bank-level hybrid-minus-k0 regret deltas; summarize over all eight episodes. For each CEM round, first take each episode's median across available t0/t25 banks.",
+    "inconclusive": "Fewer than six t25 episodes, failed noninterference, or any invalid/missing bank/cost alignment.",
+    "post_gate": "GO allows only a newly frozen adaptive-CEM gate; no automatic deployment or closed-loop claim."
+  },
+  "execution": {
+    "allocation": "One PBS GPU compute-node job performs runtime setup, 4 paired noninterference checks, collection of all eight student-only episodes, and full-bank predictor scoring/timing.",
+    "pbs_jobid_and_nodefile_required": true,
+    "reject_login_submit_head_hosts": true,
+    "gpu_telemetry_seconds": 5,
+    "telemetry_destination": "job.log",
+    "banked_reset_credits": "Do not query or use."
+  }
+}

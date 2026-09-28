@@ -1,0 +1,71 @@
+#!/bin/bash
+#PBS -N lewm_obs_select
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+CONTROL=${LEWM_ROLLOUT_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+PILOT_DIR=$CONTROL/lewm-transfer/student-induced-shadow-pilot
+DATA_DIR=$PILOT_DIR/real-observation-training-data
+RANKER_DIR=$PILOT_DIR/onpolicy-fullbank-ranker
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+DATASET=$STAGE_ROOT/stablewm_home/pusht_expert_train.h5
+FREEZE=$DATA_DIR/FREEZE.json
+SEEDED_FREEZE=$PILOT_DIR/SEEDED_PILOT_FREEZE.json
+RANKER_FREEZE=$RANKER_DIR/FREEZE.json
+RANKER_MANIFEST=$RANKER_DIR/results/25538135.pbs101/collection_manifest.json
+SELECTION_FREEZE=$PILOT_DIR/SELECTION_FREEZE.json
+BASELINE_TASKS=$CONTROL/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json
+RUNNER=$DATA_DIR/select_real_observation_training_episodes.py
+OUT_DIR=$STAGE_ROOT/artifacts/student-induced-shadow-pilot/real-observation-training-data/selection/$JOB_ID
+OUTPUT=$OUT_DIR/selection_manifest.json
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+if ! awk -F. -v host="$HOST" 'tolower($1) == host { found = 1 } END { exit !found }' "$PBS_NODEFILE"; then
+  echo "host $HOST is not present in PBS_NODEFILE" >&2
+  exit 2
+fi
+if awk -F. 'tolower($1) ~ /login|head|submit/ { bad = 1 } END { exit !bad }' "$PBS_NODEFILE"; then
+  echo "PBS_NODEFILE contains a probable login/submit host" >&2
+  exit 2
+fi
+
+# PBS compute-node guard is complete. Only the metadata selector opens the HDF5.
+for FILE in "$PYTHON_BIN" "$RUNNER" "$FREEZE" "$SEEDED_FREEZE" "$RANKER_FREEZE" "$RANKER_MANIFEST" "$SELECTION_FREEZE" "$BASELINE_TASKS" "$DATASET"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+if [ -e "$OUT_DIR" ]; then
+  echo "refusing to reuse existing output directory: $OUT_DIR" >&2
+  exit 2
+fi
+mkdir -p "$OUT_DIR"
+exec > >(tee -a "$OUT_DIR/job.log") 2>&1
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "stage=metadata_only_selection" \
+  "freeze=$FREEZE" \
+  "dataset=$DATASET" \
+  "output=$OUTPUT" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+timeout --signal=TERM --kill-after=10s 1080 \
+  "$PYTHON_BIN" "$RUNNER" \
+  --freeze "$FREEZE" --seeded-freeze "$SEEDED_FREEZE" \
+  --ranker-freeze "$RANKER_FREEZE" --ranker-manifest "$RANKER_MANIFEST" \
+  --selection-freeze "$SELECTION_FREEZE" --baseline-tasks "$BASELINE_TASKS" \
+  --dataset "$DATASET" --output "$OUTPUT"
+
+printf 'finished_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

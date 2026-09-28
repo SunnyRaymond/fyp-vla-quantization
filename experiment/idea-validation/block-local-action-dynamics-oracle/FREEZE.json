@@ -1,0 +1,110 @@
+{
+  "protocol_id": "block-local-action-dynamics-known-coordinate-oracle-v1",
+  "created_at": "2026-09-26",
+  "scope": "controlled 64D systems only; known-coordinate oracle diagnosis; no visual, CEM, or closed-loop claims",
+  "dimensions": {
+    "state": 64,
+    "blocks": 4,
+    "block_state": 16,
+    "action": 8,
+    "local_hidden": 64,
+    "message": 4
+  },
+  "conditions": ["independent", "lowrank_coupled", "dense_coupled"],
+  "arms": ["oracle_block", "oracle_global4", "oracle_local4"],
+  "data": {
+    "system_seed": 20260926,
+    "train_seed": 4101,
+    "dev_seed": 4102,
+    "test_seed": 4103,
+    "train_episodes": 512,
+    "dev_episodes": 128,
+    "test_episodes": 128,
+    "trajectory_steps": 40,
+    "action_range": [-1.0, 1.0],
+    "initial_state_std": 0.7,
+    "observation_mixing": "fixed dense orthogonal matrix shared across conditions",
+    "split_unit": "episode"
+  },
+  "training": {
+    "seeds": [1101, 1102, 1103],
+    "pilot_seed": 1101,
+    "steps": 1500,
+    "batch_size": 128,
+    "rollout_horizon": 5,
+    "learning_rate": 0.001,
+    "weight_decay": 0.00001,
+    "grad_clip": 1.0,
+    "loss": "one-step MSE + 0.5 times mean free-running horizon-1..5 MSE, divided by training-only global delta variance scalar",
+    "checkpoint_selection": "last step; dev diagnostics do not select checkpoint",
+    "paired_batch_draws": true,
+    "paired_block_initialization": true,
+    "no_test_tuning": true
+  },
+  "evaluation": {
+    "horizons": [1, 5, 10, 20],
+    "episode_start_offsets": [0, 10, 20],
+    "maximum_valid_offset_rule": "offset + horizon <= 40",
+    "primary_horizon": 10,
+    "primary_metric": "episode-aggregated normalized rollout MSE",
+    "normalization": "training-only per-condition delta energy, floored at 1e-6",
+    "action_response_pairs_per_episode": 4,
+    "latency_batch_sizes": [1, 300],
+    "latency_horizon": 10,
+    "latency_warmup": 20,
+    "latency_repeats": 60,
+    "latency_scope": "initial coordinate transform + native transformed rollout + final reconstruction; separately report each-step reconstruction required by an original-coordinate interface",
+    "summary_unit": "episode and training seed, never independent frames or candidate rows",
+    "action_response_design": {
+      "base": "heldout action clamped to [-0.9,0.9]",
+      "normalization": "train delta energy; additionally report true response energy normalized diagnostic",
+      "horizon": 10,
+      "perturbation": "four seeded Rademacher directions per episode, symmetric plus/minus 0.1 per element"
+    }
+  },
+  "gates": {
+    "relative_quality_increase_max": 0.1,
+    "absolute_normalized_error_tolerance": 0.02,
+    "reference_error_floor": 0.000001,
+    "minimum_complete_rollout_latency_reduction": 0.2,
+    "dense_budget_match_tolerance": 0.05,
+    "communication_effect": "global4 must beat local4 on held-out lowrank-coupled episode-paired errors consistently across seeds; otherwise inconclusive or NO-GO",
+    "representation_effect": "learned_block vs random_block on held-out independent episode-paired errors",
+    "inheritance": "unchanged first-round quality and speed gates; oracle advantage is diagnostic, not a deployment gate"
+  },
+  "generator": {
+    "local_retention": 0.8,
+    "local_tanh_scale": 0.15,
+    "lowrank_coupling_scale": 0.08,
+    "dense_coupling_scale": 0.035,
+    "dense_action_gate_scale": 0.5,
+    "rank": 4
+  },
+  "reference": {
+    "primary_job_id": "25563194.pbs101",
+    "primary_run": "/scratch/users/ntu/yguo017/block-local-action-dynamics-round1/runs/25563194.pbs101",
+    "global16_job_id": "25563721.pbs101",
+    "global16_run": "/scratch/users/ntu/yguo017/block-local-action-dynamics-round1/global16/runs/25563721.pbs101",
+    "source_snapshot": "/scratch/users/ntu/yguo017/block-local-action-dynamics-round1/global16/runs/25563721.pbs101/source_snapshot",
+    "source_snapshot_job": "25563721.pbs101; contains first-round helpers with global16 factory support"
+  },
+  "oracle_description": {
+    "coordinates": "s=(z-train_mean_z)@M; M is fixed and receives no gradient or optimizer update",
+    "predictor_initialization": "same seed and exact MLP/message tensors as corresponding first-round learned arm; only Q is replaced by fixed M"
+  },
+  "execution_order": {
+    "shuffle_seed": 92026,
+    "unit": "condition-arm-training-seed run",
+    "record_schedule": true,
+    "primary_runs": 27,
+    "additional_global16_runs": 3,
+    "expected_total_runs": 30
+  },
+  "compute": {
+    "execution": "PBS allocation only",
+    "gpu_telemetry_seconds": 30,
+    "login_node": "connection, submission, status, and small control-file operations only",
+    "guard": "require real PBS_JOBID, PBS_NODEFILE membership, non-login hostname",
+    "no_banked_reset": true
+  }
+}

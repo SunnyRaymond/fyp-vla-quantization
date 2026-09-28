@@ -1,0 +1,95 @@
+#!/bin/bash
+#PBS -N lewm_r30_only
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+CONTROL=${LEWM_STAGE2_CONTROL_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=$CONTROL/lewm-transfer/final-only-teacher
+BASELINE_EXPERIMENT=$CONTROL/lewm-transfer/official-lewm-dataset-teacher-baseline
+BASELINE=$BASELINE_EXPERIMENT/artifacts/25534994.pbs101
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=$STAGE_ROOT/le-wm
+STABLEWM_ROOT=$STAGE_ROOT/stable-worldmodel
+STAGED_HOME=$STAGE_ROOT/stablewm_home
+PYTHON_BIN=$STAGE_ROOT/venv/bin/python
+CHECKPOINT=$CONTROL/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt
+PROBE=$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json
+REFERENCE=$EXPERIMENT/REFERENCE_OUTCOMES.json
+OUT=$EXPERIMENT/artifacts/$JOB_ID
+RUNNER=$EXPERIMENT/run_final_only_teacher.py
+FREEZE=$EXPERIMENT/FREEZE.json
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login/submit node: $HOST" >&2; exit 2;; esac
+NODE_SHORTS=$(awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$PBS_NODEFILE" | sort -u)
+if ! printf '%s\n' "$NODE_SHORTS" | grep -Fxq "$HOST"; then
+  echo "current host $HOST is not listed in PBS_NODEFILE" >&2
+  exit 2
+fi
+
+for FILE in "$RUNNER" "$FREEZE" "$REFERENCE" "$EXPERIMENT/PROTOCOL.zh.md" \
+  "$BASELINE/summary.json" "$BASELINE/selected_tasks.json" "$BASELINE/job_status" "$BASELINE/final_exit_status.txt" \
+  "$STAGED_HOME/pusht_expert_train.h5" "$STAGED_HOME/pusht/lewm_object.ckpt" \
+  "$CHECKPOINT" "$PROBE" "$CONTROL/lewm-transfer/run_lewm_recurrent_student.py"; do test -f "$FILE"; done
+test -d "$LEWM_ROOT/config/eval" && test -d "$STABLEWM_ROOT"
+test -x "$PYTHON_BIN"
+test ! -e "$OUT"
+mkdir -p "$OUT/cache/datasets" "$OUT/cache/pusht"
+ln -s "$STAGED_HOME/pusht_expert_train.h5" "$OUT/cache/datasets/pusht_expert_train.h5"
+ln -s "$STAGED_HOME/pusht/lewm_object.ckpt" "$OUT/cache/pusht/lewm_object.ckpt"
+
+STATUS=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export STABLEWM_HOME="$OUT/cache"
+export PYTHONPATH="$LEWM_ROOT:$STABLEWM_ROOT:$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+printf 'job_id=%s\nhost=%s\nrunner=%s\nfreeze=%s\nbaseline=%s\nreference=%s\nstarted_utc=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$FREEZE" "$BASELINE" "$REFERENCE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 6900 "$PYTHON_BIN" "$RUNNER" \
+  --baseline-dir "$BASELINE_EXPERIMENT" --baseline-artifacts "$BASELINE" \
+  --lewm-root "$LEWM_ROOT" --stablewm-root "$STABLEWM_ROOT" \
+  --control-root "$CONTROL" --staged-home "$STAGED_HOME" \
+  --cache-root "$OUT/cache" --checkpoint "$CHECKPOINT" --probe "$PROBE" \
+  --reference-outcomes "$REFERENCE" --freeze "$FREEZE" --out "$OUT"
+RUNNER_RC=$?
+set -e
+stop_gpu_monitor
+GPU_MONITOR_PID=""
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/final_only_summary.json" ] \
+  && [ -s "$OUT/final_only_episodes.jsonl" ] \
+  && [ -s "$OUT/final_only_solve_records.jsonl" ] \
+  && [ -s "$OUT/comparison_tests.json" ] && [ -s "$OUT/rng_state_records.json" ]; then
+  STATUS=0
+  printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"
+else
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+fi
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+exit "$STATUS"

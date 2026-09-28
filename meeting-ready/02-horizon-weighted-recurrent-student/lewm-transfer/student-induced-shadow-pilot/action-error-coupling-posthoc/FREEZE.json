@@ -1,0 +1,73 @@
+{
+  "schema": "lewm-pusht-action-error-coupling-posthoc-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_analysis",
+  "purpose": "Descriptively test whether real-observation horizon error is associated with the first-action update difference between student-ranked and teacher-ranked elites in the same frozen CEM banks.",
+  "claim_boundary": "Read-only mechanism analysis only. It does not establish causality, an independent validation result, planner deployment, closed-loop improvement, or a training recommendation.",
+  "source_jobs": {
+    "fullbank": "25538135.pbs101",
+    "real_observation_two_task": "25542215.pbs101",
+    "real_observation_fourteen_task_extension": "25542467.pbs101",
+    "base_student": "25239551.pbs101 treatment_step1000.pt"
+  },
+  "input_schemas": {
+    "two_task_probe": "lewm-pusht-real-observation-latent-alignment-probe-result",
+    "fourteen_task_probe": "lewm-pusht-real-observation-latent-alignment-14-task-extension-result",
+    "probe_schema_version": 1,
+    "fullbank_schema": "lewm-pusht-onpolicy-fullbank-bank-v1"
+  },
+  "scope": {
+    "bank_split": "train",
+    "episode_count": 16,
+    "bank_count_expected": 93,
+    "replan_steps": [0, 25],
+    "cem_rounds": [10, 20, 30],
+    "candidate_count": 300,
+    "elite_count": 30,
+    "action_shape": [300, 5, 10],
+    "first_action_index": 0,
+    "first_action_dimension": 10,
+    "statistical_unit": "episode",
+    "aggregate_rounds": "median across rounds 10, 20, and 30 within each episode and replan step",
+    "reserved_holdout_or_validation_access": false
+  },
+  "training_tasks": [
+    {"selection_order": 0, "episode_idx": 9136, "row_index": 1126761, "start_step": 4},
+    {"selection_order": 1, "episode_idx": 12704, "row_index": 1593460, "start_step": 3},
+    {"selection_order": 2, "episode_idx": 4340, "row_index": 535694, "start_step": 34},
+    {"selection_order": 3, "episode_idx": 5233, "row_index": 663119, "start_step": 13},
+    {"selection_order": 4, "episode_idx": 7753, "row_index": 961135, "start_step": 14},
+    {"selection_order": 5, "episode_idx": 8155, "row_index": 1003582, "start_step": 9},
+    {"selection_order": 6, "episode_idx": 16209, "row_index": 2043974, "start_step": 128},
+    {"selection_order": 7, "episode_idx": 13660, "row_index": 1724062, "start_step": 48},
+    {"selection_order": 8, "episode_idx": 15946, "row_index": 1993227, "start_step": 37},
+    {"selection_order": 9, "episode_idx": 17552, "row_index": 2204279, "start_step": 20},
+    {"selection_order": 10, "episode_idx": 13134, "row_index": 1648172, "start_step": 52},
+    {"selection_order": 11, "episode_idx": 11784, "row_index": 1476519, "start_step": 85},
+    {"selection_order": 12, "episode_idx": 14911, "row_index": 1876582, "start_step": 30},
+    {"selection_order": 13, "episode_idx": 10651, "row_index": 1315677, "start_step": 19},
+    {"selection_order": 14, "episode_idx": 16609, "row_index": 2091616, "start_step": 16},
+    {"selection_order": 15, "episode_idx": 7042, "row_index": 873959, "start_step": 17}
+  ],
+  "allowed_missing_solve": {
+    "episode_idx": 15946,
+    "replan_step": 25,
+    "probe_t25_status": "terminal_at_t25_before_replan",
+    "terminal_field": "terminated",
+    "terminal_value": true,
+    "rule": "Emit a t25 episode row with unavailable metrics; do not impute it or replace the episode."
+  },
+  "metrics": {
+    "ranking": "For each bank, use ascending torch.argsort(cost)[:30] independently for student and teacher. Teacher-elite regret is (mean teacher cost on student top30 - mean teacher cost on teacher top30) / population_std(teacher costs, unbiased=false).",
+    "first_action_mean_displacement": "Take candidates[top30, 0, :] with shape [30,10], average each elite set, then compute the L2 norm of student-elite mean minus teacher-elite mean.",
+    "first_action_normalization": "Divide the raw displacement L2 by sqrt(sum_j(population_std(candidates[:,0,j], unbiased=false)^2)); fail closed if this scalar is non-finite or <= 1e-8.",
+    "real_observation_error": "At the matching episode/replan solve, record student_relative_mse - teacher_relative_mse at horizons 1 and 5; the horizon increment is the horizon-5 difference minus the horizon-1 difference.",
+    "episode_aggregation": "Take the median of each bank metric over exactly rounds 10, 20, and 30 for one episode and replan step. Real-observation horizon metrics remain one value per episode and solve.",
+    "correlation": "Compute tie-aware Spearman rank correlation across episode rows separately for t0 and t25. Report n and coefficient only; include paired scatter values in the episode rows and do not compute p-values or treat banks/rounds as independent samples."
+  },
+  "expected_bank_coverage": {
+    "t0": 48,
+    "t25": 45,
+    "missing_t25_episode_idx": 15946
+  }
+}

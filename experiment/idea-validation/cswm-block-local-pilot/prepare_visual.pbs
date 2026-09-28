@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N cswm_visual_prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be supplied by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be supplied by PBS}
+TASK_HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$TASK_HOST" in *login*|*head*|*submit*) exit 2;; esac
+test -f "$NODEFILE"
+awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$NODEFILE" | grep -Fxq "$TASK_HOST"
+BASE=/scratch/users/ntu/yguo017/cswm-block-local-pilot
+OUT=$BASE/runs/$JOB_ID
+PYTHON_BIN=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+test -x "$PYTHON_BIN"
+mkdir -p "$OUT/source_snapshot"
+cp "$BASE/source"/*.py "$BASE/source"/*.json "$BASE/source"/*.pbs "$BASE/source"/*.md "$OUT/source_snapshot/"
+cd "$OUT/source_snapshot"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 WANDB_MODE=disabled
+exec > >(tee -a "$OUT/job.log") 2>&1
+cleanup() {
+    TASK_STATUS=$?
+    printf 'EXIT_STATUS=%s\n' "$TASK_STATUS" > "$OUT/job_status.txt"
+}
+trap cleanup EXIT
+printf '{"job_id":"%s","hostname":"%s","started_utc":"%s","protocol":"cswm-visual-prepare-v1"}\n' "$JOB_ID" "$TASK_HOST" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.json"
+timeout --signal=TERM --kill-after=30s 1600 "$PYTHON_BIN" prepare_data.py --config FREEZE.json --output "$BASE/prepared" --run-output "$OUT"
+test -s "$OUT/DONE.json"

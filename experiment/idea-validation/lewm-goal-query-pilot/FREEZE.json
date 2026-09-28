@@ -1,0 +1,148 @@
+{
+  "schema": "lewm.goal-query.pilot.freeze",
+  "version": 1,
+  "status": "frozen_before_execution",
+  "date": "2026-09-26",
+  "question": "Can goal-query prediction preserve teacher candidate decisions with less native scoring latency, and does projected plus tail have value beyond a matched scalar head?",
+  "source": {
+    "lewm_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stablewm_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "commit_verification": "declared archive provenance from prior frozen baseline; staged source directories have no .git, so fresh HEAD verification is unavailable; report actual source paths and runtime interface/cost checks separately",
+    "teacher": "stablewm_home/pusht/lewm_object.ckpt",
+    "training_rows": "anchor-aligned-bank/artifacts/25223859.pbs101/anchor_aligned_train_rows.pt",
+    "manifest": "state-coverage/artifacts/24926383.pbs101/context_manifest_512.json",
+    "criterion": "unmodified official terminal squared Euclidean cost"
+  },
+  "data": {
+    "selection_seed": 20300903,
+    "development_slice": [
+      800,
+      808
+    ],
+    "test_slice": [
+      824,
+      832
+    ],
+    "train_contexts": 512,
+    "train_candidates": 64,
+    "evaluation_candidates": 300,
+    "evaluation_topk": 30,
+    "anchors": [
+      "early",
+      "middle",
+      "late"
+    ],
+    "development_action_seeds": [
+      20302601,
+      20302602
+    ],
+    "test_action_seeds": [
+      20302603,
+      20302604
+    ],
+    "goals_per_context": 4,
+    "goal_donor_rule": "own logged goal plus cyclic next three DIFFERENT parent-episode donor goals within the same split; train goal donors never enter development/test",
+    "goal_labels": "derive every goal cost from the same detached teacher terminal target; no candidate-specific self-terminal goals",
+    "projection": "rank32 PCA of training teacher terminal targets only, centered by training mean; no rank selection",
+    "insufficient_episode_policy": "engineering INCONCLUSIVE; do not change slices after execution",
+    "independence": "parent episode, with anchors/seeds/goals/candidates nested",
+    "dataset_scaler_boundary": "existing teacher/dataset preprocessing retained; episode isolation does not imply globally untouched normalization statistics"
+  },
+  "models": {
+    "latent_dim": 192,
+    "horizon": 5,
+    "packed_action_dim": 10,
+    "rank": 32,
+    "hidden_dim": 256,
+    "trunk": "goal-free LayerNorm(242), Linear(242,256), GELU, Linear(256,256), GELU; input current trusted latent plus entire H5 action sequence",
+    "goal_head": "concat shared trunk with full 192D goal, Linear(448,256), GELU, Linear(256,1), softplus times frozen training cost scale",
+    "latent_heads": "Linear(256,r or 192), residual over projected or full trusted current latent",
+    "arms": [
+      "scalar",
+      "scalar_aux",
+      "projected_tail",
+      "full_latent"
+    ],
+    "scalar_aux": "same direct scalar deployment head with identical projected-y and tail auxiliary heads/losses during training; discard auxiliary heads in native timing",
+    "projected_only": "diagnostic using same projected_tail weights with tail set zero; not another training arm",
+    "oracle_y_learned_tail": "diagnostic using exact teacher y with learned tail; teacher-paid, no deployment timing",
+    "exact_projected_only": "teacher-paid diagnostic exact teacher projected terminal distance with tail zero; control for oracle_y_learned_tail; no training or timing"
+  },
+  "training": {
+    "initialization_seeds": [
+      20302611,
+      20302612
+    ],
+    "schedule_seed": 20302613,
+    "updates": 1500,
+    "batch_contexts": 4,
+    "optimizer": "AdamW",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "cost_loss": "candidate-centered squared error divided by detached teacher bank variance clamped by training variance floor, plus 0.1 absolute squared error divided by fixed train RMS cost squared",
+    "variance_floor": "max(global variance of all TRAIN query-cost labels times 1e-6, 1e-8); tail uses the same formula on TRAIN tail labels",
+    "loss_exact": "L(a,t)=mean_context_goal(mean_candidate(((a-mean_candidate(a))-(t-mean_candidate(t)))^2)/max(mean_candidate((t-mean_candidate(t))^2),v_floor))+0.1*mean((a-t)^2)/max(mean_TRAIN(t^2),1e-8). Scalar: L(Jhat,J). Projected: L(Jhat,J)+mean((yhat-y)^2)/s_y2+L(ehat,e). Scalar_aux: L(directJ,J)+mean((auxy-y)^2)/s_y2+L(auxe,e). Full: L(Jhat,J)+mean((zhat-z)^2)/s_z2. All auxiliary weights are 1. s_y2/s_z2 are mean coordinate population variance of TRAIN projected/full terminal targets, clamped 1e-8.",
+    "projected_tail_loss": "cost_loss + normalized projected latent MSE + centered-and-absolute tail_loss",
+    "scalar_aux_loss": "same projected_tail auxiliaries and weights + direct scalar cost_loss",
+    "full_latent_loss": "cost_loss + terminal latent MSE normalized by training target variance",
+    "same_schedule_data_and_goal_tuples": true,
+    "checkpoint": "final step1500 only",
+    "no_retune_or_checkpoint_selection": true,
+    "budget_scope": "two training seeds, no width/rank/loss sweep; feasibility screen, not a powered population study"
+  },
+  "evaluation": {
+    "metrics": [
+      "bank-centered cost RMSE",
+      "Spearman",
+      "top30 overlap",
+      "argmin match",
+      "teacher top30 regret",
+      "30/31 cost gap",
+      "elite proposal mean/std drift",
+      "goal-specific and episode summaries"
+    ],
+    "timing": {
+      "boundary": "cached H1 trusted context and goal plus 300 normalized H5 packed action candidates to final scores",
+      "warmup": 3,
+      "repeats": 10,
+      "balanced_random_arm_order_seed": 20302614,
+      "blocks": 6,
+      "cuda_synchronize": true,
+      "active_contexts": 1,
+      "teacher_shadow_in_timing": false,
+      "no_encoder_or_full_planner_speedup_claim": true,
+      "bank_selection": "first six distinct rows of each development/test split in frozen construction order, action-bank index0 and own goal; identical banks across arms and training seeds",
+      "native_clock": "CPU perf_counter elapsed with CUDA synchronization immediately before/after score; includes launch and Python overhead",
+      "split_contract": "measure development for selection, and independently measure final test for final gates",
+      "teacher_implementation": "reference official_teacher_targets: cached input H1 latent and goal, five official predict calls plus criterion; no within-rollout iteration-cache optimization, so not the strongest cached planner baseline"
+    }
+  },
+  "gates": {
+    "integrity": "finite training/output, disjoint parent episodes and goal sources, official cost equality, orthonormal projection and exact decomposition; failure is INCONCLUSIVE",
+    "aggregation": "predictor median/min quality thresholds use all individual context-anchor/action-seed/goal banks as descriptive engineering coverage checks; parent-episode medians determine paired tail/structural 6-of-8 signals. Banks are never treated as independent statistical replicates. Cyclic donor sharing introduces dependence even between episode summaries; no p-values or population CIs.",
+    "cost_equality_rtol": 1e-05,
+    "cost_equality_atol": 0.0001,
+    "predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.8,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.5,
+      "scoring_p50_reduction_min": 0.2,
+      "both_training_seeds_required": true
+    },
+    "tail_signal": "oracle_y_learned_tail beats exact projected-only by median episode top30 >=0.05 and improves >=6/8 test parent episodes for both training seeds",
+    "structural_signal": "projected_tail beats scalar_aux by median episode top30 >=0.05 and improves >=6/8 episodes; Spearman drop <=0.02 and native p50 <=1.10 times scalar_aux, for both seeds",
+    "advance": "select one deployable arm on development only by top30 then Spearman then native latency, among arms meeting quality; freeze choice before final test. If chosen arm fails final predictor gate for either seed, STOP; no adaptive CEM or closed-loop escalation",
+    "no_go_scope": "this frozen recipe and training budget only, not all goal-query models",
+    "adaptive_cem_if_pass": "next bounded gate must preserve 300/30/top30 official argsort/unbiased std/candidate-zero; paired innovations and teacher shadow outside timing; first-action and native solve gates before closed-loop",
+    "closed_loop": "deferred until adaptive CEM gate passes; never infer success from predictor metrics"
+  },
+  "execution": {
+    "compute_allocation_only": true,
+    "gpu_telemetry_seconds": 15,
+    "native_gpu_runtime_existing": true,
+    "new_installation": false,
+    "banked_reset": false,
+    "no_large_result_transfer": true
+  }
+}

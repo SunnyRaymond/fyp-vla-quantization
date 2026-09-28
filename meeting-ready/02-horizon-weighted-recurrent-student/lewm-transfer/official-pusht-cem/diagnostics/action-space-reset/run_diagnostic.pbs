@@ -1,0 +1,60 @@
+#!/bin/bash
+#PBS -N lewm_actreset_d
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=16gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+CONTROL=${LEWM_OFFICIAL_CONTROL_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=${LEWM_OFFICIAL_EXPERIMENT_DIR:-$CONTROL/lewm-transfer/official-pusht-cem}
+DIAG=$EXPERIMENT/diagnostics/action-space-reset
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+STABLEWM_ROOT=${LEWM_STABLEWM_ROOT:-$STAGE_ROOT/stable-worldmodel}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+RUNNER=$DIAG/run_action_reset_diagnostic.py
+FREEZE=$DIAG/FREEZE.json
+OUT=${LEWM_ACTION_RESET_DIAG_OUT:-$DIAG/artifacts/$JOB_ID}
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login/submit node: $HOST" >&2; exit 2;; esac
+NODE_SHORTS=$(awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$PBS_NODEFILE" | sort -u)
+if ! printf '%s\n' "$NODE_SHORTS" | grep -Fxq "$HOST"; then
+  echo "current host $HOST is not listed in PBS_NODEFILE" >&2
+  exit 2
+fi
+
+for FILE in "$RUNNER" "$FREEZE"; do test -f "$FILE"; done
+test -d "$STABLEWM_ROOT" && test -d "$STABLEWM_HOME" && test -x "$PYTHON_BIN"
+mkdir -p "$OUT"
+test ! -e "$OUT/diagnostic.json"
+STATUS=1
+exec > >(tee -a "$OUT/job.log") 2>&1
+cleanup() { printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"; }
+trap cleanup EXIT
+
+export PYTHONUNBUFFERED=1
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export CUDA_VISIBLE_DEVICES=
+export PYTHONPATH="$STABLEWM_ROOT:${PYTHONPATH:-}"
+printf 'job_id=%s\nhost=%s\nrunner=%s\nfreeze=%s\nstarted_utc=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$FREEZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+
+set +e
+timeout --signal=TERM --kill-after=30s 900 "$PYTHON_BIN" "$RUNNER" \
+  --stablewm-root "$STABLEWM_ROOT" --stablewm-home "$STABLEWM_HOME" \
+  --freeze "$FREEZE" --output "$OUT"
+RUNNER_RC=$?
+set -e
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/diagnostic.json" ]; then
+  STATUS=0
+fi
+printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+exit "$STATUS"

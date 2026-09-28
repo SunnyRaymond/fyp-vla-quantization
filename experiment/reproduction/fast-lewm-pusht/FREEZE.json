@@ -1,0 +1,29 @@
+{
+  "experiment_id": "fast-lewm-pretrained-pusht-base-reproduction",
+  "revision": 1,
+  "frozen_before_gpu_evaluation": true,
+  "fast_source_commit": "de3e9dac539f5bbe6ff1656a2fb00938d62a3c7d",
+  "paper_version": "arXiv:2606.26217v1",
+  "settings": {
+    "seed": 42,
+    "eval.num_eval": 50,
+    "eval.goal_offset_steps": 25,
+    "eval.eval_budget": 50,
+    "eval.img_size": 224,
+    "plan_config.horizon": 1,
+    "plan_config.receding_horizon": 1,
+    "plan_config.action_num_blocks": 5,
+    "plan_config.action_block_size": 5,
+    "plan_config.consistency_loss_weight": 0.0,
+    "solver.num_samples": 300,
+    "solver.topk": 30,
+    "solver.n_steps": 30,
+    "solver.batch_size": 1,
+    "solver.seed": 42
+  },
+  "success_definition": "native PushT/World dataset-evaluation episode_successes",
+  "runtime_gates": ["official CPU checkpoint loads", "finite candidate costs and solver actions", "25 primitive prediction and buffered execution steps", "complete 50 task outcomes"],
+  "paper_agreement": "descriptive comparison to paper base PushT 96 percent; no threshold selected for exact replication claim",
+  "stop_rule": "Diagnose interface/runtime failures; do not tune checkpoint, budget, seed or task selection to raise success",
+  "scope": "Official pretrained base Fast-LeWM on PushT. No retraining, self-consistency variant, other environments or lower-CEM-budget sweep."
+}

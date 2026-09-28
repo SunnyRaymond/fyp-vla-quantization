@@ -1,0 +1,66 @@
+{
+  "schema": "lewm-pusht-dataset-paired-stage2.freeze",
+  "revision": 1,
+  "status": "conditional_design_frozen_before_baseline_outcome_not_submitted",
+  "trigger": "Run only if the Stage 1 teacher-only dataset baseline is valid and has at least 5/50 successes. If it has 0-4/50, stop and diagnose; do not run four arms.",
+  "scope": {
+    "arms": ["student_only", "late_teacher7", "teacher_only", "uniform_teacher7"],
+    "sample_size": "the exact 50 rows in selected_tasks.json from the single valid teacher-only retry job; record that PBS job ID in the follow-up result. The startup-failed job 25531848.pbs101 is not eligible.",
+    "training": false,
+    "task_resampling": false,
+    "sample_extension": false,
+    "submission": false
+  },
+  "task_and_protocol": {
+    "task_key": ["row_index", "episode_idx", "start_step"],
+    "row_order": "Reuse the baseline selected_tasks.json array exactly; do not regenerate, reorder, filter, or select from outcomes.",
+    "dataset": "pusht_expert_train",
+    "data_preprocessing": "Same full-dataset action/proprio/state StandardScaler fits, NaN-row exclusion, reused goal scalers, and ImageNet/Resize224 pixel/goal transforms as the teacher baseline.",
+    "world_evaluator": "pinned World.evaluate dataset mode with upstream callables, goal_offset_steps=25, eval_budget=50, world.max_episode_steps=100 (effective rollout budget 50), and video=None",
+    "student_checkpoint": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "teacher_checkpoint": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "solver": "Pinned CEMSolver; batch_size=1, num_samples=300, n_steps=30, topk=30, var_scale=1, CUDA; no solve/update-rule changes.",
+    "arm_definitions": {
+      "student_only": "student cost on all CEM rounds",
+      "late_teacher7": "teacher cost on 1-indexed rounds 24-30; student cost otherwise",
+      "teacher_only": "teacher cost on all CEM rounds",
+      "uniform_teacher7": "teacher cost on 1-indexed rounds 4,8,12,16,20,24,28; student cost otherwise"
+    }
+  },
+  "run_order": {
+    "seed": 2609239000,
+    "algorithm": "Python random.Random(seed).shuffle(arms), once before evaluation",
+    "frozen_order": ["student_only", "teacher_only", "late_teacher7", "uniform_teacher7"],
+    "unit": "one complete vectorized 50-task arm evaluation; save the actual order before loading the teacher or student"
+  },
+  "paired_solver_randomness": {
+    "seed": 42,
+    "mechanism": "Each arm constructs a fresh pinned CEMSolver from the same upstream config seed=42. Preserve native self.torch_gen stream across calls; do not reseed between solves. Matching solve ordinals use identical innovations when pre-solve generator state and candidate tensor shape match.",
+    "guard": "Capture each solve ordinal, generator state before solve, and candidate-noise tensor shape; compare states/shapes across arms for the common solve prefix. If they diverge, fail the paired-innovation validity gate and do not claim matched innovations. No tensor hashing.",
+    "baseline_alignment": "This seed/stream choice matches the unmodified teacher baseline's configured CEM seed and avoids introducing new solver seeds in the paired follow-up."
+  },
+  "unit_and_inference": {
+    "episode_unit": "one selected dataset row, paired across all four arms",
+    "source_cluster": "episode_idx; multiple selected rows from one expert episode belong to one cluster",
+    "primary_test": "Two-sided exact cluster sign-flip test for late_teacher7 versus student_only: D_e is the sum across rows in source episode e of (late success - student success); independently flip each cluster sign under the null; compute exact tail probability for absolute total D using integer dynamic programming over reachable integer totals.",
+    "assumption": "Source expert episodes are independent clusters and paired arm labels are exchangeable within each cluster under the sharp no-effect null. Report cluster count and row multiplicities.",
+    "mcnemar_boundary": "When every selected episode_idx is unique, each cluster has one row and the sign-flip test reduces to exact two-sided McNemar. Never report a row-level McNemar p-value as the primary inference when episode IDs repeat."
+  },
+  "gates": {
+    "validity": ["exactly 50 selected tasks in baseline file", "200 completed arm-task outcomes", "all four arms use the exact same task keys/order, preprocessing, goal/callables and budget", "all numeric outputs finite apart from source-defined NaN reset placeholders handled by the frozen semantic comparator", "paired solver generator states and tensor shapes match for the common solve prefix"],
+    "late_teacher7_benefit_vs_student_only": "At least 5 more successes out of 50 and exact cluster sign-flip p<0.05; otherwise this gate fails. The +5 margin is practical, and the p-value is cluster-aware.",
+    "late_teacher7_practical_teacher_gap": "late_teacher7 success count is at least teacher_only count minus 5/50. Descriptive engineering margin only; not formal non-inferiority.",
+    "late_teacher7_planner_latency": "CUDA-synchronized sum of official CEM solve walltime across the 50-task evaluation; late_teacher7 / teacher_only <= 0.70 (at least 30% lower). Report total evaluation wallclock separately.",
+    "teacher_call_efficiency": "Record teacher cost calls by arm and solve ordinal; late_teacher7 total calls should be no more than 30% of teacher_only calls for a complete equal-length rollout. Treat early termination differences as part of observed outcomes and report actual counts.",
+    "uniform_teacher7": "Same-budget secondary control; report success, paired cluster-aware contrast, calls, and planner time; not part of the primary pass gate.",
+    "overall": "PASS only when validity and all three late7 primary success/teacher-gap/latency gates pass. Otherwise report FAIL or INCONCLUSIVE as applicable; no extension or retry."
+  },
+  "resources": {
+    "queue": "normal route to gdev",
+    "gpu": 1,
+    "ncpus": 16,
+    "memory": "110gb",
+    "walltime": "02:00:00",
+    "submission": "No PBS submission in this design turn. Reassess only after baseline meets its frozen engineering gate."
+  }
+}

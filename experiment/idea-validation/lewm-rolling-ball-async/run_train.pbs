@@ -1,0 +1,65 @@
+#!/bin/bash
+#PBS -N rolling_lewm_train
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+MODE=${MODE:?Submit with explicit MODE=smoke or MODE=formal}
+case "$MODE" in smoke|formal) ;; *) exit 64;; esac
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT/source_snapshot"
+exec > >(tee -a "$OUT/job.log") 2>&1
+GPU_MONITOR_PID=""
+cleanup() {
+  rc=$?
+  if [ -n "$GPU_MONITOR_PID" ]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$OUT/wrapper_exit_status.txt"
+}
+trap cleanup EXIT
+printf 'job_id=%s\nhost=%s\nmode=%s\n' "$JOB_ID" "$HOST" "$MODE"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 WANDB_MODE=disabled
+export STABLEWM_HOME="$TASK_ROOT/stablewm_home"
+export PYTHONPATH="$TASK_ROOT/deps:$OUT/source_snapshot:$TASK_ROOT/upstream_lewm:$TASK_ROOT/upstream_stablewm:${PYTHONPATH:-}"
+for name in train_baseline.py data.py TRAIN_FREEZE.json run_train.pbs; do
+  cp "$TASK_ROOT/source/$name" "$OUT/source_snapshot/"
+done
+test -s "$TASK_ROOT/data/summary.json"
+test -s "$TASK_ROOT/upstream_lewm/PINNED.json"
+test -s "$TASK_ROOT/upstream_stablewm/PINNED.json"
+nvidia-smi --id="$CUDA_VISIBLE_DEVICES" --query-gpu=name,memory.total,driver_version --format=csv > "$OUT/gpu_info.csv"
+nvidia-smi --id="$CUDA_VISIBLE_DEVICES" --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+ARGS=(--root "$TASK_ROOT" --output-dir "$OUT")
+if [ "$MODE" = smoke ]; then
+  ARGS+=(--max-epochs 1 --limit-train-batches 2 --limit-val-batches 2)
+  LIMIT=600
+else
+  ARGS+=(--max-epochs 100)
+  LIMIT=13800
+fi
+set +e
+timeout --signal=TERM --kill-after=30s "$LIMIT" /scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python "$OUT/source_snapshot/train_baseline.py" "${ARGS[@]}"
+rc=$?
+set -e
+printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+if [ "$rc" -eq 0 ]; then
+  test -s "$OUT/summary.json" || exit 3
+fi
+exit "$rc"

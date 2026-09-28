@@ -1,0 +1,76 @@
+{
+  "schema": "lewm-pusht-partial-horizon-teacher-hybrid-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-25",
+  "purpose": "Bounded inference-time predictor pilot: teacher-predict the first k horizons, then continue from the latest teacher latent with the frozen treatment_step1000 h256 student.",
+  "scope": {
+    "stage": "exploratory predictor-level evaluation on existing student-generated train banks only",
+    "new_training": false,
+    "treatment_identity": "A new inference-time horizon hybrid; not the frozen student’s ordinary free-running inference or a training result.",
+    "not_authorized": ["validation or holdout access", "CEM deployment", "planner comparison", "closed-loop treatment evaluation"],
+    "runner_boundary": "The runner and PBS script read only train_banks.pt and do not read or score validation/holdout banks.",
+    "authoring_boundary": "During static implementation review, collection_manifest.json was read and contains validation/untouched task metadata; no validation/holdout bank, model output, or score was opened, and task selection was not changed.",
+    "post_pilot": "A GO permits only a separately frozen gate on fresh episodes and independent banks; it does not authorize CEM."
+  },
+  "source": {
+    "collection_job": "25538135.pbs101",
+    "bank_schema": "lewm-pusht-onpolicy-fullbank-bank-v1",
+    "train_banks_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot/onpolicy-fullbank-ranker/artifacts/25538135.pbs101/train_banks.pt",
+    "train_bank_count": 93,
+    "train_episode_count": 16,
+    "train_episode_ids": [9136, 12704, 4340, 5233, 7753, 8155, 16209, 13660, 15946, 17552, 13134, 11784, 14911, 10651, 16609, 7042],
+    "bank_contract": "Each entry is one frozen 300-candidate bank with [300,5,10] actions and saved student/teacher criterion costs. Read entries with split=train only; never open the validation banks or inspect reserved holdout tasks.",
+    "t25_coverage": "Episode 15946 terminates before its t25 replan and contributes its three t0 banks only; do not impute t25."
+  },
+  "models": {
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "student_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "student_architecture": "LeWMCompactRecurrentTransitionStudent h256",
+    "student_source": "25239551.pbs101; cem_distribution_distill treatment; 1000 updates; frozen weights"
+  },
+  "arms": {
+    "k_values": [0, 1, 2, 5],
+    "definition": "For each candidate, use official LeWM predict for the first k action tokens. If k<5, initialize the frozen h256 student with the latest teacher latent as a length-one history and predict the remaining 5-k tokens. Concatenate the prefix and continuation, then score the complete six-latent sequence with the official criterion.",
+    "controls": {"k0": "all five horizons from the frozen student", "k5": "all five horizons from the official teacher"},
+    "candidate_selection": "torch.topk(cost, k=30, largest=False, sorted=True), matching the official CEM elite selection."
+  },
+  "validity": {
+    "control_cost_match": "Before reporting any metric, recomputed k0 and k5 costs for every bank must each pass torch.allclose against the corresponding saved bank costs; otherwise stop without a result.",
+    "rtol": 0.00001,
+    "atol": 0.000001,
+    "required_bank_shape": [300, 5, 10],
+    "required_cost_shape": [300],
+    "required_rounds": [10, 20, 30],
+    "required_replan_steps": [0, 25]
+  },
+  "metrics": {
+    "bank_regret": "(mean teacher cost of scorer top30 - mean teacher cost of teacher top30) / population_std of all 300 saved teacher costs; lower is better.",
+    "top30_recall": "Overlap between scorer top30 and saved-teacher top30 divided by 30.",
+    "latency": "Synchronized native predictor plus official criterion wall time in milliseconds per 300 candidates, including teacher/student switching; inputs are already resident on CUDA; excludes bank/model I/O and environment work.",
+    "strata": "Report t0/t25 and CEM rounds 10/20/30 separately. Episode is the statistical unit; take medians over available banks within an episode before population summaries.",
+    "primary_delta": "For each episode, median over its paired banks of hybrid-minus-k0 normalized elite regret; summarize across the 16 episodes."
+  },
+  "timing": {
+    "warmups": 3,
+    "repeats": 5,
+    "order": "Interleave arms in a deterministic rotation across repeats; synchronize CUDA before and after each timed call."
+  },
+  "exploration_gate": {
+    "go_if_either": "k1 or k2 meets every condition below.",
+    "episodes_with_regret_improvement_min": 12,
+    "episode_median_regret_delta_max": -0.3,
+    "episode_median_latency_reduction_vs_k5_min": 0.3,
+    "round20_and_round30_episode_median_regret_delta_max": 0.0,
+    "unit": "Episode; banks within an episode are repeated measures. Episode 15946 remains in t0 and has no t25 values.",
+    "post_pilot_permission": "GO is exploratory only and permits a separately frozen independent-bank gate; it never permits treatment CEM or closed-loop work."
+  },
+  "execution": {
+    "allocation": "One PBS GPU compute-node job",
+    "login_node_work": "Control-file operations only; runner must reject login/submit/head hosts and require PBS_JOBID plus PBS_NODEFILE membership.",
+    "gpu_telemetry_interval_seconds": 5,
+    "gpu_telemetry_destination": "job.log",
+    "local_model_or_bank_loading": false,
+    "banked_reset_credits": "Do not query or use."
+  }
+}

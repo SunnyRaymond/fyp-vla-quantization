@@ -1,0 +1,9 @@
+# Compact Rolling Ball policy bundle
+
+This bundle contains the exact formal epoch-100 `last.ckpt`, its training summary, the pinned LeWM and StableWorldModel sources, the full pinned ReflexBench checkout, split/data provenance, the ordered 180 training goal frames referenced by the checkpoint, and one fixed-camera RGB/state validation probe. It intentionally omits the full prepared arrays and the training virtual environment.
+
+`policy_server.py --bundle <bundle-root>` loads the compact assets with the same official pixel transform, startup goal encoding, task cost, action projection, and native StableWorldModel CEM configuration as the full-array path. The loader cross-checks `BUNDLE.json` and the checkpoint source pins, split, training job/epoch, and ordered goal refs; the `goal_frames.npy` rows follow that exact order. The validation probe is metadata for repeatable offline planner checks; it is not a future goal or privileged planner input.
+
+The default server path requires a real PBS GPU allocation. `run_rented.sh <expected-host> <output-dir> <command...>` is the explicit non-PBS launcher for a user-identified Linux rented host; it checks exact hostname and RTX 4090 identity and records 30-second GPU telemetry. For direct server startup on that host, pass `--bundle <bundle-root> --rented-host <exact-hostname>`. Do not set PBS variables to use this path.
+
+`package_versions.json` records the export/training environment versions as installation evidence only. It does not certify compatibility with Isaac Sim, ReflexBench rendering, or the rented image. Full task evaluation controls are included only when their files existed at export time; `BUNDLE.json` lists files that were still pending. This bundle is an offline model/planner handoff and makes no closed-loop or task-success claim.

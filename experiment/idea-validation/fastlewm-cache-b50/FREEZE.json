@@ -1,0 +1,98 @@
+{
+  "protocol": "fastlewm-cache-b50-closed-loop-v1",
+  "frozen_date": "2026-09-27",
+  "question": "Does per-environment exact action-free encoding reuse preserve Fast-LeWM CEM and closed-loop behavior while reducing B=50 fixed-observation solve latency?",
+  "source_commit": "de3e9dac539f5bbe6ff1656a2fb00938d62a3c7d",
+  "checkpoint_repo": "naiverer/fast-leworldmodel",
+  "checkpoint_revision": "f95379fe193c8bfc6a59c9d8437d5052bd72ff71",
+  "backend": "stable-worldmodel==0.0.6 isolated runtime_overlay",
+  "task_manifest": "../lewm-fastlewm-paired/selected_tasks.json",
+  "main_freeze": "../lewm-fastlewm-paired/FREEZE.json",
+  "main_completed_job": "25569974.pbs101",
+  "main_preparation": "/scratch/users/ntu/yguo017/lewm-fastlewm-paired/preparation/25569830.pbs101",
+  "remote_root": "/scratch/users/ntu/yguo017/fastlewm-cache-b50",
+  "source_roots": {
+    "stage": "/scratch/users/ntu/yguo017/lewm-pusht-iteration",
+    "fast": "/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction",
+    "paired": "/scratch/users/ntu/yguo017/lewm-fastlewm-paired"
+  },
+  "settings": {
+    "num_eval": 50,
+    "task_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+    "solver_seeds": [42, 43, 44],
+    "num_samples": 300,
+    "topk": 30,
+    "iterations": 30,
+    "batch_size": 1,
+    "var_scale": 1.0,
+    "horizon": 1,
+    "receding_horizon": 1,
+    "action_block": 25,
+    "history_len": 1,
+    "rollout_consistency_weight": 0.0,
+    "goal_offset_steps": 25,
+    "eval_budget": 50,
+    "image_size": 224,
+    "max_episode_steps": 100,
+    "frame_skip": 1,
+    "fixed_context_warmups_per_arm_seed": 2,
+    "fixed_context_timed_repetitions_per_arm_seed": 6,
+    "fixed_context_trace_pairs_per_seed": 1,
+    "closed_loop_order_by_seed": {
+      "42": ["native", "cache"],
+      "43": ["cache", "native"],
+      "44": ["native", "cache"]
+    }
+  },
+  "prior_native_outcomes": {
+    "source": "../lewm-fastlewm-paired/artifacts/25569974.pbs101/arms/fastlewm_i30_s{42,43,44}/result.json; same frozen task order",
+    "42": [true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true],
+    "43": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true],
+    "44": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true]
+  },
+  "arms": ["native", "exact_action_free_encode_cache"],
+  "cache_contract": {
+    "scope": "One solver.solve call only; reset before every solve, including every closed-loop replan.",
+    "identity": "Entries are keyed by (active environment slot within the current solve, semantic role current-or-goal, exact pixels tensor contents). A hit requires exact input equality against the stored snapshot. Never reuse an embedding across environment slots or roles.",
+    "role_binding": "Determine current-versus-goal from the frozen Fast-LeWM get_cost/rollout source path and verify each encode input against the actual current or goal pixels in that cost call; call parity alone is insufficient.",
+    "environment_binding": "Use the solver's verified per-environment scheduling order to map each B=1 cost call to its environment slot, and assert that its current/goal inputs match that slot's solve-start observations. If runtime scheduling or inputs do not match the verified mapping, fail closed.",
+    "resident_bound": "CEM is env-major with 30 consecutive rounds per environment and batch_size=1. Evict the prior slot on each verified slot transition; keep at most two entries (current and goal) resident. Do not clone or retain candidate-expanded image tensors.",
+    "mutation": "Only model.encode on action-free current/goal inputs may reuse stored embeddings. Native get_cost, rollout, action encoder, predictor, criterion, torch.topk CEM update, candidate ordering, RNG, and returned plans remain unchanged."
+  },
+  "fixed_context_stage": {
+    "context": "The first official solver.solve input for each seed, captured from the real 50-task evaluation before native sampling.",
+    "required_active_environments": 50,
+    "pairing": "Fresh solver and cloned input per measurement; restore identical global RNG and native CEM generator state for every native/cache pair. Alternate AB/BA within each seed; six timed repetitions permit three orders each way. Two warmups per arm. Cache construction is included in cache timing; cloning, warmups, and full-trace collection are outside timed intervals.",
+    "trace": "One unclocked native/cache pair per seed records every get_cost candidate-action tensor and cost tensor, plus final actions/costs. Compare exact tensor bytes, shape, dtype, finite values, actual active count, get_cost calls, and candidate scores."
+  },
+  "closed_loop_stage": {
+    "evaluation": "Official stable_worldmodel.World.evaluate_from_dataset on the same 50 frozen task rows for native and cached arms, paired by solver seed 42/43/44.",
+    "records": "For every solve/replan, retain active environment count, cost-call/candidate-score counts, final selected actions and costs; retain all 50 ordered episode outcomes. Compare native/cache actions, costs, and outcomes per seed. Report each seed separately and paired task differences; the three repeated runs on the same 50 tasks are not 150 IID observations.",
+    "timing": "Report matched fixed-solve latency separately from complete raw evaluation wall time and the separately measured in-evaluation fixed-benchmark overhead. The reused official runner performs one warmup and three timed cloned solves before its first real solve; both arms retain this measured overhead. Do not estimate-subtract timing or infer deployment speedup from fixed-solve speed alone."
+  },
+  "gates": {
+    "fixed_context": {
+      "all_candidate_action_tensors_bitwise_equal": true,
+      "all_candidate_cost_tensors_bitwise_equal": true,
+      "returned_actions_and_costs_bitwise_equal": true,
+      "finite_outputs": true,
+      "expected_cost_calls_per_b50_solve": 1500,
+      "expected_candidate_scores_per_b50_solve": 450000,
+      "minimum_median_paired_latency_reduction_fraction": 0.10,
+      "maximum_peak_allocated_memory_ratio": 1.10
+    },
+    "closed_loop": {
+      "paired_final_actions_and_costs_bitwise_equal_per_solve": true,
+      "paired_ordered_episode_outcomes_exact_per_seed": true,
+      "finite_outputs": true,
+      "prior_native_control": "For each seed, native outcomes should match the already completed Fast-LeWM 30-iteration result on the same task manifest; discrepancies are preserved and diagnosed, never tuned away."
+    }
+  },
+  "stage_rule": "If fixed-context trace fidelity or finite checks fail, stop before closed-loop except for execution fixes that preserve this freeze. If fixed trace fidelity passes, complete all three paired 50-task closed-loop seed pairs even if only the latency or memory scientific gate fails; stop only for actual OOM, unsafe resource state, or another technical failure. Do not tune to recover a failed gate.",
+  "resources": {
+    "cpu_preflight": "1 CPU-only PBS allocation, select=1:ncpus=8:mem=32gb, walltime=00:30:00; source/runtime/interface and dummy identity checks only.",
+    "gpu_candidate": "select=1:ncpus=16:mem=110gb:ngpus=1, walltime=02:00:00, timeout=01:45:00, 5-second GPU UUID/utilization/memory telemetry in job.log. Do not submit before root review."
+  },
+  "claim_limit": "Fixed-context B=50 solver evidence plus paired closed-loop evaluation for one official Fast-LeWM checkpoint, three solver seeds on the same 50 task rows. No architecture or sparse-kernel claim; closed-loop timing applies only to this evaluation harness.",
+  "quota_rule": "Do not use banked reset. If primary remaining quota falls below 40 percent before a new stage, do not start that stage; finish already authorized submitted work and report."
+}

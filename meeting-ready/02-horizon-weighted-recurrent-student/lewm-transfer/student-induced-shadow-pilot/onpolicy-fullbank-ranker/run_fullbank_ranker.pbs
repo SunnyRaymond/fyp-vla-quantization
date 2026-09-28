@@ -1,0 +1,93 @@
+#!/bin/bash
+#PBS -N lewm_fullbank_rank
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing login/submit host: $HOST" >&2; exit 2 ;;
+esac
+if ! awk -F. -v host="$HOST" 'tolower($1) == host { found = 1 } END { exit !found }' "$PBS_NODEFILE"; then
+  echo "host $HOST is not in PBS_NODEFILE" >&2
+  exit 2
+fi
+
+CONTROL=${LEWM_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=$CONTROL/lewm-transfer/student-induced-shadow-pilot
+RANKER_DIR=$EXPERIMENT/onpolicy-fullbank-ranker
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=$STAGE_ROOT/le-wm
+STABLEWM_ROOT=$STAGE_ROOT/stable-worldmodel
+STABLEWM_HOME=$STAGE_ROOT/stablewm_home
+PYTHON_BIN=$STAGE_ROOT/venv/bin/python
+BASELINE_DIR=$CONTROL/lewm-transfer/official-lewm-dataset-teacher-baseline
+OFFICIAL_CEM_DIR=$CONTROL/lewm-transfer/official-pusht-cem
+ADAPTIVE_DIR=$CONTROL/lewm-transfer/adaptive-teacher-schedule
+PROBE=$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json
+SELECTION=$STAGE_ROOT/artifacts/student-induced-shadow-pilot/selection/25536857.pbs101/selection_manifest.json
+OUT=$RANKER_DIR/artifacts/$JOB_ID
+CACHE_ROOT=$OUT/cache
+
+# All model and dataset checks occur after the PBS compute-node guard.
+for FILE in "$RANKER_DIR/FREEZE.json" "$RANKER_DIR/collect_fullbank.py" \
+  "$RANKER_DIR/train_fullbank_residual_ranker.py" "$PROBE" "$SELECTION" \
+  "$STABLEWM_HOME/pusht_expert_train.h5" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+for DIR in "$LEWM_ROOT" "$STABLEWM_ROOT" "$BASELINE_DIR" "$OFFICIAL_CEM_DIR" "$ADAPTIVE_DIR"; do
+  test -d "$DIR"
+done
+test ! -e "$OUT"
+mkdir -p "$CACHE_ROOT/datasets" "$CACHE_ROOT/pusht"
+ln -s "$STABLEWM_HOME/pusht_expert_train.h5" "$CACHE_ROOT/datasets/pusht_expert_train.h5"
+ln -s "$STABLEWM_HOME/pusht/lewm_object.ckpt" "$CACHE_ROOT/pusht/lewm_object.ckpt"
+
+status=1
+GPU_MONITOR_PID=""
+cleanup() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$STABLEWM_ROOT:$CONTROL/lewm-transfer:$EXPERIMENT:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+printf 'job_id=%s\nhost=%s\nfreeze=%s\nselection=%s\n' "$JOB_ID" "$HOST" "$RANKER_DIR/FREEZE.json" "$SELECTION" > "$OUT/execution_identity.txt"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+timeout --signal=TERM --kill-after=30s 6000 "$PYTHON_BIN" "$RANKER_DIR/collect_fullbank.py" \
+  --selection-manifest "$SELECTION" --lewm-root "$LEWM_ROOT" \
+  --stablewm-root "$STABLEWM_ROOT" --stablewm-home "$STABLEWM_HOME" \
+  --control-root "$CONTROL" --baseline-dir "$BASELINE_DIR" \
+  --official-cem-dir "$OFFICIAL_CEM_DIR" --adaptive-dir "$ADAPTIVE_DIR" \
+  --interface-probe "$PROBE" --cache-root "$CACHE_ROOT" --output-dir "$OUT"
+
+test -s "$OUT/collection_gate.json"
+test -s "$OUT/train_banks.pt"
+test -s "$OUT/validation_banks.pt"
+timeout --signal=TERM --kill-after=30s 900 "$PYTHON_BIN" "$RANKER_DIR/train_fullbank_residual_ranker.py" \
+  --collection-gate "$OUT/collection_gate.json" --train-banks "$OUT/train_banks.pt" \
+  --validation-banks "$OUT/validation_banks.pt" --output-dir "$OUT/training"
+
+test -s "$OUT/training/ranker_summary.json"
+test -s "$OUT/training/gate.json"
+status=0
+printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"

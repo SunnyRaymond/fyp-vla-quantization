@@ -1,0 +1,69 @@
+#!/bin/bash
+#PBS -N lewm_proposal_dispersion
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing login/submit host: $HOST" >&2; exit 2 ;;
+esac
+if ! awk -F. -v host="$HOST" 'tolower($1) == host { found = 1 } END { exit !found }' "$PBS_NODEFILE"; then
+  echo "host $HOST is not in PBS_NODEFILE" >&2
+  exit 2
+fi
+case "${PBS_NGPUS:-0}" in
+  ''|0) ;;
+  *) echo "refusing GPU allocation PBS_NGPUS=${PBS_NGPUS}" >&2; exit 2 ;;
+esac
+if [[ -n "${PBS_GPUFILE:-}" && -s "$PBS_GPUFILE" ]]; then
+  echo "refusing non-empty PBS_GPUFILE" >&2
+  exit 2
+fi
+if [[ "${PBS_RESOURCE_LIST:-}" =~ (^|[:,])ngpus=[1-9][0-9]* ]]; then
+  echo "refusing ngpus PBS resource request" >&2
+  exit 2
+fi
+
+CONTROL=${LEWM_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=$CONTROL/lewm-transfer/student-induced-shadow-pilot
+RANKER_DIR=$EXPERIMENT/onpolicy-fullbank-ranker
+POSTHOC_DIR=$EXPERIMENT/proposal-dispersion-posthoc
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+PYTHON_BIN=$STAGE_ROOT/venv/bin/python
+SOURCE_OUT=$RANKER_DIR/artifacts/25538135.pbs101
+OUT=$RANKER_DIR/artifacts/proposal-dispersion-posthoc/$JOB_ID
+
+for FILE in "$RANKER_DIR/FREEZE.json" "$POSTHOC_DIR/FREEZE.json" \
+  "$POSTHOC_DIR/diagnose_proposal_dispersion.py" \
+  "$SOURCE_OUT/train_banks.pt" "$SOURCE_OUT/validation_banks.pt"; do
+  test -s "$FILE"
+done
+test -x "$PYTHON_BIN"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+
+status=1
+finish() { printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"; }
+trap finish EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+printf 'job_id=%s\nhost=%s\nsource_job_id=25538135.pbs101\n' "$JOB_ID" "$HOST" > "$OUT/execution_identity.txt"
+timeout --signal=TERM --kill-after=30s 600 "$PYTHON_BIN" \
+  "$POSTHOC_DIR/diagnose_proposal_dispersion.py" \
+  --freeze "$RANKER_DIR/FREEZE.json" \
+  --train-banks "$SOURCE_OUT/train_banks.pt" \
+  --validation-banks "$SOURCE_OUT/validation_banks.pt" \
+  --output "$OUT/proposal_dispersion_summary.json"
+
+test -s "$OUT/proposal_dispersion_summary.json"
+status=0
+printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"

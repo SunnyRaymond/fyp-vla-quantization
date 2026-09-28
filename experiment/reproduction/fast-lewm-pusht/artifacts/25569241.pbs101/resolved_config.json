@@ -1,0 +1,72 @@
+{
+  "cache_dir": "/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction/artifacts/25569241.pbs101/cache",
+  "solver": {
+    "_target_": "stable_worldmodel.solver.CEMSolver",
+    "model": "???",
+    "batch_size": 1,
+    "num_samples": 300,
+    "var_scale": 1.0,
+    "n_steps": 30,
+    "topk": 30,
+    "device": "cuda",
+    "seed": 42
+  },
+  "world": {
+    "env_name": "swm/PushT-v1",
+    "num_envs": 50,
+    "max_episode_steps": 100,
+    "history_size": 1,
+    "frame_skip": 1
+  },
+  "dataset": {
+    "stats": "pusht_expert_train",
+    "keys_to_cache": [
+      "action",
+      "proprio",
+      "state"
+    ]
+  },
+  "seed": 42,
+  "policy": "Fast-lewm_weights.ckpt",
+  "plan_config": {
+    "horizon": 1,
+    "receding_horizon": 1,
+    "action_num_blocks": 5,
+    "action_num_blocks_per_step": [
+      2,
+      3
+    ],
+    "action_block_size": 5,
+    "consistency_loss_weight": 0.0
+  },
+  "eval": {
+    "num_eval": 50,
+    "goal_offset_steps": 25,
+    "eval_budget": 50,
+    "img_size": 224,
+    "dataset_name": "pusht_expert_train",
+    "dataset_path": "/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction/artifacts/25569241.pbs101/cache/datasets/pusht_expert_train.h5",
+    "ckpt_path": "/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction/artifacts/25569241.pbs101/cache/Fast-lewm_pusht_object.ckpt",
+    "callables": [
+      {
+        "method": "_set_state",
+        "args": {
+          "state": {
+            "value": "state"
+          }
+        }
+      },
+      {
+        "method": "_set_goal_state",
+        "args": {
+          "goal_state": {
+            "value": "goal_state"
+          }
+        }
+      }
+    ]
+  },
+  "output": {
+    "filename": "pusht_results.txt"
+  }
+}

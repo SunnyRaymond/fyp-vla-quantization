@@ -1,0 +1,76 @@
+#!/bin/bash
+#PBS -N lewm_action_e1
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=03:00:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be set by PBS}
+test -f "$NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing login/submit host: $HOST" >&2; exit 2;; esac
+if ! awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$NODEFILE" | grep -Fxq "$HOST"; then
+  echo "current host $HOST is not in PBS_NODEFILE" >&2
+  exit 2
+fi
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+
+EXPERIMENT=${LEWM_ACTION_E1_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/03-action-response-straightening}
+CONTROL=${LEWM_OFFICIAL_CONTROL_ROOT:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_ROOT=${LEWM_STABLEWM_ROOT:-$STAGE_ROOT/stable-worldmodel}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+OFFICIAL=$CONTROL/lewm-transfer/official-pusht-cem/run_official_pusht_cem.py
+FREEZE=$CONTROL/lewm-transfer/official-pusht-cem/FREEZE.json
+PROBE=$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json
+RUNNER=$EXPERIMENT/run_e1_frozen_pusht_pilot.py
+OUT=${LEWM_ACTION_E1_OUT:-$EXPERIMENT/artifacts/$JOB_ID}
+
+for FILE in "$RUNNER" "$OFFICIAL" "$FREEZE" "$PROBE" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do test -f "$FILE"; done
+test -d "$LEWM_ROOT" && test -d "$STABLEWM_ROOT" && test -x "$PYTHON_BIN"
+mkdir -p "$OUT"
+STATUS=1
+GPU_MONITOR_PID=""
+stop_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_monitor
+  printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1 WANDB_MODE=disabled MUJOCO_GL=egl
+export PYTHONPATH="$LEWM_ROOT:$STABLEWM_ROOT:$CONTROL/lewm-transfer:$CONTROL/lewm-transfer/cem-distribution-distill:$CONTROL/lewm-transfer/adaptive-teacher-schedule:${PYTHONPATH:-}"
+printf 'job_id=%s\nhost=%s\nrunner=%s\nofficial=%s\nstarted_utc=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$OFFICIAL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 10740 "$PYTHON_BIN" "$RUNNER" \
+  --lewm-root "$LEWM_ROOT" --stablewm-root "$STABLEWM_ROOT" \
+  --stablewm-home "$STABLEWM_HOME" --control-root "$CONTROL" \
+  --official-runner "$OFFICIAL" --freeze "$FREEZE" --probe "$PROBE" --output "$OUT" \
+  --radii 0.05 0.20 1.0 2.0 4.0 8.0
+RUNNER_RC=$?
+set -e
+stop_monitor
+GPU_MONITOR_PID=""
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/e1_pilot_summary.json" ]; then
+  STATUS=0
+fi
+printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+exit "$STATUS"

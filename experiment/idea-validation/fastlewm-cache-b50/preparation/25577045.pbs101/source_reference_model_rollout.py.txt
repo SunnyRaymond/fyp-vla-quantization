@@ -1,0 +1,74 @@
+    def rollout(self, info, action_sequence):
+   
+
+        assert "pixels" in info, "pixels not in info_dict"
+        return_intermediate_latents = bool(info.get("return_intermediate_latents", False))
+        H = info["pixels"].size(2)
+        B, S = action_sequence.shape[:2]
+        
+        encoder_action_dim = self._action_encoder_input_dim()
+        packed_action_dim = int(action_sequence.size(-1))
+      
+        if packed_action_dim % encoder_action_dim != 0:
+            raise ValueError(
+                "Eval packed action dim must be divisible by action_encoder.input_dim. "
+                f"packed={packed_action_dim}, encoder={encoder_action_dim}."
+            )
+        rollout_steps = action_sequence.size(2)
+        action_num_blocks = packed_action_dim // encoder_action_dim
+
+        _init = {k: v[:, 0] for k, v in info.items() if torch.is_tensor(v)}
+        _init.pop("action", None)
+        _init = self.encode(_init)
+        emb = info["emb"] = _init["emb"].unsqueeze(1).expand(B, S, -1, -1)
+        _init = {k: detach_clone(v) for k, v in _init.items()}
+
+        # Flatten (B, S) -> (B*S) so rollout runs as a single batched sequence.
+        emb = rearrange(emb, "b s ... -> (b s) ...").clone()
+        action_blocks = rearrange(
+            action_sequence,
+            "b s t (f a) -> (b s) t f a",
+            f=action_num_blocks,
+            a=encoder_action_dim,
+        )
+
+       
+        HS = 1
+        initial_emb = emb
+        intermediate_segments = [] if return_intermediate_latents else None
+        if rollout_steps == 1:
+            act_emb = self.action_encoder(
+                action_blocks[:, 0],
+                return_last_only=not return_intermediate_latents,
+                latent=emb[:, -HS:],
+            )
+            emb_trunc = emb[:, -HS:]  # (BS, HS, D)
+            pred_all = self.predict(emb_trunc, act_emb)
+            if intermediate_segments is not None:
+                intermediate_segments.append(pred_all)
+            pred_emb = pred_all[:, -1:]  # (BS, 1, D)
+            emb = torch.cat([emb, pred_emb], dim=1)
+        else:
+            for t in range(rollout_steps):
+                act_emb = self.action_encoder(
+                    action_blocks[:, t],
+                    return_last_only=not return_intermediate_latents,
+                    latent=emb[:, -HS:],
+                )
+                emb_trunc = emb[:, -HS:]  # (BS, HS, D)
+                pred_all = self.predict(emb_trunc, act_emb)
+                if intermediate_segments is not None:
+                    intermediate_segments.append(pred_all)
+                pred_emb = pred_all[:, -1:]  # (BS, 1, D)
+                emb = torch.cat([emb, pred_emb], dim=1)
+
+        # Restore separate batch and plan-sample dimensions.
+        pred_rollout = rearrange(emb, "(b s) ... -> b s ...", b=B, s=S)
+        info["predicted_emb"] = pred_rollout
+        if intermediate_segments is not None:
+            dense_rollout = torch.cat([initial_emb, *intermediate_segments], dim=1)
+            info["predicted_emb_trajectory"] = rearrange(
+                dense_rollout, "(b s) ... -> b s ...", b=B, s=S
+            )
+        
+        return info

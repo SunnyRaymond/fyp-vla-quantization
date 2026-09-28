@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N jepa_pair_prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=64gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -s "${PBS_NODEFILE:-/missing}"
+TASK_HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$TASK_HOST" in *login*|*head*|*submit*) exit 2 ;; esac
+awk '{split(tolower($1),parts,"."); print parts[1]}' "$PBS_NODEFILE" | grep -Fxq "$TASK_HOST"
+ROOT=/scratch/users/ntu/yguo017/lewm-fastlewm-paired
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+OUT="$ROOT/preparation/$PBS_JOBID"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+TASK_STATUS=2
+trap 'printf "EXIT_STATUS=%s\n" "$TASK_STATUS" > "$OUT/job_status.txt"' EXIT
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4
+set +e
+timeout --signal=TERM --kill-after=30s 3300 "$STAGE/venv/bin/python" "$ROOT/source/prepare_data.py" --stage "$STAGE" --backend /scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction/runtime_overlay --out "$OUT" --tasks "$ROOT/source/selected_tasks.json"
+TASK_STATUS=$?
+set -e
+if [ "$TASK_STATUS" -eq 0 ]; then printf '%s\n' "$OUT" > "$ROOT/prepared_path.txt"; fi
+exit "$TASK_STATUS"

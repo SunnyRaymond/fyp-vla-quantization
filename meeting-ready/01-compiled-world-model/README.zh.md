@@ -14,3 +14,7 @@
 PBS job `25309513.pbs101` 已完成。预注册 verdict 为 **predictor-level NO-GO**：B4 代数等价通过，但 B3 quality、context-dependence、matched B1 comparison 和 efficiency gates 均失败。详见 [`RESULT.zh.md`](RESULT.zh.md) 与 [`MEETING_CARD.zh.md`](MEETING_CARD.zh.md)。
 
 `official CEM`、`closed-loop` 与 joint encoder training 均为 `NOT_RUN_BY_SCOPE`。
+
+## 后续无重训诊断
+
+[`diagnostics/RESULT.zh.md`](diagnostics/RESULT.zh.md) 记录 job `25327163.pbs101`：simple anchored residual 失败，但 frozen `phi(u)` 的跨-bank局部拟合通过预注册 gate，形成 `COMPILER_BOTTLENECK_SIGNAL`。这不覆盖原 NO-GO，也不是 deployable GO。

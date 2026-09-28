@@ -1,0 +1,39 @@
+#!/bin/bash
+#PBS -N fastlewm_cache_prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -s "${PBS_NODEFILE:-/missing}"
+TASK_HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$TASK_HOST" in *login*|*head*|*submit*) exit 2 ;; esac
+awk '{split(tolower($1),parts,"."); print parts[1]}' "$PBS_NODEFILE" | grep -Fxq "$TASK_HOST"
+test -z "${CUDA_VISIBLE_DEVICES:-}" || test "$CUDA_VISIBLE_DEVICES" = -1
+
+ROOT=/scratch/users/ntu/yguo017/fastlewm-cache-b50
+PAIRED=/scratch/users/ntu/yguo017/lewm-fastlewm-paired
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+OUT="$ROOT/preparation/$PBS_JOBID"
+test ! -e "$OUT"
+mkdir -p "$OUT/source_reference"
+exec > >(tee -a "$OUT/job.log") 2>&1
+TASK_STATUS=2
+finish() { printf 'EXIT_STATUS=%s\n' "$TASK_STATUS" > "$OUT/job_status.txt"; }
+trap finish EXIT
+
+cp "$PAIRED/source/run_paired.py" "$PAIRED/source/FREEZE.json" "$PAIRED/source/selected_tasks.json" "$OUT/source_reference/"
+TASK_PREPARED=$(cat "$PAIRED/prepared_path.txt")
+test "$TASK_PREPARED" = "/scratch/users/ntu/yguo017/lewm-fastlewm-paired/preparation/25569830.pbs101"
+test -s "$TASK_PREPARED/prepared.json" && test -s "$TASK_PREPARED/process.pkl"
+test -d "$STAGE/venv" && test -d "$STAGE/le-wm"
+test -d /scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction/runtime_overlay
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 WANDB_MODE=disabled
+printf 'job_id=%s\nhost=%s\nstarted_utc=%s\n' "$PBS_JOBID" "$TASK_HOST" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+set +e
+"$STAGE/venv/bin/python" "$ROOT/source/cpu_preflight.py" --freeze "$ROOT/source/FREEZE.json" --source-reference "$OUT/source_reference"
+TASK_STATUS=$?
+set -e
+if [ "$TASK_STATUS" -eq 0 ] && [ ! -s "$OUT/preflight.json" ]; then TASK_STATUS=3; fi
+exit "$TASK_STATUS"

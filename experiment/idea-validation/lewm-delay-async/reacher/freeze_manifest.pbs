@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -N lewm_reacher_manifest
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing login/submit host $HOST" >&2; exit 2;; esac
+NODE_SHORTS=$(awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$PBS_NODEFILE" | sort -u)
+printf '%s\n' "$NODE_SHORTS" | grep -Fxq "$HOST" || { echo "host absent from PBS_NODEFILE" >&2; exit 2; }
+
+EXPERIMENT=/scratch/users/ntu/yguo017/dino-wm-wall/experiment/idea-validation/lewm-delay-async
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+CONTROL=$EXPERIMENT/reacher
+RUNNER=$CONTROL/runner.py
+MANIFEST=$CONTROL/frozen_manifest.json
+OUT=$CONTROL/artifacts/$JOB_ID
+PYTHON_BIN=$STAGE/venv/bin/python
+test -f "$RUNNER" && test -x "$PYTHON_BIN"
+test -s "$STAGE/stablewm_home/dmc/reacher_random.h5"
+test -s "$STAGE/stablewm_home/reacher/lewm_object.ckpt"
+test ! -e "$MANIFEST" && test ! -e "$OUT"
+mkdir -p "$OUT"
+STATUS=1
+trap 'printf "EXIT_STATUS=%s\n" "$STATUS" > "$OUT/job_status"' EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+printf 'job_id=%s\nhost=%s\nstarted_utc=%s\n' "$JOB_ID" "$HOST" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+export PYTHONUNBUFFERED=1 STABLEWM_HOME="$STAGE/stablewm_home" MUJOCO_GL=egl
+export PYTHONPATH="$STAGE/le-wm:$STAGE/stable-worldmodel:${PYTHONPATH:-}"
+set +e
+timeout --signal=TERM --kill-after=30s 6900 "$PYTHON_BIN" "$RUNNER" --mode freeze-manifest --lewm-root "$STAGE/le-wm" --output "$MANIFEST"
+RC=$?
+set -e
+printf 'RUNNER_EXIT_STATUS=%s\n' "$RC" > "$OUT/final_exit_status.txt"
+if [ "$RC" -eq 0 ] && [ -s "$MANIFEST" ]; then
+  STATUS=0
+  printf 'manifest=%s\n' "$MANIFEST" > "$OUT/manifest_path.txt"
+fi
+exit "$STATUS"

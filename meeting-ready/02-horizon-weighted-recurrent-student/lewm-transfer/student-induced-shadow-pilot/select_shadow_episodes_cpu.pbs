@@ -1,0 +1,47 @@
+#!/bin/bash
+#PBS -N lewm_shadow_sel
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}"
+test -n "${PBS_NODEFILE:-}" && test -s "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+NODE_HOST=$(awk 'NR==1 { split(tolower($1), p, "."); print p[1]; exit }' "$PBS_NODEFILE")
+case "$NODE_HOST" in
+  *login*|*head*|*submit*|'') echo "invalid PBS node host: $NODE_HOST" >&2; exit 2 ;;
+esac
+test "$HOST" = "$NODE_HOST" || { echo "hostname $HOST differs from PBS nodefile host $NODE_HOST" >&2; exit 2; }
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+CONTROL_DIR=${LEWM_SHADOW_PILOT_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot}
+BASELINE_TASKS=${LEWM_SHADOW_PILOT_BASELINE_TASKS:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json}
+OUT=${LEWM_SHADOW_PILOT_OUT:-$STAGE_ROOT/artifacts/student-induced-shadow-pilot/selection/$PBS_JOBID}
+DATASET=$STABLEWM_HOME/pusht_expert_train.h5
+
+test -f "$CONTROL_DIR/SELECTION_FREEZE.json"
+test -f "$CONTROL_DIR/select_shadow_episodes.py"
+test -f "$BASELINE_TASKS"
+test -f "$DATASET"
+test -x "$PYTHON_BIN"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export WANDB_MODE=disabled
+"$PYTHON_BIN" "$CONTROL_DIR/select_shadow_episodes.py" \
+  --freeze "$CONTROL_DIR/SELECTION_FREEZE.json" \
+  --baseline-tasks "$BASELINE_TASKS" \
+  --dataset "$DATASET" \
+  --output "$OUT/selection_manifest.json"
+printf 'EXIT_STATUS=0\n' > "$OUT/job_status"

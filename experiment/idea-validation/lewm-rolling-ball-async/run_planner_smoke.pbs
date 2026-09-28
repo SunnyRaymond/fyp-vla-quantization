@@ -1,0 +1,52 @@
+#!/bin/bash
+#PBS -N rolling_lewm_cem
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+TRAIN_JOB=${TRAIN_JOB:?Submit with the verified epoch100 training job ID}
+case "$TRAIN_JOB" in *[!0-9a-zA-Z.]*|'') exit 64;; esac
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT/source_snapshot"
+exec > >(tee -a "$OUT/job.log") 2>&1
+GPU_MONITOR_PID=""
+cleanup() {
+  rc=$?
+  if [ -n "$GPU_MONITOR_PID" ]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$OUT/wrapper_exit_status.txt"
+}
+trap cleanup EXIT
+printf 'job_id=%s\nhost=%s\ntrain_job=%s\n' "$JOB_ID" "$HOST" "$TRAIN_JOB"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
+export STABLEWM_HOME="$TASK_ROOT/stablewm_home"
+export PYTHONPATH="$TASK_ROOT/deps:$OUT/source_snapshot:$TASK_ROOT/upstream_lewm:$TASK_ROOT/upstream_stablewm:${PYTHONPATH:-}"
+for name in policy_server.py PLANNER_FREEZE.json run_planner_smoke.pbs; do
+  cp "$TASK_ROOT/source/$name" "$OUT/source_snapshot/"
+done
+nvidia-smi --id="$CUDA_VISIBLE_DEVICES" --query-gpu=name,memory.total,driver_version --format=csv > "$OUT/gpu_info.csv"
+nvidia-smi --id="$CUDA_VISIBLE_DEVICES" --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+set +e
+timeout --signal=TERM --kill-after=30s 1500 /scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python "$OUT/source_snapshot/policy_server.py" --root "$TASK_ROOT" --checkpoint "$TASK_ROOT/runs/$TRAIN_JOB/last.ckpt" --smoke --output-dir "$OUT"
+rc=$?
+set -e
+printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+if [ "$rc" -eq 0 ]; then test -s "$OUT/planner_smoke.json" || exit 3; fi
+exit "$rc"

@@ -1,0 +1,36 @@
+    def get_cost(self, info_dict: dict, action_candidates: torch.Tensor):
+        """ Compute the cost of action candidates given an info dict with goal and initial state."""
+        assert "goal" in info_dict, "goal not in info_dict"
+
+        device = next(self.parameters()).device
+        num_action_candidates = int(action_candidates.size(1))
+        for k in list(info_dict.keys()):
+            if torch.is_tensor(info_dict[k]):
+                value = info_dict[k]
+                if value.dim() >= 2 and value.size(1) == num_action_candidates:
+                    value = value[:, :1]
+                info_dict[k] = value.to(device)
+
+        goal = {k: v[:, 0] for k, v in info_dict.items() if torch.is_tensor(v)}
+        goal["pixels"] = goal["goal"]
+
+        for k in info_dict:
+            if k.startswith("goal_"):
+                goal[k[len("goal_") :]] = goal.pop(k)
+
+        goal.pop("action")
+        goal = self.encode(goal)
+
+        info_dict["goal_emb"] = goal["emb"]
+        info_dict = self.rollout(info_dict, action_candidates)
+        consistency_weight = self._rollout_consistency_weight(info_dict)
+        consistency_blocks = self._rollout_consistency_blocks(info_dict)
+        if consistency_weight != 0.0:
+            info_dict["consistency_predicted_emb"] = (
+                self.rollout_action_num_blocks_per_step(
+                    info_dict["predicted_emb"][..., :1, :],
+                    action_candidates,
+                    consistency_blocks,
+                )
+            )
+        return self.criterion(info_dict)

@@ -1,0 +1,171 @@
+{
+  "schema": "lewm-recurrent-student.terminal-response-loss-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-25",
+  "purpose": "Test whether one bank-centered terminal action-response loss improves fresh LeWM predictor fidelity and teacher-objective candidate ranking over the reconstructed balanced_base recipe.",
+  "source": {
+    "lewm_root": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/le-wm",
+    "stablewm_home": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "interface_probe_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json",
+    "phase2_manifest_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/state-coverage/artifacts/24926383.pbs101/context_manifest_512.json",
+    "phase2_control_prepared_rows_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/state-coverage/artifacts/24926383.pbs101/prepared_512/prepared_rows.pt",
+    "balanced_rows_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/teacher-screening/artifacts/25213164.pbs101/prepared_balanced_rows_reconstructed.pt",
+    "balanced_rows_provenance": "Reconstructed on compute node by job 25213164.pbs101 from Phase 2 prepared rows; use this source only and do not mix with the temporal-balanced-train cache.",
+    "balanced_base_reference_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/teacher-screening/artifacts/25213164.pbs101/balanced_base_step3000_reconstructed.pt",
+    "balanced_base_reference_checkpoint_use": "Provenance and reference only. Both current arms are reconstructed from the same frozen initialization and trained for the full 3000 updates; neither arm loads this terminal checkpoint.",
+    "used_episode_manifests": {
+      "seeded_pilot32": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/selection/25536857.pbs101/selection_manifest.json",
+      "real_observation80": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-training-data/selection/25543404.pbs101/selection_manifest.json",
+      "closed_loop50": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json"
+    },
+    "preprocessing_isolation": "Episode/task-level only. The official dataset-wide scaler reads train columns that can include selected evaluation episode rows; do not claim row-level preprocessing isolation."
+  },
+  "design": {
+    "arms": ["balanced_base", "terminal_response_loss"],
+    "architecture": "LeWMCompactRecurrentTransitionStudent h256, shared recurrent, no attention, no conditioner, fully autoregressive predicted-latent feedback.",
+    "paired_unit": "Episode. Compute treatment-minus-control within each matched candidate bank, summarize the six block deltas per episode by median, then summarize the eight episode deltas. Candidates, anchors, and action-prefix seeds are not independent units.",
+    "same_original_initialization": true,
+    "same_training_rows_and_slates": true,
+    "same_context_schedule": true,
+    "same_optimizer_and_update_budget": true,
+    "treatment_only_change": "Add lambda_response * L_response to the unchanged balanced_base objective.",
+    "teacher_inference_only": "Teacher terminal latents provide detached training targets and evaluation references. No teacher input or computation is used by the student at inference."
+  },
+  "training": {
+    "training_rows": 512,
+    "balanced_anchor_counts": {"early": 171, "middle": 171, "late": 170},
+    "balanced_anchor_rule": {"early": 0, "middle": "floor((episode_length-26)/2)", "late": "episode_length-26"},
+    "batch_contexts": 8,
+    "candidate_slates_per_context": 64,
+    "updates": 3000,
+    "primary_snapshot": "step_3000",
+    "snapshot_steps": [500, 1000, 1500, 3000],
+    "checkpoint_selection": "No early stopping or result-dependent snapshot selection; only step_3000 is primary.",
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.01,
+      "betas": [0.9, 0.999],
+      "epsilon": 1e-8
+    },
+    "seeds": {
+      "initialization_seed": 20300901,
+      "training_seed": 20300902,
+      "context_schedule_seed": 20300904,
+      "candidate_slate_seed": 20300905
+    },
+    "balanced_base_objective": {
+      "latent_loss": "Existing mean-normalized horizon-weighted free-running latent MSE.",
+      "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+      "score_loss": "0.1 * context-normalized teacher-score SmoothL1 mean; top-12 weight 2.0, remaining candidate weight 1.0, std floor 1e-6, beta 1.0."
+    },
+    "response_loss": {
+      "lambda": 0.01,
+      "terminal_horizon_index": 4,
+      "definition": "For each context bank, let cS_i=zS_i-mean_j(zS_j) and cT_i=zT_i-mean_j(zT_j). L_response = mean_i mean_d[(cS_i-cT_i)^2] / max(mean_i mean_d[cT_i^2], 1e-6).",
+      "normalizer": "Teacher bank-centered terminal latent MSE; floor fixed at 1e-6. Compute the mean across the 64 fixed training candidates and latent dimensions for each context.",
+      "gradient_boundary": "Student predictions receive gradients; teacher targets and denominator are detached.",
+      "no_sweep": true
+    },
+    "teacher_targets": "Reuse the frozen teacher targets stored in the 25213164.pbs101 reconstructed balanced-row cache for all 512 contexts and their 64 candidate slates. Both arms read the same cached targets; do not rebuild the 512 rows or rerun teacher forwards for training targets in this experiment."
+  },
+  "evaluation": {
+    "selection_seed": 20300903,
+    "selection_start": 600,
+    "eligible_episode_rule": "episode IDs enumerated from the HDF5 ep_len column where ep_len >= 26; shuffle once with random.Random(20300903).",
+    "selection_order": "Start with the frozen shuffled valid list at index 600; in that order exclude every episode ID in the three source manifests, then take the first eight remaining IDs. Do not reshuffle, replace, or tune selection using predictions or scores.",
+    "episode_ids": "Materialize and persist the eight ordered IDs in the PBS run summary before any fresh evaluation inference or scoring. Recompute from HDF5 metadata on the PBS compute node and fail closed if count, order, manifest exclusions, or identity assertions differ. Training and terminal checkpoint creation occur first.",
+    "excluded_episode_counts": {"seeded_pilot": 32, "real_observation": 80, "closed_loop": 50, "prior_valid_prefix": 600},
+    "episodes": 8,
+    "anchors": ["early", "middle", "late"],
+    "action_prefix_seeds": [20301007, 20301008],
+    "official_action_low": [-1.0, -1.0],
+    "official_action_high": [1.0, 1.0],
+    "gaussian_std": 0.22360679774997896,
+    "causality_tolerance": 0.000001,
+    "blocks": 48,
+    "candidates_per_block": 300,
+    "shared_candidate_banks_between_arms": true,
+    "primary_snapshot": "step_3000",
+    "episode_is_independent_unit": true,
+    "candidate_is_independent_unit": false,
+    "per_block_metrics": [
+      "normalized_terminal_response_mse",
+      "teacher_objective_spearman",
+      "teacher_top30_recall",
+      "standardized_teacher_elite_regret",
+      "relative_latent_mse_all_horizons"
+    ],
+    "normalized_terminal_response_mse": "Apply the frozen response-loss formula to all 300 candidates in the same evaluation context; use the official teacher terminal latents and the 1e-6 denominator floor.",
+    "standardized_teacher_elite_regret": "(mean teacher objective cost on the student scorer's top-30 - mean teacher objective cost on the teacher's top-30) / max(population standard deviation of all 300 teacher objective costs, 1e-6); lower is better.",
+    "aggregation": "Pair control and treatment by episode, anchor, and action-prefix seed. For each metric compute treatment-minus-control within each matched block, take the median of six block deltas per episode, then summarize the eight episode deltas. Report per-episode deltas, each arm's marginal medians, and worst blocks; no candidate-level p-values.",
+    "latency": {
+      "boundary": "Cached H=1 latent plus five-step predictor rollout; excludes encoder, CEM, environment and closed-loop.",
+      "warmup": 3,
+      "repeats": 10,
+      "student_teacher_comparison_required": true
+    }
+  },
+  "gates": {
+    "relative_mechanism": {
+      "paired_unit": "Episode after median of six matched block deltas.",
+      "response_normalized_mse_episode_median_delta_max": -0.05,
+      "standardized_elite_regret_episode_median_delta_max": -0.05,
+      "episodes_with_strict_regret_improvement_min": 5,
+      "strict_regret_improvement": "Treatment episode median regret delta < 0.",
+      "top30_recall_episode_median_delta_min": 0.0,
+      "response_floor_active_blocks_max": 0,
+      "floor_policy": "If any fresh evaluation block activates the 1e-6 teacher-contrast denominator floor, the normalized response mechanism gate is inconclusive and cannot be GO. Report the count and raw teacher contrast energy; do not remove or replace blocks.",
+      "all_conditions_required": true,
+      "cannot_replace_absolute_or_stratum_gate": true
+    },
+    "absolute_predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.80,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.50,
+      "median_relative_latent_mse_max": 0.25,
+      "positive_spearman_blocks_min": 36,
+      "positive_top30_blocks_min": 36,
+      "latency_reduction_min": 0.20,
+      "integrity_convergence_causality_required": true
+    },
+    "stratum_protection": {
+      "strata": ["early", "middle", "late"],
+      "blocks_per_stratum": 16,
+      "median_spearman_min": 0.95,
+      "median_top30_min": 0.75,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "minimum_thresholds_repeated": false
+    },
+    "overall": "GO only if the relative_mechanism, treatment absolute_predictor, stratum_protection, integrity, convergence, causality, and latency gates all pass. Relative improvement alone is mechanism evidence and cannot establish a replacement."
+  },
+  "anti_leakage": {
+    "freeze_before_training_and_evaluation": true,
+    "evaluation_pixels_actions_and_teacher_targets_opened_only_after_terminal_checkpoints_saved": true,
+    "no_validation_informed_lambda_or_threshold_tuning": true,
+    "no_early_stopping_or_checkpoint_selection": true,
+    "no_episode_replacement_after_selection": true,
+    "no_interim_metric_driven_changes_or_sweep": true
+  },
+  "execution": {
+    "allocation": "One bounded PBS GPU compute-node job; HDF5, model, teacher targets, training and evaluation stay on compute nodes.",
+    "guards": ["Require non-empty PBS_JOBID", "Require valid PBS_NODEFILE membership", "Reject login/head/submit hosts before model or dataset I/O"],
+    "gpu_telemetry_interval_seconds": 5,
+    "gpu_telemetry_destination": "job.log",
+    "banked_reset_credits": "Do not query, consume, or otherwise use."
+  },
+  "scope_boundary": {
+    "predictor_level_only": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner_viability": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "speedup_claim": false,
+    "teacher_is_reference_not_environment_truth": true
+  },
+  "claim_boundary": "A passing result supports only the frozen episode-level predictor comparison on the specified candidate distribution. It does not establish official CEM viability, planner deployment, closed-loop task success, or generalization beyond the selected split."
+}

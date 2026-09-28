@@ -1,5 +1,7 @@
 # 023. Fast LeWorldModel (Fast-LeWM)
 
+> **2026-09-26 runtime 更新：** 官方 pretrained base PushT 已在 A100 完成 50-task evaluation，成功 49/50（98%），接口/数值 gates 通过。部分依赖沿用项目兼容环境；本次没有复现四任务、训练或论文 speedup。[完整结果与版本边界](../../../experiment/reproduction/fast-lewm-pusht/RESULT.zh.md)。以下静态审读中的“未运行”描述指 2026-09-19 那次检查。
+
 > **完整标题：** *Fast LeWorldModel*
 >
 > **本地论文：** [paper-arxiv-v1.pdf](paper-arxiv-v1.pdf)

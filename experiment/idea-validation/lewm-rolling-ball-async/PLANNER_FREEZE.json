@@ -1,0 +1,54 @@
+{
+  "scope": "Rolling Ball Interception LeWM+CEM task adapter",
+  "status": "frozen_before_offline_planner_smoke; closed_loop_not_executed",
+  "checkpoint": "formal training epoch100 last.ckpt",
+  "solver_source": "galilai-group/stable-worldmodel@10c26dbd5677083fa31dba69eb738b973845e9a4",
+  "cem": {
+    "num_samples": 300,
+    "topk": 30,
+    "n_steps": 30,
+    "var_scale": 1.0,
+    "horizon": 5,
+    "action_block": 1,
+    "receding_horizon": 1,
+    "batch_size": 1,
+    "n_envs": 1,
+    "dtype": "float32",
+    "seed": 1234,
+    "episode_reset_rng": "reset native solver.torch_gen to seed1234 with env_ids [0], alongside warm-start state",
+    "sampler_and_update": "unmodified pinned solver; native candidate-zero, torch.topk, unbiased std",
+    "warm_start": "previous solve action sequence shifted by one as native policy"
+  },
+  "observations": {
+    "camera": "observation.images.fixed_cam",
+    "planning_initial_frames": 1,
+    "training_history_size": 3,
+    "no_privileged_task_state": true,
+    "proprioception": "current joints only for command conversion; not ball or task state"
+  },
+  "goal_cost": {
+    "source": "last available fixed-camera pre-step observation from each of the 180 training episodes only",
+    "criterion": "minimum terminal latent MSE across fixed training goal bank",
+    "cache": "frozen goal embeddings at server startup; current observation still encoded in native rollout",
+    "no_test_future_frames": true,
+    "terminal_success_labels": "not individually verified in published dataset",
+    "adaptation": "task uses random lanes, so goal bank replaces a single target image"
+  },
+  "actions": {
+    "raw_dim": 8,
+    "server_action_horizon": 1,
+    "returned_actions": "first projected and denormalized command only",
+    "projection": "train target min/max, used identically for cost rollout and returned actions; constant dimensions fixed",
+    "bounds_claim": "demonstration envelope; not a hardware safety certification",
+    "normalization": "same training-only mean/std as checkpoint",
+    "control_period_s": 0.04,
+    "pending_action": "hold most recent absolute joint target; initial hold uses reset joints"
+  },
+  "required_measurements": [
+    "full server planner wall time including preprocessing and all CEM rounds",
+    "CEM solve wall time with CUDA synchronization",
+    "client observation-capture to first-action-application wall and simulation age",
+    "actual RTF and native task success in future closed-loop evaluator"
+  ],
+  "evidence_boundary": "offline HTTP/CEM smoke and training loss are not closed-loop success or real-time evidence"
+}

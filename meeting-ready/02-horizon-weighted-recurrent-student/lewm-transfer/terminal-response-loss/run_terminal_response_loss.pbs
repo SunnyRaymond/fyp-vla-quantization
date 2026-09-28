@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#PBS -N lewm_terminal_rsp
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+# Allocation guard: do not inspect experiment assets before these checks pass.
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be set by PBS}
+test -f "$NODEFILE" || { echo "refusing run without PBS_NODEFILE" >&2; exit 2; }
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+awk -F. -v host="$HOST" 'tolower($1) == host {found=1} END {exit !found}' "$NODEFILE" || {
+  echo "refusing host outside PBS_NODEFILE: $HOST" >&2
+  exit 2
+}
+
+MEETING_READY=${LEWM_MEETING_READY_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready}
+TRANSFER=${LEWM_TERMINAL_RESPONSE_TRANSFER_DIR:-$MEETING_READY/02-horizon-weighted-recurrent-student/lewm-transfer}
+CONTROL=${LEWM_TERMINAL_RESPONSE_CONTROL_DIR:-$TRANSFER/terminal-response-loss}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+DATASET=${LEWM_TERMINAL_RESPONSE_DATASET:-$STABLEWM_HOME/pusht_expert_train.h5}
+TEACHER_CHECKPOINT=${LEWM_TERMINAL_RESPONSE_TEACHER:-$STABLEWM_HOME/pusht/lewm_object.ckpt}
+FREEZE=${LEWM_TERMINAL_RESPONSE_FREEZE:-$CONTROL/FREEZE.json}
+PROTOCOL=${LEWM_TERMINAL_RESPONSE_PROTOCOL:-$CONTROL/PROTOCOL.zh.md}
+RUNNER=${LEWM_TERMINAL_RESPONSE_RUNNER:-$CONTROL/runner.py}
+OUT=${LEWM_TERMINAL_RESPONSE_OUT:-$CONTROL/artifacts/$JOB_ID}
+
+test -f "$RUNNER"
+test -f "$CONTROL/self_check.py"
+test -f "$FREEZE"
+test -f "$PROTOCOL"
+test -x "$PYTHON_BIN"
+test -d "$LEWM_ROOT"
+test -f "$DATASET"
+test -f "$TEACHER_CHECKPOINT"
+test ! -e "$OUT" || { echo "refusing to reuse output directory: $OUT" >&2; exit 2; }
+mkdir -p "$OUT"
+
+status=1
+GPU_MONITOR_PID=""
+cleanup() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$STAGE_ROOT/stable-worldmodel:$TRANSFER:$CONTROL:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export LEWM_STAGE_ROOT="$STAGE_ROOT"
+export LEWM_REPO_ROOT="$LEWM_ROOT"
+export STABLEWM_HOME
+export LEWM_TERMINAL_RESPONSE_DATASET="$DATASET"
+export LEWM_TERMINAL_RESPONSE_TEACHER="$TEACHER_CHECKPOINT"
+
+printf 'job_id=%s\nhost=%s\nrunner=%s\nfreeze=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$FREEZE"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+"$PYTHON_BIN" "$CONTROL/self_check.py"
+
+# Leave time for PBS cleanup and status recording within the 45-minute request.
+set +e
+timeout --signal=TERM --kill-after=20s 2400 "$PYTHON_BIN" "$RUNNER" \
+  --freeze "$FREEZE" --output-dir "$OUT"
+runner_status=$?
+set -e
+printf 'RUNNER_EXIT_STATUS=%s\n' "$runner_status"
+status=$runner_status
+exit "$runner_status"

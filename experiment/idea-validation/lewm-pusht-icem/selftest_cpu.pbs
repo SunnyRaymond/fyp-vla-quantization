@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N lewm_icem_check
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+test -f "${PBS_NODEFILE:-}"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing login/submit node" >&2; exit 2;; esac
+awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$PBS_NODEFILE" | grep -Fxq "$HOST"
+
+PROJECT=/scratch/users/ntu/yguo017/dino-wm-wall
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+HERE=$PROJECT/experiment/idea-validation/lewm-pusht-icem
+OUT=$HERE/artifacts/$JOB_ID
+test ! -e "$OUT"
+mkdir -p "$OUT"
+STATUS=1
+trap 'printf "EXIT_STATUS=%s\n" "$STATUS" > "$OUT/job_status"' EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+export PYTHONPATH="$STAGE/le-wm:$STAGE/stable-worldmodel:${PYTHONPATH:-}"
+timeout --signal=TERM --kill-after=10s 900 "$STAGE/venv/bin/python" "$HERE/decay_cem.py" --self-test
+STATUS=0

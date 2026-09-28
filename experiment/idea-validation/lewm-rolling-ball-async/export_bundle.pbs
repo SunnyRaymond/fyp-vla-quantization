@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N rolling_compact_bundle
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:30:00
+#PBS -W depend=afterok:25578999.pbs101:25579057.pbs101
+#PBS -j oe
+
+set -euo pipefail
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+mkdir -p "$OUT/source_snapshot"
+for name in export_bundle.py policy_server.py run_rented.sh BUNDLE_ADAPTER.md PLANNER_FREEZE.json TRAIN_FREEZE.json; do
+  cp "$TASK_ROOT/source/$name" "$OUT/source_snapshot/"
+done
+for name in EVAL_FREEZE.json eval_rolling.py AUTODL_PREP.md RENTAL_HANDOFF.zh.md verify_bundle.py run_bundle_smoke.pbs; do
+  if [ -f "$TASK_ROOT/source/$name" ]; then cp "$TASK_ROOT/source/$name" "$OUT/source_snapshot/"; fi
+done
+exec > >(tee -a "$OUT/job.log") 2>&1
+cleanup() {
+  rc=$?
+  printf '%s\n' "$rc" > "$OUT/wrapper_exit_status.txt"
+}
+trap cleanup EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$TASK_ROOT/deps:$OUT/source_snapshot:$TASK_ROOT/upstream_lewm:$TASK_ROOT/upstream_stablewm:${PYTHONPATH:-}"
+python_bin=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+test -x "$python_bin"
+set +e
+"$python_bin" "$OUT/source_snapshot/export_bundle.py" \
+  --root "$TASK_ROOT" \
+  --output "$TASK_ROOT/bundles/rolling-ball-lewm-epoch100" \
+  --code-root "$OUT/source_snapshot" \
+  --report "$OUT/EXPORT_SUMMARY.json"
+rc=$?
+set -e
+printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+if [ "$rc" -eq 0 ]; then
+  test -s "$OUT/EXPORT_SUMMARY.json"
+  test -s "$TASK_ROOT/bundles/rolling-ball-lewm-epoch100.tar.gz"
+fi
+exit "$rc"

@@ -1,0 +1,199 @@
+{
+  "format": "rolling_ball_native_eval_freeze_v1",
+  "status": "FROZEN_STRICT_RGB_V1_PAIR008_TERMINAL_FAIL",
+  "scope": "ReflexBench Rolling Ball Interception only",
+  "sources": {
+    "reflexbench_repository": "LxRoboticsLab/ReflexBench",
+    "reflexbench_commit": "8bb931485093c6d98f8729774ad01bf824964e16",
+    "isaaclab_candidate_tag": "v2.3.1",
+    "isaac_sim_candidate_version": "5.1.0"
+  },
+  "task": {
+    "gym_id": "RollingBallInterception-Franka-DataCollection-v0",
+    "profile": "rolling_ball_interception",
+    "num_envs": 1,
+    "control": "joint_pos",
+    "action_format": "abs_joint",
+    "state_format": "joint",
+    "obs_mode": "vla",
+    "camera_names": [
+      "fixed_cam"
+    ],
+    "image_history": 1,
+    "physics_dt_s": 0.01,
+    "decimation": 4,
+    "control_dt_s": 0.04,
+    "max_control_ticks": 75,
+    "reset": "pinned native reset; no task-state overrides",
+    "success": "ReflexBench native task profile and termination snapshot"
+  },
+  "planner": {
+    "checkpoint": "formal vanilla LeWM epoch-100 last checkpoint",
+    "horizon": 5,
+    "cem_samples": 300,
+    "cem_topk": 30,
+    "cem_iterations": 30,
+    "cem_seed": 1234,
+    "executed_actions_per_request": 1,
+    "response_action_shape": [
+      1,
+      1,
+      8
+    ]
+  },
+  "paired_design": {
+    "episodes": 50,
+    "seed_base": 2026092700,
+    "seed_ids": "2026092700..2026092749, in order",
+    "fixture_required": true,
+    "fixture_gate": "scene/task/event/counter/RNG restore plus same-first-action state and fixed-camera comparison; require mean RGB absolute difference <= 0.25 and p99 <= 2",
+    "smoke_episodes": 3,
+    "power_analysis_claim": false
+  },
+  "rendering": {
+    "renderer": "RTX Real-Time",
+    "original_antialiasing_mode": "TAA",
+    "original_native_render_mapping": "rtx/post/aa/op1=TAA",
+    "revision_timing": "before any policy closed-loop outcome",
+    "selected_antialiasing_mode": "FXAA",
+    "config_field": "cfg.sim.render.antialiasing_mode",
+    "result_mapping_field": "native_render_mapping",
+    "reset_render_frames": 256,
+    "capture_restore_refresh": {
+      "frames_each": 256,
+      "operation": "256 pure fixed-camera renders, then fixed_cam.update(0, force_recompute=True)",
+      "physics_advances": 0,
+      "episode_wall_time_begins": "after restore and refresh",
+      "included_in_planner_or_episode_time": false
+    },
+    "image_gate": {
+      "mean_rgb_absolute_difference_max": 0.25,
+      "p99_rgb_absolute_difference_max": 2,
+      "threshold_relaxed": false
+    },
+    "same_mode_and_bank_required_for": [
+      "sync",
+      "fixed-delay",
+      "true-async"
+    ],
+    "physics_model_cem_seed_protocol_changed": false,
+    "training_render_equivalence_claimed": false,
+    "visual_distribution_caveat": "FXAA may change visual distribution relative to TAA; this is a pre-policy reproducibility correction, not a claim that the failed TAA runs or training renders are visually equivalent",
+    "official_guidance": "https://docs.omniverse.nvidia.com/kit/docs/omni_replicator/1.11.35/source/extensions/omni.replicator.core/docs/API.html",
+    "pre_revision_taa_evidence": {
+      "runs": [
+        "pair-003",
+        "pair-004",
+        "pair-005"
+      ],
+      "status": "all failed RGB fixture gate; no fixture bank",
+      "scene_task_event_counter_rng_gates": "all PASS",
+      "rgb_mean_approx": 3.4,
+      "rgb_p99_approx": 17,
+      "pair_005_static_render_diagnostic": {
+        "renders": 16,
+        "physics_advances": 0,
+        "consecutive_frame_mean_range_approx": [
+          0.2,
+          0.6
+        ],
+        "consecutive_frame_p99_range_approx": [
+          4,
+          8
+        ],
+        "fixture_reference_mean_approx": 3.1,
+        "fixture_reference_p99_range_approx": [
+          12,
+          15
+        ]
+      }
+    },
+    "fxaa_pair_006_evidence": {
+      "status": "FAIL_RGB_FIXTURE_GATE; no bank",
+      "scene_task_event_counter_rng_gates": "all PASS",
+      "initial_restore_mean_approx": 2.2105,
+      "initial_restore_p99_approx": 7,
+      "static_render_diagnostic": {
+        "renders": 16,
+        "previous_mean_trend_approx": [
+          0.26,
+          0.16
+        ],
+        "p99_trend_approx": [
+          3,
+          1
+        ],
+        "fixture_reference_mean_approx": 2.1
+      }
+    },
+    "fxaa_pair_007": {
+      "pid": 11668,
+      "status": "TERMINAL_FAIL_RGB_GATE; no bank",
+      "native_exit_code": 0,
+      "wrapper_exit_code": 0,
+      "scene_task_event_counter_rng_gates": "all PASS",
+      "render_refresh_frames_each": 64,
+      "rgb_mean": 0.38237,
+      "rgb_p99": 4,
+      "fixture_bank_created": false
+    },
+    "fxaa_pair_008": {
+      "pid": 12707,
+      "status": "TERMINAL_FAIL_RGB_GATE; strict v1 bank not accepted",
+      "output": "results/pair-smoke-50-newhost-008",
+      "render_refresh_frames_each": 256,
+      "render_mode": "FXAA",
+      "rgb_mean": 0.3431986,
+      "rgb_p99": 3,
+      "initial_physical_state_gates": "PASS",
+      "same_first_action_gate": "NOT_VERIFIED",
+      "fixture_bank_accepted": false
+    },
+    "stop_rule": "If Pair 008 fails the unchanged RGB gate, stop render-only tuning and request an explicit revised pairing standard before any more retries or policy outcomes",
+    "post_pair_008_note": "Strict RGB v1 failed at the unchanged mean <= 0.25 / p99 <= 2 thresholds. Render-only warmup tuning stopped. The separately authorized physical-v2 pilot is specified in EVAL_ADDENDUM_PHYSICAL_PAIRING_V2.json; it does not overwrite this result."
+  },
+  "stages": {
+    "sync_smoke": {
+      "episodes": 3,
+      "planner_mode": "sync_zero_sim_delay"
+    },
+    "sync_formal": {
+      "episodes": 50,
+      "planner_mode": "sync_zero_sim_delay"
+    },
+    "fixed_delay": {
+      "episodes_per_delay": 50,
+      "delay_ticks": [
+        0,
+        1,
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "true_future_async": {
+      "episodes": 50,
+      "wall_pacing_target_rtf": 1.0
+    }
+  },
+  "recording": [
+    "capture wall/sim tick",
+    "HTTP start/arrival and client round-trip",
+    "server latency_s and cem_latency_s",
+    "first action apply wall/sim tick and observation age",
+    "request deadline misses",
+    "wall pacing overruns",
+    "episode sim/wall elapsed and measured RTF",
+    "native task success, phase, and end reason"
+  ],
+  "evidence_limit": "Strict RGB v1 Pair 008 failed (mean 0.3431986, p99 3); frozen thresholds and FXAA/256 settings remain unchanged. The separate physical-v2 campaign completed 8 conditions x 50 episodes; outcomes and limitations are in EVAL_ADDENDUM_PHYSICAL_PAIRING_V2.json. These do not convert strict RGB v1 into a pass.",
+  "follow_on_protocol_status": {
+    "protocol": "physical-v2",
+    "reference": "EVAL_ADDENDUM_PHYSICAL_PAIRING_V2.json",
+    "formal_campaign": "COMPLETED; all three stage gates true; native, runner, and wrapper exits 0",
+    "results": "8 conditions x 50 episodes; outcomes recorded in the addendum; summary JSON/CSV and full archive retrieved",
+    "strict_rgb_v1_configuration_and_results_changed": false,
+    "power_status_source": "AUTODL_RUN.json:shutdown_after_completion"
+  }
+}

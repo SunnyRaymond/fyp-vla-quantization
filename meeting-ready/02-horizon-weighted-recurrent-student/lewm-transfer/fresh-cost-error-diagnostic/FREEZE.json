@@ -1,0 +1,53 @@
+{
+  "schema": "lewm-recurrent-student.fresh-cost-error-diagnostic-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_execution",
+  "date": "2026-09-25",
+  "purpose": "Characterize score-error mechanisms associated with the terminal action-response improvement and ranking NO-GO, using deterministic reconstruction of the previously observed fresh banks from job 25549480.pbs101.",
+  "source": {
+    "previous_job_id": "25549480.pbs101",
+    "previous_dir": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101",
+    "previous_freeze": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/FREEZE.json",
+    "selection": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/selection.json",
+    "summary": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/terminal_response_loss_summary.json",
+    "checkpoints": {
+      "balanced_base": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/balanced_base_step3000.pt",
+      "terminal_response": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/terminal_response_step3000.pt"
+    },
+    "episode_ids_in_order": [10569, 7242, 13109, 2193, 3218, 2289, 8316, 1085],
+    "action_prefix_seeds": [20301007, 20301008],
+    "anchors": ["early", "middle", "late"],
+    "contexts": 24,
+    "banks": 48,
+    "candidates_per_bank": 300
+  },
+  "reconstruction": {
+    "method": "Call the unchanged terminal-response-loss runner's build_fresh_rows with the previous freeze, official LeWM checkpoint, fixed ordered episode IDs, and frozen seeds; no new episode selection.",
+    "identity_guard": "Before a result summary, compare each regenerated arm/bank pairing key, Spearman, Top-30 recall, standardized elite regret, normalized response MSE, and teacher terminal contrast MSE with job 25549480 summary. Exact recall; absolute tolerance 1e-4 for continuous metrics. Any mismatch aborts. Since prior raw candidate tensors were not saved, matching metrics is a reconstruction sanity check, not bitwise tensor identity proof.",
+    "candidate_bank_export": false,
+    "code_version_boundary": "The earlier job did not save a runtime source revision. This job imports the current terminal-response-loss runner, and strict per-bank metric alignment is the available reconstruction check; do not claim source-level or tensor-level bitwise identity.",
+    "teacher_inference": "Only within PBS compute allocation to reconstruct the original evaluation reference; not used in any deployable student path."
+  },
+  "analysis": {
+    "terminal_horizon_index": 4,
+    "latent_decomposition": "e_i=zS_i-zT_i; b=mean_i e_i; q_i=e_i-b. Mean squared error energy equals ||b||^2+mean_i||q_i||^2 exactly.",
+    "response_geometry": "t_i=zT_i-mean_j zT_j; s_i=zS_i-mean_j zS_j; a=sum_i s_i dot t_i / D where D=sum_i ||t_i||^2; o_i=s_i-a*t_i. Then q_i=(a-1)*t_i+o_i. Divide both component energies and total q energy by max(D, candidate_count*latent_dim*1e-6), so the two normalized parts add exactly and use the prior response-MSE floor. Report a, cosine, scale, parallel error, orthogonal error, and teacher contrast energy. If mean_i,d t_i,d^2<1e-6, mark low energy and do not interpret normalized geometry as a reliable action-sensitivity estimate.",
+    "cost_decomposition": "For r_i=zT_i-g and squared terminal goal cost: deltaC_i=2*r_i dot b+||b||^2+2*r_i dot q_i+2*b dot q_i+||q_i||^2. Center candidate score vectors before their RMS; sum vectors before computing total RMS, not RMS scalars.",
+    "counterfactuals": ["remove_common: zS-b", "remove_contrast: zS-q", "correct_parallel_gain: zS-(a-1)*t", "remove_orthogonal_response: zS-o"],
+    "counterfactual_boundary": "Teacher-oracle descriptive interventions only; nonadditive ranking changes, no training or inference-time implementation claim.",
+    "ranking": "For each scorer report teacher Top-30 recall, population-std-normalized teacher elite regret, and inversions over teacher ranks 20:29 versus 30:39. Report teacher 30/31 cost gap normalized by teacher-cost population std.",
+    "failed_bank_flag": "For descriptive grouping, use the inherited treatment absolute thresholds: Spearman <0.80 or Top-30 recall <0.50. These banks are selected from prior observed metrics, so no independent validation claim.",
+    "aggregation": "Episode is independent unit. First median over the six banks within each episode; then median over eight episodes. For matched arm and oracle differences, subtract within the same bank before nested medians. Report all 48 block rows and worst banks; no candidate-level p-values."
+  },
+  "execution": {
+    "read_only": true,
+    "training": false,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "compute_node_only": true,
+    "gpu_telemetry_seconds": 5,
+    "banked_reset": "FORBIDDEN"
+  },
+  "claim_boundary": "Descriptive predictor-level mechanism diagnosis on deterministically reconstructed candidate banks for the same eight observed fresh episodes. The prior raw tensors and runtime source revision were not saved, so metric agreement cannot prove bitwise bank or code identity. Oracle interventions and previously failed-bank subsets are descriptive, not causal evidence. This work can prioritize a future hypothesis but cannot establish replacement, CEM viability, closed-loop success, or independent generalization."
+}

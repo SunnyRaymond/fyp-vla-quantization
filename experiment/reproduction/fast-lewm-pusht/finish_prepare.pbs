@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N fastlewm_cpu_finish
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -n "${PBS_NODEFILE:-}" && test -s "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) exit 2 ;; esac
+awk '{split(tolower($1),parts,"."); print parts[1]}' "$PBS_NODEFILE" | grep -Fxq "$HOST"
+ROOT=/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+OUT="$ROOT/artifacts/$PBS_JOBID"
+test ! -e "$OUT"
+mkdir "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+cp "$ROOT/source/finish_prepare.py" "$ROOT/source/finish_prepare.pbs" "$OUT/"
+STATUS=2
+trap 'printf "EXIT_STATUS=%s\n" "$STATUS" > "$OUT/job_status.txt"' EXIT
+export OMP_NUM_THREADS=4 PYTHONUNBUFFERED=1 WANDB_MODE=disabled MUJOCO_GL=egl
+set +e
+timeout --signal=TERM --kill-after=15s 1100 "$STAGE/venv/bin/python" "$OUT/finish_prepare.py"
+STATUS=$?
+set -e
+exit "$STATUS"

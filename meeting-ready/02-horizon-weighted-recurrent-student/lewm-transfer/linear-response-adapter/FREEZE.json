@@ -1,0 +1,91 @@
+{
+  "schema": "lewm-recurrent-student.linear-response-adapter-freeze",
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-25",
+  "hypothesis": "A single training-fitted linear map of bank-centered student terminal responses can generalize to unseen PushT episodes and improve teacher-objective elite selection.",
+  "source": {
+    "previous_job_id": "25549480.pbs101",
+    "previous_dir": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101",
+    "previous_freeze": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/FREEZE.json",
+    "prior_summary": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/terminal_response_loss_summary.json",
+    "prior_selection": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/selection.json",
+    "student_checkpoint": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/terminal-response-loss/artifacts/25549480.pbs101/terminal_response_step3000.pt"
+  },
+  "fit": {
+    "rows": "Reuse exactly the 512 temporal-balanced Phase2 training contexts and their cached 64-candidate teacher targets from the previous frozen balanced-row file.",
+    "terminal_horizon_index": 4,
+    "latent_dim": 192,
+    "bank_centering": "Center student and teacher terminal latents separately across 64 candidates within each context.",
+    "weight": "Each context contributes its response squared error divided by max(teacher bank-centered terminal latent MSE, 1e-6).",
+    "matrix": "One shared 192x192 ridge map W: solve (G+lambda I)W=H+lambda I, where G=mean_context X^T X/(64*teacher_energy), H=mean_context X^T Y/(64*teacher_energy).",
+    "ridge_ratio": 0.1,
+    "ridge_lambda": "0.1 * trace(G) / 192; no tuning or sweep.",
+    "scalar_control": "The same weighted ridge objective restricted to W=alpha I; alpha=(trace(H)+lambda*192)/(trace(G)+lambda*192).",
+    "identity_control": "W=I.",
+    "inference": "For a candidate bank, replace only terminal zS_i by mean(zS)+[zS_i-mean(zS)]W. Earlier four horizons and the bank mean stay unchanged. No teacher computation or target is used at inference.",
+    "checkpoint_selection": "Fixed prior terminal_response step_3000 checkpoint; no retraining or checkpoint search."
+  },
+  "evaluation": {
+    "selection_seed": 20300903,
+    "selection_start": 600,
+    "selection_rule": "Reproduce the prior validated shuffle and its first eight selected IDs; from the same valid[600:] order exclude all prior train/heldout/manifest IDs and the prior eight fresh IDs, then take the first eight remaining. Persist identities before opening any new evaluation rows.",
+    "new_episodes": 8,
+    "anchors": ["early", "middle", "late"],
+    "action_prefix_seeds": [20301007, 20301008],
+    "banks": 48,
+    "candidates_per_bank": 300,
+    "paired_unit": "Episode; first subtract within each identical bank, take the median over six banks per episode, then the median over eight episodes.",
+    "arms": ["identity", "scalar", "linear"],
+    "primary_comparison": "linear minus identity; scalar is a diagnostic control, not a fallback selected from evaluation data.",
+    "latency": "Cached H=1 latent plus five-step student rollout and bank adapter on 300 candidates; 3 warmups and 10 timed repetitions, compared with the official predictor on the same bank."
+  },
+  "gates": {
+    "relative_mechanism": {
+      "response_normalized_mse_episode_median_delta_max": -0.05,
+      "standardized_elite_regret_episode_median_delta_max": -0.05,
+      "episodes_with_strict_regret_improvement_min": 5,
+      "top30_recall_episode_median_delta_min": 0.0,
+      "response_floor_active_blocks_max": 0
+    },
+    "absolute_predictor": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.8,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.5,
+      "median_relative_latent_mse_max": 0.25,
+      "positive_spearman_blocks_min": 36,
+      "positive_top30_blocks_min": 36,
+      "latency_reduction_min": 0.2,
+      "integrity_convergence_causality_required": true
+    },
+    "stratum_protection": {
+      "strata": ["early", "middle", "late"],
+      "blocks_per_stratum": 16,
+      "median_spearman_min": 0.95,
+      "median_top30_min": 0.75,
+      "positive_spearman_blocks_min": 12,
+      "positive_top30_blocks_min": 12,
+      "minimum_thresholds_repeated": false
+    },
+    "overall": "Predictor-level GO requires all relative, absolute, and stratum conditions. Even GO would not establish CEM or closed-loop viability."
+  },
+  "anti_leakage": {
+    "fit_before_new_evaluation": true,
+    "new_episodes_excluded_from_fit_and_prior_diagnostic": true,
+    "no_holdout_informed_tuning": true,
+    "no_episode_replacement": true,
+    "preprocessing_isolation": "Episode/task-level only; the official dataset-wide scaler may have read columns from held-out episodes."
+  },
+  "execution": {
+    "allocation": "One guarded PBS GPU compute-node job for cached-row inference, ridge fit, and new-episode evaluation.",
+    "gpu_telemetry_interval_seconds": 5,
+    "login_node": "Connection, small control uploads, qsub, qstat, and small result fetch only.",
+    "banked_reset_credits": "Never query or consume."
+  },
+  "scope": {
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "planner": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "teacher_at_inference": false
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "schema": "lewm-block-local-pilot-v1",
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-26",
+  "source": {
+    "lewm_root": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/le-wm",
+    "stablewm_home": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "interface_probe_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json",
+    "phase2_manifest_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/state-coverage/artifacts/24926383.pbs101/context_manifest_512.json",
+    "phase2_control_prepared_rows_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/state-coverage/artifacts/24926383.pbs101/prepared_512/prepared_rows.pt",
+    "balanced_rows_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/teacher-screening/artifacts/25213164.pbs101/prepared_balanced_rows_reconstructed.pt",
+    "balanced_rows_provenance": "Reconstructed on compute node by job 25213164.pbs101 from Phase 2 prepared rows; use this source only and do not mix with the temporal-balanced-train cache.",
+    "balanced_base_reference_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/teacher-screening/artifacts/25213164.pbs101/balanced_base_step3000_reconstructed.pt",
+    "balanced_base_reference_checkpoint_use": "Provenance and reference only. Both current arms are reconstructed from the same frozen initialization and trained for the full 3000 updates; neither arm loads this terminal checkpoint.",
+    "used_episode_manifests": {
+      "seeded_pilot32": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/selection/25536857.pbs101/selection_manifest.json",
+      "real_observation80": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-training-data/selection/25543404.pbs101/selection_manifest.json",
+      "closed_loop50": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json"
+    },
+    "preprocessing_isolation": "Episode/task-level only. The official dataset-wide scaler reads train columns that can include selected evaluation episode rows; do not claim row-level preprocessing isolation.",
+    "source_version_boundary": "Reuse existing staged official checkpoint and interface probe. Remote staging has no .git; historical commit provenance is not a currently verified HEAD. Exact current CEM source is saved as source_reference/cem.py and runtime source snapshots."
+  },
+  "arms": [
+    "balanced_base",
+    "flat_adapter",
+    "block_adapter_global16",
+    "block_adapter_local16",
+    "block_identity_global16"
+  ],
+  "model": {
+    "latent_dim": 192,
+    "history": 3,
+    "action_dim": 10,
+    "horizon": 5,
+    "blocks": 6,
+    "block_dim": 32,
+    "message_dim": 16,
+    "local_hidden": 271,
+    "flat_hidden": 550,
+    "adapter": "orthogonal Cayley initial identity, no dimensional reduction",
+    "baseline_parameters": 775872,
+    "matched_budget_tolerance": 0.02,
+    "new_student_action_window": 3,
+    "action_window_padding": "zero-left-pad prior consumed tokens; include current token; no future token",
+    "baseline_action_information_difference": "Historical balanced_base directly sees only current action; main flat/block comparison shares recent3 consumed actions"
+  },
+  "training": {
+    "contexts": 512,
+    "candidates": 64,
+    "batch_contexts": 8,
+    "updates": 3000,
+    "seeds": [
+      20300901,
+      20300911,
+      20300921
+    ],
+    "training_seed_offset": 1,
+    "schedule_seed_offset": 3,
+    "optimizer": {
+      "name": "AdamW",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.01,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "epsilon": 1E-08
+    },
+    "objective": {
+      "latent_loss": "Existing mean-normalized horizon-weighted free-running latent MSE.",
+      "horizon_weights": [
+        0.3333333333333333,
+        0.6666666666666666,
+        1.0,
+        1.3333333333333333,
+        1.6666666666666667
+      ],
+      "score_loss": "0.1 * context-normalized teacher-score SmoothL1 mean; top-12 weight 2.0, remaining candidate weight 1.0, std floor 1e-6, beta 1.0."
+    },
+    "extra_response_loss": 0,
+    "checkpoint_selection": "terminal3000 only",
+    "same_data_slates_schedule": true
+  },
+  "evaluation": {
+    "selection_seed": 20300903,
+    "selection_start": 1000,
+    "episodes": 16,
+    "anchors": [
+      "early",
+      "middle",
+      "late"
+    ],
+    "action_prefix_seeds": [
+      20301027,
+      20301028
+    ],
+    "official_action_low": [
+      -1.0,
+      -1.0
+    ],
+    "official_action_high": [
+      1.0,
+      1.0
+    ],
+    "gaussian_std": 0.22360679774997896,
+    "candidates_per_block": 300,
+    "blocks": 96,
+    "elite_count": 30,
+    "bootstrap_seed": 20301029,
+    "bootstrap_repeats": 10000,
+    "causality_tolerance": 1E-06,
+    "latency": {
+      "batch_sizes": [
+        1,
+        300
+      ],
+      "warmup": 20,
+      "repeats": 60,
+      "precision": "float32 TF32 off",
+      "boundary": "full5step predictor including rotations/message; exclude encoder CEM environment"
+    },
+    "elite_selector": "Actual staged native torch.topk(cost,k=30,largest=False), default sorted; old helper response metrics reused but top30/regret recomputed with native selector"
+  },
+  "gates": {
+    "relative": {
+      "elite_regret_delta_max": -0.05,
+      "top30_delta_min": 0.05,
+      "improved_episodes_min": 10,
+      "regret_ci_upper_max": 0,
+      "top30_ci_lower_min": 0,
+      "all_seeds_nonworse": true,
+      "response_floor_count_max": 0
+    },
+    "absolute": {
+      "median_spearman_min": 0.95,
+      "minimum_spearman_min": 0.8,
+      "median_top30_min": 0.75,
+      "minimum_top30_min": 0.5,
+      "median_relative_latent_mse_max": 0.25,
+      "stratum_spearman_min": 0.95,
+      "stratum_top30_min": 0.75,
+      "convergence_last10_to_first_max": 0.8
+    },
+    "cheap": {
+      "teacher_latency_reduction_min": 0.2
+    }
+  },
+  "contingent": {
+    "stage_b": "relative quality + cheap + integrity gate pass",
+    "stage_b_first_training_seed": 20300901,
+    "stage_b_episodes": 8,
+    "stage_b_anchor": "middle",
+    "stage_b_population": 300,
+    "stage_b_elites": 30,
+    "stage_b_rounds": 30,
+    "stage_b_seed": 20301030,
+    "stage_b_abs_first_action_rms_max": 0.15,
+    "stage_b_abs_mu_rms_max": 0.15,
+    "stage_b_abs_sigma_rms_max": 0.1,
+    "stage_b_abs_shadow_top30_min": 0.75,
+    "stage_b_abs_standardized_regret_max": 0.1,
+    "stage_b_regret_definition": "Teacher score of post-update student mean minus teacher score of post-update teacher mean; divided by the teacher round-1 candidate-score population std, floor1e-6.",
+    "stage_b_required_cases": 6,
+    "stage_c": "absolute predictor + Stage B stability gates pass",
+    "stage_c_selection_start": 1200,
+    "stage_c_tasks": 50,
+    "stage_c_seed": 20301031,
+    "no_result_dependent_checkpoint_selection": true,
+    "stage_b_native_update": {
+      "initial_mean": 0,
+      "initial_sampling_std": 1,
+      "candidate_zero": "pre-update mean",
+      "selector": "torch.topk(cost,k=30,largest=False), default sorted",
+      "std": "Tensor.std default correction=1",
+      "clip_actions": false,
+      "std_floor": false,
+      "source": "current remote stable_worldmodel/solver/cem.py retrieved2026-09-26",
+      "scope": "fixed-observation paired diagnostic, native update, not full official MPC lifecycle"
+    },
+    "stage_c_success_claim": "Fresh paired50 tasks; compare global16 versus flat and teacher. Report exact success/failure counts, McNemar paired discordances/CI and planner latency. Improvement claim requires paired success gain with CI excluding0; pilot otherwise inconclusive. No result dependent task/checkpoint selection."
+  },
+  "scope": {
+    "no_goal_student": true,
+    "teacher_frozen": true,
+    "encoder_frozen": true,
+    "free_running": true,
+    "no_hyperparameter_sweep": true,
+    "compute_only": true,
+    "telemetry_seconds": 30,
+    "current_target": "architecture quality at cheap budget; success only measured if contingent closed-loop triggered"
+  }
+}

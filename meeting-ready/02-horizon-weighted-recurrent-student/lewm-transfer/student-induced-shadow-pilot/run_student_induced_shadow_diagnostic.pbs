@@ -1,0 +1,123 @@
+#!/bin/bash
+#PBS -N lewm_shadow_diag
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+CONTROL=${LEWM_SHADOW_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}
+EXPERIMENT=${LEWM_SHADOW_SUBDIR:-$CONTROL/lewm-transfer/student-induced-shadow-pilot}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_ROOT=${STABLEWM_ROOT:-$STAGE_ROOT/stable-worldmodel}
+STABLEWM_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+BASELINE_DIR=${LEWM_SHADOW_BASELINE_DIR:-$CONTROL/lewm-transfer/official-lewm-dataset-teacher-baseline}
+OFFICIAL_CEM_DIR=${LEWM_SHADOW_OFFICIAL_CEM_DIR:-$CONTROL/lewm-transfer/official-pusht-cem}
+ADAPTIVE_DIR=${LEWM_SHADOW_ADAPTIVE_DIR:-$CONTROL/lewm-transfer/adaptive-teacher-schedule}
+RUNNER=${LEWM_SHADOW_RUNNER:-$EXPERIMENT/run_student_induced_shadow_pilot.py}
+FREEZE=${LEWM_SHADOW_FREEZE:-$EXPERIMENT/PILOT_FREEZE.json}
+DIAGNOSTIC_FREEZE=${LEWM_SHADOW_DIAGNOSTIC_FREEZE:-$EXPERIMENT/DIAGNOSTIC_TWO_PAIR_FREEZE.json}
+PROBE=${LEWM_INTERFACE_PROBE_JSON:-$CONTROL/lewm-transfer/interface-probe/artifacts/24554356.pbs101/interface_probe.json}
+SELECTION_JOB_ID=${LEWM_SHADOW_SELECTION_JOB_ID:-25536857.pbs101}
+SELECTION_MANIFEST=${LEWM_SHADOW_SELECTION_MANIFEST:-$STAGE_ROOT/artifacts/student-induced-shadow-pilot/selection/$SELECTION_JOB_ID/selection_manifest.json}
+STUDENT_CHECKPOINT=${LEWM_SHADOW_STUDENT_CHECKPOINT:-$CONTROL/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt}
+OUT=${LEWM_SHADOW_DIAGNOSTIC_OUT:-$EXPERIMENT/artifacts/diagnostic-two-pair/$JOB_ID}
+CACHE_ROOT=$OUT/cache
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+if ! awk -F. -v host="$HOST" 'tolower($1) == host { found = 1 } END { exit !found }' "$PBS_NODEFILE"; then
+  echo "host $HOST is not present in PBS_NODEFILE" >&2
+  exit 2
+fi
+if awk -F. 'tolower($1) ~ /login|head|submit/ { bad = 1 } END { exit !bad }' "$PBS_NODEFILE"; then
+  echo "PBS_NODEFILE contains a probable login/submit host" >&2
+  exit 2
+fi
+
+# PBS allocation guard is complete. All model/HDF5 checks and runtime work stay below it.
+for FILE in "$RUNNER" "$FREEZE" "$DIAGNOSTIC_FREEZE" "$PROBE" "$SELECTION_MANIFEST" "$STUDENT_CHECKPOINT" \
+  "$STABLEWM_HOME/pusht_expert_train.h5" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+for DIR in "$LEWM_ROOT" "$STABLEWM_ROOT" "$BASELINE_DIR" "$OFFICIAL_CEM_DIR" "$ADAPTIVE_DIR"; do
+  test -d "$DIR"
+done
+if [ -e "$OUT" ]; then
+  echo "refusing to reuse existing output directory: $OUT" >&2
+  exit 2
+fi
+
+mkdir -p "$CACHE_ROOT/datasets" "$CACHE_ROOT/pusht"
+ln -s "$STABLEWM_HOME/pusht_expert_train.h5" "$CACHE_ROOT/datasets/pusht_expert_train.h5"
+ln -s "$STABLEWM_HOME/pusht/lewm_object.ckpt" "$CACHE_ROOT/pusht/lewm_object.ckpt"
+
+status=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$LEWM_ROOT:$STABLEWM_ROOT:$CONTROL/lewm-transfer:${PYTHONPATH:-}"
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+
+printf '%s\n' \
+  "job_id=$JOB_ID" \
+  "host=$HOST" \
+  "runner=$RUNNER" \
+  "pilot_freeze=$FREEZE" \
+  "diagnostic_freeze=$DIAGNOSTIC_FREEZE" \
+  "selection_manifest=$SELECTION_MANIFEST" \
+  "selection_job_id=$SELECTION_JOB_ID" \
+  "student_checkpoint=$STUDENT_CHECKPOINT" \
+  "dataset=$STABLEWM_HOME/pusht_expert_train.h5" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 \
+  >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 6900 \
+  "$PYTHON_BIN" "$RUNNER" \
+  --lewm-root "$LEWM_ROOT" --stablewm-root "$STABLEWM_ROOT" --stablewm-home "$STABLEWM_HOME" \
+  --control-root "$CONTROL" --baseline-dir "$BASELINE_DIR" \
+  --official-cem-dir "$OFFICIAL_CEM_DIR" --adaptive-dir "$ADAPTIVE_DIR" \
+  --interface-probe "$PROBE" --freeze "$FREEZE" --diagnostic-freeze "$DIAGNOSTIC_FREEZE" \
+  --diagnostic-two-pair-only \
+  --selection-manifest "$SELECTION_MANIFEST" --selection-job-id "$SELECTION_JOB_ID" \
+  --cache-root "$CACHE_ROOT" --output "$OUT"
+RUNNER_RC=$?
+set -e
+
+if [ "$RUNNER_RC" -eq 0 ] && [ -s "$OUT/diagnostic_two_pair.json" ]; then
+  status=0
+  printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"
+else
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+fi
+stop_gpu_monitor
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$status" > "$OUT/job_status"
+exit "$status"

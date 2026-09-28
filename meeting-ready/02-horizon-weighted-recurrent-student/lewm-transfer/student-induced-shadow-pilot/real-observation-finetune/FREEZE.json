@@ -1,0 +1,100 @@
+{
+  "schema": "lewm-pusht-real-observation-student-finetune-freeze",
+  "schema_version": 1,
+  "status": "LOCAL_FROZEN_PROTOCOL_NOT_SUBMITTED",
+  "purpose": "One bounded real-observation latent fine-tune followed by one episode-level predictor gate. Planner-ranking requires a separate freeze.",
+  "source_data": {
+    "collection_job_id": "25543623.pbs101",
+    "collection_freeze": "../real-observation-training-data/FREEZE.json",
+    "archive_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-training-data/capture/25543623.pbs101/real_observation_training_data.npz",
+    "summary_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-training-data/capture/25543623.pbs101/collection_summary_recovered.json",
+    "recovery_job_id": "25543843.pbs101",
+    "recovery_boundary": "25543623 exited 1 after writing all 80 episodes and 141 NPZ samples because final json.dumps passed flush as an encoder option. Train only if independent CPU PBS recovery 25543843 validates the unmodified NPZ/summary and creates collection_summary_recovered.json; preserve the original failure history.",
+    "train_split": "collection_train",
+    "validation_split": "collection_validation",
+    "episode_counts": {"train_selected": 64, "validation_selected": 16},
+    "terminal_window_rule": "Some frozen train episodes end before a complete 25-step window. Do not replace or extend them; sample uniformly only among collection_train episode IDs with at least one complete recorded window. Report the usable count. This treatment-independent availability rule is fixed before any finetuning or validation prediction.",
+    "tuple": {
+      "z_start": "float32[192]",
+      "packed_actions": "float32[5,10]",
+      "poststep_latents": "float32[5,192]",
+      "solve_start_env_step": [0, 25]
+    },
+    "validation_use": "Use only after all 500 updates and the terminal checkpoint are saved. No early stopping, checkpoint selection, or tuning.",
+    "reserved_untouched_holdout": "Do not read, evaluate, score, or use the remaining 8 prior reserved episodes for a decision."
+  },
+  "initial_checkpoint": {
+    "job_id": "25239551.pbs101",
+    "path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "architecture": "LeWMCompactRecurrentTransitionStudent h256",
+    "checkpoint_container": "state_dict plus provenance",
+    "required_provenance": {"source": "cem_distribution_distill", "arm": "treatment", "extra_updates": 1000}
+  },
+  "student": {
+    "implementation": "Reuse lewm-transfer/run_lewm_recurrent_student.py make_student('baseline') and recurrent_loss; no new architecture.",
+    "latent_dim": 192,
+    "history_length": 3,
+    "hidden_dim": 256,
+    "packed_action_dim": 10,
+    "horizon": 5,
+    "input_history": "Pass z_start as [B,1,192]; existing student repeat-left-pads the available H=1 history.",
+    "feedback": "Fully autoregressive predicted-latent feedback; no teacher forcing.",
+    "trainable": "All h256 student parameters.",
+    "encoder_or_teacher_in_training": false
+  },
+  "training": {
+    "updates": 500,
+    "batch_episodes": 8,
+    "episode_sampling": "Uniform sample of 8 distinct collection_train episode IDs with at least one complete window per update; within each selected episode sample uniformly from its complete t0/t25 windows. No task replacement or validation sampling.",
+    "optimizer": "AdamW",
+    "learning_rate": 0.00003,
+    "weight_decay": 0.01,
+    "betas": [0.9, 0.999],
+    "epsilon": 1e-8,
+    "seed": 20260925,
+    "objective": "Existing mean-normalized horizon-weighted recurrent MSE between free-running predictions and real official H=1 poststep observation latents.",
+    "horizon_weights": [0.3333333333333333, 0.6666666666666666, 1.0, 1.3333333333333333, 1.6666666666666667],
+    "teacher_rollout_targets": false,
+    "teacher_costs_or_ranker_labels": false,
+    "validation_during_training": false,
+    "early_stopping": false,
+    "checkpoint_selection": "Save only terminal update-500 checkpoint before running the fixed validation gate."
+  },
+  "predictor_gate": {
+    "scope": "One paired evaluation on the 16 collection_validation episodes, comparing initial and terminal checkpoints on the same complete recorded tuples.",
+    "unit": "Episode. Average available t0/t25 window relative-MSE values within each episode before cross-episode aggregation.",
+    "relative_mse": "mean((predicted_real_latent - observed_real_latent)^2) / max(mean(observed_real_latent^2), 1e-8), over five token-boundary latents and 192 dimensions.",
+    "episode_improvement": "1 - terminal_episode_relative_MSE / initial_episode_relative_MSE.",
+    "pass_conditions": {
+      "minimum_episodes_with_any_complete_window": 12,
+      "median_episode_improvement_min": 0.10,
+      "episodes_strictly_improved_min": 12,
+      "minimum_t0_episode_coverage": 12,
+      "t0_median_episode_improvement_min_exclusive": 0.0,
+      "minimum_t25_episode_coverage": 12,
+      "t25_median_episode_improvement_min_exclusive": 0.0,
+      "all_outputs_finite": true
+    },
+    "decision": "PASS only if every condition passes. Otherwise record NO-GO or INCONCLUSIVE and stop; do not tune or repeat on these validation episodes.",
+    "planner_ranking": "NOT_RUN_BY_THIS_JOB; requires a separate pre-frozen gate.",
+    "official_cem_or_closed_loop": "NOT_RUN_BY_THIS_JOB"
+  },
+  "compute": {
+    "execution": "PBS GPU compute allocation only; login nodes are limited to submission and lightweight status checks.",
+    "pbs_request": "normal, 1:ncpus=16:mem=110gb:ngpus=1, walltime 00:30:00",
+    "gpu_telemetry_interval_seconds": 5,
+    "gpu_telemetry_destination": "job.log",
+    "allocation_guards": ["non-empty PBS_JOBID", "PBS nodefile exists", "current host is in PBS nodefile", "reject login/head/submit hosts"],
+    "banked_reset_use": false
+  },
+  "scope": {
+    "this_job_authorizes": "Exactly one 500-update fine-tune and terminal paired predictor gate on the 16 collection_validation episodes.",
+    "planner_ranking_training_or_evaluation": false,
+    "teacher_forecast_or_teacher_scoring": false,
+    "cem_proposal_or_deployment": false,
+    "closed_loop_treatment_evaluation": false,
+    "tuning_or_repeat_after_gate_failure": false,
+    "remaining_8_untouched_reserved_holdout": "Untouched"
+  },
+  "claim_boundary": "PASS supports only lower five-step real-observation latent error on this student-driven task-level validation split. It does not establish teacher-objective ranking, planner behavior, inference speed, or closed-loop success."
+}

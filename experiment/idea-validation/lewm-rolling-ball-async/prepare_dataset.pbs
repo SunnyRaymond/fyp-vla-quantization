@@ -1,0 +1,38 @@
+#!/bin/bash
+#PBS -N rolling_lewm_data
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+set -euo pipefail
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+cleanup() { rc=$?; printf '%s\n' "$rc" > "$OUT/wrapper_exit_status.txt"; }
+trap cleanup EXIT
+printf 'job_id=%s\nhost=%s\n' "$JOB_ID" "$HOST"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$TASK_ROOT/deps:$OUT:${PYTHONPATH:-}"
+cp "$TASK_ROOT/source/prepare_dataset.py" "$TASK_ROOT/source/data.py" "$TASK_ROOT/source/TRAIN_FREEZE.json" "$TASK_ROOT/source/prepare_dataset.pbs" "$OUT/"
+set +e
+timeout --signal=TERM --kill-after=15s 42m /scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python "$OUT/prepare_dataset.py" --root "$TASK_ROOT"
+rc=$?
+set -e
+printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+if [ "$rc" -eq 0 ]; then
+  test -s "$TASK_ROOT/data/summary.json" || exit 3
+  cp "$TASK_ROOT/data/summary.json" "$OUT/data_summary.json"
+fi
+exit "$rc"

@@ -1,0 +1,46 @@
+#!/bin/bash
+#PBS -N block_global16_r1
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be supplied by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be supplied by PBS}
+test -f "$NODEFILE"
+TASK_HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$TASK_HOST" in *login*|*head*|*submit*) echo 'Refusing noncompute host'; exit 2;; esac
+awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$NODEFILE" | grep -Fxq "$TASK_HOST"
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+
+SOURCE=/scratch/users/ntu/yguo017/block-local-action-dynamics-round1/global16/source
+OUT=/scratch/users/ntu/yguo017/block-local-action-dynamics-round1/global16/runs/$JOB_ID
+PYTHON_BIN=/scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python
+test -x "$PYTHON_BIN"
+mkdir -p "$OUT"
+mkdir -p "$OUT/source_snapshot"
+cp "$SOURCE"/*.py "$SOURCE"/*.json "$SOURCE"/*.pbs "$OUT/source_snapshot/"
+SOURCE="$OUT/source_snapshot"
+cd "$SOURCE"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 WANDB_MODE=disabled
+exec > >(tee -a "$OUT/job.log") 2>&1
+GPU_MONITOR_PID=''
+cleanup() {
+  TASK_STATUS=$?
+  if [ -n "$GPU_MONITOR_PID" ]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\n' "$TASK_STATUS" > "$OUT/job_status.txt"
+}
+trap cleanup EXIT
+printf '{"job_id":"%s","hostname":"%s","started_utc":"%s","protocol":"block-local-action-dynamics-round1-global16-v1"}\n' "$JOB_ID" "$TASK_HOST" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.json"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.txt"
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+"$PYTHON_BIN" test_mechanism.py --config FREEZE.json --output "$OUT/mechanism_tests.json"
+timeout --signal=TERM --kill-after=30s 1600 "$PYTHON_BIN" run_experiment.py --contrast-name global16_lowrank_dev_triggered --config FREEZE.json --output "$OUT"
+test -s "$OUT/DONE.json"
+"$PYTHON_BIN" write_global16_report.py --output "$OUT"

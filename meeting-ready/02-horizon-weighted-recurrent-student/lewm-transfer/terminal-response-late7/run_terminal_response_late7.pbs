@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+#PBS -N lewm_trsp_late7
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+# Allocation guard: do not inspect experiment assets before these checks pass.
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be set by PBS}
+test -f "$NODEFILE" || { echo "refusing run without PBS_NODEFILE" >&2; exit 2; }
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+awk -F. -v host="$HOST" 'tolower($1) == host {found=1} END {exit !found}' "$NODEFILE" || {
+  echo "refusing host outside PBS_NODEFILE: $HOST" >&2
+  exit 2
+}
+
+MEETING_READY=${LEWM_MEETING_READY_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready}
+CONTROL=${LEWM_STAGE2_CONTROL_ROOT:-$MEETING_READY/02-horizon-weighted-recurrent-student}
+TRANSFER=$CONTROL/lewm-transfer
+EXPERIMENT=$TRANSFER/terminal-response-late7
+BASELINE_EXPERIMENT=$TRANSFER/official-lewm-dataset-teacher-baseline
+BASELINE=$BASELINE_EXPERIMENT/artifacts/25534994.pbs101
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+LEWM_ROOT=${LEWM_REPO_ROOT:-$STAGE_ROOT/le-wm}
+STABLEWM_ROOT=$STAGE_ROOT/stable-worldmodel
+STAGED_HOME=${STABLEWM_HOME:-$STAGE_ROOT/stablewm_home}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+CANDIDATE_CHECKPOINT=
+PROBE=$TRANSFER/interface-probe/artifacts/24554356.pbs101/interface_probe.json
+RUNNER=$EXPERIMENT/runner.py
+FREEZE=$EXPERIMENT/FREEZE.json
+PROTOCOL=$EXPERIMENT/PROTOCOL.zh.md
+OUT=$EXPERIMENT/artifacts/$JOB_ID
+
+test -f "$RUNNER"
+test -f "$FREEZE"
+test -f "$PROTOCOL"
+test -x "$PYTHON_BIN"
+CANDIDATE_CHECKPOINT=$("$PYTHON_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["candidate_checkpoint_path"])' "$FREEZE")
+test -d "$LEWM_ROOT"
+test -d "$STABLEWM_ROOT"
+test -f "$STAGED_HOME/pusht_expert_train.h5"
+test -f "$STAGED_HOME/pusht/lewm_object.ckpt"
+test -f "$CANDIDATE_CHECKPOINT"
+test -f "$PROBE"
+for FILE in "$BASELINE/summary.json" "$BASELINE/selected_tasks.json" \
+  "$BASELINE/job_status" "$BASELINE/final_exit_status.txt"; do test -f "$FILE"; done
+test ! -e "$OUT" || { echo "refusing to reuse output directory: $OUT" >&2; exit 2; }
+mkdir -p "$OUT/cache/datasets" "$OUT/cache/pusht"
+ln -s "$STAGED_HOME/pusht_expert_train.h5" "$OUT/cache/datasets/pusht_expert_train.h5"
+ln -s "$STAGED_HOME/pusht/lewm_object.ckpt" "$OUT/cache/pusht/lewm_object.ckpt"
+
+STATUS=1
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+}
+trap cleanup EXIT
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export STABLEWM_HOME="$OUT/cache"
+export PYTHONPATH="$LEWM_ROOT:$STABLEWM_ROOT:$TRANSFER:${PYTHONPATH:-}"
+printf 'job_id=%s\nhost=%s\nrunner=%s\nfreeze=%s\nbaseline=%s\ncandidate=%s\nstarted_utc=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$FREEZE" "$BASELINE" "$CANDIDATE_CHECKPOINT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'job_id=%s\nhost=%s\nrunner=%s\nfreeze=%s\nbaseline=%s\ncandidate=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$FREEZE" "$BASELINE" "$CANDIDATE_CHECKPOINT" > "$OUT/execution_identity.txt"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 6900 "$PYTHON_BIN" "$RUNNER" \
+  --baseline-dir "$BASELINE_EXPERIMENT" --baseline-artifacts "$BASELINE" \
+  --lewm-root "$LEWM_ROOT" --stablewm-root "$STABLEWM_ROOT" \
+  --control-root "$CONTROL" --staged-home "$STAGED_HOME" \
+  --cache-root "$OUT/cache" --candidate-checkpoint "$CANDIDATE_CHECKPOINT" \
+  --probe "$PROBE" --freeze "$FREEZE" --out "$OUT"
+RUNNER_RC=$?
+set -e
+stop_gpu_monitor
+GPU_MONITOR_PID=""
+
+if [ "$RUNNER_RC" -eq 0 ] \
+  && [ -s "$OUT/terminal_response_late7_summary.json" ] \
+  && [ -s "$OUT/terminal_response_late7_episodes.jsonl" ] \
+  && [ -s "$OUT/terminal_response_late7_solve_records.jsonl" ] \
+  && [ -s "$OUT/rng_pairing.json" ] \
+  && [ -s "$OUT/selected_tasks.json" ] \
+  && [ -s "$OUT/run_order.json" ]; then
+  STATUS=0
+  printf 'RUNNER_EXIT_STATUS=0\n' > "$OUT/final_exit_status.txt"
+else
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+fi
+trap - EXIT
+printf 'EXIT_STATUS=%s\n' "$STATUS" > "$OUT/job_status"
+exit "$STATUS"

@@ -1,0 +1,862 @@
+{
+  "schema": "lewm-pusht-action-error-coupling-posthoc-result",
+  "schema_version": 1,
+  "status": "READ_ONLY_DESCRIPTIVE_POSTHOC_COMPLETE",
+  "pbs_job_id": "25544993.pbs101",
+  "compute_host": "x1002c2s1b1n0",
+  "source_jobs": {
+    "fullbank": "25538135.pbs101",
+    "real_observation_two_task": "25542215.pbs101",
+    "real_observation_fourteen_task_extension": "25542467.pbs101",
+    "base_student": "25239551.pbs101 treatment_step1000.pt"
+  },
+  "source_split": "train_only_16_episodes",
+  "source_bank_counts": {
+    "t0": 48,
+    "t25": 45,
+    "total": 93
+  },
+  "metric_definitions": {
+    "ranking": "For each bank, use ascending torch.argsort(cost)[:30] independently for student and teacher. Teacher-elite regret is (mean teacher cost on student top30 - mean teacher cost on teacher top30) / population_std(teacher costs, unbiased=false).",
+    "first_action_mean_displacement": "Take candidates[top30, 0, :] with shape [30,10], average each elite set, then compute the L2 norm of student-elite mean minus teacher-elite mean.",
+    "first_action_normalization": "Divide the raw displacement L2 by sqrt(sum_j(population_std(candidates[:,0,j], unbiased=false)^2)); fail closed if this scalar is non-finite or <= 1e-8.",
+    "real_observation_error": "At the matching episode/replan solve, record student_relative_mse - teacher_relative_mse at horizons 1 and 5; the horizon increment is the horizon-5 difference minus the horizon-1 difference.",
+    "episode_aggregation": "Take the median of each bank metric over exactly rounds 10, 20, and 30 for one episode and replan step. Real-observation horizon metrics remain one value per episode and solve.",
+    "correlation": "Compute tie-aware Spearman rank correlation across episode rows separately for t0 and t25. Report n and coefficient only; include paired scatter values in the episode rows and do not compute p-values or treat banks/rounds as independent samples."
+  },
+  "missing_solve": {
+    "episode_idx": 15946,
+    "replan_step": 25,
+    "reason": "terminal_at_t25_before_replan",
+    "imputed": false
+  },
+  "aggregation": "Take the median of each bank metric over exactly rounds 10, 20, and 30 for one episode and replan step. Real-observation horizon metrics remain one value per episode and solve.",
+  "correlation_method": "Compute tie-aware Spearman rank correlation across episode rows separately for t0 and t25. Report n and coefficient only; include paired scatter values in the episode rows and do not compute p-values or treat banks/rounds as independent samples.",
+  "episode_solve_rows": [
+    {
+      "selection_order": 0,
+      "episode_idx": 9136,
+      "row_index": 1126761,
+      "start_step": 4,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.057103544007986784,
+        "h5_student_minus_teacher_relative_mse": 0.1002764031291008,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.043172859121114016
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.3720559830640262,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.4604640470644735,
+        "candidate_first_action_coordinate_std_l2": 0.808002243467081,
+        "teacher_elite_regret_normalized": 1.6284841935544179
+      }
+    },
+    {
+      "selection_order": 0,
+      "episode_idx": 9136,
+      "row_index": 1126761,
+      "start_step": 4,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.09590770304203033,
+        "h5_student_minus_teacher_relative_mse": 0.13757768645882607,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.04166998341679573
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.7952347323899348,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5834607524122856,
+        "candidate_first_action_coordinate_std_l2": 1.2640317767044356,
+        "teacher_elite_regret_normalized": 1.76346511052756
+      }
+    },
+    {
+      "selection_order": 1,
+      "episode_idx": 12704,
+      "row_index": 1593460,
+      "start_step": 3,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.055912625044584274,
+        "h5_student_minus_teacher_relative_mse": 0.4420016184449196,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.3860889934003353
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.41642240056525287,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5104870242364927,
+        "candidate_first_action_coordinate_std_l2": 0.8667984773006969,
+        "teacher_elite_regret_normalized": 2.1488415823880254
+      }
+    },
+    {
+      "selection_order": 1,
+      "episode_idx": 12704,
+      "row_index": 1593460,
+      "start_step": 3,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.004099547863006592,
+        "h5_student_minus_teacher_relative_mse": 0.7828947268426418,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.7787951789796352
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.48812393352955885,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.6794788826551699,
+        "candidate_first_action_coordinate_std_l2": 0.8417619621033336,
+        "teacher_elite_regret_normalized": 2.2936465419951713
+      }
+    },
+    {
+      "selection_order": 2,
+      "episode_idx": 4340,
+      "row_index": 535694,
+      "start_step": 34,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.04522106284275651,
+        "h5_student_minus_teacher_relative_mse": 0.2972370907664299,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.2520160279236734
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.2399005391874505,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.3060611969923358,
+        "candidate_first_action_coordinate_std_l2": 0.979684782605058,
+        "teacher_elite_regret_normalized": 1.6560426763578624
+      }
+    },
+    {
+      "selection_order": 2,
+      "episode_idx": 4340,
+      "row_index": 535694,
+      "start_step": 34,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.2239370346069336,
+        "h5_student_minus_teacher_relative_mse": 0.8764488697052002,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.6525118350982666
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.9475692234324761,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.6401798052156067,
+        "candidate_first_action_coordinate_std_l2": 1.4801610668011362,
+        "teacher_elite_regret_normalized": 1.3605559588646916
+      }
+    },
+    {
+      "selection_order": 3,
+      "episode_idx": 5233,
+      "row_index": 663119,
+      "start_step": 13,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.09507992677390575,
+        "h5_student_minus_teacher_relative_mse": -0.029601693153381348,
+        "h5_minus_h1_student_minus_teacher_relative_mse": -0.1246816199272871
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.7860352012541931,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.6225467682011268,
+        "candidate_first_action_coordinate_std_l2": 1.2626122910018032,
+        "teacher_elite_regret_normalized": 2.013615604729987
+      }
+    },
+    {
+      "selection_order": 3,
+      "episode_idx": 5233,
+      "row_index": 663119,
+      "start_step": 13,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.09375639446079731,
+        "h5_student_minus_teacher_relative_mse": 0.1757712885737419,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.0820148941129446
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.5606641022261615,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5982061564216107,
+        "candidate_first_action_coordinate_std_l2": 0.9372422804539144,
+        "teacher_elite_regret_normalized": 1.518021784882357
+      }
+    },
+    {
+      "selection_order": 4,
+      "episode_idx": 7753,
+      "row_index": 961135,
+      "start_step": 14,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.4513218402862549,
+        "h5_student_minus_teacher_relative_mse": 0.8515545427799225,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.4002327024936676
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.963564311580167,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.6809632727426549,
+        "candidate_first_action_coordinate_std_l2": 1.4150018806437314,
+        "teacher_elite_regret_normalized": 1.827833184926941
+      }
+    },
+    {
+      "selection_order": 4,
+      "episode_idx": 7753,
+      "row_index": 961135,
+      "start_step": 14,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.04528176411986351,
+        "h5_student_minus_teacher_relative_mse": 0.6106867492198944,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.5654049851000309
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.4995333198284378,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5156364574592224,
+        "candidate_first_action_coordinate_std_l2": 0.9750282280712876,
+        "teacher_elite_regret_normalized": 1.3900335197287936
+      }
+    },
+    {
+      "selection_order": 5,
+      "episode_idx": 8155,
+      "row_index": 1003582,
+      "start_step": 9,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.007437637774273753,
+        "h5_student_minus_teacher_relative_mse": 0.28684151917696,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.27940388140268624
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.5660720757806875,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.48522136926127685,
+        "candidate_first_action_coordinate_std_l2": 1.166626434121196,
+        "teacher_elite_regret_normalized": 2.4299657353205415
+      }
+    },
+    {
+      "selection_order": 5,
+      "episode_idx": 8155,
+      "row_index": 1003582,
+      "start_step": 9,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.19933529756963253,
+        "h5_student_minus_teacher_relative_mse": 0.9028509855270386,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.703515687957406
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.332334806182036,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.4298576998419253,
+        "candidate_first_action_coordinate_std_l2": 0.7234226413979068,
+        "teacher_elite_regret_normalized": 1.7072128936495998
+      }
+    },
+    {
+      "selection_order": 6,
+      "episode_idx": 16209,
+      "row_index": 2043974,
+      "start_step": 128,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.41565319895744324,
+        "h5_student_minus_teacher_relative_mse": 0.44561195373535156,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.029958754777908325
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.29271649354249957,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.31851756669014625,
+        "candidate_first_action_coordinate_std_l2": 0.9189963887525677,
+        "teacher_elite_regret_normalized": 0.5812525150416818
+      }
+    },
+    {
+      "selection_order": 6,
+      "episode_idx": 16209,
+      "row_index": 2043974,
+      "start_step": 128,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.028803100809454918,
+        "h5_student_minus_teacher_relative_mse": 0.05626840144395828,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.027465300634503365
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.16064980027400427,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.3217696737967355,
+        "candidate_first_action_coordinate_std_l2": 0.6732950498458802,
+        "teacher_elite_regret_normalized": 1.24528836123188
+      }
+    },
+    {
+      "selection_order": 7,
+      "episode_idx": 13660,
+      "row_index": 1724062,
+      "start_step": 48,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.036940280348062515,
+        "h5_student_minus_teacher_relative_mse": 0.3879202976822853,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.3509800173342228
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.2854794862552337,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.4692665602076215,
+        "candidate_first_action_coordinate_std_l2": 0.6370784339324799,
+        "teacher_elite_regret_normalized": 1.6882471318680397
+      }
+    },
+    {
+      "selection_order": 7,
+      "episode_idx": 13660,
+      "row_index": 1724062,
+      "start_step": 48,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.010465019382536411,
+        "h5_student_minus_teacher_relative_mse": 0.2336479164659977,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.22318289708346128
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.24314621393029703,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.4436520349521501,
+        "candidate_first_action_coordinate_std_l2": 0.4555795018101217,
+        "teacher_elite_regret_normalized": 1.6413040053851191
+      }
+    },
+    {
+      "selection_order": 8,
+      "episode_idx": 15946,
+      "row_index": 1993227,
+      "start_step": 37,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.19833118095993996,
+        "h5_student_minus_teacher_relative_mse": 0.07162389159202576,
+        "h5_minus_h1_student_minus_teacher_relative_mse": -0.1267072893679142
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.13621727754979257,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.307791821783266,
+        "candidate_first_action_coordinate_std_l2": 0.5034006796052475,
+        "teacher_elite_regret_normalized": 1.1138482131534182
+      }
+    },
+    {
+      "selection_order": 8,
+      "episode_idx": 15946,
+      "row_index": 1993227,
+      "start_step": 37,
+      "replan_step": 25,
+      "availability": "missing_expected_terminal_before_t25_replan",
+      "t25_status": "terminal_at_t25_before_replan",
+      "latent": null,
+      "cem_round_medians": null
+    },
+    {
+      "selection_order": 9,
+      "episode_idx": 17552,
+      "row_index": 2204279,
+      "start_step": 20,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.11850958690047264,
+        "h5_student_minus_teacher_relative_mse": 0.7324844971299171,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.6139749102294445
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.9955574071844052,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5811902690673092,
+        "candidate_first_action_coordinate_std_l2": 1.8074170683434023,
+        "teacher_elite_regret_normalized": 2.234866921888078
+      }
+    },
+    {
+      "selection_order": 9,
+      "episode_idx": 17552,
+      "row_index": 2204279,
+      "start_step": 20,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.031648024916648865,
+        "h5_student_minus_teacher_relative_mse": 0.34108906984329224,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.30944104492664337
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.6062902390726035,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.4699094083700028,
+        "candidate_first_action_coordinate_std_l2": 1.2902279211128618,
+        "teacher_elite_regret_normalized": 1.834281249740059
+      }
+    },
+    {
+      "selection_order": 10,
+      "episode_idx": 13134,
+      "row_index": 1648172,
+      "start_step": 52,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.16145965456962585,
+        "h5_student_minus_teacher_relative_mse": 0.5868513584136963,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.42539170384407043
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.1411070234531762,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.23926246899647574,
+        "candidate_first_action_coordinate_std_l2": 0.589758285304891,
+        "teacher_elite_regret_normalized": 1.2630220457904906
+      }
+    },
+    {
+      "selection_order": 10,
+      "episode_idx": 13134,
+      "row_index": 1648172,
+      "start_step": 52,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.028701389208436012,
+        "h5_student_minus_teacher_relative_mse": 0.7806768417358398,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.7519754525274038
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.5812834266313872,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.3696369274511417,
+        "candidate_first_action_coordinate_std_l2": 1.0498965092757966,
+        "teacher_elite_regret_normalized": 1.6315850313723452
+      }
+    },
+    {
+      "selection_order": 11,
+      "episode_idx": 11784,
+      "row_index": 1476519,
+      "start_step": 85,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.4312318004667759,
+        "h5_student_minus_teacher_relative_mse": 0.6603965610265732,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.2291647605597973
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.4371367511648318,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.4865355246826624,
+        "candidate_first_action_coordinate_std_l2": 0.784851130624515,
+        "teacher_elite_regret_normalized": 0.9932160533251844
+      }
+    },
+    {
+      "selection_order": 11,
+      "episode_idx": 11784,
+      "row_index": 1476519,
+      "start_step": 85,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.6476694643497467,
+        "h5_student_minus_teacher_relative_mse": 0.388962060213089,
+        "h5_minus_h1_student_minus_teacher_relative_mse": -0.2587074041366577
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.8418492968080142,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5518483660693281,
+        "candidate_first_action_coordinate_std_l2": 1.5328009716209636,
+        "teacher_elite_regret_normalized": 1.9778572018583584
+      }
+    },
+    {
+      "selection_order": 12,
+      "episode_idx": 14911,
+      "row_index": 1876582,
+      "start_step": 30,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.5996148139238358,
+        "h5_student_minus_teacher_relative_mse": 0.9771489351987839,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.3775341212749481
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.4720181092453775,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.6528595961730257,
+        "candidate_first_action_coordinate_std_l2": 0.7230009515250807,
+        "teacher_elite_regret_normalized": 2.0313856624447912
+      }
+    },
+    {
+      "selection_order": 12,
+      "episode_idx": 14911,
+      "row_index": 1876582,
+      "start_step": 30,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.03303926717489958,
+        "h5_student_minus_teacher_relative_mse": 0.8110708743333817,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.7780316071584821
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.7211964286719892,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5358872125816917,
+        "candidate_first_action_coordinate_std_l2": 1.7103913294539608,
+        "teacher_elite_regret_normalized": 1.8871893291013306
+      }
+    },
+    {
+      "selection_order": 13,
+      "episode_idx": 10651,
+      "row_index": 1315677,
+      "start_step": 19,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.2604059912264347,
+        "h5_student_minus_teacher_relative_mse": 0.9640869498252869,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.7036809585988522
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.3210298458535566,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.477438405156558,
+        "candidate_first_action_coordinate_std_l2": 1.0273428969478409,
+        "teacher_elite_regret_normalized": 1.9550988976024797
+      }
+    },
+    {
+      "selection_order": 13,
+      "episode_idx": 10651,
+      "row_index": 1315677,
+      "start_step": 19,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.05294865369796753,
+        "h5_student_minus_teacher_relative_mse": 1.0507356151938438,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.9977869614958763
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.4784329118640376,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.5868170913210273,
+        "candidate_first_action_coordinate_std_l2": 0.845847622794327,
+        "teacher_elite_regret_normalized": 1.7389102017049172
+      }
+    },
+    {
+      "selection_order": 14,
+      "episode_idx": 16609,
+      "row_index": 2091616,
+      "start_step": 16,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.045118841342628,
+        "h5_student_minus_teacher_relative_mse": 0.3538951128721237,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.3087762715294957
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.3139047177102695,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.3402863985113343,
+        "candidate_first_action_coordinate_std_l2": 0.9224721266660146,
+        "teacher_elite_regret_normalized": 1.6155738547680107
+      }
+    },
+    {
+      "selection_order": 14,
+      "episode_idx": 16609,
+      "row_index": 2091616,
+      "start_step": 16,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.08766910433769226,
+        "h5_student_minus_teacher_relative_mse": 0.604065403342247,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.5163962990045547
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.5799927734212151,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.3451673708051525,
+        "candidate_first_action_coordinate_std_l2": 1.2799940646926873,
+        "teacher_elite_regret_normalized": 1.4832991659189818
+      }
+    },
+    {
+      "selection_order": 15,
+      "episode_idx": 7042,
+      "row_index": 873959,
+      "start_step": 17,
+      "replan_step": 0,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.04947513900697231,
+        "h5_student_minus_teacher_relative_mse": 0.3861014302819967,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.3366262912750244
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.3566852288193456,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.3451998179021091,
+        "candidate_first_action_coordinate_std_l2": 1.033271775712505,
+        "teacher_elite_regret_normalized": 1.9927745799443186
+      }
+    },
+    {
+      "selection_order": 15,
+      "episode_idx": 7042,
+      "row_index": 873959,
+      "start_step": 17,
+      "replan_step": 25,
+      "availability": "available",
+      "latent": {
+        "h1_student_minus_teacher_relative_mse": 0.021111060865223408,
+        "h5_student_minus_teacher_relative_mse": 0.3694378100335598,
+        "h5_minus_h1_student_minus_teacher_relative_mse": 0.3483267491683364
+      },
+      "cem_round_medians": {
+        "rounds_aggregated": [
+          10,
+          20,
+          30
+        ],
+        "bank_count": 3,
+        "first_action_elite_mean_delta_l2": 0.36096481515758966,
+        "first_action_elite_mean_delta_l2_over_candidate_std_l2": 0.47309148740176504,
+        "candidate_first_action_coordinate_std_l2": 0.7629915666841123,
+        "teacher_elite_regret_normalized": 1.9467518346455919
+      }
+    }
+  ],
+  "descriptive_spearman": {
+    "t0": {
+      "first_action_elite_mean_delta_l2_vs_latent_error_increment": {
+        "n_episodes": 16,
+        "rho": 0.22058823529411764,
+        "status": "descriptive_only"
+      },
+      "first_action_elite_mean_delta_l2_over_candidate_std_l2_vs_latent_error_increment": {
+        "n_episodes": 16,
+        "rho": 0.2823529411764706,
+        "status": "descriptive_only"
+      },
+      "teacher_elite_regret_normalized_vs_latent_error_increment": {
+        "n_episodes": 16,
+        "rho": 0.4411764705882353,
+        "status": "descriptive_only"
+      }
+    },
+    "t25": {
+      "first_action_elite_mean_delta_l2_vs_latent_error_increment": {
+        "n_episodes": 15,
+        "rho": -0.05714285714285714,
+        "status": "descriptive_only"
+      },
+      "first_action_elite_mean_delta_l2_over_candidate_std_l2_vs_latent_error_increment": {
+        "n_episodes": 15,
+        "rho": 0.22142857142857142,
+        "status": "descriptive_only"
+      },
+      "teacher_elite_regret_normalized_vs_latent_error_increment": {
+        "n_episodes": 15,
+        "rho": 0.1357142857142857,
+        "status": "descriptive_only"
+      }
+    }
+  },
+  "claim_boundary": "Read-only mechanism analysis only. It does not establish causality, an independent validation result, planner deployment, closed-loop improvement, or a training recommendation.",
+  "validation_or_reserved_holdout_read": false,
+  "training_or_cem_or_gpu_used": false
+}

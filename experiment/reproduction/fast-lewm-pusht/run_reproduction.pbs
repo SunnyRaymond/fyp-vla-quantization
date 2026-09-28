@@ -1,0 +1,49 @@
+#!/bin/bash
+#PBS -N fastlewm_pusht
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -n "${PBS_NODEFILE:-}" && test -s "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) exit 2 ;; esac
+awk '{split(tolower($1),parts,"."); print parts[1]}' "$PBS_NODEFILE" | grep -Fxq "$HOST"
+test -n "${CUDA_VISIBLE_DEVICES:-}" && test "$CUDA_VISIBLE_DEVICES" != -1
+ROOT=/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+OUT="$ROOT/artifacts/$PBS_JOBID"
+test ! -e "$OUT"
+mkdir -p "$OUT/source_snapshot"
+exec > >(tee -a "$OUT/job.log") 2>&1
+GPU_MONITOR_PID=
+STATUS=2
+RUNNER_RC=NOT_STARTED
+finish() {
+  if [ -n "$GPU_MONITOR_PID" ]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf 'EXIT_STATUS=%s\nRUNNER_EXIT_STATUS=%s\n' "$STATUS" "$RUNNER_RC" > "$OUT/job_status.txt"
+  cp "$OUT/job_status.txt" "$OUT/final_exit_status.txt"
+}
+trap finish EXIT
+cp "$ROOT/source/run_reproduction.py" "$ROOT/source/FREEZE.json" "$ROOT/source/PROTOCOL.zh.md" "$OUT/source_snapshot/"
+export PYTHONUNBUFFERED=1 WANDB_MODE=disabled MUJOCO_GL=egl OMP_NUM_THREADS=4
+export PYTHONPATH="$ROOT/upstream:$STAGE/stable-worldmodel:${PYTHONPATH:-}"
+# Trusted official release is a serialized Python object, not a state_dict.
+export TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+printf 'job_id=%s\nhost=%s\nstarted_utc=%s\n' "$PBS_JOBID" "$HOST" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+set +e
+timeout --signal=TERM --kill-after=30s 3300 "$STAGE/venv/bin/python" "$OUT/source_snapshot/run_reproduction.py" \
+  --root "$ROOT" --stage "$STAGE" --out "$OUT" --freeze "$OUT/source_snapshot/FREEZE.json"
+RUNNER_RC=$?
+set -e
+STATUS=$RUNNER_RC
+if [ "$RUNNER_RC" -eq 0 ] && [ ! -s "$OUT/run_summary.json" ]; then STATUS=3; fi
+exit "$STATUS"

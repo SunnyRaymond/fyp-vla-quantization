@@ -1,0 +1,49 @@
+{
+  "schema": "lewm-pusht-latent-score-sensitivity-posthoc-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_execution",
+  "created_local_date": "2026-09-25",
+  "purpose": "Descriptive, read-only separation of per-horizon student/teacher rollout discrepancy from sensitivity of the official LeWM objective on the existing 93 student-generated train banks.",
+  "source": {
+    "collection_job": "25538135.pbs101",
+    "partial_horizon_pilot": "25545242.pbs101",
+    "source_freeze_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot/onpolicy-fullbank-ranker/partial-horizon-teacher-hybrid/FREEZE.json",
+    "train_banks_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot/onpolicy-fullbank-ranker/artifacts/25538135.pbs101/train_banks.pt",
+    "train_bank_count": 93,
+    "train_episode_count": 16,
+    "train_episode_ids": [9136, 12704, 4340, 5233, 7753, 8155, 16209, 13660, 15946, 17552, 13134, 11784, 14911, 10651, 16609, 7042],
+    "allowed_split": "train only; validation and reserved holdout banks must not be opened"
+  },
+  "models": {
+    "student_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "student_identity": "LeWMCompactRecurrentTransitionStudent h256; cem_distribution_distill treatment; 1000 extra updates"
+  },
+  "method": {
+    "prediction": "Reuse the frozen partial-horizon runner's official teacher targets, h256 student rollout, loader, and objective; recompute only k0 student and k5 teacher controls on the saved candidate arrays.",
+    "latent_discrepancy": "For each bank and horizon h=1..5, mean squared student-teacher latent difference over all 300 candidates and 192 dimensions divided by max(mean squared teacher latent over the same elements, 1e-8); aggregate bank values within episode.",
+    "counterfactual": "For each h independently, replace only student prediction[:,h,:] with teacher prediction[:,h,:], score the mixed sequence with the same official objective, and compare with the full-student scorer. This mixed sequence is not a physically consistent rollout.",
+    "score_perturbation": "Per bank and h, RMS(counterfactual_cost-student_cost) / max(population_std(saved teacher_costs), 1e-6).",
+    "ranking_metrics": "Use pinned torch.topk(cost,k=30,largest=False,sorted=True); standardized teacher-elite regret and Top30 recall are relative to saved teacher costs/top30.",
+    "strata": "Report replan t0/t25 and CEM rounds 10/20/30 separately. Episode is the unit; aggregate available banks within each episode before summaries. Episode 15946 has no t25 bank and stays missing.",
+    "interpretation": "Descriptive only: report horizon-wise episode summaries and sign counts for h5 versus h1; report per-horizon episode-median regret/recall changes and score perturbation. No p-values, GO gate, training, CEM, planner, or closed-loop authorization. Official teacher predictions are a reference, not ground truth; this diagnoses objective sensitivity to latent swaps, not criterion correctness."
+  },
+  "validity": {
+    "required_banks": 93,
+    "required_episodes": 16,
+    "required_rounds": [10, 20, 30],
+    "required_replan_steps": [0, 25],
+    "cost_control": "Before any diagnostic metric is computed or written, recomputed k0 student and k5 teacher costs must each match all 93 corresponding saved costs.",
+    "rtol": 0.00001,
+    "atol": 0.000001,
+    "failure_action": "Fail closed on any provenance, bank identity, coverage, shape, finite, or cost-alignment mismatch; preserve no partial metric summary."
+  },
+  "execution": {
+    "allocation": "One guarded PBS GPU compute-node job; never run model or bank I/O on a login node.",
+    "walltime": "00:30:00",
+    "internal_timeout_seconds": 1200,
+    "gpu_telemetry_seconds": 5,
+    "telemetry_destination": "job.log",
+    "data_handling": "Read only the existing train_banks.pt and frozen checkpoints; do not collect episodes, train, or read validation/holdout banks."
+  }
+}

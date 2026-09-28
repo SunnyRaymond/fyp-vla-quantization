@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N lewm_obs_recover
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+
+set -euo pipefail
+
+RECOVERY_JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+DATA_DIR=$STAGE_ROOT/artifacts/student-induced-shadow-pilot/real-observation-training-data
+SOURCE_JOB_ID=25543623.pbs101
+SELECTION_JOB_ID=25543404.pbs101
+SOURCE_DIR=$DATA_DIR/capture/$SOURCE_JOB_ID
+SOURCE_SUMMARY=$SOURCE_DIR/collection_summary.json
+ARCHIVE=$SOURCE_DIR/real_observation_training_data.npz
+RECOVERED_SUMMARY=$SOURCE_DIR/collection_summary_recovered.json
+SELECTION_MANIFEST=$DATA_DIR/selection/$SELECTION_JOB_ID/selection_manifest.json
+RUNNER=${LEWM_ROLLOUT_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student}/lewm-transfer/student-induced-shadow-pilot/real-observation-training-data/recover_real_observation_training_data.py
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login host: $HOST" >&2; exit 2 ;;
+esac
+if ! awk -F. -v host="$HOST" 'tolower($1) == host { found = 1 } END { exit !found }' "$PBS_NODEFILE"; then
+  echo "host $HOST is not present in PBS_NODEFILE" >&2
+  exit 2
+fi
+if awk -F. 'tolower($1) ~ /login|head|submit/ { bad = 1 } END { exit !bad }' "$PBS_NODEFILE"; then
+  echo "PBS_NODEFILE contains a probable login/submit host" >&2
+  exit 2
+fi
+
+for FILE in "$RUNNER" "$SOURCE_SUMMARY" "$ARCHIVE" "$SELECTION_MANIFEST"; do
+  test -f "$FILE"
+done
+test -x "$PYTHON_BIN"
+if [ -e "$RECOVERED_SUMMARY" ] || [ -e "$RECOVERED_SUMMARY.tmp" ]; then
+  echo "refusing to overwrite recovery output: $RECOVERED_SUMMARY" >&2
+  exit 2
+fi
+
+timeout --signal=TERM --kill-after=10s 540 \
+  "$PYTHON_BIN" "$RUNNER" \
+  --source-summary "$SOURCE_SUMMARY" \
+  --archive "$ARCHIVE" \
+  --selection-manifest "$SELECTION_MANIFEST" \
+  --output "$RECOVERED_SUMMARY" \
+  --source-job-id "$SOURCE_JOB_ID"

@@ -1,0 +1,130 @@
+{
+  "protocol_id": "cswm-visual-block-local-pilot-v1",
+  "status": "frozen-before-data-generation",
+  "source": {
+    "repository": "https://github.com/tkipf/c-swm",
+    "commit": "e944b24bcaa42d9ee847f30163437a50f0237aa0",
+    "license": "MIT",
+    "files_to_preserve": ["envs/block_pushing.py", "modules.py", "utils.py", "data_gen/env.py", "LICENSE"],
+    "reproduction_note": "Mechanism-informed pilot, not a reproduction of the paper's complete training configuration."
+  },
+  "environment": {
+    "name": "2D Shapes block-pushing compatibility environment",
+    "objects": 5,
+    "grid_rows": 5,
+    "grid_columns": 5,
+    "image_shape_chw": [3, 50, 50],
+    "cell_pixels": 10,
+    "object_types_by_id": ["circle", "triangle", "square", "circle", "triangle"],
+    "palette": "Matplotlib Set1, sampled as official utils.get_colors(num_colors=9)",
+    "action_count": 20,
+    "action_encoding": "action = object_id * 4 + direction_id",
+    "direction_order": [[-1, 0], [0, 1], [1, 0], [0, -1]],
+    "collision_rule": "An object moves one grid cell only if the destination is in bounds and unoccupied; otherwise the state is unchanged.",
+    "episode_steps": 40,
+    "behavior_policy": "Uniform random over all 20 actions, including invalid actions.",
+    "compatibility_changes": [
+      "Standalone NumPy renderer and environment preserve the pinned source's object, action, boundary, and collision semantics without importing Gym 0.12.",
+      "Episode randomness uses split and episode-indexed NumPy Generator streams rather than the legacy source's mixed global NumPy and Gym RNGs.",
+      "The integer-pixel rasterizer follows the source's 10-pixel cell geometry and circle/triangle/square shapes; it is a compatibility renderer, not claimed pixel-identical to every historical scikit-image/Matplotlib version."
+    ]
+  },
+  "data": {
+    "episodes": {"train": 1000, "dev": 128, "test": 256},
+    "steps_per_episode": 40,
+    "split_seed": {"train": 20260926, "dev": 20260927, "test": 20260928},
+    "unit_of_split": "whole episode",
+    "stored_arrays": {
+      "obs": "uint8 [episodes, 41, 3, 50, 50]",
+      "action": "int64 [episodes, 40]",
+      "position": "uint8 [episodes, 41, 5, 2], diagnostics only",
+      "event": "uint8 [episodes, 40], diagnostics only: 0 free, 1 other-object-blocked, 2 boundary-blocked"
+    },
+    "model_input_rule": "Predictor and encoder training may read only obs and action. Position and event arrays are reserved for train-only position probes or held-out diagnostics as specified; they never enter a predictor input or Stage A loss."
+  },
+  "representation": {
+    "num_slots": 5,
+    "slot_dim": 16,
+    "state_shape": [5, 16],
+    "encoder": "Pinned C-SWM small-style extractor: 10x10 stride-10 feature maps with shared per-slot encoder MLP; hidden_dim=128, embedding_dim=16.",
+    "visual_encoder_is_shared_across_predictor_arms": true
+  },
+  "stage_a_encoder_fit": {
+    "method": "C-SWM-style contrastive state-transition objective with joint encoder and full-pair GNN fitting",
+    "seeds": [1101, 1102, 1103],
+    "updates_per_seed": 5000,
+    "batch_size": 128,
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0,
+    "last_checkpoint_only": true,
+    "action_dim_per_object": 4,
+    "gnn_hidden_dim": 128,
+    "contrastive_sigma": 0.5,
+    "contrastive_hinge": 1.0,
+    "training_inputs": ["train.obs", "train.action"]
+  },
+  "stage_b_predictor_fit": {
+    "encoder": "Frozen Stage A encoder from the matching seed; all seven predictors initialized and fitted from scratch.",
+    "seeds": [1101, 1102, 1103],
+    "arms": ["full_gnn", "local", "local4", "global4", "global16", "transformer6", "flat_mlp_matched"],
+    "updates_per_arm_seed": 5000,
+    "batch_size": 128,
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0,
+    "last_checkpoint_only": true,
+    "objective": "one-step latent MSE + 0.5 * mean free-running latent MSE over horizons 1..5; divide both terms by train-only mean squared latent-delta energy.",
+    "paired_minibatches": "Within each encoder seed, precomputed episode/start-index minibatch draws are identical across all seven predictor arms.",
+    "action_interface": "Scalar actions 0..19; every arm receives the equivalent five per-slot 4D one-hot direction vectors, with only the selected object's vector nonzero.",
+    "local_predictor": "Shared across slots; input is own 16D slot, own 4D action vector, and optional message.",
+    "message_comparison": {
+      "local4": "Five independent bias-free 16->4 slot projections; each slot reads only its own 4D projection.",
+      "global4": "One bias-free 80->4 projection of all slots, shared as input to each slot predictor.",
+      "global16": "One bias-free 80->16 projection of all slots, shared as input to each slot predictor.",
+      "local4_global4_projection_parameters": "Exactly matched at 320; local4 vs global4 is the primary communication contrast."
+    },
+    "transformer6": "Six Transformer encoder layers, 4 attention heads, d_model=128, FFN=512, five slot tokens and learned slot embeddings; this is a new shared-interface comparator, not an existing LeWM checkpoint.",
+    "flat_mlp_matched": "Single flattened state/action MLP; hidden width selected before training so total trainable parameters are within 5% of global4.",
+    "full_gnn": "C-SWM-style fully connected directed pair messages and node aggregation, hidden_dim=128; serves as visual reference."
+  },
+  "evaluation": {
+    "primary_metric": "C-SWM-style held-out H@1 for action-conditioned latent target retrieval at horizon 10 using a fixed same-seed candidate bank.",
+    "horizons": [1, 5, 10, 20],
+    "rollout_start": "step 0 of each held-out test episode; each episode is first summarized as one unit.",
+    "candidate_bank": "For each horizon, one true target is inserted exactly once with targets from the other held-out episodes of the same seed; the candidate episode set/order is fixed and shared by every arm and persistence. No position-based filtering is allowed.",
+    "ranking": "Squared Euclidean latent distance; stable lexicographic tie-break prioritizes the true candidate, matching the official evaluator's deterministic positive-first tie convention. Report latent variance alongside retrieval metrics.",
+    "metrics": ["latent_MSE", "H_at_1", "MRR", "episode_bootstrap_95CI", "one_step_action_response_error", "parameter_count", "latency"],
+    "episode_subsets": ["free", "other-object-blocked", "boundary-blocked"],
+    "subset_rule": "One-step metrics use every held-out test transition and classify its attempted action from stored held-out position diagnostics; rollout metrics at each horizon are stratified by the step-0 action category. GT diagnostics never select or remove test episodes.",
+    "action_response": "Held-out counterfactual pairs start from the same image/latent and compare an observed action with a fixed alternate object-action; compare predicted and true encoded latent differences. Counterfactual images are generated only for evaluation, using the frozen encoder.",
+    "persistence_reference": "No-training predictor z_hat=z_t, evaluated with identical horizons and candidate banks.",
+    "position_probe": "Fit frozen linear slot-to-position readouts using train images/latent and train positions only; resolve slot/object assignment using train data only; report held-out test position error as auxiliary encoder diagnostic.",
+    "encoder_diagnostics": ["per-slot latent variance", "fixed-bank negative retrieval", "train-fitted/test position probe"],
+    "baseline_adequacy_per_seed": "Full GNN test H@1 >= 0.80 at h1 and >= 0.50 at h10, and full GNN h10 exceeds persistence h10 by >= 0.05. All three seeds must pass before calling the visual reference adequate; otherwise finish every fit and label visual comparison inconclusive.",
+    "bootstrap": "1000 episode-level paired bootstrap resamples within each training seed; report each seed separately and do not infer a training-seed population effect."
+  },
+  "timing": {
+    "batch_sizes": [1, 300],
+    "horizon": 10,
+    "warmup_iterations": 20,
+    "timed_repeats": 60,
+    "scope": "Predictor-only complete rollout including message and token operations; measure encoder initial-cost separately. Same GPU allocation, precision, and synchronization policy for all arms.",
+    "telemetry": "GPU utilization and memory every 30 seconds in the job log."
+  },
+  "gates": {
+    "quality": "For each seed, h10 H@1 may be at most 0.03 lower than full_gnn; report absolute H@1 and H@1 difference.",
+    "speed": "At least 20% lower predictor-only full-rollout latency than full_gnn and transformer6 separately; B=1 and B=300 reported separately.",
+    "mechanism": "global4 vs local4 is the primary communication comparison; flat_mlp_matched distinguishes structural benefit from parameter-count reduction.",
+    "interpretation": "Only label an arm quality-and-speed promising if it passes both gates on the same seed and batch-size latency condition; preserve failures and inconclusive outcomes."
+  },
+  "scope_and_budget": {
+    "stage_a_fits": 3,
+    "stage_b_fits": 21,
+    "total_fits": 24,
+    "test_set_is_never_used_for_model_selection": true,
+    "training_budget_or_gates_may_not_be_changed_after_test": true,
+    "no_automatic_extra_training": true,
+    "claims_excluded": ["LeWM checkpoint replacement", "CEM candidate ranking", "closed-loop task success", "PushT transfer", "paper-exact C-SWM reproduction"]
+  }
+}

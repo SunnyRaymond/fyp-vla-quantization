@@ -1,0 +1,150 @@
+{
+  "schema": "lewm-recurrent-student.official-pusht-cem-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_results",
+  "experiment_name": "lewm_official_cem_late_teacher7_pusht",
+  "question": "在 official LeWM CEM 求解器中，late_teacher7 是否在保留 student-only 相比的规划质量改善时，减少 teacher 调用并在真实 PushT simulator 闭环中提升成功率？",
+  "source": {
+    "lewm_repository": "https://github.com/lucas-maes/le-wm",
+    "lewm_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel_repository": "https://github.com/galilai-group/stable-worldmodel",
+    "stable_worldmodel_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "source_validation_scope": "These commit IDs identify the upstream revisions used as staging provenance/reference. The remote source directories are staged snapshots without Git metadata; this run verifies imported module roots and runtime APIs, but does not independently attest the snapshot commit IDs.",
+    "pinned_environment_registration": "stable_worldmodel/envs/__init__.py: swm/PushT-v1 -> stable_worldmodel.envs.pusht.env:PushT",
+    "pinned_environment_file": "stable_worldmodel/envs/pusht/env.py",
+    "pinned_world_file": "stable_worldmodel/world/world.py",
+    "pinned_policy_file": "stable_worldmodel/policy.py",
+    "pinned_solver_file": "stable_worldmodel/solver/cem.py"
+  },
+  "model": {
+    "teacher": "staged official LeWM PushT checkpoint pusht/lewm_object.ckpt",
+    "student_architecture": "LeWMCompactRecurrentTransitionStudent h256",
+    "student_checkpoint_job": "25239551.pbs101",
+    "student_checkpoint_filename": "treatment_step1000.pt",
+    "student_checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "student_checkpoint_source": "cem_distribution_distill",
+    "student_checkpoint_arm": "treatment",
+    "student_checkpoint_extra_updates": 1000,
+    "training_in_this_experiment": false
+  },
+  "official_planner": {
+    "world_env_name": "swm/PushT-v1",
+    "plan_config": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "history_len": 1,
+      "action_block": 5,
+      "warm_start": true,
+      "plan_len_environment_steps": 25
+    },
+    "cem_solver": {
+      "batch_size": 1,
+      "num_samples": 300,
+      "var_scale": 1.0,
+      "n_steps": 30,
+      "topk": 30,
+      "device": "cuda"
+    },
+    "late_teacher7_rounds_1_indexed": [24, 25, 26, 27, 28, 29, 30],
+    "uniform_teacher7_rounds_1_indexed": [4, 8, 12, 16, 20, 24, 28],
+    "candidate_zero": "official CEM solver overwrites candidate 0 with the current mean before scoring",
+    "elite_update": "official torch.topk(cost, k=30, dim=1, largest=False), mean(dim=1), std(dim=1) with PyTorch default unbiased=True",
+    "solver_modification": "none; use pinned CEMSolver.solve unchanged; only cost model get_cost routes between official teacher and frozen student",
+    "final_plan_quality_audit": "Apply to all four configured strategy arms and both native/routed fidelity paths. Use the first actual expanded info_dict captured immediately before each path's first solver get_cost call, retain sample index 0 (same repeated observation), and score the final plan as one candidate with shape [B,1,T,10]. Native get_cost capture delegates the same args and return value unchanged. Record prepared-info, CEM action/cost, scorer input and output shapes. Do not re-prepare or re-slice raw world observations for the audit.",
+    "native_teacher_equivalence": "paired solver seeds must produce bitwise-equal candidates, costs, elite indices, elite candidates, mean/variance updates, final plan, and first action for native teacher and routed teacher-only; native get_cost is wrapped only by a read-only input-shape/sample-0 capture that delegates the same args and return value to the original JEPA method"
+  },
+  "stage1": {
+    "purpose": "fail-closed native official solver semantics, late7 routing, quality and latency gate before any closed-loop run",
+    "simulator_reset_seeds": [260922001, 260922002, 260922003, 260922004, 260922005, 260922006, 260922007, 260922008],
+    "cem_seed_base": 2609221000,
+    "blocks": 8,
+    "arms": ["student_only", "uniform_teacher7", "late_teacher7", "teacher_only"],
+    "execution_paths": ["student_only", "uniform_teacher7", "late_teacher7", "teacher_only"],
+    "arm_order_seed_base": 2609222000,
+    "native_equivalence_paths": ["native_teacher_reference", "routed_teacher_reference"],
+    "native_equivalence_order_seed_base": 2609223000,
+    "shared_cem_innovations": "For paired reset block index b (0-based), reset the official CEM solver-owned torch_gen to cem_seed_base+b before every execution path; each solve therefore receives the same ordered standard-normal innovations.",
+    "native_equivalence_runs": "For each paired seed, separately randomize the order of native_teacher_reference using a capture-only get_cost proxy that forwards unchanged to the original teacher, and routed_teacher_reference through a transparent get_cost router that delegates to the original teacher on every round. Both use the unmodified CEMSolver.solve, identical solver seed, and bitwise-identical policy-preprocessed observation. Both proxies retain the actual first expanded solver info sample for post-timing final-plan cost audit; full tensor references are retained only for the paired fidelity traces and compared after solver timing.",
+    "teacher_call_counts_per_solve": {
+      "student_only": 0,
+      "uniform_teacher7": 7,
+      "late_teacher7": 7,
+      "teacher_only": 30,
+      "routed_teacher_only_equivalence": 30
+    },
+    "quality_estimand": "Per reset seed: (official_teacher_cost(final_late_teacher7_plan) - official_teacher_cost(final_student_plan)) divided by the population standard deviation of the native teacher round-1 candidate costs; negative favors late_teacher7.",
+    "latency_estimand": "CUDA-synchronized full CEMSolver.solve walltime per paired fixed observation, including official candidate generation, scorer, top-k and distribution update; no environment step is inside this Stage 1 timer.",
+    "gates": {
+      "native_equivalence": "All 8 paired seeds are bitwise equal for every required per-round trace field and final plan/action.",
+      "schedule": "All 8 late_teacher7 solves use teacher exactly on rounds 24-30 and exactly 7 total calls; uniform7 is exactly rounds 4,8,12,16,20,24,28.",
+      "quality": {
+        "median_late_minus_student_standardized_teacher_cost_max": -0.1,
+        "strictly_improved_reset_seeds_min": 5,
+        "strict_improvement": "late teacher objective < student-only objective"
+      },
+      "latency": {
+        "late_teacher7_mean_solve_time_reduction_vs_teacher_min": 0.3
+      },
+      "validity": "all expected reset seeds and arms complete; strategy-arm per-round costs and mean/variance updates, solver outputs, final actions, audit scores and timings are finite; native/routed fidelity traces check every floating field; initial state and goal pair exactly across paths; no fallback or silent schedule change",
+      "overall": "PASS only if native equivalence, schedule, quality, latency and validity all pass; otherwise Stage 2 is not run"
+    },
+    "pbs_walltime_minutes": 30
+  },
+  "stage2": {
+    "status_before_stage1": "PENDING_STAGE1_PASS",
+    "environment": {
+      "executor": "pinned stable_worldmodel.World and WorldModelPolicy over registered swm/PushT-v1 Gymnasium/Pymunk environment",
+      "evaluation_call": "world.evaluate(episodes=1, seed=task_seed, reset_mode='wait', dataset=None)",
+      "max_episode_steps": 50,
+      "termination_success": "pinned PushT.eval_state: L2 distance of state[:4] from goal_state[:4] < 20 and wrapped block-angle error < pi/9, with shape symmetry; success is World.terminateds, truncation at 50 is not success",
+      "task_unit": "one independently seeded simulator episode; episode is the paired statistical unit",
+      "hdf5_episode_rows_used_as_task_seeds": false
+    },
+    "simulator_reset_seeds": {
+      "first": 260923001,
+      "last": 260923050,
+      "count": 50,
+      "generation": "contiguous integers inclusive",
+      "disjoint_from_previous_environment_eval_seeds": [1, 100, 199, 298, 397, 496, 595, 694]
+    },
+    "arms": {
+      "primary": ["student_only", "late_teacher7", "teacher_only"],
+      "secondary_same_teacher_budget": ["uniform_teacher7"]
+    },
+    "pairing": {
+      "same_start_goal": "Each arm receives a fresh World, then World.evaluate resets the actual simulator with the same task seed; exact initial state and goal_state equality is required within the 4-arm seed block.",
+      "arm_order_seed_base": 2609239000,
+      "arm_order": "Randomized within each seed using Python Random(arm_order_seed_base + block_index); persist exact order.",
+      "solver_seed_base": 2609231000,
+      "planner_innovations": "Pinned CEMSolver owns self.torch_gen = torch.Generator(device=device).manual_seed(seed), and solve calls torch.randn(..., generator=self.torch_gen). For each task seed and CEM call index, reseed this solver-owned generator to solver_seed_base + 4*block_index + call_index. All arms share identical standard-normal candidate innovations at matching call indices. Candidate distributions and observations can diverge as a treatment effect.",
+      "limitations": "Common random numbers are exact for paired CEM call indices; arms that terminate at different steps naturally execute different numbers of calls. Resets are paired by the pinned simulator seed and verified state/goal values, not by HDF5 rows."
+    },
+    "sample_size": {
+      "episodes": 50,
+      "basis": "The pinned LeWM PushT evaluation configuration defaults to num_eval=50; use the full official-sized bounded count rather than a convenience pilot.",
+      "power_claim": "No formal power claim: there is no trustworthy prior paired LeWM closed-loop effect estimate. No extension or optional stopping after viewing results."
+    },
+    "primary_outcome": "per-episode binary simulator success before the 50-step time limit",
+    "secondary_outcomes": ["per-step official state distance and positional/angular progress", "episode environment steps and terminated/truncated status", "episode wallclock", "CUDA-synchronized total and per-CEM-call planner walltime", "teacher calls per episode", "per-episode peak CUDA allocated/reserved memory", "finite-output validity"],
+    "decision_gate": {
+      "late7_practical_benefit_vs_student": "at least 5 additional successes out of 50 paired seeds AND two-sided exact McNemar p < 0.05",
+      "late7_practical_noninferiority_vs_teacher": "late_teacher7 success count is no more than 5 below teacher_only out of 50 paired seeds; report as a practical margin, not a powered formal noninferiority claim",
+      "overall": "PASS only if the complete validity gate passes and both success gates pass; otherwise report FAIL or INCONCLUSIVE according to paired results. Do not extend this frozen run."
+    },
+    "walltime_minutes": 120,
+    "incremental_output": "Append and flush one JSONL row after every arm episode, including full per-step progress, so completed observations survive an interrupted bounded job. No automatic resubmission."
+  },
+  "resources": {
+    "pbs": "one GPU, 16 CPU, 110 GB RAM",
+    "gpu_telemetry_seconds": 5,
+    "telemetry": "direct nvidia-smi process writing timestamp, utilization and used/total memory into job.log; trap kills and waits for its PID",
+    "compute_node_only": true,
+    "require_nonempty_PBS_JOBID": true,
+    "require_PBS_NODEFILE_and_current_host_membership": true,
+    "reject_login_head_submit_hostname": true,
+    "no_download_install_compile_or_heavy_io_on_login": true,
+    "ssh_host_key_verification": "enabled"
+  },
+  "external_method_reference": "Kassis, T., Agarwal, V., He, Y., Patel, D., & Brueckner, A. M. (2026). Scientific Agent Skills. arXiv:2609.00065. https://doi.org/10.48550/arXiv.2609.00065. Procedural method context only; not LeWM or PushT evidence.",
+  "claim_boundary": "Stage 1 is official fixed-observation CEM integration/fidelity evidence. Stage 2, only after Stage 1 PASS, is a 50-seed paired closed-loop comparison in the actual pinned PushT simulator. Neither stage changes the trained checkpoint."
+}

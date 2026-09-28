@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -N lewm_e3_replay
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+NODEFILE=${PBS_NODEFILE:?PBS_NODEFILE must be set by PBS}
+test -f "$NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing login/submit host: $HOST" >&2; exit 2;; esac
+if ! awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$NODEFILE" | grep -Fxq "$HOST"; then
+  echo "current host $HOST is not in PBS_NODEFILE" >&2
+  exit 2
+fi
+
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+STABLEWM_ROOT=${LEWM_STABLEWM_ROOT:-$STAGE_ROOT/stable-worldmodel}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+EXPERIMENT=${LEWM_ACTION_E3_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/03-action-response-straightening/e3}
+RUNNER=$EXPERIMENT/probe_pusht_replay.py
+OUT=${LEWM_ACTION_E3_OUT:-$EXPERIMENT/artifacts/$JOB_ID}
+
+test -f "$RUNNER"
+test -d "$STABLEWM_ROOT"
+test -x "$PYTHON_BIN"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+export PYTHONUNBUFFERED=1 MUJOCO_GL=egl SDL_VIDEODRIVER=dummy
+export PYTHONPATH="$STABLEWM_ROOT:${PYTHONPATH:-}"
+printf 'job_id=%s\nhost=%s\nrunner=%s\nstablewm_root=%s\n' \
+  "$JOB_ID" "$HOST" "$RUNNER" "$STABLEWM_ROOT" > "$OUT/execution_identity.txt"
+
+set +e
+timeout --signal=TERM --kill-after=15s 600 "$PYTHON_BIN" "$RUNNER" \
+  --stablewm-root "$STABLEWM_ROOT" --output "$OUT/e3_replay_probe.json"
+RUNNER_RC=$?
+set -e
+printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+exit "$RUNNER_RC"

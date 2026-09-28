@@ -1,0 +1,195 @@
+{
+  "schema": "lewm-pusht-onpolicy-fullbank-ranker-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_collection",
+  "created_local_date": "2026-09-25",
+  "purpose": "Test whether a small per-candidate residual scorer improves teacher-elite ranking on full 300-candidate banks from student-driven PushT planner contexts.",
+  "scope": {
+    "stage": "predictor-level planner-facing ranking gate",
+    "training": "train the residual MLP only; freeze the h256 recurrent student",
+    "validation": "score baseline-generated full candidate banks; do not deploy treatment in CEM",
+    "not_authorized_by_this_freeze": [
+      "treatment CEM deployment",
+      "official planner comparison",
+      "closed-loop treatment evaluation",
+      "speedup or task-success claim"
+    ]
+  },
+  "provenance": {
+    "parent_freeze_path": "../SEEDED_PILOT_FREEZE.json",
+    "parent_freeze_schema": "lewm-pusht-student-induced-shadow-seeded-pilot-freeze",
+    "parent_seeded_pilot_job_id": "25537667.pbs101",
+    "selection_manifest_job_id": "25536857.pbs101",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "official_teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "base_student": {
+      "job_id": "25239551.pbs101",
+      "checkpoint_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+      "architecture": "LeWMCompactRecurrentTransitionStudent h256",
+      "parameter_count": 775872,
+      "training_updates": 1000,
+      "claim": "Reuse the exact seeded-pilot student checkpoint; no fresh checkpoint reconstruction claim."
+    },
+    "preprocessing_boundary": "Episode/task-level isolation only. The official dataset-wide scaler reads train columns that include reserved validation task rows; this is not row-level preprocessing isolation.",
+    "pilot_artifact_limit": "25537667 exports costs and summaries but not candidate action tensors or encoded contexts; it is evidence only and is not a training source."
+  },
+  "task_split": {
+    "training": {
+      "source": "Exact collection_tasks from ../SEEDED_PILOT_FREEZE.json",
+      "count": 16,
+      "tasks": [
+        {"selection_order": 0, "episode_idx": 9136, "row_index": 1126761, "start_step": 4},
+        {"selection_order": 1, "episode_idx": 12704, "row_index": 1593460, "start_step": 3},
+        {"selection_order": 2, "episode_idx": 4340, "row_index": 535694, "start_step": 34},
+        {"selection_order": 3, "episode_idx": 5233, "row_index": 663119, "start_step": 13},
+        {"selection_order": 4, "episode_idx": 7753, "row_index": 961135, "start_step": 14},
+        {"selection_order": 5, "episode_idx": 8155, "row_index": 1003582, "start_step": 9},
+        {"selection_order": 6, "episode_idx": 16209, "row_index": 2043974, "start_step": 128},
+        {"selection_order": 7, "episode_idx": 13660, "row_index": 1724062, "start_step": 48},
+        {"selection_order": 8, "episode_idx": 15946, "row_index": 1993227, "start_step": 37},
+        {"selection_order": 9, "episode_idx": 17552, "row_index": 2204279, "start_step": 20},
+        {"selection_order": 10, "episode_idx": 13134, "row_index": 1648172, "start_step": 52},
+        {"selection_order": 11, "episode_idx": 11784, "row_index": 1476519, "start_step": 85},
+        {"selection_order": 12, "episode_idx": 14911, "row_index": 1876582, "start_step": 30},
+        {"selection_order": 13, "episode_idx": 10651, "row_index": 1315677, "start_step": 19},
+        {"selection_order": 14, "episode_idx": 16609, "row_index": 2091616, "start_step": 16},
+        {"selection_order": 15, "episode_idx": 7042, "row_index": 873959, "start_step": 17}
+      ]
+    },
+    "validation": {
+      "source": "First 8 reserved_holdout_tasks from ../SEEDED_PILOT_FREEZE.json",
+      "count": 8,
+      "tasks": [
+        {"selection_order": 16, "episode_idx": 6714, "row_index": 834656, "start_step": 48},
+        {"selection_order": 17, "episode_idx": 5684, "row_index": 710792, "start_step": 67},
+        {"selection_order": 18, "episode_idx": 18426, "row_index": 2309258, "start_step": 12},
+        {"selection_order": 19, "episode_idx": 928, "row_index": 115635, "start_step": 96},
+        {"selection_order": 20, "episode_idx": 438, "row_index": 48635, "start_step": 31},
+        {"selection_order": 21, "episode_idx": 17785, "row_index": 2237152, "start_step": 83},
+        {"selection_order": 22, "episode_idx": 14271, "row_index": 1799976, "start_step": 22},
+        {"selection_order": 23, "episode_idx": 9905, "row_index": 1211486, "start_step": 115}
+      ],
+      "use_rule": "Use only after training is complete for the frozen predictor-level gate; do not train, select checkpoints, tune thresholds, or replace episodes from these tasks."
+    },
+    "untouched": {
+      "source": "Remaining 8 reserved_holdout_tasks from ../SEEDED_PILOT_FREEZE.json",
+      "count": 8,
+      "tasks": [
+        {"selection_order": 24, "episode_idx": 13588, "row_index": 1715403, "start_step": 10},
+        {"selection_order": 25, "episode_idx": 3470, "row_index": 424420, "start_step": 47},
+        {"selection_order": 26, "episode_idx": 3172, "row_index": 386709, "start_step": 16},
+        {"selection_order": 27, "episode_idx": 15736, "row_index": 1969655, "start_step": 13},
+        {"selection_order": 28, "episode_idx": 9675, "row_index": 1184480, "start_step": 19},
+        {"selection_order": 29, "episode_idx": 14269, "row_index": 1799776, "start_step": 6},
+        {"selection_order": 30, "episode_idx": 10122, "row_index": 1238036, "start_step": 27},
+        {"selection_order": 31, "episode_idx": 7147, "row_index": 885159, "start_step": 38}
+      ],
+      "use_rule": "Do not evaluate, score, inspect per-task outputs, or use for a decision in this experiment."
+    }
+  },
+  "collection": {
+    "policy": "Frozen base student generates every candidate bank and all real actions; the residual MLP is absent during collection.",
+    "reset": {
+      "requested_dataset_seed": null,
+      "effective_seed": 42,
+      "world_reset_calls_per_episode": 1,
+      "native_solver_seed": 42,
+      "rng_rule": "Seed once per episode; keep the native solver RNG continuation from t0 to t25; never reseed between solves."
+    },
+    "environment_protocol": {
+      "dataset_mode": "Pinned World.evaluate dataset mode, one frozen episode per World instance, num_envs=1",
+      "goal_offset_steps": 25,
+      "eval_budget": 50,
+      "max_episode_steps": 100,
+      "image_size": 224,
+      "expected_replan_steps": [0, 25],
+      "receding_horizon": 5,
+      "action_block": 5
+    },
+    "cem": {
+      "batch_size": 1,
+      "num_samples": 300,
+      "topk": 30,
+      "iterations": 30,
+      "captured_rounds_1_indexed": [10, 20, 30],
+      "capture_rule": "At each reached t0/t25 replan and each captured CEM round, persist the entire 300-candidate bank in native index order."
+    },
+    "bank_record": {
+      "actions_shape": [300, 5, 10],
+      "context_fields": ["initial_emb_192", "goal_emb_192"],
+      "candidate_fields": ["future_actions_5x10", "student_objective_cost", "teacher_objective_cost"],
+      "identity_fields": ["selection_order", "episode_idx", "row_index", "start_step", "replan_step", "cem_round_1_indexed", "candidate_index", "solver_seed"],
+      "alignment_rule": "Context, action sequence, teacher cost, and student cost must retain the same task/round/candidate index. Preserve full banks; do not truncate, screen, reorder, or K-select candidates before writing.",
+      "cost_validity": "All costs and actions finite. A non-finite cost or a zero/invalid population standard deviation invalidates the run; do not silently clamp or drop that bank.",
+      "storage": "Keep full banks on the compute node; return only compact summaries, gate records, job log, status, terminal state, and GPU telemetry."
+    },
+    "first_four_task_noninterference_gate": {
+      "tasks": "Training selection_order 0 through 3",
+      "comparison": "For each task, pair capture/shadow recording enabled and disabled runs from identical frozen reset and solver RNG states.",
+      "required_exact_matches": ["task identity", "initial simulator observation", "reset seed", "solver RNG before and after every solve", "candidate arrays at rounds 10/20/30", "committed actions", "post-step states", "state trace", "solve count", "episode termination status"],
+      "pass_rule": "All four task pairs pass every required comparison before the remaining collection, fitting, or validation proceeds. On any mismatch, mark invalid and stop; do not substitute tasks. Retain the recording-enabled banks only after the paired gate passes."
+    }
+  },
+  "ranker": {
+    "control": "Frozen base h256 student; rank candidates by bank-z-normalized student objective cost.",
+    "treatment": {
+      "base_student": "Same frozen checkpoint as control.",
+      "trainable_component": "Per-candidate residual MLP only; no cross-candidate attention or student parameter updates.",
+      "input_features": [
+        {"name": "initial_emb", "dimension": 192},
+        {"name": "goal_emb", "dimension": 192},
+        {"name": "future_actions_flattened", "dimension": 50, "source_shape": [5, 10]},
+        {"name": "bank_z_student_cost", "dimension": 1}
+      ],
+      "input_dimension": 435,
+      "network": "Linear(435,256)-ReLU-Linear(256,256)-ReLU-Linear(256,1)",
+      "initialization": "Initialize the final linear weight and bias to zero so the initial corrected score equals the frozen control score.",
+      "score": "corrected_score = bank_z_student_cost + residual",
+      "bank_normalization": "For each 300-candidate bank, z-score student cost with that bank's population mean and standard deviation. Require finite standard deviation > 1e-6; otherwise invalidate the run."
+    },
+    "loss": {
+      "teacher_target": "Use the official ascending torch.argsort semantics on teacher objective; its first 30 candidate indices define a uniform target distribution over all 300 candidates.",
+      "student_distribution": "softmax(-corrected_score / 0.5) over all 300 candidates in that bank.",
+      "listwise_cross_entropy": "Mean cross-entropy from the uniform teacher top-30 target to the student distribution, averaged per bank.",
+      "residual_penalty": "1e-3 * mean(residual^2) over all candidates in the update batch.",
+      "total": "listwise_cross_entropy + residual_penalty"
+    },
+    "optimization": {
+      "optimizer": "AdamW",
+      "learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "betas": [0.9, 0.999],
+      "epsilon": 1e-8,
+      "updates": 1000,
+      "training_seed": 20260925,
+      "banks_per_update": 8,
+      "sampling": "Uniform bank sampling with replacement from training banks using the frozen training seed; use all 300 candidates for each sampled bank.",
+      "early_stopping": false,
+      "sweeps": false
+    }
+  },
+  "validation": {
+    "episodes": 8,
+    "unit": "source episode; banks and CEM rounds within an episode are repeated measures, not independent samples",
+    "banks": "Baseline-generated validation banks at t0/t25 and rounds 10/20/30. Apply the frozen residual MLP post hoc to the same full banks used by control; never feed treatment scores back into CEM.",
+    "primary_metric": "For each bank, standardized teacher-elite regret = (mean teacher cost of candidates selected by the scorer's top30 - mean teacher cost of the teacher's top30) / population_std(teacher_cost_300). Lower is better.",
+    "aggregation": "For each episode, take the median treatment-minus-control regret across its available paired t0/t25 banks and rounds. Then compute the median across episode medians. For each CEM round, first take each episode's median across available t0/t25 banks, then the median across episodes.",
+    "gates": {
+      "finite_and_paired": "All scored banks finite and every treatment/control comparison uses the same task, state, candidate actions, and candidate indices.",
+      "minimum_t25_coverage": "At least 6 of 8 validation episodes must reach a t25 replan after exactly 25 committed transitions. Do not replace episodes; if coverage is lower, mark inconclusive/NO-GO.",
+      "primary_episode_median_delta_max": -0.05,
+      "minimum_episodes_with_strict_improvement": 5,
+      "round_median_delta_max_by_round": {"10": 0.0, "20": 0.0, "30": 0.0},
+      "decision": "GO only if every validity, coverage, primary, episode-count, and per-round gate passes; otherwise NO-GO or inconclusive as specified above."
+    }
+  },
+  "resources": {
+    "allocation": "One PBS compute-node job with one GPU",
+    "walltime_limit": "02:00:00",
+    "gpu_telemetry_interval_seconds": 5,
+    "telemetry_destination": "job.log",
+    "runner_guards": ["require non-empty PBS_JOBID", "require an allocated compute node and reject login-node execution"],
+    "banked_reset_credits": "Do not query, consume, or otherwise use."
+  },
+  "claim_boundary": "A passing result supports only predictor-level candidate ranking on baseline-generated, student-driven full CEM banks from these task-level held-out episodes. It does not establish treatment CEM behavior, planner deployment, closed-loop success, predictor speedup, or generalization beyond this split."
+}

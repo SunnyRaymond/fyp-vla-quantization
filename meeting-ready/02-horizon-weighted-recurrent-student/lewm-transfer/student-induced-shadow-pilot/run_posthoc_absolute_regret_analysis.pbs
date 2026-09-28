@@ -1,0 +1,51 @@
+#!/bin/bash
+#PBS -N lewm_shadow_posthoc
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=4gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+
+set -euo pipefail
+umask 027
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be non-empty}
+test -n "${PBS_NODEFILE:-}" && test -s "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in
+  *login*|*head*|*submit*) echo "refusing probable login/submit host: $HOST" >&2; exit 2 ;;
+esac
+NODE_HOST=$(awk 'NR==1 { split(tolower($1), p, "."); print p[1]; exit }' "$PBS_NODEFILE")
+case "$NODE_HOST" in
+  *login*|*head*|*submit*|'') echo "invalid PBS node host: $NODE_HOST" >&2; exit 2 ;;
+esac
+test "$HOST" = "$NODE_HOST" || { echo "hostname $HOST differs from PBS nodefile host $NODE_HOST" >&2; exit 2; }
+
+EXPERIMENT=${LEWM_SHADOW_PILOT_CONTROL_DIR:-/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/student-induced-shadow-pilot}
+STAGE_ROOT=${LEWM_STAGE_ROOT:-/scratch/users/ntu/yguo017/lewm-pusht-iteration}
+PYTHON_BIN=${LEWM_PYTHON_BIN:-$STAGE_ROOT/venv/bin/python}
+SOURCE_DIR=$EXPERIMENT/artifacts/seeded-pilot/25537667.pbs101
+CANDIDATE_SCORES=$SOURCE_DIR/candidate_scores.jsonl
+SUMMARY=$SOURCE_DIR/seeded_pilot_summary.json
+FREEZE=$EXPERIMENT/SEEDED_PILOT_FREEZE.json
+ANALYZER=$EXPERIMENT/posthoc_absolute_regret_analysis.py
+OUT_ROOT=$EXPERIMENT/artifacts/posthoc-absolute-regret
+OUT=$OUT_ROOT/$JOB_ID
+
+test -x "$PYTHON_BIN"
+test -f "$ANALYZER"
+test -f "$CANDIDATE_SCORES"
+test -f "$SUMMARY"
+test -f "$FREEZE"
+test ! -e "$OUT"
+mkdir -p "$OUT_ROOT"
+exec > >(tee -a "$OUT_ROOT/$JOB_ID.job.log") 2>&1
+
+printf 'job_id=%s\nhost=%s\nsource_job_id=25537667.pbs101\n' "$JOB_ID" "$HOST"
+export PYTHONUNBUFFERED=1
+"$PYTHON_BIN" "$ANALYZER" \
+  --candidate-scores "$CANDIDATE_SCORES" \
+  --summary "$SUMMARY" \
+  --freeze "$FREEZE" \
+  --output-dir "$OUT"
+printf 'EXIT_STATUS=0\n' > "$OUT_ROOT/$JOB_ID.job_status"

@@ -1,0 +1,93 @@
+{
+  "schema": "lewm.compiled-world-model.diagnostics-freeze",
+  "schema_version": 1,
+  "status": "frozen_before_results",
+  "question": "Does the failed B3 retain useful action contrasts, and can one deployable teacher reference repair its shared-state error without retraining?",
+  "historical_result_unchanged": "job25309513 predictor-level NO-GO",
+  "checkpoints": {
+    "B1": "job25309513 B1_dense_step1500.pt",
+    "B3": "job25309513 B3_r192_step1500.pt",
+    "positive_control": "job25223859 anchor_aligned_bank_step3000.pt"
+  },
+  "data": {
+    "development_slice": "valid[552:560]",
+    "development_seeds": [20300967, 20300968],
+    "development_blocks": 48,
+    "training_original_contexts": 24,
+    "training_context_rule": "first 24 anchor-aligned rows; exactly 8 early, 8 middle, 8 late",
+    "training_original_candidates": 64,
+    "training_new_candidates": 64,
+    "training_new_seed_base": 20301301,
+    "candidate_distribution": "same logged-action-centered Gaussian and clipping contract as anchor-aligned training",
+    "teacher_low_contrast_ratio_threshold": 0.0001
+  },
+  "diagnostic_1": {
+    "models": ["B1_dense", "B3_r192", "anchor_aligned_positive_control"],
+    "categories": ["training_original_candidates", "training_new_candidates", "unseen_development_contexts"],
+    "metrics": ["common_mse", "contrast_mse", "contrast_relative_error", "contrast_energy_ratio_gamma", "per_horizon_metrics", "decomposition_residual"],
+    "oracle_predictions": ["teacher_mean_plus_student_residual", "student_mean_plus_teacher_residual"],
+    "oracle_claim_boundary": "diagnostic only; neither oracle is deployable"
+  },
+  "diagnostic_2": {
+    "model": "B3_r192",
+    "feature": "frozen terminal phi(u)",
+    "fit": "ridge affine map [1,phi] to terminal teacher latent",
+    "ridge_relative_lambda": 0.0001,
+    "intercept_penalized": false,
+    "directions": ["bank0_to_bank1", "bank1_to_bank0"],
+    "exclude_exact_cross_bank_duplicate_candidates": true,
+    "no_lambda_tuning": true,
+    "phi_useful_gate": {
+      "fit_bank_spearman_median_min": 0.9,
+      "cross_bank_spearman_median_min": 0.7,
+      "cross_bank_top30_median_min": 0.5,
+      "cross_bank_relative_terminal_mse_median_max": 0.1
+    }
+  },
+  "diagnostic_3": {
+    "models": ["B1_dense", "B3_r192", "anchor_aligned_positive_control"],
+    "reference_action": "all-zero legal packed action sequence, fixed per context and independent of candidate/teacher labels",
+    "formula": "teacher(c,u_ref)+student(c,u)-student(c,u_ref)",
+    "teacher_reference_rollouts_per_fixed_observation_solve": 1,
+    "quality_gate": {
+      "spearman_median_min": 0.7,
+      "top30_overlap_median_min": 0.5,
+      "strictly_improved_episodes_min": 5
+    },
+    "timing": {
+      "model": "B3_r192",
+      "candidate_count": 300,
+      "queries_per_solve": 30,
+      "warmup": 3,
+      "repeats": 5,
+      "include_one_teacher_reference_and_prepare": true,
+      "speedup_vs_teacher_min": 1.5,
+      "p95_not_worse": true
+    }
+  },
+  "routing": {
+    "oracle_recovery_thresholds": {
+      "spearman_median_min": 0.7,
+      "top30_overlap_median_min": 0.5
+    },
+    "anchor_v2_signal_requires_common_oracle_and_anchored_quality_and_timing": true,
+    "compiler_bottleneck_signal_requires_phi_useful_cross_bank": true,
+    "otherwise": "STOP_CURRENT_SHARED_PHI_PARAMETERIZATION"
+  },
+  "scope": {
+    "no_network_training": true,
+    "single_bounded_gpu_job": true,
+    "official_cem": "NOT_RUN_BY_SCOPE",
+    "closed_loop": "NOT_RUN_BY_SCOPE",
+    "no_new_final_test_claim": true,
+    "no_threshold_rank_seed_or_lambda_sweep": true
+  },
+  "execution": {
+    "pbs_compute_only": true,
+    "guard": "nonempty PBS_JOBID and hostname not login/head/submit",
+    "login_node_control_only": true,
+    "gpu_telemetry_seconds": 5,
+    "return_small_reports_only": true,
+    "preserve_host_key_verification": true
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "schema": "lewm-pusht-phase-timing-diagnostic.freeze",
+  "revision": 1,
+  "status": "FROZEN_BEFORE_EVALUATION",
+  "created_local_date": "2026-09-24",
+  "purpose": "Distinguish equal-budget early CEM distribution anchoring from late teacher candidate re-scoring on the exact 50-task dataset evaluation used in the valid preceding comparison.",
+  "hypotheses": {
+    "early_distribution_anchoring": "If teacher rounds 1-7 outperform teacher rounds 24-30 at equal per-batch teacher budget, early teacher updates likely anchor the CEM action distribution before student-driven updates can move it toward poor regions.",
+    "late_candidate_rescoring": "If teacher rounds 24-30 outperform teacher rounds 1-7 at equal per-batch teacher budget, late teacher evaluation likely corrects candidate ranking near the final CEM updates.",
+    "interpretation_limit": "A phase contrast identifies which placement of seven teacher-scored CEM rounds is more useful under this evaluator; scalar CEM mean/variance traces are secondary evidence and do not alone prove a causal internal mechanism."
+  },
+  "task_and_protocol": {
+    "task_source_job_id": "25534994.pbs101",
+    "task_source_path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json",
+    "task_count": 50,
+    "task_keys": ["row_index", "episode_idx", "start_step"],
+    "row_order": "Reuse selected_tasks.json exactly, without resampling, filtering, reordering, or outcome-based selection.",
+    "expected_unique_source_episode_count": 50,
+    "dataset": "pusht_expert_train",
+    "dataset_staging_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "dataset_expected_size_bytes": 46300921856,
+    "teacher_checkpoint": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "teacher_checkpoint_expected_size_bytes": 72345781,
+    "student_checkpoint": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+    "preprocessing": "Reuse the successful baseline full-dataset action/proprio/state StandardScaler fits, NaN-row exclusions, goal-scaler reuse, and ImageNet/Resize224 pixel and goal transforms.",
+    "world_evaluator": "Pinned World.evaluate dataset mode with the baseline callables, goal_offset_steps=25, eval_budget=50, world.max_episode_steps=100, video=None. This is dataset-protocol-aligned evaluation, not a verbatim upstream eval.py run or random-reset benchmark.",
+    "solver": "Pinned CEMSolver; batch_size=1, num_samples=300, n_steps=30, topk=30, var_scale=1, CUDA; native torch.Generator seed 42 for each arm; no per-call reseeding.",
+    "batch_boundary": "At each pinned CEMSolver callback start_batch (one environment chunk), reset the local route round counter. Apply and validate the chosen 1-indexed teacher rounds separately in every batch; preserve solve-wide teacher-call records.",
+    "distribution_trace": "At post-update CEM rounds 1, 7, 8, 23, 24, and 30, store only mean RMS and mean variance scalars per batch. These are secondary descriptive metrics; do not retain candidate tensors, hash arrays, or add teacher/student cost calls.",
+    "source_provenance": "Use the staged le-wm and stable-worldmodel source roots already validated by the preceding runs. Their staging paths and runtime import/API guards are provenance; do not claim a fresh checkout commit verification."
+  },
+  "arms": {
+    "student_only": {"teacher_rounds": [], "description": "Student cost on every CEM round."},
+    "early_teacher7": {"teacher_rounds": [1, 2, 3, 4, 5, 6, 7], "description": "Teacher cost on CEM rounds 1-7 of every start_batch; student cost on all other rounds."},
+    "late_teacher7": {"teacher_rounds": [24, 25, 26, 27, 28, 29, 30], "description": "Teacher cost on CEM rounds 24-30 of every start_batch; student cost on all other rounds."},
+    "teacher_only": {"teacher_rounds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30], "description": "Teacher cost on every CEM round; exact vector reproduction reference."}
+  },
+  "run_order": {
+    "algorithm": "Python random.Random(seed).shuffle(arms), once before any dataset, checkpoint, or model loading.",
+    "seed": 20260924,
+    "frozen_order": ["early_teacher7", "teacher_only", "late_teacher7", "student_only"],
+    "unit": "One complete vectorized 50-task arm evaluation; save the order before loading model weights."
+  },
+  "primary_comparison": {
+    "arms": ["early_teacher7", "late_teacher7"],
+    "unit": "Paired source episode; each of the 50 selected source episodes occurs once.",
+    "test": "Exact two-sided source-episode cluster sign-flip test; with one row per cluster this equals the exact paired McNemar test.",
+    "meaningful_direction_threshold_successes": 5,
+    "alpha_two_sided": 0.05,
+    "verdicts": {
+      "early_anchor_favored": "early_teacher7 - late_teacher7 >= 5 successes and exact p < 0.05.",
+      "late_rescoring_favored": "late_teacher7 - early_teacher7 >= 5 successes and exact p < 0.05.",
+      "otherwise": "INCONCLUSIVE; do not infer a preferred timing mechanism."
+    }
+  },
+  "secondary_and_promotion_gates": {
+    "comparisons_to_student": "Report paired exact cluster tests for early7 vs student-only and late7 vs student-only as secondary checks; do not replace the primary early7-vs-late7 contrast.",
+    "legacy_practical_gain": "A phase-favored schedule is useful versus student only only if it adds at least 5/50 successes and its exact paired p < 0.05.",
+    "legacy_teacher_gap": "A phase-favored schedule must be within 5 successes of teacher-only to meet the carried-forward quality target.",
+    "legacy_latency": "Report synchronized planner solve time ratio phase-favored schedule / teacher-only; carried-forward target is <=0.70.",
+    "overall_interpretation": "Report phase mechanism verdict separately from usefulness/teacher-gap/latency. Passing a phase contrast alone does not promote the student or meet the previous engineering gate."
+  },
+  "validity_gates": [
+    "Exactly 50 source task keys reused unchanged for each of 4 arms; exactly 200 unique arm/task outcome keys and 50 rows per arm.",
+    "The source task list has 50 unique episode_idx values; all four arms preserve identical row_index, episode_idx, and start_step per task.",
+    "Teacher-only per-task success vector exactly matches baseline 25534994.pbs101; otherwise fail closed without resampling or rerunning.",
+    "All 6 prepared observation keys are exactly paired across arms.",
+    "Every CEM start_batch contains exactly 30 route evaluations; route flags and teacher-round lists match the frozen arm schedule exactly.",
+    "All outcomes, route finite flags, scalar traces, timings, and reported numerical metrics are finite.",
+    "CEM solver seed is 42 per arm; common solve-prefix generator states and candidate shapes match across arms.",
+    "PBS compute-node guards pass, all required artifacts are written, and no timeout or missing outcome occurs."
+  ],
+  "failure_rule": "Any validity gate failure yields FAIL_CLOSED and no performance or mechanism conclusion. Preserve artifacts and do not change the 50 tasks or rerun under this freeze.",
+  "resources": {
+    "queue": "normal route to gdev",
+    "gpu": 1,
+    "ncpus": 16,
+    "memory": "110gb",
+    "walltime": "02:00:00",
+    "internal_timeout_seconds": 6900,
+    "gpu_telemetry": "nvidia-smi utilization and memory sampled every 5 seconds to this job's job.log; terminate and wait for the monitor PID on exit.",
+    "submission": "One bounded PBS job after freeze, runner, and shell static checks pass."
+  }
+}

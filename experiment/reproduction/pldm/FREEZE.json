@@ -1,0 +1,137 @@
+{
+  "project": "PLDM official reproduction",
+  "freeze_date": "2026-09-27",
+  "source": {
+    "repository": "https://github.com/vladisai/PLDM",
+    "commit": "1bd7e564ecd961205bc18b23067b19e9ca24ac90",
+    "acquisition": "pinned GitHub codeload archive inside guarded CPU PBS allocation",
+    "archive_url": "https://codeload.github.com/vladisai/PLDM/tar.gz/1bd7e564ecd961205bc18b23067b19e9ca24ac90"
+  },
+  "benchmark": {
+    "environment": "official Two-Rooms / Wall",
+    "config": "pldm/configs/wall/icml/seqlen90_3M.yaml",
+    "official_documented_entry": "cd pldm && python train.py --config configs/wall/icml/seqlen90_3M.yaml",
+    "runtime_validated_entry": "cd pldm && python train.py --configs configs/wall/icml/seqlen90_3M.yaml",
+    "launch_cli_note": "Pinned README documents --config and pldm/configs.py registers --configs; argparse allows unique option-prefix abbreviations, so both spellings compose the same frozen YAML. The runner uses the full --configs spelling and CPU preparation compares both.",
+    "seed": 101,
+    "epochs": 2,
+    "quick_debug": false,
+    "offline_data": {
+      "official_google_drive_file_id": "1NwR-ui-akIgR2xcoJHYiHjOk9U5bYCa0",
+      "archive_name": "wall_data.tar.gz",
+      "selected_member": "good_quality_data_no_images.npz",
+      "selected_member_source": "Pinned PLDM wall README example and member present in the official Google Drive archive.",
+      "rendered_name": "good_quality_data.npz",
+      "prepared_training_path": "<remote_root>/datasets/good_quality_data_memmap",
+      "released_array_transition_count": 3686400,
+      "released_generation_config": "pldm_envs/wall/configs/good_quality_data.yaml (n_steps=91, cross_wall_rate=0.60, expert_cross_wall_rate=0, fixed layout, img_size=65)",
+      "historical_config_path": "wall-visual-config_rand_expert_40-v0.npz",
+      "historical_path_status": "Not present in the pinned Google Drive archive; source mapping/bit equivalence to the released good_quality dataset is unverified.",
+      "scope_note": "Use the full official released good_quality member without trimming. Paper v4 describes the best-case as approximately 3M transitions; the released member contains 3,686,400, so do not claim verbatim reproduction of the paper's exact dataset size or Table 2 result.",
+      "images_in_archive": false,
+      "image_rendering": "official pldm_envs/wall/render_images.py semantics, memory-bounded chunked output to .npy memmaps if needed; preserve official uint8 observation dtype"
+    },
+    "checkpoint": null,
+    "checkpoint_policy": "No official pre-trained checkpoint or GitHub release was found; train from scratch using the official config."
+  },
+  "evaluation": {
+    "entry": "native final-epoch validation in pldm/train.py",
+    "planning_level": "medium",
+    "environment_count": 100,
+    "environment_steps": 200,
+    "mppi_samples": 2000,
+    "eval_mpcs_config_field": 20,
+    "eval_mpcs_field_status": "Defined only in TrainConfig; unused by the pinned Python planning implementation. It does not cap MPC calls.",
+    "native_planner_invocations": 1000,
+    "native_planner_invocation_basis": "100 environments / chunk size 20 = 5 chunks; each chunk executes 200 steps with replan_every=1 and no early exit.",
+    "max_plan_length": 96,
+    "replan_every": 1,
+    "paper_v4_mppi_samples": 500,
+    "pinned_code_config_mppi_samples": 2000,
+    "mppi_note": "The pinned code/config value is retained; the paper v4 table reports 500 samples, so code-level reproduction and paper hyperparameter are distinguished.",
+    "checkpoint_output": "<remote_root>/checkpoints/tworooms-seqlen90-3M-seed101"
+  },
+  "resource_caps": {
+    "cpu_preparation_walltime": "02:00:00",
+    "gpu_train_and_native_eval_walltime": "04:00:00",
+    "formal_resource_review_status": "APPROVED_AFTER_CALIBRATION",
+    "gpu_train_and_native_eval_walltime_status": "APPROVED_4H_AFTER_CALIBRATION",
+    "gpu_train_and_native_eval_walltime_note": "The initial 02:00:00 placeholder is retained in initial_gpu_train_and_native_eval_walltime. Root approved a 04:00:00 formal allocation with an inner 230-minute timeout and 10-minute cleanup/stageout margin after the complete cost calibration.",
+    "cpu_preparation": "1 node, 4 CPUs, 24 GB RAM, normal queue",
+    "gpu_train_and_native_eval": "1 node, 16 CPUs, 110 GB RAM, 1 GPU, normal queue, 4 hours",
+    "initial_gpu_train_and_native_eval_walltime": "02:00:00",
+    "formal_inner_timeout": "03:50:00",
+    "formal_cleanup_and_stageout_margin": "00:10:00"
+  },
+  "pending_execution_amendments": {
+    "storage_only": {
+      "status": "APPROVED_AFTER_EXACT_CALIBRATION_GATE_PASS",
+      "native_default_lazy_load": false,
+      "candidate_config_value": "data.offline_wall_config.lazy_load=false",
+      "states_storage": {
+        "shape": [
+          40960,
+          90,
+          2,
+          65,
+          65
+        ],
+        "dtype": "uint8",
+        "host_array_bytes": 31150080000,
+        "device_materialization": "Per-sample slices are converted by the existing __getitem__ path; the full array remains a host uint8 ndarray."
+      },
+      "acceptance_gate": "In one actual Trainer initialization, compare 64 deterministic window indices including first/last and multiple trajectory boundaries from eager ndarray and read-only states.npy mmap representations using the same default_collate and existing Normalizer; require raw equality for every field in the pinned WallSample._fields, normalized equality for states/actions/locations plus any normalized fields retained by the Normalizer, and unchanged Python/NumPy/Torch CPU/CUDA RNG states. Do not iterate the training RandomSampler, repeat the Normalizer scan, or construct a second Trainer/model.",
+      "formal_override_decision": "Use native eager lazy_load=false after the 64-window raw/normalized six-field equality and unchanged RNG gate passed.",
+      "scientific_configuration_changed": false
+    }
+  },
+  "runtime_compatibility": {
+    "python": "3.11.7 (shared runtime; read-only)",
+    "policy": "Keep the pinned upstream archive and upstream tree unchanged. If Python 3.11 import raises a mutable dataclass default error, make only the named field change to field(default_factory=SameConstructor) in a separate staged source copy; record each exact line change in staged_source_identity.json.",
+    "shared_environment": "read-only; no upgrades or installs",
+    "isolated_overlays": [
+      "gdown==5.2.0 only if absent",
+      "beautifulsoup4==4.11.2 and soupsieve==2.4 only for the observed gdown import failure",
+      "official pinned zarr==2.14.2, numcodecs==0.12.1, asciitree==0.3.3, fasteners==0.18",
+      "after observed statsmodels.api failure importing _lazywhere from inherited SciPy 1.17.1, use task-specific binary-only no-deps NumPy 1.26.4 and SciPy 1.10.0 overlay",
+      "after observed statsmodels 0.14.4 deprecate_kwarg import failure with inherited pandas 3.0.6, use official requirements pins pandas==2.0.1 and absent pytz==2022.7.1 in a task-specific binary-only no-deps overlay; shared runtime remains read-only"
+    ]
+  },
+  "training_loop_note": {
+    "config_epochs": 2,
+    "pinned_trainer_epoch_indices_from_initial_state": [
+      0,
+      1,
+      2
+    ],
+    "actual_passes": 3,
+    "reporting": "Preserve official config value; report actual optimizer updates after dataset preparation and note the source loop's inclusive upper bound."
+  },
+  "remote_root": "/scratch/users/ntu/yguo017/pldm-reproduction",
+  "freeze_scope": "Source, released data identity, benchmark, and scientific configuration remain frozen. The storage-only eager override passed its exact equivalence gate, and the formal resource profile and final PBS script are approved for one submission.",
+  "status": "FROZEN",
+  "calibration_evidence": {
+    "job_id": "25572720.pbs101",
+    "pbs_state": "F",
+    "exit_status": 0,
+    "stageout_status": 1,
+    "report": "/scratch/users/ntu/yguo017/pldm-reproduction/reports/calibration-25572720.pbs101/CALIBRATION.json",
+    "storage_gate": "PASS",
+    "training_updates": "110/110 (10 warmup + 100 timed; not a formal checkpoint)",
+    "planner_cost_calls": "1 warmup + 3 steady cost-only calls; no native evaluator or quality results",
+    "formal_run_status": "QUEUED: 25572927.pbs101; requested normal and currently assigned scheduler queue g1."
+  },
+  "formal_resource_amendment": {
+    "status": "APPROVED_AFTER_CALIBRATION",
+    "walltime": "04:00:00",
+    "inner_timeout": "03:50:00",
+    "cleanup_margin": "00:10:00",
+    "request": "normal queue, 1 GPU, 16 CPUs, 110 GB RAM",
+    "training_from_scratch": true,
+    "resume_if_possible": false,
+    "eval_at_beginning": false,
+    "eval_during_training": false,
+    "native_final_validate": true,
+    "storage_override": "data.offline_wall_config.lazy_load=false"
+  }
+}

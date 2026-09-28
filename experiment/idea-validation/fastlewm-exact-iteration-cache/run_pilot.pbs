@@ -1,0 +1,47 @@
+#!/bin/bash
+#PBS -N fastlewm_exact_cache
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -s "${PBS_NODEFILE:-/missing}"
+TASK_HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$TASK_HOST" in *login*|*head*|*submit*) exit 2 ;; esac
+awk '{split(tolower($1),parts,"."); print parts[1]}' "$PBS_NODEFILE" | grep -Fxq "$TASK_HOST"
+test -n "${CUDA_VISIBLE_DEVICES:-}" && test "$CUDA_VISIBLE_DEVICES" != -1
+
+ROOT=/scratch/users/ntu/yguo017/lewm-fastlewm-paired
+PILOTROOT=/scratch/users/ntu/yguo017/fastlewm-exact-iteration-cache
+STAGE=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+FASTROOT=/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction
+OUT="$PILOTROOT/artifacts/$PBS_JOBID"
+test ! -e "$OUT"
+mkdir -p "$OUT/source_snapshot"
+exec > >(tee -a "$OUT/job.log") 2>&1
+TASK_STATUS=2
+TASK_MONITOR_PID=
+finish() {
+  if [ -n "$TASK_MONITOR_PID" ]; then kill "$TASK_MONITOR_PID" 2>/dev/null || true; wait "$TASK_MONITOR_PID" 2>/dev/null || true; fi
+  printf 'EXIT_STATUS=%s\n' "$TASK_STATUS" > "$OUT/job_status.txt"
+}
+trap finish EXIT
+
+cp "$PILOTROOT/source/run_pilot.py" "$PILOTROOT/source/PROTOCOL.zh.md" "$OUT/source_snapshot/"
+cp "$PILOTROOT/source/FREEZE.json" "$OUT/source_snapshot/pilot_FREEZE.json"
+cp "$ROOT/source/run_paired.py" "$OUT/source_snapshot/main_run_paired.py"
+cp "$ROOT/source/FREEZE.json" "$OUT/source_snapshot/main_FREEZE.json"
+cp "$ROOT/source/selected_tasks.json" "$OUT/source_snapshot/selected_tasks.json"
+TASK_PREPARED=$(cat "$ROOT/prepared_path.txt")
+test -s "$TASK_PREPARED/prepared.json" && test -s "$TASK_PREPARED/process.pkl"
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 WANDB_MODE=disabled MUJOCO_GL=egl TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 5 >> "$OUT/job.log" 2>&1 &
+TASK_MONITOR_PID=$!
+printf 'job_id=%s\nhost=%s\nstarted_utc=%s\n' "$PBS_JOBID" "$TASK_HOST" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/execution_identity.txt"
+set +e
+timeout --signal=TERM --kill-after=30s 1050 "$STAGE/venv/bin/python" "$OUT/source_snapshot/run_pilot.py" --freeze "$OUT/source_snapshot/pilot_FREEZE.json" --main-freeze "$OUT/source_snapshot/main_FREEZE.json" --stage "$STAGE" --fast-root "$FASTROOT" --out "$OUT" --prepared "$TASK_PREPARED" --tasks "$OUT/source_snapshot/selected_tasks.json" --paired-runner "$OUT/source_snapshot/main_run_paired.py"
+TASK_STATUS=$?
+set -e
+exit "$TASK_STATUS"

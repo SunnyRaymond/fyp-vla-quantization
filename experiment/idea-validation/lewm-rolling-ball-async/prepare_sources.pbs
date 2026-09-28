@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -N rolling_lewm_src
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+
+set -euo pipefail
+TASK_ROOT=/scratch/users/ntu/yguo017/lewm-rolling-ball-async
+JOB_ID=${PBS_JOBID:?A genuine PBS allocation is required}
+NODEFILE=${PBS_NODEFILE:?A genuine PBS allocation is required}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+test -f "$NODEFILE"
+case "$HOST" in *login*|*head*|*submit*) exit 64;; esac
+awk -v host="$HOST" '{node=tolower($1); sub(/\..*/, "", node); if (node==host) found=1} END {exit !found}' "$NODEFILE"
+OUT="$TASK_ROOT/runs/$JOB_ID"
+test ! -e "$OUT"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+cleanup() { rc=$?; printf '%s\n' "$rc" > "$OUT/wrapper_exit_status.txt"; }
+trap cleanup EXIT
+printf 'job_id=%s\nhost=%s\n' "$JOB_ID" "$HOST"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
+cp "$TASK_ROOT/source/bootstrap_sources.py" "$TASK_ROOT/source/prepare_cpu.py" "$TASK_ROOT/source/prepare_sources.pbs" "$OUT/"
+set +e
+timeout --signal=TERM --kill-after=15s 12m /scratch/users/ntu/yguo017/lewm-pusht-iteration/venv/bin/python "$OUT/bootstrap_sources.py"
+rc=$?
+set -e
+printf '%s\n' "$rc" > "$OUT/runner_exit_status.txt"
+exit "$rc"

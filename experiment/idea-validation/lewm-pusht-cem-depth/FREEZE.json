@@ -1,0 +1,140 @@
+{
+  "schema": "lewm-pusht-cem-depth.freeze",
+  "revision": 1,
+  "status": "frozen_before_new_results",
+  "experiment_id": "lewm-pusht-cem-depth",
+  "question": "On the same 50 pinned LeWM PushT dataset tasks, what task-success and synchronized planner-latency changes result from stopping official-teacher CEM after 5, 10, or 20 iterations instead of 30, with candidate and elite counts fixed at 300/30?",
+  "scope": {
+    "training": false,
+    "environment": "swm/PushT-v1",
+    "evaluation_type": "pinned-upstream-protocol-aligned dataset-driven rollout evaluation over the exact 50 selected source tasks",
+    "closed_loop_random_reset_claim": false,
+    "new_task_selection": false,
+    "download_or_install": false,
+    "submission_authorized": true,
+    "optional_action_difference": "omitted; success and synchronized planner timing are the frozen endpoints"
+  },
+  "protocol": {
+    "lewm_repository": "https://github.com/lucas-maes/le-wm",
+    "lewm_commit_reference": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "lewm_config": "config/eval/pusht.yaml",
+    "stable_worldmodel_repository": "https://github.com/galilai-group/stable-worldmodel",
+    "stable_worldmodel_commit_reference": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "cem_source": "stable_worldmodel/solver/cem.py",
+    "dataset": "pusht_expert_train",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "dataset_size_bytes": 46300921856,
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "checkpoint_size_bytes": 72345781,
+    "seed": 42,
+    "task_count": 50,
+    "tasks_source_job": "25534994.pbs101",
+    "tasks_source_artifact": "meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json",
+    "goal_offset_steps": 25,
+    "evaluation_budget": 50,
+    "world_max_episode_steps": 100,
+    "image_size": 224,
+    "plan_config": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "action_block": 5,
+      "warm_start": true
+    },
+    "solver_fixed": {
+      "target": "stable_worldmodel.solver.CEMSolver",
+      "batch_size": 1,
+      "num_samples": 300,
+      "topk": 30,
+      "iteration_depths": [
+        5,
+        10,
+        20,
+        30
+      ],
+      "var_scale": 1.0,
+      "device": "cuda",
+      "seed": 42,
+      "plan_warm_start": true
+    },
+    "preprocessing": "reuse the existing baseline helper: full-dataset StandardScaler for action/proprio/state after NaN-row removal, goal scaler reuse, and pinned ToImage/float32/ImageNet-normalize/Resize(224) transforms",
+    "checkpoint_loader": "meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/run_lewm_recurrent_student.py:load_official_checkpoint",
+    "evaluator": "reuse run_dataset_teacher_baseline.evaluate_selected_tasks and the pinned _set_state/_set_goal_state callables; video=None"
+  },
+  "reference_baseline": {
+    "job_id": "25534994.pbs101",
+    "validity": "PASS",
+    "successes": 49,
+    "task_count": 50,
+    "engineering_floor": "at least 5/50; a continuation gate only",
+    "stage1_rule": "Run 300/30/30 first on the exact frozen rows. Require valid finite outcomes for all 50 tasks, at least 5 successes, and itemwise equality to the 25534994 success vector. If any check fails, record the control result and stop before the 5/10/20 arms."
+  },
+  "arms": {
+    "cem_300_30_iter_30": [
+      300,
+      30,
+      30
+    ],
+    "cem_300_30_iter_05": [
+      300,
+      30,
+      5
+    ],
+    "cem_300_30_iter_10": [
+      300,
+      30,
+      10
+    ],
+    "cem_300_30_iter_20": [
+      300,
+      30,
+      20
+    ]
+  },
+  "arm_order": [
+    "cem_300_30_iter_30",
+    "cem_300_30_iter_05",
+    "cem_300_30_iter_10",
+    "cem_300_30_iter_20"
+  ],
+  "measurement": {
+    "paired_unit": "same selected source task row_index, episode_idx, and start_step; each arm executes the full dataset-driven rollout",
+    "task_success": "store the ordered 50-item success vector and report success delta plus both-success/control-only/treatment-only/both-fail pair counts versus the 30-iteration control",
+    "planner_walltime": "synchronize CUDA immediately before and after each solver.solve call; retain every solve duration and report total synchronized solve time, call count, and per-solve durations",
+    "steady_state_timing": "report median solve duration after the first call and its sample count; report second_solve_seconds separately as descriptive only",
+    "planner_cost": "record solver.solve calls and estimated candidate-cost evaluations as iterations * 300 candidates * ceil(n_envs / batch_size) per solve",
+    "changed_actions": "each depth arm performs real replanning and environment steps; later states and trajectories may diverge after actions differ",
+    "warm_start": "keep pinned PlanConfig warm_start=true; horizon=receding_horizon=5 means the executed plan has no tail to carry into the next solve",
+    "rng_alignment": "initialize each arm solver with seed 42; different iteration counts consume different amounts of random state, so task-level candidate innovations are not exactly paired",
+    "primary_comparison": "50-task success-vector and paired outcome counts, plus synchronized solve latency and CEM candidate-cost counts versus 30 iterations",
+    "timing_limit": "single seed and fixed arm order; cold-start and order effects are not counterbalanced, so latency results are descriptive",
+    "gpu_telemetry": "nvidia-smi utilization and memory every 5 seconds appended to job.log"
+  },
+  "validity_and_stopping": {
+    "validity": [
+      "compute node confirmed by PBS_JOBID and PBS_NODEFILE before heavy imports or model/data I/O",
+      "staged LeWM/stable-worldmodel/venv roots match the runner arguments",
+      "frozen dataset/checkpoint sizes and job-private cache links match",
+      "every arm uses the exact 50 frozen task rows, official teacher, preprocessing, 300 candidates, and top-30 elites",
+      "each arm returns 50 finite metrics, 50 finite outcomes, and finite solver actions",
+      "the 30-iteration stage-1 success vector exactly matches the reference baseline",
+      "official PlanConfig warm_start remains enabled"
+    ],
+    "stop_after_stage1": "stop remaining arms on invalid output, 30-iteration success-vector mismatch, or fewer than 5/50 control successes",
+    "no_posthoc_extension": "no task substitution, reruns, retuning, extra depths, or additional seeds after inspecting results",
+    "inference_limit": "single-seed results on 50 paired source tasks are descriptive; no formal noninferiority, random-reset success, or broad generalization claim"
+  },
+  "resources": {
+    "pbs_queue": "normal",
+    "select": "1:ncpus=16:mem=110gb:ngpus=1",
+    "walltime": "02:00:00",
+    "internal_timeout_seconds": 6900,
+    "compute_node_guards": [
+      "PBS_JOBID is nonempty",
+      "PBS_NODEFILE is a real file and includes current hostname",
+      "current host is not login/submit/head"
+    ],
+    "login_node_work": "control only; no model/data reads, inference, benchmark, download, or heavy I/O",
+    "no_download_install": true
+  }
+}

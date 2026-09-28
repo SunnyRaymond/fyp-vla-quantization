@@ -1,0 +1,37 @@
+{
+  "schema": "lewm-pusht-cem-proposal-dispersion-posthoc-freeze",
+  "schema_version": 1,
+  "status": "FROZEN_NOT_SUBMITTED",
+  "created_local_date": "2026-09-25",
+  "purpose": "Describe whether student-CEM candidate-bank dispersion contracts across rounds 10/20/30 while student-top30 access to the teacher-best candidate worsens; use the pattern only to judge whether a separate fixed-exploration mixture-CEM mechanism experiment is motivated.",
+  "source": {
+    "pbs_job_id": "25538135.pbs101",
+    "source_freeze": "../onpolicy-fullbank-ranker/FREEZE.json",
+    "train_banks": "../onpolicy-fullbank-ranker/artifacts/25538135.pbs101/train_banks.pt",
+    "validation_banks": "../onpolicy-fullbank-ranker/artifacts/25538135.pbs101/validation_banks.pt",
+    "expected_bank_counts": {"train": 93, "validation": 48},
+    "source_mutation": false
+  },
+  "analysis": {
+    "unit": "Source episode and replan solve (step 0 or 25); rounds within each solve are paired repeated measurements.",
+    "rounds": [10, 20, 30],
+    "candidate_shape": [300, 5, 10],
+    "dispersion": "Population std over the 300 candidates per each of 50 coordinates, for all candidates and student-cost top30. Use saved raw proposal coordinates without clipping or invented bounds; the pinned CEM proposal coordinates are unconstrained.",
+    "teacher_best_access": "Keep raw minimum teacher cost in the full bank and raw minimum teacher cost among student-cost top30. Best-cost gap is student-top30 minimum minus full-bank minimum; standardize all rounds by the same episode/replan solve's round10 teacher-cost population std.",
+    "aggregation": "Keep train and validation separate. Preserve per-episode/solve bank measurements, report medians by split x replan step x round, and paired round deltas within each episode/solve.",
+    "descriptive_readout": "By split and replan step, round10-to-round30 contraction means lower median full-bank and student-top30 mean coordinate std. Best-cost access worsens when median round10-scale standardized gap increases. Report the joint pattern descriptively; no threshold or gate."
+  },
+  "compute": {
+    "allocation": "CPU-only PBS compute node",
+    "pbs_request": "normal, 1:ncpus=2:mem=8gb, walltime 00:15:00",
+    "runner_guards": ["non-empty PBS_JOBID", "PBS_NODEFILE exists and contains current host", "reject login/head/submit hosts", "reject GPU allocation"],
+    "banked_reset_use": false,
+    "submission": "Not submitted by this preparation task."
+  },
+  "interpretation_limits": [
+    "The 25538135 validation split was already used by the residual-ranker gate; its posthoc values are descriptive, not an independent gate or tuning signal.",
+    "Initial proposal parameters are absent; sampled-bank dispersion cannot identify why its width changes.",
+    "A matching pattern only motivates a separately frozen mixture-CEM test. It does not establish causal benefit, planner performance, or closed-loop success."
+  ],
+  "output": "Compact job-specific JSON outside the source artifact directory."
+}

@@ -1,0 +1,163 @@
+{
+  "schema": "lpwm-cost-calibration-v1",
+  "status": "cost-only training calibration and bounded native-plan cost gate passed; formal runs pending submission",
+  "source_commit": "bdd812d9432cccda8c350086006401b436f91982",
+  "data_identity": "DINO-WM official OSF PushT item k2d8w; complete train archive coverage and native factory reads passed in 25570558.pbs101",
+  "loader_scale": {
+    "train_trajectories": 18685,
+    "train_slices": 1981721,
+    "train_batches_per_epoch": 30965,
+    "updates_per_arm_for_two_epochs": 61930,
+    "validation_trajectories": 21,
+    "validation_batches_per_epoch": 34
+  },
+  "training_calibration": {
+    "pbs_job_id": "25571046.pbs101",
+    "queue_requested": "normal",
+    "queue_observed": "gdev",
+    "execution_host": "x1000c0s1b0n0.hostmgmt2000.cm.asp2a.nscc.sg",
+    "walltime_used": "00:08:59",
+    "exit_status": 3,
+    "stageout_status": 1,
+    "validity": "both training timing arms passed exactly 110 official-path updates, one full validation, and one checkpoint save; job exit 3 marks only the subsequent first native-plan attempt incomplete",
+    "arms": {
+      "sparse": {
+        "timed_updates": 100,
+        "mean_update_seconds_including_batch_wait": 0.42622825158992783,
+        "median_update_seconds": 0.42485457356087863,
+        "p90_update_seconds": 0.4398016668856144,
+        "mean_batch_wait_seconds": 0.07126276910537854,
+        "trainer_init_seconds": 10.41187090612948,
+        "110_update_loop_seconds": 75.52406210196204,
+        "one_full_validation_seconds": 17.845066430978477,
+        "one_checkpoint_save_seconds": 3.8640431810636073,
+        "training_peak_gpu_allocated_bytes": 15407945216,
+        "training_peak_gpu_reserved_bytes": 16108224512,
+        "validation_peak_gpu_allocated_bytes": 30272991744,
+        "validation_peak_gpu_reserved_bytes": 31201427456,
+        "full_two_epoch_updates": 61930,
+        "extrapolated_update_only_hours": 7.3323,
+        "extrapolated_update_p90_proxy_hours": 7.5661
+      },
+      "dense": {
+        "timed_updates": 100,
+        "mean_update_seconds_including_batch_wait": 0.42143420966342093,
+        "median_update_seconds": 0.41980569751467556,
+        "p90_update_seconds": 0.4334075308870524,
+        "mean_batch_wait_seconds": 0.071746736317873,
+        "trainer_init_seconds": 11.468423638027161,
+        "110_update_loop_seconds": 74.19769607996568,
+        "one_full_validation_seconds": 18.581596771953627,
+        "one_checkpoint_save_seconds": 3.3223095249850303,
+        "training_peak_gpu_allocated_bytes": 15407945216,
+        "training_peak_gpu_reserved_bytes": 16108224512,
+        "validation_peak_gpu_allocated_bytes": 30271222272,
+        "validation_peak_gpu_reserved_bytes": 31201427456,
+        "full_two_epoch_updates": 61930,
+        "extrapolated_update_only_hours": 7.2498,
+        "extrapolated_update_p90_proxy_hours": 7.4497
+      },
+      "both_arms_update_only_hours": 14.5821,
+      "formal_calibration_weights_are_nonformal": true
+    },
+    "gpu_identity_observation": {
+      "nvml_visible_device": "NVIDIA A100-SXM4-40GB, UUID GPU-25f8c476-f27a-b55e-ad08-27dd0ae063fe",
+      "nvml_samples": "0% utilization and 1-5 MiB reported during the sampled interval",
+      "torch_allocator": "15.41 GiB training and 30.27 GiB validation peak allocated in the same calibration processes",
+      "cuda_visible_devices_logged": false,
+      "interpretation": "CUDA tensor allocation proves GPU-backed execution; NVML visibility/memory did not match Torch allocator telemetry and remains an instrumentation boundary. Formal jobs add in-process Torch identity/peak records and NVML index/UUID sampling."
+    },
+    "first_native_plan_failure": {
+      "entrypoint": "scripts/plan.sh plan_lewm.yaml costcal_sparse_mlp_var_pd384 latest 1 10",
+      "exit_code": 1,
+      "wall_seconds": 99.01773953437805,
+      "cause": "ModuleNotFoundError: No module named 'skimage' while constructing the official PushT environment",
+      "success_metrics_read": false
+    }
+  },
+  "planner_runtime_gate": {
+    "pbs_job_id": "25571199.pbs101",
+    "queue_requested": "normal",
+    "queue_observed": "qdev",
+    "execution_host": "x1002c5s1b1n1.hostmgmt2002.cm.asp2a.nscc.sg",
+    "walltime_used": "00:02:12",
+    "exit_status": 0,
+    "stageout_status": 1,
+    "result": "existing PushT v5 overlay passed scikit-image/Pymunk/Pygame imports; official plan import and PushT make/reset passed; shared venv unchanged",
+    "planning_packages": {
+      "numpy": "1.26.4 from PushT v5 overlay",
+      "scikit_image": "0.21.0 from PushT v5 overlay",
+      "pymunk": "6.8.0 from PushT v5 overlay",
+      "pygame": "2.5.2 from PushT v5 overlay",
+      "gym": "0.23.1 from LpWM minimal overlay",
+      "torch": "2.8.0+cu128 from existing venv"
+    },
+    "runtime_boundary": "training timing used only the existing base runtime plus LpWM minimal overlay; the PushT v5 overlay is applied only to planning, and this dependency difference is recorded"
+  },
+  "native_plan_cost_sample": {
+    "pbs_job_id": "25571238.pbs101",
+    "queue_requested": "normal",
+    "queue_observed": "gdev",
+    "execution_host": "x1000c0s1b0n0.hostmgmt2000.cm.asp2a.nscc.sg",
+    "walltime_used": "00:04:27",
+    "exit_status": 0,
+    "stageout_status": 1,
+    "status": "PLAN_COST_PASS",
+    "entrypoint": "scripts/plan.sh plan_lewm.yaml costcal_sparse_mlp_var_pd384 latest 1 10",
+    "n_evals": 1,
+    "seed": 99,
+    "goal_H": 5,
+    "cem": "300 candidates / top 30 / 30 inner optimization steps",
+    "mpc_max_outer_iterations": 10,
+    "plan_wall_seconds": 204.40782499313354,
+    "outcomes_read_or_exported": false,
+    "formal_weight": false,
+    "runtime_overlay": "existing PushT v5 overlay before LpWM minimal overlay",
+    "gpu_identity": "CUDA_VISIBLE_DEVICES=GPU-4b82553c-1c0e-1fca-6618-a6b65710c205; NVML index 0 and Torch logical cuda:0 both identify NVIDIA A100-SXM4-40GB with 40 GiB",
+    "nvml_sample_peak_memory_bytes_approx": 2465202176,
+    "limitations": [
+      "This is one complete native evaluation case only, not a measured 50-case run.",
+      "Multiplying 204.408 seconds by 50 gives a 2.839-hour linear planning proxy, not a guaranteed upper bound or measured walltime.",
+      "The plan-cost sample used an isolated calibration checkpoint after 110 updates; it is only for runtime cost, not model quality."
+    ],
+    "nvml_sample_count": 41,
+    "nvml_peak_utilization_percent": 81
+  },
+  "formal_resource_decision": {
+    "approved_by_root": true,
+    "approved_date": "2026-09-27",
+    "per_arm": {
+      "walltime": "12:00:00",
+      "gpu_count": 1,
+      "cpus": 16,
+      "memory": "110gb",
+      "queue_request": "normal"
+    },
+    "pbs_inner_timeout_seconds": 42600,
+    "budget_rationale": "per-arm mean training estimate is 7.25-7.33h; 50 times the single-case plan proxy is 2.839h; 12h reserves roughly 1.6h plus margin. Dense planning is not independently cost-timed; 50-case planning remains an extrapolation.",
+    "initial_two_hour_gpu_cap": "revised by root after measured cost; no data/epoch/evaluation reductions",
+    "resource_amendment_file": "RESOURCE_AMENDMENT.md",
+    "formal_jobs_submitted": true,
+    "formal_job_ids": [
+      "25571461.pbs101",
+      "25571463.pbs101"
+    ],
+    "initial_observed_states": {
+      "25571461.pbs101": {
+        "queue": "g1",
+        "state": "R",
+        "execution_host": "x1000c1s1b0n0/1*16"
+      },
+      "25571463.pbs101": {
+        "queue": "g1",
+        "state": "Q",
+        "execution_host": null
+      }
+    },
+    "startup_attempts": [
+      "25571430.pbs101 sparse Exit_status=1 Stageout_status=1, zero updates, CRLF path failure",
+      "25571431.pbs101 dense Exit_status=1 Stageout_status=1, zero updates, CRLF path failure"
+    ]
+  },
+  "scientific_boundary": "No LpWM training result or success rate has been reproduced yet. Cost-only calibration and one native plan timing are not scientific outcome evidence. Full two-epoch official-script training plus native 50-case evaluation remains pending."
+}

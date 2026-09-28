@@ -1,0 +1,136 @@
+{
+  "schema": "lewm-pusht-student-driven-real-observation-training-data-freeze",
+  "schema_version": 1,
+  "status": "EPISODE_IDS_MATERIALIZED_CAPTURE_PENDING",
+  "purpose": "Collect student-driven real poststep observation latents paired with the actual committed five-token action sequence for a later, separately frozen student fine-tuning experiment.",
+  "provenance": {
+    "student_checkpoint": {
+      "job_id": "25239551.pbs101",
+      "path": "/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/cem-distribution-distill/artifacts/25239551.pbs101/treatment_step1000.pt",
+      "architecture": "LeWMCompactRecurrentTransitionStudent h256"
+    },
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "lewm_repository": "https://github.com/lucas-maes/le-wm",
+    "lewm_commit": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "stable_worldmodel_repository": "https://github.com/galilai-group/stable-worldmodel",
+    "stable_worldmodel_commit": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "reusable_capture_source": "../real-observation-rollout-probe/run_real_observation_rollout_probe.py:RealStepCapture, run_one_episode, image_tensor, encode_h1"
+  },
+  "episode_selection": {
+    "identity_status": "MATERIALIZED_BY_CPU_SELECTION_JOB_25543404.pbs101_BEFORE_CAPTURE",
+    "dataset_partition": "official HDF5 train partition only",
+    "candidate_rule": "episode IDs with ep_len >= 26",
+    "rng": "random.Random",
+    "selection_seed": 20260925,
+    "sampling_rule": "Sort eligible episode IDs, remove the union of all frozen exclusions below, shuffle once with the frozen RNG, take the first 80. Using the same RNG, choose start_step uniformly from [0, ep_len - 26] for each selected episode and derive row_index from ep_offset. Verify episode_idx and step_idx by scalar metadata reads.",
+    "selected_episode_count": 80,
+    "split": {
+      "collection_train": 64,
+      "collection_validation": 16,
+      "rule": "first 64 and final 16 of the frozen shuffled selection, with episode identity disjointness asserted"
+    },
+    "no_replacement": true,
+    "fail_closed_if": [
+      "any exclusion source is missing or has an unexpected schema/count",
+      "old ranker validation episode IDs are not a subset of the frozen reserved holdout IDs",
+      "any selected episode overlaps an exclusion or appears in both splits",
+      "fewer than 80 eligible new episode IDs remain"
+    ],
+    "exclusion_sources": [
+      {
+        "path": "../SEEDED_PILOT_FREEZE.json",
+        "fields": ["collection_tasks", "reserved_holdout_tasks"],
+        "exclude": "all 16 old real-observation diagnostic collection episodes and all 16 reserved holdout episodes"
+      },
+      {
+        "path": "../onpolicy-fullbank-ranker/results/25538135.pbs101/collection_manifest.json",
+        "field": "episodes where split == validation",
+        "exclude": "all prior ranker validation episodes; assert they are already included in reserved_holdout_tasks"
+      },
+      {
+        "path": "../onpolicy-fullbank-ranker/FREEZE.json",
+        "field": "task_split.untouched.tasks",
+        "exclude": "all 8 untouched reserved tasks; retain them for a future independent gate"
+      },
+      {
+        "path": "../SELECTION_FREEZE.json",
+        "fields": ["legacy_exclusions.closed_loop_50", "legacy_exclusions.prior_valid_prefix"],
+        "exclude": "the frozen 50 closed-loop baseline episodes and the first 600 valid episodes reconstructed from ep_len >= 26 using random.Random(20300903)"
+      }
+    ],
+    "materialized_manifest": "A separate small selection manifest must record all 80 episode_idx, row_index, start_step, split, RNG seed, source exclusion counts, and overlap assertions before any environment rollout begins.",
+    "selection_manifest_schema": "lewm-pusht-student-driven-real-observation-training-selection-manifest-v1",
+    "selection_manifest_job_id": "25543404.pbs101",
+    "selection_manifest_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/artifacts/student-induced-shadow-pilot/real-observation-training-data/selection/25543404.pbs101/selection_manifest.json"
+  },
+  "collection_protocol": {
+    "policy_and_planner": "Frozen 25239551 student-only native CEM; unchanged official evaluator, candidate count, top-k, iteration count, action block, and receding horizon from SEEDED_PILOT_FREEZE.json.",
+    "reset_seed_per_episode": 42,
+    "native_cem_seed_per_episode": 42,
+    "rng_continuation": "Seed once per fresh episode; preserve native solver RNG continuation from the solve at global step 0 through the solve at global step 25; do not reseed between solves.",
+    "eval_budget_env_steps": 50,
+    "solve_start_env_steps": [0, 25],
+    "action_geometry": {
+      "raw_action_width": 2,
+      "raw_actions_per_token": 5,
+      "packed_action_width": 10,
+      "tokens_per_sample": 5,
+      "env_steps_per_sample": 25
+    },
+    "sample_schema": {
+      "z_start": "float32[192], official frozen H=1 encoder of the actual pre-action pixels at the solve start",
+      "packed_actions": "float32[5,10], formed from the 25 actual env.step actions after the exact fitted official action transform",
+      "poststep_latents": "float32[5,192], official frozen H=1 encoder of the actual pixels after relative env steps 5,10,15,20,25"
+    },
+    "action_pixel_pairing": "Capture each executed raw action and its returned post-step pixels in the same env.step callback. Pack each consecutive group of five executed actions and pair it with the H=1 latent from the resulting token-boundary observation.",
+    "plan_alignment_gate": "For each complete sample, transformed executed packed actions must match the corresponding frozen student CEM plan with max absolute error <= 1e-5. On mismatch, fail the row and stop collection; do not train on that row.",
+    "teacher_use": {
+      "teacher_rollout_targets": false,
+      "teacher_costs_or_ranker_labels": false,
+      "teacher_shadow_scoring": false,
+      "official_encoder_use": "Frozen H=1 image encoder only, to map actual observations into latent targets; no teacher rollout or candidate scoring."
+    },
+    "terminal_handling": "Write only complete five-token rows. Mark unavailable solve windows and terminal status; do not pad, infer, replace episodes, or move IDs between splits.",
+    "stored_fields": [
+      "episode_idx",
+      "split",
+      "solve_start_env_step",
+      "reset_seed",
+      "native_cem_seed",
+      "relative_env_step_indices",
+      "z_start",
+      "packed_actions",
+      "poststep_latents",
+      "max_plan_action_abs_error",
+      "completion_and_terminal_status"
+    ],
+    "raw_pixels_saved": false,
+    "hdf5_action_to_pixel_alignment_assumed": false
+  },
+  "sample_scale_and_cost": {
+    "maximum_windows": 160,
+    "maximum_train_windows": 128,
+    "maximum_validation_windows": 32,
+    "targets_per_window": 5,
+    "estimated_uncompressed_arrays": "about 0.8 MB for float32 z_start/actions/poststep_latents, excluding small metadata",
+    "runtime_basis": "25542467.pbs101 captured 14 episodes in about 5 minutes",
+    "estimated_capture_runtime_minutes": 28.6,
+    "proposed_future_pbs_request": {
+      "queue": "normal",
+      "select": "1:ncpus=16:mem=110gb:ngpus=1",
+      "walltime": "00:40:00",
+      "gpu_telemetry_interval_seconds": 5,
+      "telemetry_destination": "job log"
+    }
+  },
+  "scope_boundary": {
+    "this_freeze_authorizes": "design and later collection of the frozen data tuples only",
+    "training": false,
+    "cem_variant_or_treatment": false,
+    "old_16_task_rerun": false,
+    "reserved_16_touched": false,
+    "untouched_8_reserved_for_future_gate": true,
+    "pbs_submitted": false,
+    "banked_reset_use": false
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "protocol": "lewm-fastlewm-model-search-v1",
+  "frozen_date": "2026-09-26",
+  "question": "Does the pretrained model change sensitivity to CEM iteration budget and the matched quality-latency frontier?",
+  "fast_source_commit": "de3e9dac539f5bbe6ff1656a2fb00938d62a3c7d",
+  "fast_checkpoint_repo": "naiverer/fast-leworldmodel",
+  "fast_checkpoint_revision": "f95379fe193c8bfc6a59c9d8437d5052bd72ff71",
+  "lewm_source_historical_identity": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+  "backend": "stable-worldmodel==0.0.6 isolated runtime_overlay",
+  "task_manifest": "selected_tasks.json",
+  "task_source": "Completed Fast-LeWM reproduction 25569241.pbs101; unchanged 50 official seed-42 dataset rows",
+  "settings": {
+    "num_eval": 50,
+    "num_samples": 300,
+    "topk": 30,
+    "batch_size": 1,
+    "var_scale": 1.0,
+    "goal_offset_steps": 25,
+    "eval_budget": 50,
+    "image_size": 224,
+    "max_episode_steps": 100,
+    "history_size": 1,
+    "frame_skip": 1,
+    "predicted_primitive_steps": 25,
+    "executed_primitive_steps": 25,
+    "steady_repetitions": 3,
+    "warmup_repetitions": 1,
+    "rollout_consistency_weight": 0.0,
+    "scaler": "dataset-wide StandardScaler fitted once to finite rows of action/proprio/state as official evaluator"
+  },
+  "plans": {
+    "lewm": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "action_block": 5,
+      "history_len": 1,
+      "warm_start": true
+    },
+    "fastlewm": {
+      "horizon": 1,
+      "receding_horizon": 1,
+      "action_block": 25,
+      "history_len": 1,
+      "warm_start": true
+    }
+  },
+  "arms": [
+    {
+      "id": "fastlewm_i30_s42",
+      "model": "fastlewm",
+      "iterations": 30,
+      "seed": 42
+    },
+    {
+      "id": "lewm_i10_s42",
+      "model": "lewm",
+      "iterations": 10,
+      "seed": 42
+    },
+    {
+      "id": "fastlewm_i10_s42",
+      "model": "fastlewm",
+      "iterations": 10,
+      "seed": 42
+    },
+    {
+      "id": "lewm_i30_s42",
+      "model": "lewm",
+      "iterations": 30,
+      "seed": 42
+    },
+    {
+      "id": "lewm_i30_s43",
+      "model": "lewm",
+      "iterations": 30,
+      "seed": 43
+    },
+    {
+      "id": "fastlewm_i10_s43",
+      "model": "fastlewm",
+      "iterations": 10,
+      "seed": 43
+    },
+    {
+      "id": "lewm_i10_s43",
+      "model": "lewm",
+      "iterations": 10,
+      "seed": 43
+    },
+    {
+      "id": "fastlewm_i30_s43",
+      "model": "fastlewm",
+      "iterations": 30,
+      "seed": 43
+    },
+    {
+      "id": "fastlewm_i10_s44",
+      "model": "fastlewm",
+      "iterations": 10,
+      "seed": 44
+    },
+    {
+      "id": "lewm_i30_s44",
+      "model": "lewm",
+      "iterations": 30,
+      "seed": 44
+    },
+    {
+      "id": "fastlewm_i30_s44",
+      "model": "fastlewm",
+      "iterations": 30,
+      "seed": 44
+    },
+    {
+      "id": "lewm_i10_s44",
+      "model": "lewm",
+      "iterations": 10,
+      "seed": 44
+    }
+  ],
+  "run_order": "Fixed before measurement. First two seed blocks reverse order; third fixed permutation. Not fully position-balanced.",
+  "validity": {
+    "complete_arms": 12,
+    "outcomes_per_arm": 50,
+    "finite_actions_and_final_costs": true,
+    "fast_seed42_i30_control": "Check exact 49/50 outcome vector against completed reproduction. A discrepancy triggers interface diagnosis, no success-driven tuning.",
+    "lewm_i30_quality_screen": "At least 45/50 per seed to treat the matched LeWM baseline as usable; otherwise preserve result and diagnose changed backend before mechanistic claims.",
+    "fast_seed42_i30_expected_successes": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "analysis": {
+    "independent_unit": "50 source tasks; three solver-seed repeats are nested, not 150 independent tasks",
+    "quality": "Success counts by seed; paired task-wise 10-minus-30 differences and model-by-budget difference; report uncertainty, no equivalence claim from nonsignificance",
+    "latency": "Fresh clones of the same initial observation, one warmup then three synchronized repeated native solves per arm. Actual load recorded. Report per-seed median and range, exclude initialization and preparation.",
+    "claim_boundary": "Model/checkpoint comparison under a common compatible runtime. Different training and encoders prevent attributing differences solely to architecture. No cross-model latent-cost magnitude or teacher-fidelity interpretation.",
+    "rng_boundary": "Same seeds pair experimental conditions, but budgets change native RNG consumption; no shared-candidate claim across later environments or replans.",
+    "no_expansion": "No training, extra seeds, extra tasks, CEM hyperparameter search or follow-up experiment before this frozen campaign is complete. Any insight pilot requires a separate frozen bounded protocol."
+  },
+  "resources": {
+    "cpu_prepare_walltime": "01:00:00",
+    "gpu_walltime": "02:00:00",
+    "gpu_timeout_seconds": 6900
+  },
+  "quota_rule": "Remaining primary Codex quota below 40 percent: finish current submitted experiments, summarize and pause expansion; never use a reset credit."
+}

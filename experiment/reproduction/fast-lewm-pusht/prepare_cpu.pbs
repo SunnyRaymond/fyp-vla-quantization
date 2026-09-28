@@ -1,0 +1,64 @@
+#!/bin/bash
+#PBS -N fastlewm_cpu_prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=24gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/fast-lewm-pusht-reproduction
+JOB_ID=${PBS_JOBID:-}
+NODEFILE=${PBS_NODEFILE:-}
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+
+test -n "$JOB_ID" || { echo 'Refusing to run without PBS_JOBID' >&2; exit 64; }
+test -n "$NODEFILE" && test -f "$NODEFILE" || { echo 'Refusing to run without PBS_NODEFILE' >&2; exit 64; }
+case "$HOST" in
+  *login*|*head*|*submit*) echo "Refusing probable login host: $HOST" >&2; exit 64 ;;
+esac
+if ! awk -v host="$HOST" '{ node=tolower($1); sub(/\..*/, "", node); if (node == host) found=1 } END { exit !found }' "$NODEFILE"; then
+  echo "Current host $HOST is not listed in PBS_NODEFILE" >&2
+  exit 64
+fi
+
+test -f "$ROOT/prepare.py" || { echo "Missing CPU preparation script under $ROOT" >&2; exit 66; }
+OUT="$ROOT/artifacts/$JOB_ID"
+mkdir -p "$OUT"
+cp "$ROOT/prepare.py" "$ROOT/prepare_cpu.pbs" "$OUT/"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+write_fallback_status() {
+  rc=$?
+  if [ ! -s "$ROOT/prepared.json" ] || grep -q '"status": "RUNNING"' "$ROOT/prepared.json"; then
+    tmp="$ROOT/prepared.json.tmp-$JOB_ID"
+    printf '{"status":"FAIL","job_id":"%s","error":"PBS wrapper exit %s"}\n' "$JOB_ID" "$rc" > "$tmp"
+    mv "$tmp" "$ROOT/prepared.json"
+  fi
+  printf 'job_id=%s\nexit_code=%s\nfinished_utc=%s\n' "$JOB_ID" "$rc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT/job_status.txt"
+}
+trap write_fallback_status EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 MKL_NUM_THREADS=4
+if [ -e "$ROOT/prepared.json" ]; then
+  python -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("status")=="FAIL", "Only a failed prior attempt may be superseded"' "$ROOT/prepared.json"
+  cp "$ROOT/prepared.json" "$ROOT/artifacts/25569105.pbs101/prepared.json"
+  cp "$ROOT/prepared.json" "$OUT/previous-prepared.json"
+fi
+tmp="$ROOT/prepared.json.tmp-$JOB_ID"
+printf '{"status":"RUNNING","job_id":"%s","source_sha":"de3e9dac539f5bbe6ff1656a2fb00938d62a3c7d"}\n' "$JOB_ID" > "$tmp"
+mv "$tmp" "$ROOT/prepared.json"
+python -m py_compile "$ROOT/prepare.py"
+python -m py_compile "$ROOT/source/run_reproduction.py"
+python -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8")); print("FREEZE.json parse=PASS")' "$ROOT/source/FREEZE.json"
+printf 'job_id=%s\nhost=%s\nnodefile=%s\n' "$JOB_ID" "$HOST" "$NODEFILE"
+module list 2>&1
+
+set +e
+timeout --signal=TERM --kill-after=15s 27m python "$ROOT/prepare.py" --root "$ROOT" --job-id "$JOB_ID"
+rc=$?
+set -e
+printf 'preparation_exit_code=%s\n' "$rc" | tee "$OUT/runner_exit_status.txt"
+exit "$rc"

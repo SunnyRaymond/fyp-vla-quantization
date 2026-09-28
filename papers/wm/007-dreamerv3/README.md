@@ -6,6 +6,8 @@
 
 [本地 PDF](paper-arxiv-v2.pdf) · [arXiv 版本页](https://arxiv.org/abs/2301.04104v2) · [代码或官方项目入口](https://github.com/danijar/dreamerv3) · [返回总指南](../README.md)
 
+> **2026-09-26 新增 Nature 2025 companion：** [Nature 本地 PDF](paper-nature-2025.pdf) · [block GRU 专题阅读路线](READING-NATURE-2025.md) · [分块 dynamics 总路线](../READING-FACTORED-DYNAMICS.md)。以下保留的旧说明只描述 2026-09-08 收录的 arXiv v2；其中“不是 Nature 最终 PDF”指旧 PDF，不再表示本目录没有 Nature 版。
+
 ## 背景与要解决的问题
 
 理解 RL world model 的基础。它使用 learned dynamics 在 imagination 中学习 actor/critic，与 LeWM 的 test-time CEM goal planning 不同。

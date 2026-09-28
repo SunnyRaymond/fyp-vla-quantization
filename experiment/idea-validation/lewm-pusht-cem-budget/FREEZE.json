@@ -1,0 +1,97 @@
+{
+  "schema": "lewm-pusht-cem-budget.freeze",
+  "revision": 1,
+  "status": "frozen_before_new_results",
+  "experiment_id": "lewm-pusht-cem-budget",
+  "question": "On the same 50 pinned dataset tasks, how do teacher-only LeWM PushT CEM candidate and elite budgets affect paired task success and synchronized planner solve time when iterations remain fixed at 30?",
+  "scope": {
+    "training": false,
+    "environment": "swm/PushT-v1",
+    "evaluation_type": "pinned-upstream-protocol-aligned dataset-driven evaluation",
+    "closed_loop_random_reset_claim": false,
+    "new_task_selection": false,
+    "download_or_install": false,
+    "submission_authorized": true,
+    "optional_action_difference": "omitted unless already available without changing the frozen evaluation path"
+  },
+  "protocol": {
+    "lewm_repository": "https://github.com/lucas-maes/le-wm",
+    "lewm_commit_reference": "8edfeb336732b5f3ce7b8b210d0ba370a09e2cac",
+    "lewm_config": "config/eval/pusht.yaml",
+    "stable_worldmodel_repository": "https://github.com/galilai-group/stable-worldmodel",
+    "stable_worldmodel_commit_reference": "10c26dbd5677083fa31dba69eb738b973845e9a4",
+    "cem_source": "stable_worldmodel/solver/cem.py",
+    "dataset": "pusht_expert_train",
+    "dataset_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht_expert_train.h5",
+    "dataset_size_bytes": 46300921856,
+    "teacher_checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "checkpoint_path": "/scratch/users/ntu/yguo017/lewm-pusht-iteration/stablewm_home/pusht/lewm_object.ckpt",
+    "checkpoint_size_bytes": 72345781,
+    "seed": 42,
+    "task_count": 50,
+    "tasks_source_job": "25534994.pbs101",
+    "tasks_source_artifact": "meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/official-lewm-dataset-teacher-baseline/artifacts/25534994.pbs101/selected_tasks.json",
+    "goal_offset_steps": 25,
+    "evaluation_budget": 50,
+    "world_max_episode_steps": 100,
+    "image_size": 224,
+    "plan_config": {
+      "horizon": 5,
+      "receding_horizon": 5,
+      "action_block": 5
+    },
+    "solver_fixed": {
+      "target": "stable_worldmodel.solver.CEMSolver",
+      "batch_size": 1,
+      "iterations": 30,
+      "var_scale": 1.0,
+      "device": "cuda",
+      "seed": 42
+    },
+    "preprocessing": "reuse the existing baseline helper: full-dataset StandardScaler for action/proprio/state after NaN-row removal, goal scaler reuse, and pinned ToImage/float32/ImageNet-normalize/Resize(224) transforms",
+    "checkpoint_loader": "meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer/run_lewm_recurrent_student.py:load_official_checkpoint",
+    "evaluator": "reuse run_dataset_teacher_baseline.evaluate_selected_tasks and the pinned _set_state/_set_goal_state callables; video=None"
+  },
+  "reference_baseline": {
+    "job_id": "25534994.pbs101",
+    "validity": "PASS",
+    "successes": 49,
+    "task_count": 50,
+    "engineering_floor": "at least 5/50; a continuation gate only",
+    "stage1_rule": "Rerun 300/30 first in this job on the exact frozen rows. Require valid finite 50-task outcomes, at least 5 successes, and exact itemwise equality to the reference 25534994 success vector. If any check fails, record the control result and stop before all other arms."
+  },
+  "arms": {
+    "cem_300_30": [300, 30],
+    "cem_150_30": [150, 30],
+    "cem_300_15": [300, 15],
+    "cem_150_15": [150, 15],
+    "cem_100_10": [100, 10]
+  },
+  "arm_order": ["cem_300_30", "cem_150_30", "cem_300_15", "cem_150_15", "cem_100_10"],
+  "measurement": {
+    "paired_unit": "same dataset row_index, episode_idx, and start_step for every arm",
+    "planner_walltime": "time every solver.solve call with torch.cuda.synchronize immediately before and after; sum for full synchronized planner solve walltime and retain each solve duration",
+    "steady_state_timing": "report median of all solver.solve calls after the first plus post_first_solve_sample_count; explicitly report second_solve_seconds, which is a one-sample descriptive timing when only two calls occur",
+    "actual_planner_calls": "record solver.solve invocation count and CEM candidate-cost evaluation count computed from pinned n_steps and batch_size/environment chunking",
+    "success_outcomes": "store the complete ordered 50-item outcome vector and per-task rows for each arm",
+    "primary_comparison": "paired success losses versus 300/30 plus synchronized second_solve_seconds ratio, with all per-solve durations and total also reported",
+    "descriptive_budget_screen": "at most 5 fewer successes among 50 and at least 20% lower second-solve time; one-call descriptive screen only, not a robust timing estimate or formal noninferiority",
+    "cold_call": "do not use full totals alone to claim speed; report full totals and per-solve durations, distinguish first and second calls",
+    "gpu_telemetry": "nvidia-smi utilization and memory every 5 seconds appended to job.log"
+  },
+  "validity_and_stopping": {
+    "validity": ["compute node confirmed by PBS_JOBID and PBS_NODEFILE", "staged LeWM/stable-worldmodel/venv roots match", "frozen dataset/checkpoint file sizes and cache links match", "all arms use 50 exact frozen rows", "each arm returns 50 finite metrics and 50 finite planner outputs", "300/30 stage1 success vector exactly matches reference baseline"],
+    "stop_after_stage1": "stop all remaining arms on invalid outputs, success-vector mismatch, or fewer than 5/50 control successes",
+    "no_posthoc_extension": "no task substitution, reruns, retuning, or extra arms after looking at results",
+    "inference_limit": "50 paired tasks do not support a formal noninferiority claim; report descriptive paired outcomes only"
+  },
+  "resources": {
+    "pbs_queue": "normal",
+    "select": "1:ncpus=16:mem=110gb:ngpus=1",
+    "walltime": "02:00:00",
+    "internal_timeout_seconds": 6900,
+    "compute_node_guards": ["PBS_JOBID is nonempty", "PBS_NODEFILE is a real file and contains current hostname", "current host is not login/submit/head"],
+    "login_node_work": "control only; no model/data reads or inference",
+    "no_download_install": true
+  }
+}

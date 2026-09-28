@@ -1,0 +1,204 @@
+{
+  "format": "rolling_ball_physical_pairing_addendum_v2",
+  "status": "PHYSICAL_V2_FORMAL_CAMPAIGN_COMPLETED; ALL_EVIDENCE_RETRIEVED",
+  "scope": "Rolling Ball Interception benchmark-baseline pilot; design decision made before any policy outcome",
+  "base_freeze": "EVAL_FREEZE.json",
+  "protocol": "physical-v2",
+  "protocol_default": "strict-rgb-v1",
+  "strict_rgb_v1_history": {
+    "render_mode": "FXAA",
+    "reset_render_frames_each": 256,
+    "rgb_gate_mean_max": 0.25,
+    "rgb_gate_p99_max": 2,
+    "pair_008": {
+      "status": "TERMINAL_FAIL",
+      "rgb_mean": 0.3431986,
+      "rgb_p99": 3,
+      "initial_physical_state_gates": "PASS",
+      "same_first_action_gate": "NOT_VERIFIED",
+      "fixture_bank_accepted": false
+    },
+    "history_preserved": true,
+    "render_only_warmup_tuning_stopped": true
+  },
+  "physical_v2": {
+    "hard_gate": [
+      "restore comparison of scene, task buffers, event-manager buffers, environment counters, and RNG",
+      "same-first-action replay comparison of scene, task buffers, event-manager buffers, environment counters, and RNG"
+    ],
+    "rgb_diagnostic": {
+      "thresholds_unchanged": {
+        "mean_absolute_difference_max": 0.25,
+        "p99_max": 2
+      },
+      "strict_rgb_full_gate_pass_is_recorded": true,
+      "strict_rgb_full_gate_pass_participates_in_physical_pass": false
+    },
+    "planner_image_input": "fresh native RGB capture for every request; no fixed or reused RGB injection",
+    "rendering": {
+      "mode": "native rendering; historical observation was TAA, not FXAA",
+      "pure_render_frames_at_reset_or_restore": 1,
+      "camera_update": "fixed_cam.update(0, force_recompute=True)",
+      "physics_advances_during_refresh": 0,
+      "episode_wall_timing_starts_after_restore_refresh": true
+    },
+    "unchanged_from_frozen_protocol": {
+      "checkpoint": "formal vanilla LeWM epoch-100 last",
+      "cem": {
+        "horizon": 5,
+        "samples": 300,
+        "topk": 30,
+        "iterations": 30,
+        "seed": 1234
+      },
+      "seed_ids": "2026092700..2026092749, in order",
+      "control_and_timing": "same frozen 25 Hz control, 10 ms physics, request and deadline instrumentation",
+      "fixed_delay_K0": "retained as the zero-delay control"
+    },
+    "bank_rule": "all arms must use the same physical-v2 fixture bank",
+    "interpretation_limit": "sync and fixed-delay K0 repeat controls expose rendering/noise nuisance; results are not strict visual pairing or pure model-causal evidence"
+  },
+  "current_pair": {
+    "name": "pair-physical-002",
+    "status": "BANK_PHYSICAL_GATE_VALIDATED; TOP_LEVEL_SUMMARY_ERROR_RETAINED",
+    "output": "results/pair-physical-50-newhost-002/pair.json",
+    "fixture_bank": "results/pair-physical-50-newhost-002/fixtures.pt",
+    "fixture_bank_bytes": 10781767,
+    "fixture_bank_validation": "results/pair-physical-50-newhost-002/fixture_bank_validation.json; PASS_PHYSICAL_FIXTURE_BANK_VALIDATION",
+    "seeds": "all 50 frozen IDs in order",
+    "same_first_action_physical_maxdiff": 0.0,
+    "strict_rgb_full_gate_pass": false,
+    "pair_json_top_level_error": "flush argument TypeError; do not call the original pair.json a clean top-level PASS"
+  },
+  "policy_closed_loop_started": true,
+  "stop_if_physical_hard_gate_fails": true,
+  "prior_pair_attempts": {
+    "pair_physical_001": {
+      "status": "FAIL",
+      "failure": "additional dynamic task attributes differed; no bank accepted"
+    },
+    "pair_physical_002": {
+      "embedded_pair_check": "PASS",
+      "seeds": "all 50 frozen IDs in order",
+      "same_first_action_physical_maxdiff": 0.0,
+      "bank_saved_bytes": 10781767,
+      "strict_rgb_full_gate_pass": false,
+      "top_level_pair_json": "false/error due to flush argument TypeError; original error report retained",
+      "independent_bank_validation": "PASS_PHYSICAL_FIXTURE_BANK_VALIDATION",
+      "validation_path": "results/pair-physical-50-newhost-002/fixture_bank_validation.json",
+      "local_retrieved_archive": "artifacts/autodl/pair-physical-50-newhost-002",
+      "local_archive_bytes": 2337583
+    }
+  },
+  "capability_smoke": {
+    "status": "COMPLETED; 0/3 task successes",
+    "attempt_001": "FAIL Gym reset order",
+    "attempt_002": "FAIL absent cfg.num_rerenders_on_reset; adapter maps pinned Lab 2.3.1 rerender_on_reset bool to 0/1",
+    "attempt_003": {
+      "status": "COMPLETED",
+      "paired_physical": true,
+      "closed_loop": true,
+      "native_exit_code": 0,
+      "wrapper_exit_code": 0,
+      "successes": 0,
+      "episodes": 3,
+      "control_ticks_each": 75,
+      "native_termination": "phase 2 at tick limit",
+      "episode_wall_seconds": [
+        18.687,
+        18.482,
+        19.066
+      ],
+      "requests": 75,
+      "server_latency_median_ms": 644.95,
+      "cem_latency_median_ms": 632.2,
+      "wall_observation_age_median_ms": 650.97,
+      "sim_observation_age_median_ms": 0,
+      "measured_rtf": 0.053347,
+      "result": "results/sync-smoke-physical-001/sync.json"
+    }
+  },
+  "formal_campaign": {
+    "status": "COMPLETED",
+    "parent_pid": 30529,
+    "process_status": "EXITED",
+    "launcher": "controls/run_campaign.sh",
+    "sequence": [
+      "sync-50",
+      "fixed-delay-6x50",
+      "true-async-50"
+    ],
+    "conditions_in_report_order": [
+      "sync",
+      "K0",
+      "K1",
+      "K2",
+      "K4",
+      "K8",
+      "K16",
+      "async"
+    ],
+    "episodes_per_condition": 50,
+    "successes_by_condition": {
+      "sync": 1,
+      "K0": 1,
+      "K1": 0,
+      "K2": 2,
+      "K4": 0,
+      "K8": 4,
+      "K16": 0,
+      "async": 1
+    },
+    "all_three_stage_gates_true": true,
+    "native_exit_code": 0,
+    "runner_exit_code": 0,
+    "wrapper_exit_code": 0,
+    "fixture_bank": "results/pair-physical-50-newhost-002/fixtures.pt",
+    "checkpoint": "formal vanilla LeWM epoch-100 last",
+    "planner_and_physics": "frozen CEM and native physics/control protocol",
+    "status_file": "results/campaign-physical-001/status.json",
+    "stdout_log": "logs/campaign-physical-001.stdout.log",
+    "per_mode_results": "results/{mode}-50-physical-001/result.json and progress files",
+    "sync_metrics": {
+      "server_latency_median_ms": 646.54,
+      "cem_latency_median_ms": 634.77,
+      "sim_observation_age_ms": 0,
+      "measured_rtf": 0.05297
+    },
+    "true_async_metrics": {
+      "server_latency_median_ms": 679.86,
+      "cem_latency_median_ms": 666.98,
+      "applied_responses": 177,
+      "dropped_responses": 39,
+      "total_responses": 216,
+      "request_errors": 0,
+      "applied_observation_age_wall_median_ms": 718.27,
+      "applied_observation_age_wall_p95_ms": 800.59,
+      "applied_observation_age_sim_median_ms": 200,
+      "applied_observation_age_sim_p95_ms": 240,
+      "measured_rtf_including_terminal_cleanup": 0.31163,
+      "measured_rtf_excluding_terminal_cleanup": 0.29768,
+      "wall_deadline_overruns": "1262/1262 ticks",
+      "40ms_hard_realtime_achieved": false
+    },
+    "zero_delay_success_seeds": {
+      "sync": "2026092724",
+      "K0": "2026092737"
+    },
+    "interpretation_limits": [
+      "The two zero-delay arms succeeded on different seeds.",
+      "Fixed-delay outcomes do not establish monotonic degradation or benefit as delay changes.",
+      "This evaluates the full LeWM plus CEM policy and is not a one-step model experiment.",
+      "physical-v2 is not strict visual pairing or a pure model-causal comparison; strict RGB v1 remains failed."
+    ]
+  },
+  "evidence_retrieval": {
+    "summary_json": "artifacts/autodl/campaign-physical-001/SUMMARY.json; retrieved",
+    "summary_csv": "artifacts/autodl/campaign-physical-001/SUMMARY.csv; retrieved",
+    "formal_archive": "formal-evidence-physical-001.tar.gz",
+    "formal_archive_status": "RETRIEVED",
+    "all_results_retrieved": true,
+    "formal_archive_bytes": 2513152
+  },
+  "power_status_source": "AUTODL_RUN.json:shutdown_after_completion"
+}

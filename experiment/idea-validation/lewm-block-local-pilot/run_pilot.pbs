@@ -1,0 +1,108 @@
+#!/bin/bash
+#PBS -N lewm_block_pilot
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+JOB_ID=${PBS_JOBID:?PBS_JOBID must be set by PBS}
+test -n "${PBS_NODEFILE:-}" && test -f "$PBS_NODEFILE"
+HOST=$(hostname -s | tr '[:upper:]' '[:lower:]')
+case "$HOST" in *login*|*head*|*submit*) echo "refusing probable login/submit node: $HOST" >&2; exit 2;; esac
+NODE_SHORTS=$(awk '{name=tolower($1); sub(/\..*/, "", name); print name}' "$PBS_NODEFILE" | sort -u)
+if ! printf '%s\n' "$NODE_SHORTS" | grep -Fxq "$HOST"; then
+  echo "current host $HOST is not listed in PBS_NODEFILE" >&2
+  exit 2
+fi
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+
+REMOTE_ROOT=/scratch/users/ntu/yguo017/lewm-block-local-pilot
+CONTROL="$REMOTE_ROOT/source"
+TRANSFER=/scratch/users/ntu/yguo017/dino-wm-wall/meeting-ready/02-horizon-weighted-recurrent-student/lewm-transfer
+STAGE_ROOT=/scratch/users/ntu/yguo017/lewm-pusht-iteration
+LEWM_ROOT="$STAGE_ROOT/le-wm"
+STABLEWM_ROOT="$STAGE_ROOT/stable-worldmodel"
+STABLEWM_HOME="$STAGE_ROOT/stablewm_home"
+PYTHON_BIN="$STAGE_ROOT/venv/bin/python"
+STATE_CONTROL="$TRANSFER/state-coverage"
+TEACHER_SCREENING="$TRANSFER/teacher-screening"
+BALANCED_ROWS="$TEACHER_SCREENING/artifacts/25213164.pbs101/prepared_balanced_rows_reconstructed.pt"
+PHASE2_MANIFEST="$STATE_CONTROL/artifacts/24926383.pbs101/context_manifest_512.json"
+PHASE2_ROWS="$STATE_CONTROL/artifacts/24926383.pbs101/prepared_512/prepared_rows.pt"
+INTERFACE_PROBE="$TRANSFER/interface-probe/artifacts/24554356.pbs101/interface_probe.json"
+OUT="$REMOTE_ROOT/runs/$JOB_ID"
+
+test ! -e "$OUT"
+mkdir "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+
+SNAPSHOT="$OUT/source_snapshot"
+STATUS=2
+RUNNER_RC=NOT_STARTED
+STATUS_REASON=preflight_not_started
+GPU_MONITOR_PID=""
+stop_gpu_monitor() {
+  if [ -n "$GPU_MONITOR_PID" ] && kill -0 "$GPU_MONITOR_PID" 2>/dev/null; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+}
+cleanup() {
+  stop_gpu_monitor
+  printf 'RUNNER_EXIT_STATUS=%s\n' "$RUNNER_RC" > "$OUT/final_exit_status.txt"
+  printf 'EXIT_STATUS=%s\nRUNNER_EXIT_STATUS=%s\nSTATUS_REASON=%s\n' \
+    "$STATUS" "$RUNNER_RC" "$STATUS_REASON" > "$OUT/job_status.txt"
+}
+trap cleanup EXIT
+
+mkdir "$SNAPSHOT"
+for FILE in "$CONTROL/FREEZE.json" "$CONTROL/PROTOCOL.zh.md" "$CONTROL/runner.py" \
+  "$CONTROL/models.py" "$CONTROL/model_checks.py" "$PYTHON_BIN" \
+  "$BALANCED_ROWS" "$PHASE2_MANIFEST" "$PHASE2_ROWS" "$INTERFACE_PROBE" \
+  "$STABLEWM_HOME/pusht_expert_train.h5" "$STABLEWM_HOME/pusht/lewm_object.ckpt"; do
+  test -f "$FILE" || { echo "missing required file: $FILE" >&2; exit 2; }
+done
+test -x "$PYTHON_BIN"
+test -d "$LEWM_ROOT/config/eval"
+test -d "$STABLEWM_ROOT"
+cp "$CONTROL/"*.py "$CONTROL/"*.json "$CONTROL/"*.md "$CONTROL/"*.pbs "$SNAPSHOT/"
+printf 'job_id=%s\nhost=%s\nremote_root=%s\nsource_snapshot=%s\npython=%s\nstarted_utc=%s\n' \
+  "$JOB_ID" "$HOST" "$REMOTE_ROOT" "$SNAPSHOT" "$PYTHON_BIN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$OUT/execution_identity.txt"
+
+export PYTHONUNBUFFERED=1
+export WANDB_MODE=disabled
+export MUJOCO_GL=egl
+export STABLEWM_HOME
+export PYTHONPATH="$LEWM_ROOT:$STABLEWM_ROOT:$TRANSFER:$SNAPSHOT:${PYTHONPATH:-}"
+
+"$PYTHON_BIN" --version
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader > "$OUT/gpu_info.csv"
+nvidia-smi --query-gpu=timestamp,index,name,utilization.gpu,memory.used,memory.total --format=csv -l 30 >> "$OUT/job.log" 2>&1 &
+GPU_MONITOR_PID=$!
+
+set +e
+timeout --signal=TERM --kill-after=30s 13800 "$PYTHON_BIN" "$SNAPSHOT/runner.py" \
+  --freeze "$SNAPSHOT/FREEZE.json" --output-dir "$OUT"
+RUNNER_RC=$?
+set -e
+STATUS=$RUNNER_RC
+STATUS_REASON=runner_exit
+if [ "$RUNNER_RC" -eq 0 ]; then
+  if test -s "$OUT/DONE.json"; then
+    STATUS=0
+    STATUS_REASON=completed_with_DONE
+  else
+    STATUS=3
+    STATUS_REASON=missing_DONE_after_runner_success
+    echo "runner exited 0 but did not write a nonempty DONE.json" >&2
+  fi
+fi
+stop_gpu_monitor
+GPU_MONITOR_PID=""
+trap - EXIT
+cleanup
+exit "$STATUS"
