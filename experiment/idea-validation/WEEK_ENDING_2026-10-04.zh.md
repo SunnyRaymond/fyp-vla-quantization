@@ -14,7 +14,7 @@
 | Main results 4 | [W4A8 phase 初筛](fastwam-phase-dither/mechanism-screen/RESULT.zh.md) | MSE ×10⁻⁴：RTN 3.85256、independent 3.78977、shared-zero 3.75674、learned phase 3.58978 | 相对 independent 改善 5.28%，是冻结 draws 下的小信号；未达到预注册 10% 扩展门槛 |
 | Main results 5 | [新 dither draws 的 A8 对照](fastwam-phase-dither/new-draw-a8/README.zh.md) | 同一 TEST observations，新 draws 2101–2104：independent 3.67186、locked phase 3.75312（×10⁻⁴） | Phase 相对 RTN 的收益从 6.82% 降为 2.58%，且比 independent 差约 2.21%；跨 draw 组不稳定 |
 | Main results 5 | [完整 action 输出误差分解](fastwam-phase-dither/paired-followup/RESULT.zh.md) | RTN/phase 的 weight-path 项均 3.61510；activation 项 0.13482/0.14112；两倍交互项 +0.10264/−0.00310（×10⁻⁴） | Phase 的 activation 增量稍大，但减少正向耦合；输出级恒等式不能唯一识别逐 site 抵消机制 |
-| Progress | [完整 LIBERO-Goal 比较](fastwam-phase-dither/libero-goal-suite/RESULTS.zh.md) | 10 tasks × 50 states × 4 arms，共 2000 episodes。BF16 97.4%、RTN 97.2%、independent 96.6%、locked phase 96.2% | 当前 phase 配方没有成功率优势；小差值不构成统计显著性或普遍方法失败的结论 |
+| Main results 6 | [完整 LIBERO-Goal 比较](fastwam-phase-dither/libero-goal-suite/RESULTS.zh.md) | 10 tasks × 50 states × 4 arms，共 2000 episodes。BF16 487/500（97.4%）、RTN 486/500（97.2%）、independent 483/500（96.6%）、locked phase 481/500（96.2%） | Learned 对 RTN 赢7/负12/平481，对 independent 赢7/负9/平484；当前 phase 配方没有成功率优势，小差值不构成统计显著性或普遍方法失败的结论 |
 
 ## 配置与证据边界
 

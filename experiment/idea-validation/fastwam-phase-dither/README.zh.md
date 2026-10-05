@@ -10,7 +10,7 @@
 | [mechanism-screen](mechanism-screen/RESULT.zh.md) | 全 first_frame Linear 路径的 W4A8 初筛、phase/direct PTQ 校准、七 arms 对照；含数学及架构 gate |
 | [new-draw-a8](new-draw-a8/README.zh.md) | 新 draws 2101–2104 的 independent / RTN / locked phase 对照；从已有汇总单独提取 A8 字段 |
 | [paired-followup](paired-followup/RESULT.zh.md) | 新 draws 下的完整 action 输出误差分解；保留完整 suite 需要的 `closedloop.py` helper |
-| [libero-goal-suite](libero-goal-suite/RESULTS.zh.md) | 2000 episodes 的完整 LIBERO-Goal 比较与聚合证据 |
+| [libero-goal-suite](libero-goal-suite/RESULTS.zh.md) | 周报 Main results 6：2000 episodes 的完整 LIBERO-Goal 比较、逐 task 成功数、配对结果与聚合证据 |
 
 ## Idea 与当前判断
 
