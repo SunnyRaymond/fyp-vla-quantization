@@ -1,0 +1,47 @@
+#!/bin/bash
+#PBS -N wam_goal_shard_scores
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" | grep -Eq 'job_state = R' || exit 64
+ROOT=/scratch/users/ntu/yguo017/wam-libero-goal-suite-20261004
+OLD_ARRAY_NUMBER=${OLD_ARRAY_NUMBER:?Old array number required}
+SHARD_ARRAY_NUMBER=${SHARD_ARRAY_NUMBER:?Shard array number required}
+for number in "$OLD_ARRAY_NUMBER" "$SHARD_ARRAY_NUMBER"; do
+  case "$number" in *[!0-9]*|'') exit 64;; esac
+done
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; return "$rc"; }
+trap finish EXIT
+cp "$ROOT/aggregate.py" "$ROOT/suite.py" "$ROOT/aggregate_shards.pbs" "$ROOT/PREREG.zh.md" "$ARTIFACTS/"
+cp /scratch/users/ntu/yguo017/wam-paired-followup-20261003/closedloop.py "$ARTIFACTS/"
+cp /scratch/users/ntu/yguo017/wam-phase-screen-20261003/runner.py "$ARTIFACTS/"
+RESULTS=()
+for task_id in 0 1 2; do
+  task_dir="$ROOT/artifacts/${OLD_ARRAY_NUMBER}[${task_id}].pbs101"
+  test -f "$task_dir/PIPELINE_COMPLETE"
+  test "$(cat "$task_dir/exit_code.txt")" = 0
+  RESULTS+=("$task_dir/result.json")
+done
+for shard_index in {0..27}; do
+  shard_dir="$ROOT/artifacts/${SHARD_ARRAY_NUMBER}[${shard_index}].pbs101"
+  test -f "$shard_dir/PIPELINE_COMPLETE"
+  test "$(cat "$shard_dir/exit_code.txt")" = 0
+  RESULTS+=("$shard_dir/result.json")
+done
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export OTC_ALLOCATION_HOST="$HOST"
+python "$ARTIFACTS/aggregate.py" --results "${RESULTS[@]}" --out "$ARTIFACTS/aggregate_result.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+date

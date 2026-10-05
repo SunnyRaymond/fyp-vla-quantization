@@ -1,0 +1,54 @@
+#!/bin/bash
+#PBS -N fw_idm_metrics
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+test -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+grep -Fqx "$(hostname -s)" <(cut -d. -f1 "$PBS_NODEFILE") || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-idm-libero-bottleneck
+SOURCE_JOB=25663625.pbs101
+SOURCE="$ROOT/artifacts/$SOURCE_JOB"
+FINAL="$ROOT/finalization/$PBS_JOBID"
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+mkdir -p "$FINAL"
+exec > >(tee "$FINAL/job.log") 2>&1
+finish() {
+  rc=$?
+  printf '%s\n' "$rc" > "$FINAL/exit_code.txt"
+  local postprocess=INCOMPLETE
+  [[ -f "$SOURCE/DIAGNOSTIC_POSTPROCESS_COMPLETE" ]] && postprocess=COMPLETE
+  local source_exit=UNKNOWN
+  [[ -s "$SOURCE/exit_code.txt" ]] && source_exit="$(cat "$SOURCE/exit_code.txt")"
+  printf '{"pbs_job_id":"%s","source_gpu_job_id":"%s","source_gpu_exit_status":%s,"exit_code":%s,"postprocess":"%s"}\n' \
+    "$PBS_JOBID" "$SOURCE_JOB" "$source_exit" "$rc" "$postprocess" > "$FINAL/terminal_receipt.json"
+}
+trap finish EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+test -s "$SOURCE/profile_summary.json"
+test -s "$SOURCE/results.json"
+test -s "$SOURCE/rollout.mp4"
+test -s "$SOURCE/terminal_receipt.json"
+cp "$SOURCE/terminal_receipt.json" "$FINAL/source_gpu_terminal_receipt.json"
+printf 'source_gpu_job=%s\nsource_gpu_exit_status=%s\n' "$SOURCE_JOB" "$(cat "$SOURCE/exit_code.txt")"
+
+export ARTIFACTS="$SOURCE"
+"$BASE/venv/bin/python" "$ROOT/summarize_idm_profile.py"
+"$BASE/venv/bin/python" - "$SOURCE/results.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    result = json.load(f)
+assert result.get("task_suite") == "libero_goal" and result.get("task_id") == 0, result
+assert result.get("total_episodes") == 1 and result.get("successes") in (0, 1), result
+print("SOURCE_EPISODE_RESULT", json.dumps(result, sort_keys=True), flush=True)
+PY
+test -s "$SOURCE/report_metrics.json"
+touch "$SOURCE/DIAGNOSTIC_POSTPROCESS_COMPLETE"
+printf 'DIAGNOSTIC_POSTPROCESS_COMPLETE source_gpu_job=%s\n' "$SOURCE_JOB"

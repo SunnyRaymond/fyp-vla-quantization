@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo 'Disabled: the legacy global EGL resolver is unsafe under scheduler GPU isolation. Use osmesa_smoke.pbs.' >&2
+return 64 2>/dev/null || exit 64
+
 # Resolve the scheduler-provided GPU for MuJoCo/robosuite without changing
 # PBS's CUDA isolation. nvidia-smi does not honor CUDA_VISIBLE_DEVICES, so
 # UUID identity is checked through PyTorch and the EGL device is matched to

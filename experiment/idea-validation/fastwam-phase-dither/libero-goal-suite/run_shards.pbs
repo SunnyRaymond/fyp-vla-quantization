@@ -1,0 +1,112 @@
+#!/bin/bash
+#PBS -N wam_goal_shards
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+SHARD_INDEX=${PBS_ARRAY_INDEX:?Array index required}
+case "$SHARD_INDEX" in *[!0-9]*|'') exit 64;; esac
+(( SHARD_INDEX >= 0 && SHARD_INDEX < 28 )) || exit 64
+TASK_ID=$((3 + SHARD_INDEX / 4))
+PART=$((SHARD_INDEX % 4))
+STARTS=(0 13 26 38)
+STOPS=(13 26 38 50)
+STATE_START=${STARTS[$PART]}
+STATE_STOP=${STOPS[$PART]}
+ALLOCATION_FILE="/tmp/wam-suite-allocation-$PBS_JOBID.txt"
+qstat -f "$PBS_JOBID" > "$ALLOCATION_FILE"
+grep -Eq 'job_state = R' "$ALLOCATION_FILE" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/wam-libero-goal-suite-20261004
+SCREEN_ROOT=/scratch/users/ntu/yguo017/wam-phase-screen-20261003
+FOLLOWUP_ROOT=/scratch/users/ntu/yguo017/wam-paired-followup-20261003
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+OTC_ROOT=/scratch/users/ntu/yguo017/otc-ptq-phase1
+OLD_ARTIFACTS="$SCREEN_ROOT/artifacts/25666715.pbs101"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT
+  if [[ -n "${GPU_MONITOR_PID:-}" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  return "$rc"
+}
+trap finish EXIT
+cp "$ALLOCATION_FILE" "$ARTIFACTS/allocation.txt"
+printf 'SUITE_SHARD task_id=%s shard_index=%s states=[%s,%s) job_id=%s host=%s\n' "$TASK_ID" "$SHARD_INDEX" "$STATE_START" "$STATE_STOP" "$PBS_JOBID" "$HOST"
+test -s "$ROOT/suite.py"
+test -s "$OLD_ARTIFACTS/locked_selection.json"
+cp "$ROOT/suite.py" "$ROOT/aggregate.py" "$ROOT/PREREG.zh.md" "$ROOT/run_shards.pbs" "$ARTIFACTS/"
+cp "$FOLLOWUP_ROOT/closedloop.py" "$SCREEN_ROOT/runner.py" "$SCREEN_ROOT/quant.py" "$ARTIFACTS/"
+cp "$OTC_ROOT/identity_gate.py" "$OTC_ROOT/source_identity.json" "$OTC_ROOT/manifest.json" "$ARTIFACTS/"
+cp "$OLD_ARTIFACTS/locked_selection.json" "$ARTIFACTS/locked_selection.json"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+date
+hostname
+
+run_python() {
+  apptainer exec --cleanenv --nv \
+    --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+    --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+    --env "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,OTC_ALLOCATION_HOST=$HOST,ARTIFACTS=$ARTIFACTS" \
+    --env "PYTHONPATH=$ARTIFACTS:$BASE/libero-compat:$BASE/libero:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero" \
+    --env "LIBERO_CONFIG_PATH=$BASE/libero-config" \
+    --env "DIFFSYNTH_MODEL_BASE_PATH=$BASE/model-cache" \
+    --env DIFFSYNTH_DOWNLOAD_SOURCE=huggingface,DIFFSYNTH_SKIP_DOWNLOAD=true,HF_HUB_OFFLINE=1 \
+    --env "HF_HOME=$BASE/cache/huggingface" \
+    --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+    --env OMP_NUM_THREADS=8,OPENBLAS_NUM_THREADS=8,LP_NUM_THREADS=8 \
+    --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1,TOKENIZERS_PARALLELISM=false \
+    "$SIF" "$BASE/venv/bin/python" "$@"
+}
+
+(
+  while :; do
+    sample=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" \
+      --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total \
+      --format=csv,noheader 2>&1) || sample=GPU_SAMPLE_ERROR
+    printf 'GPU_SAMPLE timestamp=%s %s\n' "$(date -Is)" "$sample"
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+run_python "$ARTIFACTS/identity_gate.py"
+run_python - <<'PY'
+import os
+import torch
+mask = os.environ['CUDA_VISIBLE_DEVICES']
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count() == 1
+props = torch.cuda.get_device_properties(0)
+actual = str(props.uuid)
+assert actual.removeprefix('GPU-').lower() == mask.removeprefix('GPU-').lower(), (mask, actual)
+print('allocated GPU:', props.name, props.total_memory, actual, flush=True)
+PY
+
+run_python "$ARTIFACTS/suite.py" --task-id "$TASK_ID" --state-start "$STATE_START" --state-stop "$STATE_STOP" --out "$ARTIFACTS" --locked "$ARTIFACTS/locked_selection.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+date

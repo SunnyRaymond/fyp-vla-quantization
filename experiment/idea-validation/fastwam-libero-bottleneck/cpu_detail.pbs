@@ -1,0 +1,54 @@
+#!/bin/bash
+#PBS -N fw_cpu_detail
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=16gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+test -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host { found = 1 } END { exit !found }' "$PBS_NODEFILE" || exit 64
+
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-bottleneck
+SOURCE_PROFILE_JOB_ID=25663213.pbs101
+SOURCE_PROFILE_ARTIFACTS="$ROOT/artifacts/$SOURCE_PROFILE_JOB_ID"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+test -s "$SIF"
+test -x "$BASE/venv/bin/python"
+test "$(cat "$BASE/FastWAM/.fastwam-revision")" = 7faa71108368fbb3b6885649f112af607427a2d4
+date
+hostname
+printf 'CPU-only LIBERO render diagnostic; source_profile=%s\n' "$SOURCE_PROFILE_JOB_ID"
+cp "$ROOT/cpu_detail.py" "$ROOT/cpu_detail.pbs" "$ARTIFACTS/"
+apptainer exec --cleanenv \
+  --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+  --env "PYTHONPATH=$BASE/libero-compat:$BASE/libero:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero" \
+  --env "LIBERO_CONFIG_PATH=$BASE/libero-config" \
+  --env "ARTIFACTS=$ARTIFACTS" \
+  --env "SOURCE_PROFILE_JOB_ID=$SOURCE_PROFILE_JOB_ID" \
+  --env "SOURCE_PROFILE_ARTIFACTS=$SOURCE_PROFILE_ARTIFACTS" \
+  --env "PBS_JOBID=$PBS_JOBID" \
+  --env "PBS_NODEFILE=$PBS_NODEFILE" \
+  --env "CUDA_VISIBLE_DEVICES=" \
+  --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+  --env OMP_NUM_THREADS=8,OPENBLAS_NUM_THREADS=8,LP_NUM_THREADS=8 \
+  --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1 \
+  "$SIF" "$BASE/venv/bin/python" "$ROOT/cpu_detail.py"
+test -s "$ARTIFACTS/episode_detail.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+date

@@ -1,5 +1,7 @@
 # Fast-WAM Optional IDM：LIBERO-goal 最小 smoke 已跑通
 
+当前结果：**2026-10-02 新作业 `25658646.pbs101` 已完成单 episode，1/1 成功，PBS `Exit_status=0`**。本次使用 `first_frame` 模式；[结果 JSON](artifacts/25658646.pbs101/results.json) 与本页末尾的复跑记录给出当前证据。以下 2026-09-09 内容保留为首次跑通的历史记录。
+
 2026-09-09，ASPIRE2A PBS 作业 **16180074.pbs101** 正常结束，Exit_status=0，allocated walltime=6分14秒。
 
 ## 结果与证据
@@ -45,3 +47,12 @@ qsub /scratch/users/ntu/yguo017/fastwam-smoke/osmesa_smoke.pbs
 ```
 
 所有模型加载、渲染、推理及重I/O均在PBS compute allocation内执行。旧 `egl_preflight.pbs` 和 `smoke_libero_goal.pbs` 已禁用，不能继续使用原全局EGL探测路线。
+
+## 2026-10-02 单 episode 复跑
+
+- 新作业：`25658646.pbs101`，最终状态 `F`、PBS `Exit_status=0`；先因 queue `ngpus` 总限额为 `Q`，随后在 compute node `x1000c1s1b0n0` 运行。PBS walltime 为 9 分 03 秒（请求 1 GPU、16 CPUs、110 GB、30 分钟）。OSMesa preflight 通过。
+- 入口：`osmesa_smoke.pbs`。每 15 秒将获批 GPU 的 utilization 和 memory 写入 job log，并分别记录 task success/failure 与管线完成状态。
+- 本次使用官方 Optional IDM checkpoint 的 `first_frame` / Fast-WAM direct-action mode。`eval_libero_single.py` 调用 `model.infer_action`，再把 action chunk 执行于 LIBERO 环境；job.log 记录 `Loaded checkpoint via model.load_checkpoint`。这不是 IDM 模式或 suite 评估。
+- 结果：`libero_goal` task 0（`open the middle drawer of the cabinet`）**1/1 成功**，episode 执行时间 57.45 秒。JSON 本地副本：[results.json](artifacts/25658646.pbs101/results.json)，327 bytes；exit code 本地记录为 0，并有 `PIPELINE_COMPLETE`、`TASK_SUCCESS` 标记。
+- GPU：PBS 分配 A100-SXM4-40GB；job.log 15 秒采样记录利用率最高显示 41%，显存占用约 24,769 MiB。
+- 视频：非空 MP4 228,479 bytes，保留在远端 `/scratch/users/ntu/yguo017/fastwam-smoke/artifacts/25658646.pbs101/rollout.mp4`；没有保留本地媒体副本。远端同目录保存 `job.log`、`eval.log`、`results.json`、`exit_code.txt` 与任务 outcome marker。

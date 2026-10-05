@@ -242,3 +242,12 @@
 - `16179763.pbs101` 已按主代理指示被 `qdel`，最终 `Exit_status=143`，仅运行约 43 秒并停在 GPU inventory；没有执行完整的逐卡 probe、没有创建跨设备 EGL contexts、没有 robosuite/render 结果，且未写 `SUCCESS`。
 - 不再使用“遍历所有全局 EGL devices + CUDA/GL interop”探测，因为这可能触及非本 allocation GPU。full smoke 暂停在安全 EGL identity 映射门槛。
 - 下一步仅考虑已有成功 Apptainer EGL vendor 配置，或在 PBS compute node 内使用 CPU OSMesa 做短 render/preflight；不得在 login node 运行探测，也不得重提全局逐卡探测。
+
+# 2026-10-02 — Fast-WAM one-episode rerun
+
+- Submitted `25658646.pbs101` from the existing PBS entry. It first queued on the overall `ngpus` limit, then completed on `x1000c1s1b0n0` with PBS `Exit_status=0` and `resources_used.walltime=00:09:03` (requested 1 GPU, 16 CPUs, 110 GB, 30 minutes). OSMesa preflight passed.
+- Official repository `main` and the local clean checkout both resolve to `7faa71108368fbb3b6885649f112af607427a2d4`. The entry uses the official `libero_optional_idm_2cam224_1e-4` config and published Optional IDM checkpoint in `first_frame` mode. `eval_libero_single.py` calls `infer_action` and executes the resulting action chunk in LIBERO. This is the Fast-WAM direct-action mode, not IDM or a full suite.
+- The prepared remote environment, checkpoint, stats, and SIF are present. The checkpoint is 12,041,735,545 bytes, matching the file previously LFS-verified by a PBS job; its old verification marker is absent, so this run checks file size and loader behavior without repeating a 12 GB hash.
+- `job.log` records the allocated A100-SXM4-40GB utilization and memory every 15 seconds; a sample reached 41% / 24,769 MiB. It records `Loaded checkpoint via model.load_checkpoint`, then `Task 0 completed: 1/1 successes` and `EPISODE_OUTCOME=TASK_SUCCESS successes=1/1`.
+- Result: `libero_goal` task 0, `open the middle drawer of the cabinet`, one success in one episode; task execution took 57.45 seconds. Local JSON: `artifacts/25658646.pbs101/results.json`; local text evidence also includes `job.log`, `eval.log`, `exit_code.txt`, `PIPELINE_COMPLETE`, and `TASK_SUCCESS`.
+- Remote artifact directory: `/scratch/users/ntu/yguo017/fastwam-smoke/artifacts/25658646.pbs101/`. The nonempty 228,479-byte MP4 remains at `rollout.mp4` on the remote scratch directory; no local media copy is retained. No further GPU work is needed.

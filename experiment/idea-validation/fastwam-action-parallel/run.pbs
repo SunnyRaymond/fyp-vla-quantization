@@ -1,0 +1,85 @@
+#!/bin/bash
+#PBS -N fw_action_parallel
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:45:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+grep -Fqx "$(hostname -s)" <(cut -d. -f1 "$PBS_NODEFILE") || exit 64
+case "${FW_LINE:-}" in context|time) ;; *) exit 64;; esac
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+ROOT=/scratch/users/ntu/yguo017/fastwam-action-parallel
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUTPUT="$ROOT/output/$PBS_JOBID"
+mkdir -p "$ARTIFACTS" "$OUTPUT"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  if [[ -n "${GPU_MONITOR_PID:-}" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+cp "$ROOT"/{runner.py,context_cache.py,time_parallel.py,run.pbs,PROTOCOL.zh.md,CONTEXT_PROTOCOL.zh.md,TIME_PROTOCOL.zh.md} "$ARTIFACTS/"
+run_python() {
+  apptainer exec --cleanenv --nv \
+    --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+    --env "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES" \
+    --env "PYTHONPATH=$ROOT:$BASE/libero-compat:$BASE/libero:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero" \
+    --env "LIBERO_CONFIG_PATH=$BASE/libero-config" \
+    --env "ARTIFACTS=$ARTIFACTS" --env "FW_LINE=$FW_LINE" \
+    --env "PBS_JOBID=$PBS_JOBID" --env "PBS_NODEFILE=$PBS_NODEFILE" \
+    --env "FASTWAM_SOURCE=$BASE/FastWAM" \
+    --env "DIFFSYNTH_MODEL_BASE_PATH=$BASE/model-cache" \
+    --env DIFFSYNTH_DOWNLOAD_SOURCE=huggingface,DIFFSYNTH_SKIP_DOWNLOAD=true,HF_HUB_OFFLINE=1 \
+    --env "HF_HOME=$BASE/cache/huggingface" \
+    --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+    --env OMP_NUM_THREADS=8,OPENBLAS_NUM_THREADS=8,LP_NUM_THREADS=8 \
+    --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1,TOKENIZERS_PARALLELISM=false \
+    "$SIF" "$BASE/venv/bin/python" "$@"
+}
+run_python - <<'PY'
+import os, socket, torch
+mask = os.environ['CUDA_VISIBLE_DEVICES']
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count() == 1
+actual = str(torch.cuda.get_device_properties(0).uuid)
+assert actual.removeprefix('GPU-').lower() == mask.removeprefix('GPU-').lower(), (mask, actual)
+print('ALLOCATION', os.environ['PBS_JOBID'], socket.gethostname(), actual, torch.cuda.get_device_name(0), flush=True)
+PY
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+CHECKPOINT="$BASE/checkpoints/libero_optional_idm_2cam224.clean.pt"
+STATS="$BASE/checkpoints/libero_optional_idm_2cam224_dataset_stats.json"
+test -s "$CHECKPOINT" && test "$(stat -c %s "$CHECKPOINT")" = 12041735545
+test -s "$STATS"
+cd "$BASE/FastWAM"
+run_python "$ROOT/runner.py" \
+  task=libero_optional_idm_2cam224_1e-4 ckpt="$CHECKPOINT" \
+  EVALUATION.dataset_stats_path="$STATS" \
+  EVALUATION.task_suite_name=libero_goal EVALUATION.task_id=0 EVALUATION.num_trials=1 \
+  EVALUATION.sigma_shift=1.0 +EVALUATION.action_infer_mode=first_frame \
+  EVALUATION.compile_action_infer=false EVALUATION.output_dir="$OUTPUT" gpu_id=0
+test -s "$ARTIFACTS/summary.json" && test -s "$ARTIFACTS/measurements.csv"
+test -f "$ARTIFACTS/PIPELINE_COMPLETE"
+date -Is

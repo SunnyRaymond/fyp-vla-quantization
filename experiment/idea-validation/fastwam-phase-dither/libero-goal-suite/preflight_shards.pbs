@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -N wam_goal_shard_check
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:05:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" | grep -Eq 'job_state = R' || exit 64
+ROOT=/scratch/users/ntu/yguo017/wam-libero-goal-suite-20261004
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; return "$rc"; }
+trap finish EXIT
+cp "$ROOT/suite.py" "$ROOT/aggregate.py" "$ROOT/run_shards.pbs" "$ROOT/aggregate_shards.pbs" "$ROOT/preflight_shards.pbs" "$ARTIFACTS/"
+cp /scratch/users/ntu/yguo017/wam-paired-followup-20261003/closedloop.py "$ARTIFACTS/"
+cp /scratch/users/ntu/yguo017/wam-phase-screen-20261003/runner.py "$ARTIFACTS/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export OTC_ALLOCATION_HOST="$HOST"
+bash -n "$ARTIFACTS/run_shards.pbs"
+bash -n "$ARTIFACTS/aggregate_shards.pbs"
+cd "$ARTIFACTS"
+python - <<'PY'
+import ast
+from pathlib import Path
+for filename in ('suite.py', 'aggregate.py'):
+    ast.parse(Path(filename).read_text(encoding='utf-8'))
+import suite
+import aggregate
+suite.screen_runner.guard()
+suite.self_check()
+aggregate.self_check()
+old = aggregate.load_result(Path('/scratch/users/ntu/yguo017/wam-libero-goal-suite-20261004/artifacts/25669967[0].pbs101/result.json'))
+assert len(old[3]) == 200
+print('PREFLIGHT_PASS state partitions, duplicate/missing merge rejection, old full-task compatibility, and shell syntax', flush=True)
+PY
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+date

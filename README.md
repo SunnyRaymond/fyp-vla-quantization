@@ -8,6 +8,7 @@
 
 - `idea/`：现有 research ideas、IdeaSpark pipeline、prior-art review 和 idea briefs；明确的验证运行放在 `experiment/idea-validation/`。
 - `experiment/idea-validation/`：对现有 ideas 的 screen、pilot、verification 和运行产物。
+- [Week ending 2026-10-04 实验索引](experiment/idea-validation/WEEK_ENDING_2026-10-04.zh.md)：本周周报实验、结果与整理范围。
 - `experiment/reproduction/`：paper/code audits、quantization reproduction、VLA evaluation 和 benchmark 运行。
 - `papers/vla/`：VLA、VLA quantization、simulation evaluation 及其单篇 paper 文件夹。
 - `papers/wam/`：World Action Model papers 的单篇文件夹。
