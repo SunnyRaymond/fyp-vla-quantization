@@ -1,0 +1,60 @@
+{
+  "findings": [],
+  "suggested_repairs": [
+    {
+      "kind": "definition",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "If max_j|x_bp,j|=0, emit x_tilde_bp=0 and skip activation quantization and dither correction for that row, while retaining the ordinary Linear bias/epilogue path.",
+      "delta_summary": "T3 N1：max/126 的零 row 使 S4 出现 0/0；只补边界定义。",
+      "id": "W1"
+    },
+    {
+      "kind": "wording",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "Here round means round-to-nearest, ties-to-even, with the same implementation used for calibration and evaluation.",
+      "delta_summary": "T1/T3 N2：明示半格规则可消除两个 defensible exact-output readings。",
+      "id": "W2"
+    },
+    {
+      "kind": "claim_grade",
+      "op": "append_sentence",
+      "field": "core_mechanism_steps",
+      "value": "Step 4 forwards the phase-dependent tensor; final action changes with φ only when its downstream projection is nonzero.",
+      "delta_summary": "T4 N3：W/J 可消去 phase error，故把无条件 action-path 保证限定为非零 downstream projection。",
+      "id": "W3"
+    }
+  ],
+  "regime": [
+    {
+      "finding": "N1 零 activation row 令 Δ=0，S4 的除法为 0/0。",
+      "severity": "note",
+      "why_not_repaired": "只发生于合法零 row regime，不是对所有输入的不可能性；报告局部公式建议。",
+      "tag": "regime",
+      "source": "T3",
+      "derivation": "x=0→max|x|/126=0→x/Δ=0/0；非零 row 可运行。",
+      "repair_kind": "formula",
+      "verbatim_step_quote": "3. 在当前完整量化路径上逐 token row 计算 A8 scale Δ_bp=max|x_bp|/126，抽样轨迹标识确定的 per-sample base draw u_b；输出 live row scales 和真实 full-path activation rows，不用 FP 输入代替。",
+      "executed_evidence": "代入全零 row 得 Δ=0；S4 分母为0。",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "N4 在 Φ=(0,1/2) 两 site regime，随机 site-label swap 可因 global gauge 对称而不移动 MSE。",
+      "severity": "note",
+      "why_not_repaired": "主 T2 permutation 会移动结果；此合法子域是控制 no-op，falsification field 属 audit-owned，trace 不改写。",
+      "tag": "regime",
+      "source": "T2b",
+      "derivation": "(U,U+1/2 mod1) 交换后等同 U′=frac(U+1/2)，U′仍 Uniform；endpoint law 与 MSE 不变。",
+      "repair_kind": "formula",
+      "verbatim_step_quote": "唯一 load-bearing variable 是 site phase table Φ：保持其取值集合不变而随机置换 site 对应关系，预测 held-out endpoint MSE 上升；",
+      "executed_evidence": "本 synthetic input 下 .12333333→.12333333；另有主 instance .08583333→.28583333。",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "parameter_notes": [],
+  "t5_notes": [],
+  "demoted_to_notes": []
+}

@@ -1,0 +1,214 @@
+#!/bin/bash
+#PBS -N fw_plus_manifest_only
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+REPO="$ROOT/LIBERO-plus"
+NATIVE_ROOT="$ROOT/native/imagemagick-jammy"
+NATIVE_LIBDIR="$NATIVE_ROOT/usr/lib/x86_64-linux-gnu"
+NATIVE_STATUS="$ROOT/native_status.json"
+LIBERO_CONFIG_PATH="$ROOT/libero-config"
+LIBERO_COMPAT="$ROOT/libero-plus-compat"
+ARTIFACTS="$ROOT/artifacts/${PBS_JOBID:-missing-jobid}"
+PRE_STATUS="$ROOT/env_status.pre.json"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  trap - EXIT
+  printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+
+printf 'MANIFEST_ONLY_START job=%s time=%s\n' "${PBS_JOBID:-MISSING}" "$(date -Is)"
+test -n "${PBS_JOBID:-}" && test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) printf 'GUARD_FAIL login_host=%s\n' "$HOST"; exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || { printf 'GUARD_FAIL hostname_not_in_nodefile host=%s\n' "$HOST"; exit 64; }
+
+QSTAT_FILE="/tmp/libero-plus-manifest-only-${PBS_JOBID}.txt"
+printf 'ALLOCATION_QSTAT_START job=%s timeout_s=20\n' "$PBS_JOBID"
+set +e
+timeout 20s qstat -f "$PBS_JOBID" > "$QSTAT_FILE" 2>&1
+qstat_rc=$?
+set -e
+printf 'ALLOCATION_QSTAT_COMPLETE job=%s rc=%s\n' "$PBS_JOBID" "$qstat_rc"
+if test "$qstat_rc" -ne 0; then cat "$QSTAT_FILE"; exit 64; fi
+grep -Eq 'job_state = R' "$QSTAT_FILE" || { printf 'GUARD_FAIL allocation_not_running\n'; exit 64; }
+cp "$QSTAT_FILE" "$ARTIFACTS/allocation.txt"
+printf 'ALLOCATION_GUARD_OK job=%s host=%s\n' "$PBS_JOBID" "$HOST"
+
+test -s "$PRE_STATUS" && test -s "$NATIVE_STATUS" && test -s "$REPO/.source_commit"
+test -r "$SIF" && test -x "$BASE/venv/bin/python"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+
+MAGICK_HOME="$NATIVE_ROOT/usr"
+MAGICK_CONFIGURE_PATH="$NATIVE_ROOT/etc/ImageMagick-6:$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16"
+MAGICK_CODER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders"
+MAGICK_FILTER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/filters"
+LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  fi
+done
+container_exec() {
+  apptainer exec --cleanenv "${BIND_ARGS[@]}" --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST" --env "ROOT=$ROOT,BASE=$BASE,REPO=$REPO,PRE_STATUS=$PRE_STATUS,NATIVE_STATUS=$NATIVE_STATUS,LIBERO_CONFIG_PATH=$LIBERO_CONFIG_PATH,LIBERO_COMPAT=$LIBERO_COMPAT" --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH,MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR" "$SIF" "$BASE/venv/bin/python" "$@"
+}
+
+printf 'RECEIPT_VALIDATION_START time=%s\n' "$(date -Is)"
+container_exec - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+repo = Path(os.environ["REPO"]).resolve()
+status = json.loads(Path(os.environ["PRE_STATUS"]).read_text(encoding="utf-8"))
+native = json.loads(Path(os.environ["NATIVE_STATUS"]).read_text(encoding="utf-8"))
+source_commit = "4976dc30028e805ff8094b55501d532c48fec182"
+asset_commit = "b548dd25ee0401c46217ba7e3614a598e8979e48"
+if status.get("source_commit") != source_commit or Path(repo, ".source_commit").read_text().strip() != source_commit:
+    raise RuntimeError("Prepared source commit does not match the pinned Plus commit")
+if status.get("assets", {}).get("commit") != asset_commit:
+    raise RuntimeError("Prepared assets commit does not match the pinned Plus asset commit")
+marker = root / f"assets-{asset_commit}.complete"
+if not marker.is_file() or marker.read_text(encoding="ascii").strip() != asset_commit:
+    raise RuntimeError("Pinned Plus assets completion marker is missing or mismatched")
+if native.get("ready") is not True:
+    raise RuntimeError("Task-private native Wand receipt is not ready")
+paths = status.get("paths", {})
+checks = status.get("checks", {})
+native_paths = native.get("paths", {})
+for key, expected in (
+    ("plus_repo", str(repo)),
+    ("plus_package_root", str(repo / "libero" / "libero")),
+    ("dependency_target", str(root / "deps")),
+    ("libero_config_path", os.environ["LIBERO_CONFIG_PATH"]),
+    ("libero_compat", os.environ["LIBERO_COMPAT"]),
+):
+    if paths.get(key) != expected:
+        raise RuntimeError(f"Prepared environment path mismatch for {key}: {paths.get(key)!r} != {expected!r}")
+for key, expected in (
+    ("native_root", str(root / "native" / "imagemagick-jammy")),
+    ("native_library_dir", str(root / "native" / "imagemagick-jammy" / "usr" / "lib" / "x86_64-linux-gnu")),
+    ("magick_home", str(root / "native" / "imagemagick-jammy" / "usr")),
+):
+    if paths.get(key) != expected or native_paths.get(key) != expected:
+        raise RuntimeError(f"Native receipt path mismatch for {key}")
+plus_package = (repo / "libero" / "libero").resolve()
+classification = (plus_package / "benchmark" / "task_classification.json").resolve()
+for key in ("libero_libero", "classification_path"):
+    value = checks.get(key)
+    if not value:
+        raise RuntimeError(f"Prior Plus import receipt lacks {key}")
+    try:
+        Path(value).resolve().relative_to(plus_package)
+    except ValueError as exc:
+        raise RuntimeError(f"Prior import path is outside Plus source: {key}={value}") from exc
+if Path(checks["classification_path"]).resolve() != classification or not classification.is_file():
+    raise RuntimeError("Prior import receipt classification path does not match pinned Plus package")
+if not (plus_package / "benchmark" / "libero_suite_task_map.py").is_file():
+    raise RuntimeError("Pinned Plus task map source is missing")
+if not (Path(os.environ["BASE"]) / "libero" / "libero" / "benchmark" / "libero_suite_task_map.py").is_file():
+    raise RuntimeError("BASE canonical task map source is missing")
+if checks.get("gpu_loaded") is not False:
+    raise RuntimeError("Previous prepare import gate did not confirm GPU-free environment validation")
+if checks.get("wand_noise_png_roundtrip") != native.get("gaussian_noise_png_roundtrip"):
+    raise RuntimeError("Prepared environment and native Wand receipt disagree on PNG round-trip evidence")
+for key in ("torch", "triton", "cv2", "wand", "skimage", "mujoco"):
+    value = status.get("imports", {}).get(key)
+    if not value or str(value).startswith("ERROR:"):
+        raise RuntimeError(f"Prior environment import gate is missing/failed for {key}: {value!r}")
+for name in ("articulated_objects", "new_objects", "scenes", "stable_hope_objects", "stable_scanned_objects", "textures", "turbosquid_objects"):
+    if not (Path(status["assets"]["path"]) / name).is_dir():
+        raise RuntimeError(f"Prepared Plus asset directory is missing: {name}")
+for name in ("serving_region.xml", "wall_frames.stl", "wall.xml"):
+    if not (Path(status["assets"]["path"]) / name).is_file():
+        raise RuntimeError(f"Prepared Plus asset file is missing: {name}")
+job_id = status.get("pbs_job_id")
+if not job_id:
+    raise RuntimeError("Prepared environment lacks its import job ID")
+log = root / "artifacts" / job_id / "job.log"
+if not log.is_file() or log.stat().st_size > 262144:
+    raise RuntimeError(f"Prior import log is missing or exceeds 256 KiB: {log}")
+provenance = []
+for line in log.read_text(encoding="utf-8").splitlines():
+    if line.startswith("LIBERO_IMPORT_PROVENANCE "):
+        provenance.append(json.loads(line.split(" ", 1)[1]))
+if len(provenance) != 1:
+    raise RuntimeError(f"Expected one import provenance record from {job_id}; found {len(provenance)}")
+provenance = provenance[0]
+for key in ("benchmark_file", "offscreen_env_file", "classification_path"):
+    try:
+        Path(provenance[key]).resolve().relative_to(plus_package)
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(f"Import provenance does not locate {key} inside Plus source: {provenance.get(key)}") from exc
+if Path(provenance["classification_path"]).resolve() != classification:
+    raise RuntimeError("Import provenance classification source differs from the fixed Plus source")
+print("PREPARED_RECEIPTS_OK " + json.dumps({
+    "source_commit": source_commit,
+    "asset_commit": asset_commit,
+    "import_receipt_job": job_id,
+    "benchmark_file": provenance["benchmark_file"],
+    "offscreen_env_file": provenance["offscreen_env_file"],
+    "classification_path": provenance["classification_path"],
+    "native_receipt": str(root / "native_status.json"),
+    "gpu_loaded": checks.get("gpu_loaded"),
+}, sort_keys=True), flush=True)
+PY
+
+printf 'MANIFEST_GENERATION_START seed=20261005 suites=4 dimensions=7 per_cell=50 time=%s\n' "$(date -Is)"
+container_exec "$ROOT/prepare_manifest.py" --repo "$REPO" --base-repo "$BASE/libero" --output "$ROOT/manifest.json" --env-status "$PRE_STATUS"
+
+printf 'ENV_STATUS_FINALIZE_START time=%s\n' "$(date -Is)"
+container_exec - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+status = json.loads(Path(os.environ["PRE_STATUS"]).read_text(encoding="utf-8"))
+summary = json.loads((root / "manifest_summary.json").read_text(encoding="utf-8"))
+if summary.get("variant_count") != 1400:
+    raise RuntimeError(f"Manifest summary has unexpected variant count: {summary.get('variant_count')}")
+counts = summary.get("selection_counts", {})
+if len(counts) != 4 or any(len(cells) != 7 or set(cells.values()) != {50} for cells in counts.values()):
+    raise RuntimeError("Manifest summary does not contain 28 frozen cells of 50 variants")
+status.setdefault("paths", {})["manifest"] = str(root / "manifest.json")
+status.setdefault("checks", {})["ready"] = True
+status["checks"]["manifest_ready"] = True
+job_id = status.get("pbs_job_id")
+log = root / "artifacts" / job_id / "job.log"
+if not log.is_file() or log.stat().st_size > 262144:
+    raise RuntimeError(f"Prepared import log is missing or exceeds 256 KiB: {log}")
+provenance_rows = [json.loads(line.split(" ", 1)[1]) for line in log.read_text(encoding="utf-8").splitlines() if line.startswith("LIBERO_IMPORT_PROVENANCE ")]
+if len(provenance_rows) != 1:
+    raise RuntimeError(f"Expected one import provenance record from {job_id}; found {len(provenance_rows)}")
+status["import_provenance"] = provenance_rows[0]
+status["import_provenance_job"] = job_id
+status["manifest"] = {
+    "path": str(root / "manifest.json"),
+    "bytes": summary["manifest_bytes"],
+    "variant_count": summary["variant_count"],
+    "seed": summary["seed"],
+}
+target = root / "env_status.json"
+temp = target.with_suffix(".json.tmp")
+temp.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+temp.replace(target)
+print("ENV_STATUS_READY " + json.dumps(status["manifest"], sort_keys=True), flush=True)
+PY
+printf 'MANIFEST_ONLY_COMPLETE job=%s manifest=%s env_status=%s summary=%s\n' "$PBS_JOBID" "$ROOT/manifest.json" "$ROOT/env_status.json" "$ROOT/manifest_summary.json"

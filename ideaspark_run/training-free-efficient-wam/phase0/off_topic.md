@@ -1,0 +1,60 @@
+# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)
+
+These were retrieved by a connector but the host judged them outside the research direction (cross-domain "memory-augmented" false positives, surveys, unrelated fields). They are archived here for transparency but do NOT feed Phase 1 or the deep-read pool.
+
+- **PDP: Physics-Based Character Animation via Diffusion Policy** (`openalex:W4404965663`)
+  - 研究对象是物理角色动画的扩散策略，与机器人WAM推理效率方向无关。
+- **Large-Scale Model-Enhanced Vision-Language Navigation: Recent Advances, Practical Applications, and ** (`openalex:W7140307821`)
+  - 纯VLN综述，研究导航系统而非WAM或world-model推理加速。
+- **A survey on multimodal large language models** (`openalex:W4404356490`)
+  - 纯多模态LLM综述，领域与WAM效率无直接关系。
+- **Embodied Robot Manipulation in the Era of Foundation Models: Planning and Learning Perspectives** (`openalex:W7117757187`)
+  - 纯机器人操作foundation model综述，不是WAM推理效率研究。
+- **Understanding World or Predicting Future? A Comprehensive Survey of World Models** (`openalex:W4411735734`)
+  - 纯world-model综述；按rubric排除纯survey/review。
+- **Multimodal fusion and vision–language models: A survey for robot vision** (`openalex:W4413788337`)
+  - 纯robot vision与VLM综述，与WAM加速机制无关。
+- **The Cost of Dreaming: A Survey of Computational Constraints in Generative and Latent World Models** (`openalex:W7204147246`)
+  - 主题涉及world-model效率但属于纯survey，按rubric排除。
+- **Vision-Language-Action Models for Robotics: A Review Towards Real-World Applications** (`openalex:W4414198610`)
+  - 纯VLA真实应用综述，不是WAM推理加速工作。
+- **DiffScene: Diffusion-Based Safety-Critical Scenario Generation for Autonomous Vehicles** (`openalex:W4409366385`)
+  - 研究自动驾驶安全场景生成和评估，不涉及world-model推理或WAM。
+- **A review of large language models and autonomous agents in chemistry** (`openalex:W4405185373`)
+  - 纯化学LLM与科研agent综述，属于无关领域。
+- **Diego Rivera’s Detroit Industry and the Subterranean Commons** (`openalex:W4411170562`)
+  - 艺术史与矿业文化研究，明显跨领域误检。
+- **Can Open Large Language Models Catch Vulnerabilities?** (`openalex:W4406779522`)
+  - 研究LLM代码漏洞分类，属于无关的软件安全领域。
+- **🧜Siren’s Song in the AI Ocean: A Survey on Hallucination in Large Language Models** (`openalex:W4412158322`)
+  - 纯LLM幻觉综述，属于无关研究方向。
+- **A Survey on Diffusion Policy for Robotic Manipulation: Taxonomy, Analysis, and Future Directions** (`openalex:W4409160955`)
+  - 纯robot diffusion policy综述，且不研究WAM推理加速。
+- **The (re)emergence of the huntress: Towards an understanding of interspecies relations and knowledges** (`openalex:W7167035018`)
+  - 人类学与原住民知识研究，明显跨领域误检。
+- **Large Language Models for Information Retrieval: A Survey** (`openalex:W4414014501`)
+  - 纯信息检索综述，与机器人WAM无关。
+- **A Poetic Genealogy of North African Literature** (`openalex:W7133721097`)
+  - 北非文学研究，明显跨领域误检。
+- **Token-Mol 1.0: tokenized drug design with large language models** (`openalex:W4410325586`)
+  - 分子与药物生成模型，明显跨领域误检。
+- **Benchmarking neural radiance fields for autonomous robots: An overview** (`openalex:W4404875197`)
+  - 纯NeRF自动驾驶机器人综述，与WAM推理效率无直接关系。
+- **Specters** (`openalex:W7162911358`)
+  - 文学作品集介绍，明显跨领域误检。
+- **Retrieval augmented generation for large language models in healthcare: A systematic review** (`openalex:W4411203672`)
+  - 医疗RAG系统综述，属于无关领域。
+- **RKSC: Reasoning-Aware KV Cache Sharing and Confident Early Exit for Multi-Step LLM Inference** (`arxiv:2606.09937v1`)
+  - RKSC加速多分支LLM推理缓存，属于语言模型系统而非机器人world model。
+- **Scaffolds for Higher Tropical Grassmannians: Foundations** (`arxiv:2604.25211v2`)
+  - 研究tropical Grassmannian组合数学，明显跨领域误检。
+- **Fine-tuning Pocket-Aware Diffusion Models via Denoising Policy Optimization** (`arxiv:2605.17693v1`)
+  - 研究药物分子扩散模型微调，明显跨领域误检。
+- **Future Querying: Can LLMs Serve as Implicit Medical World Models?** (`arxiv:2608.23248v1`)
+  - 医疗LLM作为临床world model的研究，属于不同领域。
+- **Bridging the Agent-World Gap: Text World Models for LLM-based Agents** (`arxiv:2606.09032v1`)
+  - 纯text world model综述聚焦LLM交互环境，且属于survey。
+- **CacheRepair: Learning to Repair Cross-Chunk Context in RAG for KV Cache Fusion** (`arxiv:2609.35139v1`)
+  - CacheRepair加速RAG中的LLM KV cache，属于语言模型检索系统而非机器人WAM。
+- **Diffusion-Based Body Schema Learning Enabling Abnormal-State Adaptation in Musculoskeletal Robots** (`arxiv:2608.01029v1`)
+  - musculoskeletal body-schema估计与异常适配，不是WAM或机器人action-world modeling。

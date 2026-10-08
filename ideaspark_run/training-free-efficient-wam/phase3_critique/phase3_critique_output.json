@@ -1,0 +1,100 @@
+{
+  "paper_pointed_threat": {
+    "threat_paper_id": "arxiv:2602.01609v1",
+    "threat_source": "n/a",
+    "threat_channel": null,
+    "subsumption_argument": "ToPi（supplemental_primary，§4.2–4.3；https://arxiv.org/html/2602.01609v1）在冻结 diffusion transformer 上按 target-to-context 的 attention/value contribution 排序，保留累计贡献达到 τ 的最小 context 子集，在 anchor denoising steps 重评分并在其间复用、压紧该子集；这已覆盖本候选“读出贡献分数→累计阈值选 context→跨 solver steps 复用”的通用 recipe。ToPi 的对象是图像编辑中的 target latents 与 reference tokens，并未检验 WAM action-query→observation-source edges、机器人 task success 或这一 action 路径的完整时延，故它不是同一 WAM 机制的 exact overlap。CAPA（supplemental_primary，§4.1 Eq.(2)；https://arxiv.org/html/2602.00247v1）另已使用经 W_O 投影、取 residual contribution norm 的视觉 token 分数，因此投影本身也不能支撑新颖性；当前候选仍可主张 WAM-specific 边选择，但必须在相同保留边数和任务结果下显示其分数优于这些先前分数。",
+    "addressable_via": "在 falsification_prediction 中增加等保留 action-query→observation 边数的 raw attention-mass 与 ToPi/VATP/CAPA-style contribution 评分对照臂。",
+    "parametric_family_concern": null
+  },
+  "falsification_structure_check": {
+    "minimal_experiment_named": "yes",
+    "outcome_metric_named": "yes",
+    "load_bearing_variable": "rho_lg",
+    "negative_control_target": "outcome_metric",
+    "numeric_bar_provenance": "none",
+    "verdict": "sound",
+    "reasoning": "候选明确比较 dense、rho_lg-ranked 与等保留边成本的 source-group permutation，在配对 frozen-WAM episodes 上以 LIBERO/RoboLab task success 的方向和原冻结 gate 作判断，并完整计入 scoring、packing、kernel 与模型路径时延；rho_lg 是明示的单一负载量，置换控制针对下游 task outcome。按 T5 regime note 的限制，取三个等 token 数的 source groups、r=[3,2,1]、epsilon=1/3，保留 AB（5/6≥2/3）后置换可得等成本的 BC 控制；因此不把不等组大小这一条件性情形当结构阻塞。T3 的相同 value 输出是参数依赖备注，blocking file 也显示另一合法赋值会改变输出。"
+  },
+  "blocking_findings_disposition": [],
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "ToPi 的累计贡献选集与跨 denoising-step 复用、以及 CAPA 已有的 W_O-projected contribution，使通用 scoring/pruning recipe 和投影分数本身不能作为新颖性依据；但两者都未验证 WAM action-only observation edges 的任务因果效应，故没有 exact-overlap hard-floor。falsification_structure_check 为 sound 且 blocking_findings 中没有 B 项；由于当前 group-permutation 只检验排名敏感性，不能证明候选分数胜过 attention mass 或先前 contribution score，按 paper_pointed_threat.addressable_via 授权一项 strengthen-only 对照扩充。",
+  "revision_targets": [
+    {
+      "target_id": "R1",
+      "scope": "falsification",
+      "field": "falsification_prediction",
+      "issue": "paper_pointed_threat：ToPi 已覆盖累计贡献选集与迭代生成中的 subset reuse，CAPA 已使用 output-projected contribution；当前仅比较候选 rho_lg 与置换排名，未检验其相对这些评分法或 raw action-attention mass 的 WAM task-outcome 增量。",
+      "fix_direction": "只新增相同 frozen WAM、相同 k_ref、相同 action-query→observation 保留边数及同一 compact kernel 下的评分基线：native attention-mass group ranking、ToPi/VATP attention×value-norm 聚合到 source groups、以及 CAPA per-token W_O-projected contribution 聚合到 source groups。保留现有 dense、rho_lg-ranked、group-permutation arms、task-success metric、完整路径 latency accounting 与原 claim 不变；该配对判断用于检验候选 score 是否带来 WAM-specific task-action 增量。"
+    }
+  ],
+  "supplemental_evidence": {
+    "threat_grounding": {
+      "source_class": "supplemental_primary",
+      "threat_source": "n/a",
+      "paper_id": "arxiv:2602.01609v1",
+      "title": "Token Pruning for In-Context Generation in Diffusion Transformers",
+      "retrieved_via": "host_web",
+      "verified_record_paths": [
+        "phase0/lit_results.json",
+        "phase3_collision/extra_verified_priors.json"
+      ],
+      "not_in_original_request_pools": [
+        "phase0/lit_table.md",
+        "phase3_collision/collision_hits.json"
+      ],
+      "primary_url": "https://arxiv.org/html/2602.01609v1",
+      "grounding": "§4.2–4.3 defines context-token contribution from attention-weighted value norms, selects the smallest subset meeting a cumulative contribution fraction, updates it at anchor diffusion steps, and reuses/prunes the subset between anchors.",
+      "scope_boundary": "Training-free image-editing DiTs; no WAM action-query edges or robot task outcome."
+    },
+    "other_primary_neighbors": [
+      {
+        "source_class": "supplemental_primary",
+        "paper_id": "arxiv:2602.00247v1",
+        "title": "CAPA: Contribution-Aware Pruning and FFN Approximation for Efficient Large Vision-Language Models",
+        "retrieved_via": "host_web",
+        "url": "https://arxiv.org/html/2602.00247v1",
+        "grounding": "§4.1 Eq.(2) computes attention-weighted values through per-head W_V and W_O projections, sums the residual-stream contribution, and ranks visual KV tokens; it establishes that output-projected contribution scoring itself is prior art.",
+        "scope_boundary": "LVLM visual-token pruning, not iterative WAM control or action-query-only edge deletion."
+      },
+      {
+        "source_class": "supplemental_primary",
+        "identifier": "arxiv:2406.12335v2",
+        "title": "Attention Score is not All You Need for Token Importance Indicator in KV Cache Reduction: Value Also Matters",
+        "url": "https://arxiv.org/abs/2406.12335",
+        "grounding": "VATP combines attention scores with the L1 norm of value vectors for LLM KV-cache token importance.",
+        "scope_boundary": "Language-model KV-cache pruning; no WAM or robot outcome."
+      },
+      {
+        "source_class": "supplemental_primary",
+        "title": "Contribution Weights: A Geometrical Analysis of Self-Attention Transformers",
+        "url": "https://proceedings.mlr.press/v306/cunningham26a.html",
+        "grounding": "ICML 2026 proposes a projection-based token influence metric accounting for attention weight, value magnitude, and directional alignment with layer output.",
+        "scope_boundary": "Transformer interpretation/importance analysis, not WAM pruning."
+      },
+      {
+        "source_class": "supplemental_primary",
+        "identifier": "2020.emnlp-main.574",
+        "title": "Attention is Not Only a Weight: Analyzing Transformers with Vector Norms",
+        "url": "https://aclanthology.org/2020.emnlp-main.574/",
+        "grounding": "EMNLP 2020 analyzes attention together with transformed-input vector norms; the general idea that attention alone misses value magnitude predates the recent retrieval window.",
+        "scope_boundary": "BERT and machine-translation analysis, not token-pruning or WAM control."
+      }
+    ],
+    "collision_neighbor": {
+      "paper_id": "arxiv:2511.16449v5",
+      "title": "Bridging the Semantic-Action Gap in Visual Token Pruning for Efficient VLA Inference",
+      "collision_channel": "alias",
+      "url": "https://arxiv.org/html/2511.16449v5",
+      "grounding": "VLA-Pruner combines semantic-prefill scores with temporally smoothed action-to-vision attention, then filters visual tokens under a compute budget; it reports manipulation benchmarks and a real-robot evaluation.",
+      "scope_boundary": "Autoregressive VLA prefill/action decoding, not joint flow-denoised WAM or output-projected source-group edge masking; latency figures are not directly comparable."
+    },
+    "execution_and_claim_boundaries": [
+      "The candidate's rho_lg is a model-internal ranking proxy, not a causal gradient or guarantee of task-action sensitivity; only the paired task outcomes can establish an empirical effect for the tested frozen checkpoints.",
+      "Prior speedups use different architectures and workloads; judge candidate latency only from its full measured path, including scoring, packing, kernel launch, and untouched model components, alongside action-query→observation QK/AV FLOPs and Amdahl headroom.",
+      "The incremental mask remains training-free; any post-training already used to produce a baseline checkpoint is separate baseline cost. This review ran no GPU, cluster, or physical-robot experiment.",
+      "blocking_findings.findings is empty. T5 is a conditional unequal-group-size regime note; the equal-size camera/view assignment above makes a legal matched-cost permutation possible. T3 is a parameter note, not a universal failure."
+    ]
+  }
+}

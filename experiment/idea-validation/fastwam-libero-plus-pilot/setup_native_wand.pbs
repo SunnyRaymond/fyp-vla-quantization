@@ -1,0 +1,211 @@
+#!/bin/bash
+#PBS -N libero_plus_wand_setup
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:40:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" > "/tmp/libero-plus-wand-setup-$PBS_JOBID.txt"
+grep -Eq 'job_state = R' "/tmp/libero-plus-wand-setup-$PBS_JOBID.txt" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+DEPS="$ROOT/deps"
+OUT="$ROOT/artifacts/$PBS_JOBID"
+NATIVE_ROOT="$ROOT/native/imagemagick-jammy"
+NATIVE_LIBDIR="$NATIVE_ROOT/usr/lib/x86_64-linux-gnu"
+APT_ROOT="$ROOT/native-apt"
+VERSION='8:6.9.11.60+dfsg-1.3ubuntu0.22.04.5'
+mkdir -p "$OUT" "$NATIVE_ROOT" "$APT_ROOT/lists/partial" "$APT_ROOT/archives/partial" "$APT_ROOT/cache/partial"
+exec > >(tee -a "$OUT/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$OUT/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+cp "/tmp/libero-plus-wand-setup-$PBS_JOBID.txt" "$OUT/allocation.txt"
+printf 'WAND_NATIVE_SETUP_START job=%s host=%s time=%s version=%s\n' "$PBS_JOBID" "$HOST" "$(date -Is)" "$VERSION"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+PYTHON="$BASE/venv/bin/python"
+test -x "$PYTHON" && test -r "$SIF"
+allocation_guard() {
+  test -n "${PBS_JOBID:-}" && test -r "${PBS_NODEFILE:-}" || return 64
+  local node
+  node=$(hostname -s)
+  case "$node" in *login*) return 64;; esac
+  awk -v host="$node" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || return 64
+  qstat -f "$PBS_JOBID" > "/tmp/libero-plus-wand-setup-$PBS_JOBID.txt" || return 64
+  grep -Eq 'job_state = R' "/tmp/libero-plus-wand-setup-$PBS_JOBID.txt" || return 64
+}
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  fi
+done
+container_exec() {
+  allocation_guard
+  apptainer exec --cleanenv "${BIND_ARGS[@]}" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST,LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+    "$@"
+}
+
+if ! test -s "$NATIVE_ROOT/.ready" || test "$(cat "$NATIVE_ROOT/.ready" 2>/dev/null || true)" != "$VERSION"; then
+  cat > "$APT_ROOT/sources.list" <<'EOF'
+deb https://archive.ubuntu.com/ubuntu jammy main universe
+deb https://archive.ubuntu.com/ubuntu jammy-updates main universe
+deb https://security.ubuntu.com/ubuntu jammy-security main universe
+EOF
+  printf 'PROGRESS apt_index_update_start lists=%s\n' "$APT_ROOT/lists"
+  container_exec \
+    --env "APT_ROOT=$APT_ROOT,VERSION=$VERSION" \
+    "$SIF" /bin/bash -s <<'SH'
+set -euo pipefail
+APT_OPTIONS=(
+  -o "Dir::State::lists=$APT_ROOT/lists"
+  -o Dir::State::status=/var/lib/dpkg/status
+  -o "Dir::State::extended_states=$APT_ROOT/extended_states"
+  -o "Dir::Cache=$APT_ROOT/cache"
+  -o "Dir::Cache::archives=$APT_ROOT/archives"
+  -o "Dir::Etc::sourcelist=$APT_ROOT/sources.list"
+  -o Dir::Etc::sourceparts=-
+  -o APT::Get::List-Cleanup=0
+)
+apt-get "${APT_OPTIONS[@]}" update
+printf 'PROGRESS apt_index_update_complete\n'
+apt-get "${APT_OPTIONS[@]}" install --download-only --no-install-recommends -y \
+  "libmagickwand-6.q16-6=$VERSION" \
+  "libmagickcore-6.q16-6=$VERSION" \
+  "imagemagick-6-common=$VERSION"
+printf 'PROGRESS apt_download_complete packages=\n'
+for deb in "$APT_ROOT"/archives/*.deb; do
+  test -f "$deb" || continue
+  printf 'PACKAGE name=%s version=%s bytes=%s file=%s\n' \
+    "$(dpkg-deb -f "$deb" Package)" "$(dpkg-deb -f "$deb" Version)" "$(stat -c %s "$deb")" "$(basename "$deb")"
+done
+SH
+
+  container_exec \
+    --env "APT_ROOT=$APT_ROOT,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR,VERSION=$VERSION" \
+    "$SIF" /bin/bash -s <<'SH'
+set -euo pipefail
+count=0
+for deb in "$APT_ROOT"/archives/*.deb; do
+  test -f "$deb" || continue
+  printf 'EXTRACT_PACKAGE name=%s version=%s\n' "$(dpkg-deb -f "$deb" Package)" "$(dpkg-deb -f "$deb" Version)"
+  dpkg-deb -x "$deb" "$NATIVE_ROOT"
+  count=$((count + 1))
+done
+test "$count" -ge 3 || { printf 'Expected Wand/Core/common debs; extracted count=%s\n' "$count"; exit 1; }
+test -s "$NATIVE_LIBDIR/libMagickWand-6.Q16.so.6"
+test -s "$NATIVE_LIBDIR/libMagickCore-6.Q16.so.6"
+test -s "$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16/configure.xml"
+test -s "$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders/png.so"
+mkdir -p "$NATIVE_ROOT/usr/lib"
+ln -sfn "$NATIVE_LIBDIR/libMagickWand-6.Q16.so.6" "$NATIVE_ROOT/usr/lib/libMagickWand-6.Q16.so"
+ln -sfn "$NATIVE_LIBDIR/libMagickCore-6.Q16.so.6" "$NATIVE_ROOT/usr/lib/libMagickCore-6.Q16.so"
+printf 'PROGRESS native_extract_complete count=%s native_root=%s\n' "$count" "$NATIVE_ROOT"
+SH
+fi
+
+MAGICK_HOME="$NATIVE_ROOT/usr"
+MAGICK_CONFIGURE_PATH="$NATIVE_ROOT/etc/ImageMagick-6:$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16"
+MAGICK_CODER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders"
+MAGICK_FILTER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/filters"
+NATIVE_LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:$LD_LIBRARY_PATH"
+export MAGICK_HOME MAGICK_CONFIGURE_PATH MAGICK_CODER_MODULE_PATH MAGICK_FILTER_MODULE_PATH
+
+container_exec \
+  --env "PYTHONPATH=$DEPS,MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH,LD_LIBRARY_PATH=$NATIVE_LD_LIBRARY_PATH,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR,VERSION=$VERSION,OUT=$OUT" \
+  "$SIF" "$PYTHON" - <<'PY'
+import ctypes
+import json
+import os
+import platform
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+native = Path(os.environ["NATIVE_ROOT"]).resolve()
+libdir = Path(os.environ["NATIVE_LIBDIR"]).resolve()
+magick_home = Path(os.environ["MAGICK_HOME"]).resolve()
+expected = {
+    "wand": libdir / "libMagickWand-6.Q16.so.6",
+    "core": libdir / "libMagickCore-6.Q16.so.6",
+    "png_coder": libdir / "ImageMagick-6.9.11/modules-Q16/coders/png.so",
+}
+for name, path in expected.items():
+    if not path.is_file():
+        raise RuntimeError(f"Native ImageMagick {name} file missing: {path}")
+    result = subprocess.run(["ldd", str(path)], text=True, capture_output=True, check=True)
+    print(f"LDD {name}\n{result.stdout}", flush=True)
+    if "not found" in result.stdout:
+        raise RuntimeError(f"Unresolved dependency in {name}: {path}")
+
+from wand.api import library, libmagick, library_paths
+paths = list(library_paths())
+loaded_wand = Path(library._name).resolve()
+loaded_core = Path(libmagick._name).resolve()
+if loaded_wand != expected["wand"].resolve() or loaded_core != expected["core"].resolve():
+    raise RuntimeError(f"Wand loaded unexpected libraries: wand={loaded_wand}, core={loaded_core}")
+library.MagickWandGenesis()
+try:
+    from wand.image import Image
+    with Image(width=8, height=8, background="white") as image:
+        image.noise("gaussian", attenuate=0.01)
+        image.format = "png"
+        encoded = image.make_blob()
+    if not encoded:
+        raise RuntimeError("Wand Gaussian-noise PNG encoder returned no bytes")
+    with Image(blob=encoded) as decoded:
+        if (decoded.width, decoded.height, decoded.format.upper()) != (8, 8, "PNG"):
+            raise RuntimeError(f"Unexpected PNG round-trip: {decoded.width}x{decoded.height} {decoded.format}")
+        roundtrip = {"width": decoded.width, "height": decoded.height, "format": decoded.format.upper()}
+finally:
+    library.MagickWandTerminus()
+
+status = {
+    "ready": True,
+    "job_id": os.environ["PBS_JOBID"],
+    "host": socket.gethostname(),
+    "container_os": platform.platform(),
+    "package_version": os.environ["VERSION"],
+    "python": sys.executable,
+    "paths": {
+        "native_root": str(native),
+        "magick_home": str(magick_home),
+        "native_library_dir": str(libdir),
+        "magick_configure_path": os.environ["MAGICK_CONFIGURE_PATH"],
+        "magick_coder_module_path": os.environ["MAGICK_CODER_MODULE_PATH"],
+        "magick_filter_module_path": os.environ["MAGICK_FILTER_MODULE_PATH"],
+        "ld_library_path": os.environ["LD_LIBRARY_PATH"],
+        "wand_library": str(loaded_wand),
+        "core_library": str(loaded_core),
+        "png_coder": str(expected["png_coder"]),
+    },
+    "library_candidates_first": [[str(a), str(b)] for a, b in paths[:3]],
+    "gaussian_noise_png_roundtrip": roundtrip,
+    "gpu_loaded": False,
+}
+target = Path(os.environ["OUT"]).parent.parent / "native_status.json"
+temp = target.with_suffix(".json.tmp")
+temp.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+temp.replace(target)
+print("WAND_NATIVE_READY " + json.dumps({"version": status["package_version"], "wand": str(loaded_wand), "core": str(loaded_core), "png_coder": str(expected["png_coder"]), "roundtrip": roundtrip}, sort_keys=True), flush=True)
+PY
+
+printf '%s\n' "$VERSION" > "$NATIVE_ROOT/.ready.tmp"
+mv -f "$NATIVE_ROOT/.ready.tmp" "$NATIVE_ROOT/.ready"
+cp "$ROOT/native_status.json" "$OUT/native_status.json"
+printf 'WAND_NATIVE_SETUP_COMPLETE job=%s receipt=%s\n' "$PBS_JOBID" "$ROOT/native_status.json"

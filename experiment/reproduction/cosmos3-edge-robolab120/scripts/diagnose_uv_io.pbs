@@ -1,0 +1,91 @@
+#!/bin/bash -l
+#PBS -N cos3_uv_diag
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=1gb:host=x1001c4s1b1n0
+#PBS -l place=free
+#PBS -l walltime=00:05:00
+#PBS -j oe
+set -euo pipefail
+
+TARGET_JOBID="25660513.pbs101"
+EXPECTED_HOST="x1001c4s1b1n0"
+TASK_ROOT="/scratch/users/ntu/yguo017/cosmos3-edge-robolab120"
+
+[[ -n "${PBS_JOBID:-}" ]] || { echo "FAIL_CLOSED: PBS_JOBID is missing"; exit 90; }
+[[ -n "${PBS_NODEFILE:-}" && -r "$PBS_NODEFILE" ]] || { echo "FAIL_CLOSED: PBS_NODEFILE is missing or unreadable"; exit 91; }
+HOST_SHORT="$(hostname -s)"
+case "$HOST_SHORT" in asp2a-login*|*login*) echo "FAIL_CLOSED: login node $HOST_SHORT"; exit 92;; esac
+[[ "$HOST_SHORT" == "$EXPECTED_HOST" ]] || { echo "FAIL_CLOSED: expected $EXPECTED_HOST, got $HOST_SHORT"; exit 93; }
+awk -v h="$HOST_SHORT" '$1 == h || index($1, h ".") == 1 { found=1 } END { exit !found }' "$PBS_NODEFILE" || {
+  echo "FAIL_CLOSED: current host is not in PBS_NODEFILE"; exit 94;
+}
+[[ "$TARGET_JOBID" == 25660513.pbs101 ]] || { echo "FAIL_CLOSED: unexpected target job"; exit 95; }
+
+for tool in awk date df grep hostname id pgrep ps readlink stat tail tr; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "FAIL_CLOSED: missing diagnostic tool $tool"; exit 96; }
+done
+
+printf 'PBS_JOBID=%s\nHOST=%s\nTARGET_JOBID=%s\nSTARTED=%s\n' \
+  "$PBS_JOBID" "$(hostname -f)" "$TARGET_JOBID" "$(date -Is)"
+printf 'TARGET_HOST_RESOURCE=%s\n' "$EXPECTED_HOST"
+
+target_uv_pids() {
+  local uid pid
+  uid="$(id -u)"
+  for pid in $(pgrep -u "$uid" -x uv || true); do
+    [[ -r "/proc/$pid/environ" ]] || continue
+    if tr '\0' '\n' < "/proc/$pid/environ" | grep -Fqx "PBS_JOBID=$TARGET_JOBID"; then
+      printf '%s\n' "$pid"
+    fi
+  done
+}
+
+sample_uv_pid() {
+  local pid fd target size count=0
+  printf 'SAMPLE=%s\n' "$(date -Is)"
+  mapfile -t pids < <(target_uv_pids)
+  if ((${#pids[@]} == 0)); then
+    echo 'TARGET_UV_PID=not_found'
+  fi
+  for pid in "${pids[@]}"; do
+    printf 'TARGET_UV_PID=%s ' "$pid"
+    ps -p "$pid" -o state=,wchan:24=,etimes= 2>/dev/null || echo 'PROCESS_GONE'
+    if [[ -r "/proc/$pid/io" ]]; then
+      awk '/^(rchar|wchar|read_bytes|write_bytes|cancelled_write_bytes):/ {printf "%s=%s ", substr($1,1,length($1)-1), $2} END {print ""}' "/proc/$pid/io"
+    else
+      echo 'PROC_IO=unavailable'
+    fi
+    if command -v ss >/dev/null 2>&1; then
+      ss -tinp 2>/dev/null | awk -v needle="pid=$pid," '
+        /^[^[:space:]]/ { selected = index($0, needle) > 0 }
+        selected {
+          sent = received = ""
+          if (match($0, /bytes_sent:[0-9]+/)) sent = substr($0, RSTART, RLENGTH)
+          if (match($0, /bytes_received:[0-9]+/)) received = substr($0, RSTART, RLENGTH)
+          if (sent != "" || received != "") print "TARGET_SOCKET " sent " " received
+        }'
+    else
+      echo 'TARGET_SOCKET=ss_unavailable'
+    fi
+    for fd in /proc/"$pid"/fd/*; do
+      [[ -e "$fd" ]] || continue
+      target="$(readlink "$fd" 2>/dev/null || true)"
+      case "$target" in
+        *"/cache/uv/"*)
+          size="$(stat -Lc '%s' "$fd" 2>/dev/null || echo '?')"
+          printf 'UV_OPEN_FD=%s SIZE_BYTES=%s BASENAME=%s\n' "${fd##*/}" "$size" "${target##*/}"
+          ((count += 1))
+          ((count < 8)) || break
+          ;;
+      esac
+    done
+  done
+  df -hP "$TASK_ROOT" | tail -n 1
+  df -iP "$TASK_ROOT" | tail -n 1
+}
+
+for sample in 1 2 3; do
+  sample_uv_pid
+  if [[ "$sample" -lt 3 ]]; then sleep 30; fi
+done
+printf 'PROBE_FINISHED=%s\n' "$(date -Is)"

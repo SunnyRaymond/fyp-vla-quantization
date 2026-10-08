@@ -1,0 +1,65 @@
+{
+  "removal_tests": [
+    {
+      "component": "post-hoc frozen BF16 replay on saved Q-only test observations, inference histories and seeds, used solely to compute held-out R_act",
+      "field": "core_mechanism",
+      "executed": true,
+      "claims_unchanged": false,
+      "evidence": "若移除此测量组件，test rollout 仍能给出 Q-policy success，但独立 test observation 上的 a_BF16(o,xi) 缺失，不能计算候选声称的 held-out R_act。F1/F2 所加 reference replay 因而是该 action-discrepancy claim 的必要测量步骤。"
+    }
+  ],
+  "verdict": "pass",
+  "reason": "P1 已闭合：test 先由冻结 Q policy 独立完成并保存输入历史、seed 与完整 action chunk，之后的 BF16 replay 仅补齐 R_act reference，不改变 test rollout/occupancy，也不进入拟合、停止或选择。F1–F3 在机制、步骤、reasoning 与 gap closure 中一致；dev/test 隔离保留。没有剩余 finding 或 consistency_patch。",
+  "checks": {
+    "dataflow": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "闭合的数据流是 Q-only test rollout → 保存每个已访问 observation、inference history/cache、denoising seed 与完整量化 action chunk → 全部 test rollout 结束后以冻结 BF16 checkpoint 对保存记录离线 replay → matched action chunks 经既有 normalization 计算 R_act。文本明示 replay 不影响 action、occupancy、fitting、stopping 或 configuration selection；deployment/action path 不调用 teacher。"
+    },
+    "dry_run": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "手工实例化单个 test episode t1：Q policy 依序访问 o1（history h1、seed ξ1），保存 a_Q(o1,h1,ξ1) 后继续完成 episode；rollout 全部完成后 BF16 replay 在同一 (o1,h1,ξ1) 得 a_BF16，再算 ||D_a^{-1}(a_Q−a_BF16)||²。reference 出现于 rollout 之后，不存在反馈边。此为书面 toy trace；未运行模型、simulator 或 GPU 实验。"
+    },
+    "degenerate_probes": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "若 episode 在 o1 后终止，只保存并 replay 已访问的 o1，estimand 仍按 reasoning 所述条件于可达 visits；不生成 counterfactual 后续 observation。若 development 阶段因不再改善或预算 B 到达而停止，test 仍只在 alpha/statistic 冻结后运行，post-hoc 分数不能回流到 stopping/selection。"
+    },
+    "claim_step_map": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "闭环诱导 D_Q 与记录在 steps 4/6；alpha 更新及 dev stopping 在 step 6；最终 Q-only test history 与 success 在 step 7 前半；held-out R_act reference 与 aggregation 在 step 7 后半及 core_mechanism/F3 reasoning/gap closure；task success 单独报告，native speed claim 仍要求真实 kernel benchmark。"
+    },
+    "falsification": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "revision_base 与当前候选的 falsification_prediction 完全一致；本轮没有改写。其最小比较仍含 static reference-history PTQ、one-pass DAgger、multi-round refit、generic adversarial PTQ；metric 为 held-out R_act 且预测下降；唯一 load-bearing variable 为 g_Qhist；负控替换为 BF16-history gradient 并预测 R_act 回升；closed-loop success 独立报告，未设 numeric outcome bar。新 Step 7 为该 R_act 明确提供 frozen test reference。实验未运行。"
+    },
+    "novelty": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "signature_terms 与 alias_terms 对照 revision_base 逐项不变。F1–F3 仅明确 BF16 held-out measurement 数据路径及其隔离边界，没有新增量化机制或 novelty claim；现有 supplied collision pool/既有比较足以覆盖本次改动，无需扩展检索。"
+    },
+    "target_resolution": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "新 post_revision_findings 的 F1、F2、F3 均已 applied：F1 在 core_mechanism 加入 Q-only test 后 BF16 offline reference；F2 在 step 7 写清保存信息、回放顺序、冻结统计量和隔离条件；F3 在 reasoning 与 gap_closure 同步 teacher 权限、measurement-only 性质及 cost/latency 边界。Step 6 仍以 frozen development split 停止并排除 test。未发现残余旧 clause。"
+    }
+  },
+  "confirmed_terms": {
+    "signature_terms": [
+      "quantized-history occupancy calibration",
+      "W4A8 activation clipping refit",
+      "matched-seed action-chunk discrepancy",
+      "denoising stream scale adaptation"
+    ],
+    "alias_terms": [
+      "receding-horizon model-predictive control",
+      "quantized-feedback stabilization with state updates",
+      "on-policy imitation under covariate shift",
+      "iterative policy distillation from oracle labels"
+    ]
+  },
+  "consistency_patch": []
+}

@@ -1,0 +1,33 @@
+{
+  "contract_version": 2,
+  "selected_gaps": [
+    {
+      "gap": "[additive] Q-WAM 与 SteerQuant 使用离线 calibration probes，QuantWAMs 用 FP16 reference-state replay 提议 schedule 并将 quantized-state profile 作为 shift diagnostic，PreDE 对新配置则查询固定 observation log；这些结果尚未确立当量化动作改变后续 observation history 时，离线分数/阈值对多轮闭环候选排序仍保持校准。Phase 2 的构造交付应是在固定 evaluator 与 W4A4/W4A8 条件下，提出能在候选诱发的新闭环 history 上维持量化质量判断的方法，并通过多轮 evidence 检验迁移；不预定状态适配机制。stakes: 实践者在长序列或接触状态变化时可能遇到离线通过、闭环退化的候选并付出额外仿真或实机成本；intellectual 上，固定输入 evidence 不能支持跨 rollout distribution 的控制保真结论。",
+      "chosen_pattern_id": "self_supervised_signal_engineering",
+      "anchor_alternates": [],
+      "companion_pattern": null,
+      "sibling_dependency": null,
+      "companion_dependency": null,
+      "companion_rationale": "",
+      "selection_rationale": "这是直接约束 WAM 低比特配置在多轮闭环部署中能否维持质量判断的 method gap，且 Phase 1 明确要求在固定 W4A4/W4A8 与 evaluator 下构造方法。self_supervised_signal_engineering 的模型自产生观察与输出信号可形成 quantizer calibration 目标，直接把候选自身访问到的 history 纳入 scale refit；普通 on-policy/DAgger 已是强基线，因此新颖性只按是否超过该基线判断。"
+    }
+  ],
+  "coherence_thread_type": "n_a",
+  "deliverable_coverage": "method — anchor gap → self_supervised_signal_engineering 使用量化 WAM 自身诱发的闭环 observations 更新 A8 activation clipping scales。",
+  "user_direction_disposition": {
+    "verdict": "adopted",
+    "user_wanted": "最好量化层级能到W4A4/W4A8，混合精度或者单一精度都可以",
+    "chosen": "采用单一 W4A8 配置，固定 W4 权重量化并迭代校准 A8 激活 clipping scales。"
+  },
+  "composition_note": "单腿量化标定机制：由当前 W4A8 候选生成的新闭环 observations 提供校准输入，只更新既有 A8 clipping 参数；不加入 evaluation-only 组件。其定位是 WAM 低比特场景中的 application/incremental 迁移，若普通 on-policy DAgger 量化器校准已给出同等效果，则不主张算法新颖性。",
+  "deferred_gaps": [
+    {
+      "gap": "[subtractive] Q-WAM、SteerQuant、QuantWAMs 与 PreDE 都在完整 chunk 或固定 execution condition 下定义量化分数；尚无文献检验“完整生成 chunk 足以代表部署 fidelity”这一共享前提，在只执行某个 prefix 并经固定 controller 运算后是否仍成立。Phase 2 的构造交付应是在固定 controller 与 W4A4/W4A8 条件下，提出并检验能保留已执行 command 行为的量化方法，同时界定完整 chunk 分数何时会失真；不预定其内部机制。若高影响误差集中在首段或控制阈值附近，量化配置可能按未执行尾部误差排序而错过已执行 command 偏差；stakes: practitioner 在机器人部署时会接受错误配置并承担任务失败或重复闭环评估成本，intellectual 上会把 full-chunk similarity 错当成控制等价。",
+      "reason": "本候选把控制器与执行 prefix 固定为 rollout 条件，损失仍比较完整 action chunk；不会回答完整 chunk 分数与实际 controller-transformed prefix command 是否一致。"
+    },
+    {
+      "gap": "[additive] 对同时发生于多个 layer、stream 与 denoising step 的低位误差，Q-WAM 明确省略交叉项并依赖零均值/不相关近似，SteerQuant 则以 full-precision 输入单独估计每个区域；因此在 W4A4/W4A8 联合量化时，边际分数是否能预测误差合成后的 action displacement 仍未知，尤其是系统偏移、抵消或同向累积是否改变候选排序。Phase 2 的构造交付应是在固定 WAM 与低位宽下，提出能应对多处残差同时存在的量化方法，并以联合扰动证据检验其 action 误差判断；不预定误差估计或调节机制。stakes: 量化研究者可能把精度预算分给单点敏感却在联合路径中不关键的模块，造成 W4 quality 结论不可复现或无法迁移到不同校准轨迹；intellectual 上会把独立扰动假设当成未经检验的误差几何。",
+      "reason": "本候选只在新 history 上重拟合激活 clipping scales，不估计或校正多个 layer/stream/denoising-step 量化残差的交叉项。"
+    }
+  ]
+}

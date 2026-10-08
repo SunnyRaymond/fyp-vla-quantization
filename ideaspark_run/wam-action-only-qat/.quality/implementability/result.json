@@ -1,0 +1,131 @@
+{
+  "contract_version": 2,
+  "request_id": "b2c3adc4-7f6d-44c0-97cc-9898c52145f3",
+  "artifacts": {
+    "phase4/work/phase4_implementability.json": {
+      "contract_version": 2,
+      "reviewed_step_ids": ["S1", "S2", "S3", "S4", "S5", "S6", "S7"],
+      "trace_report": {
+        "formalized_procedure": [
+          {
+            "step": "S1",
+            "quoted": "`For Fast-WAM Base, released shared-backbone LingBot-VA, and Cosmos Policy's LIBERO model, record the BF16 reference, native schedule, action normalization/denormalization maps D_m, executed-prefix selector E_m, exact matched branch-free W4A8 module set Q_m, and precision/kernel contract; designate only existing trainable weights theta_m in Q_m. Fast-WAM's independent ActionDiT is a weight-scope action-only target, whereas shared denoiser blocks in the other two models must be labeled action-targeted shared-backbone scope.`",
+            "consumes": ["Named BF16 checkpoints", "Model-specific solver, action, and controller interfaces"],
+            "produces": ["Per-model scope manifest", "Matched W4A8 module subset and deployment contract"],
+            "status": "instantiated",
+            "note": "The supplied interface notes identify Fast-WAM's independent ActionDiT and the released shared-backbone scopes of LingBot-VA and Cosmos Policy. This defines distinct contracts; no separate LingBot-VA checkpoint size or invented 350M checkpoint is assumed.",
+            "unbound_defaults": [
+              {"parameter": "Exact checkpoint revisions and runnable W4A8 kernel/module lists", "basis": "The proposal names model families and native contracts, but supplied interface notes do not pin all checkpoint revisions or a deployed kernel", "suggestion": "Pin each released checkpoint, PTQ module list, excluded precision, and kernel before any matched run"}
+            ]
+          },
+          {
+            "step": "S2",
+            "quoted": "`Split each named LIBERO dataset by episode, sample training contexts c only from its training episodes, draw initial noise z and solver innovations eta from that model's native inference distribution, and run the fake-quant student through its native schedule to record the required evolving states x_Q[m,k] for active indices K_m. The state contains action latents for Fast-WAM and coupled video/action state for shared models.`",
+            "consumes": ["Episode-level training split", "Training context, native initial noise and solver innovations", "Fake-quantized model"],
+            "produces": ["Student-visited states at active native solver indices"],
+            "status": "instantiated",
+            "note": "A minimal path is x_Q[0]=0, x_Q[1]=0.2, x_Q[2]=0.3 for active indices {0,1}; this illustrates the recorded state sequence only. The actual path remains model-generated and unexecuted at idea depth."
+          },
+          {
+            "step": "S3",
+            "quoted": "`Sample k uniformly from K_m, detach x_Q[m,k], and restart both the BF16 teacher and fake-quant student from that identical state with the same c and remaining native innovations eta_after_k; apply each unchanged full remaining suffix S[b,m,k] and retain both endpoint action chunks.`",
+            "consumes": ["Detached student state", "Shared context and remaining innovations", "BF16 teacher and fake-quant student"],
+            "produces": ["Paired teacher and student suffix endpoints from the same student-visited state"],
+            "status": "instantiated",
+            "note": "For a one-step illustrative suffix from x=0.4, identity teacher transition gives 0.4 and a student transition with offset 0.1 gives 0.5; both branches start at the same detached state and use the same suffix index."
+          },
+          {
+            "step": "S4",
+            "quoted": "`Apply D_m and E_m to each endpoint up to any hard clip or gripper threshold to obtain continuous pre-threshold commands; when gripper thresholding exists, use its continuous pre-threshold signal for gradients. Scale every selected channel j in J_m by its existing positive model/controller scale s[m,j], fixed across arms, average the squared residual across all T_exec,m native prefix steps and J_m channels, and backpropagate only through the student suffix into theta_m. Separately report exact clipped/thresholded executed-command deviation per channel in native units; keep quantizer scales, schedule, excluded precision, and action interface fixed. The training residual or any required STE is a gradient-bearing surrogate related to, but not identical to, the exact physical-command metric.`",
+            "consumes": ["Paired suffix endpoints", "Per-model denormalizer and executed-prefix selector", "Positive channel scales", "Differentiable student suffix"],
+            "produces": ["Scalar continuous pre-threshold loss", "Student-suffix gradient and updated quantized weights", "Separate exact executed-command deviations"],
+            "status": "instantiated",
+            "note": "With identity action mapping, no clipping, residuals [[0.1,0.2],[0.3,0.4]], and positive scales [0.5,2], the mean over both prefix times and both channels is 0.1125 and the derivative for residuals scaled by theta at theta=1 is 0.225. This loss is a continuous surrogate; thresholded/clipped command outcomes must be reported separately. Native prefix length and selected channels remain model-specific.",
+            "unbound_defaults": [
+              {"parameter": "Concrete D_m/E_m adapter, T_exec,m, J_m, and clip/threshold behavior", "basis": "The root interface notes give model-specific action widths and normalization families, while runtime controller prefix and threshold settings depend on the pinned evaluation adapter", "suggestion": "Bind the exact native adapter and record its pre-threshold tensor and post-clip/threshold executed tensor for each model"}
+            ]
+          },
+          {
+            "step": "S5",
+            "quoted": "`Compare the candidate with ordinary action-only QAT plus teacher KD, matched branch-free W4A8 PTQ, original-noise-seed endpoint KD, teacher-state suffix KD restarted from x_FP[m,k], and student-state per-step OPD at x_Q[m,k]. Count vanilla action-only QAT plus teacher KD and teacher KD at teacher states as one arm whenever targets and objectives are identical. Match total measured training GPU-time or, when matching solver work, total teacher and student NFE; keep model-specific episode splits, scope, contexts, and paired noise/solver-index draws aligned, and report teacher/student NFEs, GPU-time, examples, unique-context and repeated exposure, optimizer updates, and teacher-suffix work. For a shared-backbone per-step OPD comparison, mask loss to controller-selected action channels and native prefix steps with no video-output loss, and label it action-targeted shared-backbone training; any video-plus-action objective is a separately named scope and cost.`",
+            "consumes": ["Candidate training signal", "Matched PTQ and KD/OPD controls", "Common data, scope, and paired draws"],
+            "produces": ["Matched-cost comparisons with total GPU-time or teacher/student NFE and exposure/update accounting"],
+            "status": "instantiated",
+            "note": "The comparison protocol explicitly deduplicates identical teacher-state KD arms and makes shared-backbone per-step OPD action-output-masked. Equal NFE does not imply equal wall time, so report actual GPU-time, both NFE totals, examples, unique and repeated context exposure, and optimizer updates for every arm."
+          },
+          {
+            "step": "S6",
+            "quoted": "`On held-out fixed contexts and paired noise, measure exact denormalized executed-action deviation separately from LIBERO closed-loop completion; then measure full native W4A8 action-query latency without a teacher, including video/context prefill. Compute the visit-energy diagnostic over the entire native prefix time-by-channel tensor as a scalar using the same fixed pre-QAT matched-PTQ reference checkpoint in every arm; this Phase4 supplement clarifies estimator definition and provenance only, and is not a passed post_revision gate. Report measured action-time share and use Amdahl's law for any whole-query speed inference; do not turn an action-layer 4x storage reduction into a whole-WAM 4x compression or speed claim.`",
+            "consumes": ["Held-out contexts and paired noise", "Fixed pre-QAT matched-PTQ reference", "Native evaluation/controller path and W4A8 kernel"],
+            "produces": ["Separate fixed-input command, closed-loop, and full-query latency results", "One scalar visit-energy diagnostic per task under fixed reference provenance"],
+            "status": "instantiated",
+            "note": "The supplement makes V_visit interpretable as a full native time-by-channel mean from the single fixed pre-QAT matched-PTQ reference, avoiding per-arm post-treatment estimators. It is a baseline susceptibility diagnostic and an empirical moderator hypothesis, not evidence of benefit. This clarification does not pass the prior post_revision review; FAILED VALIDATION lineage remains.",
+            "unbound_defaults": [
+              {"parameter": "Evaluation checkpoint identity, exact action-query kernel, and measured action-time fraction", "basis": "No checkpoint run, deployed kernel timing, or campaign throughput was supplied", "suggestion": "Record the fixed PTQ checkpoint identity and measure complete native query latency including video/context prefill before making any speed claim"}
+            ]
+          },
+          {
+            "step": "S7",
+            "quoted": "`Attempt separate transfer checks on released shared-backbone LingBot-VA and Cosmos Policy only under their native scope contracts; record that updating shared denoiser blocks changes video and action computation, retain the action-only output mask for action-targeted controls, and do not pool their results with Fast-WAM or call shared weights weight-scope action-only.`",
+            "consumes": ["Released shared-backbone checkpoints", "Model-specific interfaces and scope-labeled protocol"],
+            "produces": ["Separate transfer outcomes and bounded architecture-scope conclusions"],
+            "status": "instantiated",
+            "note": "The supplied sources support Fast-WAM as the initial independent-expert platform and LingBot-VA/Cosmos Policy as two separate shared-backbone transfer anchors. Updating shared blocks affects video and action computation; no separate 350M LingBot-VA checkpoint or parameter estimate from a separated paper variant is used. Transfer remains untested."
+          }
+        ],
+        "dry_run": {
+          "instance": "Illustrative identity action map with a two-time, two-channel native prefix; residuals [[0.1,0.2],[0.3,0.4]], positive scales [0.5,2], and a two-context teacher-target permutation control. No learned WAM or environment was run.",
+          "execution": {
+            "mode": "executed",
+            "script": "Python standard-library fsum over the scaled two-by-two residual; compute its theta-scaled derivative at theta=1 and paired versus permuted teacher-target MSE.",
+            "output": "L_train=0.1125; dL/dtheta=0.225; paired target MSE=0.04; permuted target MSE=3.24."
+          },
+          "computed_quantities": [
+            {"quantity": "L_train", "value": "0.1125", "arithmetic": "((0.1/0.5)^2+(0.2/2)^2+(0.3/0.5)^2+(0.4/2)^2)/4"},
+            {"quantity": "dL/dtheta at theta=1 when each residual is multiplied by theta", "value": "0.225", "arithmetic": "2 * 0.1125"},
+            {"quantity": "paired versus permuted teacher-target MSE", "value": "0.04 versus 3.24", "arithmetic": "mean((0.2-0)^2,(1.8-2)^2) versus mean((0.2-2)^2,(1.8-0)^2)"}
+          ],
+          "anomalies": [
+            {"anomaly": "The supplied scalar counterexample has suffix loss fall from b^2/2 to b^2/4 while original endpoint error rises from zero to b/2 when b=1 and c moves from -1 to -0.5.", "kind": "instance_contingent", "why": "Suffix-response improvement need not improve original endpoint fidelity; the candidate's closed-loop and fidelity gains therefore remain empirical and require the matched endpoint-KD and student-state OPD controls.", "contradicts_claim": null}
+          ]
+        },
+        "negative_control": {
+          "executed": true,
+          "moved_outcome": true,
+          "evidence": "On two illustrative contexts, paired teacher endpoints give MSE 0.04 and swapping endpoints gives 3.24, so the state-endpoint pairing changes the training target loss. This toy does not establish a change in task success or validate the falsification prediction."
+        },
+        "degenerate_probes": [
+          {"probe": "Equal teacher and student suffix commands", "behavior": "The continuous residual and gradient are zero.", "finding": null},
+          {"probe": "Single executed-prefix time step", "behavior": "The full time-by-channel mean reduces to the channel mean for that step.", "finding": null},
+          {"probe": "Hard gripper threshold near its boundary", "behavior": "A small continuous pre-threshold residual may correspond to a discrete executed-command change; report exact thresholded outcomes separately.", "finding": "The surrogate cannot be equated with physical-command loss."},
+          {"probe": "Nonpositive channel scale", "behavior": "The normalized objective is undefined or invalid.", "finding": "The specification requires positive per-channel scales."}
+        ],
+        "claim_step_map": [
+          {"claim": "Under a fixed branch-free W4A8 model-specific deployment scope, training a quantized WAM student on a BF16 teacher's full remaining-suffix endpoint from the student's own solver state may improve closed-loop completion over matched teacher-state KD, with any association to visit-energy remaining an empirical prediction.", "established_by": "S1, S3, S4, S5, S6", "strength_grade": "empirical"},
+          {"claim": "The proposed comparison fixes each WAM's matched W4A8 module set, native solver schedule, non-target precision, action interface, and kernel contract so the incremental effect of weight adaptation is identifiable against frozen-weight PTQ.", "established_by": "S1, S5", "strength_grade": "conditional"},
+          {"claim": "The proposed training target is the BF16 teacher's complete remaining native suffix endpoint from the exact state reached by the quantized student, mapped through native denormalization and executed-prefix selection.", "established_by": "S2, S3, S4", "strength_grade": "conditional"},
+          {"claim": "Fixed-input command deviation, closed-loop completion, and full native action-query latency are separate outcomes; shared-backbone results are action-targeted shared-backbone QAT rather than weight-scope action-only QAT.", "established_by": "S1, S6, S7", "strength_grade": "conditional"}
+        ],
+        "naive_comparison": {
+          "verdict": "confronts_obstacle",
+          "reasoning": "The candidate specifies a distinct student-state full-suffix endpoint target and directly compares it with teacher-state KD, original-endpoint KD, and student-state per-step OPD. That makes it a testable distinction from ordinary QAT plus teacher KD, but the supplied low-bit on-policy distillation, DiffusionOPD, AnyFlow, and DiffusionOPSD leads leave novelty as a hypothesis; Semantic Scholar returned no collision files and coverage is not exhaustive. No first-WAM-QAT or proven-novelty claim is supported."
+        }
+      },
+      "underspecified_points": [
+        {"step_id": "S1", "kind": "implementation_choice", "hole": "Exact checkpoint revisions, branch-free W4A8 module lists, excluded precision, and deployed kernel are not pinned for each model.", "evidence": "The candidate requires these contracts to be held fixed, while the supplied interface notes identify released architectures but do not establish a common runnable kernel contract.", "suggestion": "Pin each available checkpoint and record its module/precision/kernel manifest before comparing arms."},
+        {"step_id": "S4", "kind": "implementation_choice", "hole": "Each model's runtime D_m/E_m implementation, selected channel set, executed-prefix length, and active clipping/gripper threshold need binding to the evaluation adapter.", "evidence": "The supplied interfaces describe model-specific action widths and normalization families; the exact controller prefix and threshold settings remain adapter-specific. L_train uses the continuous pre-threshold signal and positive scales, while exact clipped/thresholded command deviation is a separate metric.", "suggestion": "For each pinned adapter, save the native input/output shapes and exact pre-threshold and executed-command transforms, then use the identical adapter across arms."},
+        {"step_id": "S5", "kind": "implementation_choice", "hole": "The matched-budget basis must be selected before training: total measured GPU-time or matched total teacher and student NFE.", "evidence": "The candidate permits either budget basis and requires exposure/update reporting; these measures are not interchangeable and their observed values are currently unknown.", "suggestion": "Declare one matching basis in advance and report actual GPU-time, teacher/student NFE, examples, unique and repeated context exposure, optimizer updates, and teacher-suffix work for every arm."},
+        {"step_id": "S6", "kind": "implementation_choice", "hole": "The fixed PTQ-reference checkpoint and exact evaluation kernel/timing path must be identified to interpret V_visit and any speed result.", "evidence": "The Phase4 supplement fixes provenance conceptually to one pre-QAT matched-PTQ reference and reduces the full native time-by-channel response to a scalar, but supplies no executed checkpoint or measured action-time share.", "suggestion": "Record the immutable reference identity, aggregate every selected time/channel entry, and measure complete query latency and action-time share; treat this supplement as clarification only, preserving the failed post_revision gate."}
+      ]
+    },
+    "phase4/work/cost_assessment.json": {
+      "candidate_sha256": "b4be1cb4a5046ccfaf6cf1f09d2b46a7eadaa12d54f9dbea7ca65a89ed985ed9",
+      "user_budget": "At most 4 separate A100-SXM4-40GB GPUs; total GPU-hour/GPU-day budget is unspecified. Keep feasibility conditional; do not assume an 80GB-class or 150-GPU-day profile.",
+      "original_estimate": "GPU-days cannot be estimated from the supplied facts because campaign hours, samples per second, and suffix-training throughput are unmeasured; cap is at most 4 separate A100-SXM4-40GB devices, not pooled VRAM. First measure peak memory and per-example throughput for the Fast-WAM suffix pilot, including teacher and student suffixes, then bound any transfer campaign before authorization. No paid API is used (US$0); this formulation submits no job.",
+      "current_estimate": "Unknown GPU-days; no paid API cost (US$0). No training or deployment timing was measured.",
+      "status": "unknown",
+      "basis": "The campaign includes a Fast-WAM pilot, matched PTQ/QAT/KD/OPD arms, and two separate shared-backbone transfer baselines; total hours, examples per second, suffix-training throughput, and campaign allocation are unknown. Four A100-SXM4-40GB devices are four separate 40GB spaces, not pooled 160GB. Fast-WAM's approximately 5B BF16 video plus 1B BF16 action core is about 12GB of weights; actor-only W4 is about 10.5GB total, an idealized whole-core reduction of only 1.14x. Training also needs gradients/optimizer state, teacher and student evaluations, cache, activations, and workspaces; the supplied analytical ranges are not a fit or throughput result. Shared-backbone QAT changes video and action computation and may require more activation/teacher memory; no LingBot-VA shared-checkpoint parameter estimate is inferred from a separated variant. End-to-end speed depends on measured action-time share and Amdahl's law, not weight compression alone.",
+      "change_reason": "Unchanged from the candidate estimate: the Phase4 V_visit clarification changes only diagnostic aggregation and fixed-reference provenance, not training scope or compute. No campaign hours or throughput measurements were added, so GPU-day cost remains unknown."
+    }
+  }
+}

@@ -1,0 +1,79 @@
+#!/bin/bash
+#PBS -N libero_plus_noise_probe
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" > "/tmp/libero-plus-noise-$PBS_JOBID.txt"
+grep -Eq 'job_state = R' "/tmp/libero-plus-noise-$PBS_JOBID.txt" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+REPO="$ROOT/LIBERO-plus"
+NATIVE_ROOT="$ROOT/native/imagemagick-jammy"
+NATIVE_LIBDIR="$NATIVE_ROOT/usr/lib/x86_64-linux-gnu"
+OUT="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$OUT/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+cp "/tmp/libero-plus-noise-$PBS_JOBID.txt" "$OUT/allocation.txt"
+cp "$ROOT/noise_overhead_probe.py" "$OUT/noise_overhead_probe.py"
+cp "$ROOT/libero_state_loader.py" "$OUT/libero_state_loader.py"
+cp "$ROOT/env_status.json" "$OUT/env_status.json"
+cp "$ROOT/manifest_summary.json" "$OUT/manifest_summary.json"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+MAGICK_HOME="$NATIVE_ROOT/usr"
+MAGICK_CONFIGURE_PATH="$NATIVE_ROOT/etc/ImageMagick-6:$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16"
+MAGICK_CODER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders"
+MAGICK_FILTER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/filters"
+export MAGICK_HOME MAGICK_CONFIGURE_PATH MAGICK_CODER_MODULE_PATH MAGICK_FILTER_MODULE_PATH
+export LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+PYTHON="$BASE/venv/bin/python"
+test -x "$PYTHON" && test -r "$SIF"
+
+allocation_guard() {
+  test -n "${PBS_JOBID:-}" && test -r "${PBS_NODEFILE:-}" || return 64
+  local node
+  node=$(hostname -s)
+  case "$node" in *login*) return 64;; esac
+  awk -v host="$node" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || return 64
+  qstat -f "$PBS_JOBID" > "/tmp/libero-plus-noise-$PBS_JOBID.txt" || return 64
+  grep -Eq 'job_state = R' "/tmp/libero-plus-noise-$PBS_JOBID.txt" || return 64
+}
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  fi
+done
+container_exec() {
+  allocation_guard
+  apptainer exec --cleanenv "${BIND_ARGS[@]}" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST,LD_LIBRARY_PATH=$LD_LIBRARY_PATH,MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR" \
+    "$@"
+}
+
+PYTHONPATH="$OUT:$ROOT:$ROOT/libero-plus-compat:$REPO:$ROOT/deps:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero"
+ARGS=()
+if [[ "${FW_PREPARE_SHARDS:-0}" == 1 ]]; then ARGS+=(--prepare-shards); fi
+if [[ "${FW_CHECK_FOG:-0}" == 1 ]]; then ARGS+=(--check-fog); fi
+container_exec \
+  --env "ROOT=$ROOT,REPO=$REPO,BASE=$BASE,OUT=$OUT,PYTHONPATH=$PYTHONPATH,LIBERO_CONFIG_PATH=$ROOT/libero-config,MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1" \
+  "$SIF" "$PYTHON" "$OUT/noise_overhead_probe.py" "${ARGS[@]}"
+
+touch "$OUT/SUCCESS"
+printf 'CPU_CONTROL_COMPLETE job=%s prepare_shards=%s episode_counted=false\n' "$PBS_JOBID" "${FW_PREPARE_SHARDS:-0}"

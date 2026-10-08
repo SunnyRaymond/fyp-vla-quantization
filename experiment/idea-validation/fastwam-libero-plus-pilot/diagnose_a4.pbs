@@ -1,0 +1,151 @@
+#!/bin/bash
+#PBS -N fw_plus_a4diag
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:45:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing to run on a login node' >&2; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+finish() {
+  rc=$?
+  if [[ -n "${GPU_MONITOR_PID:-}" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ $rc -eq 0 ]]; then touch "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+}
+trap finish EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'CUDA_VISIBLE_DEVICES missing' >&2; exit 65; }
+test -s "$SIF" -a -s "$ROOT/env_status.json" -a -s "$ROOT/manifest.json"
+test -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+FW_MODE=diagnostic
+
+mapfile -t ENV_PATHS < <(python3 - "$ROOT/env_status.json" <<'PY'
+import json, sys
+from pathlib import Path
+d=json.loads(Path(sys.argv[1]).read_text())
+if d.get('checks', {}).get('render_preflight_ready') is not True:
+    raise SystemExit('Actual seven-dimension LIBERO-Plus rendering preflight is not ready')
+p=d.get('paths', d)
+native=json.loads(Path(p['native_setup_receipt']).read_text())
+if native.get('ready') is not True: raise SystemExit('Native ImageMagick setup is not ready')
+aliases=(('plus_repo','libero_plus','libero_plus_root','plus_root'), ('dependency_target','deps','dependencies','dependency_dir'), ('libero_config_path','libero_config','config_dir'), ('libero_compat',), ('native_root',), ('native_library_dir',), ('magick_home',), ('magick_configure_path',), ('magick_coder_module_path',), ('magick_filter_module_path',), ('native_setup_receipt',))
+for names in aliases:
+    value=next((p.get(k) for k in names if p.get(k)), None)
+    if not value:
+        raise SystemExit(f'env_status.json lacks one of {names}')
+    if names[0] in ('magick_configure_path', 'magick_filter_module_path'):
+        print(value)
+        continue
+    path=Path(value)
+    if not path.is_absolute(): path=Path('/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005')/path
+    if not path.exists(): raise SystemExit(f'Configured environment path is unavailable: {path}')
+    print(path)
+PY
+)
+test "${#ENV_PATHS[@]}" -eq 11 || { echo 'Could not resolve LIBERO-Plus environment paths' >&2; exit 65; }
+PLUS_ROOT=${ENV_PATHS[0]}
+DEPS=${ENV_PATHS[1]}
+LIBERO_CONFIG=${ENV_PATHS[2]}
+COMPAT=${ENV_PATHS[3]}
+NATIVE_ROOT=${ENV_PATHS[4]}
+NATIVE_LIBDIR=${ENV_PATHS[5]}
+MAGICK_HOME=${ENV_PATHS[6]}
+MAGICK_CONFIGURE_PATH=${ENV_PATHS[7]}
+MAGICK_CODER_MODULE_PATH=${ENV_PATHS[8]}
+MAGICK_FILTER_MODULE_PATH=${ENV_PATHS[9]}
+NATIVE_RECEIPT=${ENV_PATHS[10]}
+export LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+test -d "$PLUS_ROOT" -a -d "$DEPS" -a -d "$LIBERO_CONFIG" -a -d "$COMPAT"
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints"
+
+cp "$ROOT/diagnose_a4.pbs" "$ROOT/diagnose_a4.py" "$ROOT/runner.py" "$ROOT/manifest.json" "$ROOT/env_status.json" \
+   "$ROOT/quantization.py" "$ROOT/libero_state_loader.py" "$ARTIFACTS/"
+cp "$NATIVE_RECEIPT" "$ARTIFACTS/native_status.json"
+if [[ -s "$ROOT/real_quant_kernel.py" ]]; then cp "$ROOT/real_quant_kernel.py" "$ARTIFACTS/"; fi
+printf 'mode=%s\nPBS_JOBID=%s\nPBS_ARRAY_INDEX=%s\nCUDA_VISIBLE_DEVICES=%s\n' \
+  "$FW_MODE" "$PBS_JOBID" "${PBS_ARRAY_INDEX:-}" "$CUDA_VISIBLE_DEVICES" | tee -a "$ARTIFACTS/launch.txt"
+
+export FW_REQUIRE_REAL_QUANT=1
+run_python() {
+  apptainer exec --cleanenv --nv \
+    --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+    --env "MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH" \
+    --env "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,ARTIFACTS=$ARTIFACTS,ROOT=$ROOT" \
+    --env "PYTHONPATH=$ARTIFACTS:$COMPAT:$PLUS_ROOT:$DEPS:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero:$ROOT" \
+    --env "LIBERO_CONFIG_PATH=$LIBERO_CONFIG" \
+    --env "DIFFSYNTH_MODEL_BASE_PATH=$BASE/model-cache" \
+    --env DIFFSYNTH_DOWNLOAD_SOURCE=huggingface,DIFFSYNTH_SKIP_DOWNLOAD=true,HF_HUB_OFFLINE=1 \
+    --env "HF_HOME=$BASE/cache/huggingface" \
+    --env MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1 \
+    --env OMP_NUM_THREADS=8,OPENBLAS_NUM_THREADS=8,LP_NUM_THREADS=8 \
+    --env GIT_PYTHON_REFRESH=quiet,PYTHONUNBUFFERED=1,TOKENIZERS_PARALLELISM=false \
+    --env FW_REQUIRE_REAL_QUANT=1 \
+    "$SIF" "$BASE/venv/bin/python" "$@"
+}
+
+run_python - "$CUDA_VISIBLE_DEVICES" <<'PY'
+import os, sys, torch
+mask=sys.argv[1]
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count()==1, torch.cuda.device_count()
+props=torch.cuda.get_device_properties(0)
+cap=torch.cuda.get_device_capability(0)
+if cap[0] < 8: raise SystemExit(f'native INT4 Tensor Core requires SM80+, got SM{cap[0]}{cap[1]}')
+actual=str(props.uuid)
+assert actual.removeprefix('GPU-').lower()==mask.removeprefix('GPU-').lower(), (mask,actual)
+print('Allocated GPU verified:', props.name, actual, f'SM{cap[0]}{cap[1]}', flush=True)
+PY
+
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+
+INDEX=${FW_DIAGNOSTIC_INDEX:-0}
+[[ "$INDEX" =~ ^[0-9]+$ ]] || { echo 'Invalid diagnostic index' >&2; exit 64; }
+run_python "$ARTIFACTS/diagnose_a4.py" --index "$INDEX" --manifest "$ARTIFACTS/manifest.json" --out "$ARTIFACTS/diagnostic"
+run_python - "$ARTIFACTS/diagnostic/diagnose_a4.json" <<'PY_CHECK'
+import json, sys
+from pathlib import Path
+r=json.loads(Path(sys.argv[1]).read_text())
+assert r['episode_counted'] is False and r['query_count']==4
+assert r['runtime_counter_deltas']['w4a8']['delta']['integer_gemm_calls']>0
+assert r['runtime_counter_deltas']['w4a4_native']['delta']['native_int4_gemm_calls']>0
+assert not any(r['runtime_counter_deltas']['diagnostic_reference']['delta'].values())
+assert set(r['normalized_actions_32x7'])=={'bf16','w4a8','w4a4_native','diagnostic_reference'}
+assert all(len(a)==32 and all(len(x)==7 for x in a) for a in r['normalized_actions_32x7'].values())
+print('DIAGNOSTIC_EXECUTION_COMPLETE episode_counted=false numerical_conclusion=separate', flush=True)
+PY_CHECK

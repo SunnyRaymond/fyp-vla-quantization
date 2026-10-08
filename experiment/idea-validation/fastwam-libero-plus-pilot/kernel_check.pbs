@@ -1,0 +1,73 @@
+#!/bin/bash
+#PBS -N fw_real_quant_check
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb:ngpus=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -s "${PBS_NODEFILE:-}" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  if [[ -n "${GPU_MONITOR_PID:-}" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ $rc -eq 0 ]]; then touch "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+cp "$ROOT/kernel_check.pbs" "$ROOT/quantization.py" "$ARTIFACTS/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0 cuda/12.2.2
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+apptainer exec --cleanenv --nv \
+  --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+  --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,ARTIFACTS=$ARTIFACTS" \
+  --env "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES,PYTHONPATH=$ARTIFACTS,PYTHONUNBUFFERED=1,OMP_NUM_THREADS=8" \
+  "$SIF" "$BASE/venv/bin/python" - <<'PY'
+import json
+import os
+import time
+from pathlib import Path
+import torch
+from quantization import self_check
+mask = os.environ['CUDA_VISIBLE_DEVICES']
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count() == 1
+props = torch.cuda.get_device_properties(0)
+assert str(props.uuid).removeprefix('GPU-').lower() == mask.removeprefix('GPU-').lower()
+assert torch.cuda.get_device_capability()[0] >= 8, 'Native INT4 requires an SM80+ GPU'
+print('KERNEL_CHECK_START', props.name, props.uuid, torch.cuda.get_device_capability(), flush=True)
+start = time.monotonic()
+self_check()
+torch.cuda.synchronize()
+result = {'passed': True, 'seconds': time.monotonic()-start, 'gpu_name': props.name,
+          'gpu_uuid': str(props.uuid), 'capability': torch.cuda.get_device_capability(),
+          'torch': torch.__version__, 'pbs_job_id': os.environ['PBS_JOBID']}
+Path(os.environ['ARTIFACTS'], 'self_check.json').write_text(json.dumps(result, indent=2)+'\n')
+print('KERNEL_CHECK_PASS', json.dumps(result), flush=True)
+PY

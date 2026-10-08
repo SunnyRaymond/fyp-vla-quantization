@@ -1,0 +1,166 @@
+{
+  "request_id": "97e7f79e-90d4-414a-8b15-bde7e537c3e2",
+  "artifacts": {
+    "phase4/work/derive_map.json": {
+      "title_zh": "冻结联合 WAM 的动作上下文来源掩码",
+      "plain_motivation_en": "In frozen joint World Action Models (WAMs), reducing future-side computation does not tell us whether each action update can stop reading the full observation. WAMs repeatedly update action chunks through coupled transformer paths while conditioning on observations and retained future tokens; each active native action solver update may still read all observation tokens. Existing evidence measures neither how action quality depends on those source interactions nor what share of full-inference time they consume, so token retention and end-to-end latency alone cannot answer whether this path is a useful target.\n\nRecent work makes a bounded inference-time test possible: Sparse-WAM (2026-09) reduces future-side computation, WAMachine (2026-09) studies state and residual reuse, and Efficient-WAM (2026-06) separates video and action schedules. The remaining question is action-query-to-observation sensitivity and cost. This proposal profiles that path and compares masks with equal query-key/attention-value (QK/AV) edge counts on frozen models. It does not establish that the required checkpoints, source-provenance interface, or compact kernels are available.\n\nPrior methods stop at neighboring mechanisms. Sparse-WAM selects future visual tokens and reuses selected or omitted-region predictions, while retaining all observation/action tokens and recomputing actions. WAMachine remaps trajectories, rebinds observations during execution, and reuses intermediate residuals after probes, but does not isolate current observation-source edges used by each action update. Efficient-WAM reduces video updates and caches video keys and values while continuing action updates, but leaves their observation sensitivity and cost unmeasured. C3ache reuses action-expert denoising residuals across chunks; FBFM injects new-state constraints and committed-action overlap through feedback; GlanceWAM overlaps sparse future imagination with execution and trains for staleness. These works do not rank and remove source-specific observation edges during frozen inference.\n\nA positive result would show, for each tested frozen checkpoint, whether observation-source edges can be reduced while meeting the original task-success gate and whether measured headroom remains to lower full-inference latency. It would add a WAM-specific action-conditioning test and a same-edge-budget comparison with earlier scoring recipes. A negative result would bound only the tested opportunity, not prove a general impossibility.",
+      "plain_motivation_zh": "在冻结的联合 World Action Models（WAMs）中，减少 future-side computation 并不能说明每次 action update 是否可以不再读取完整 observation。WAMs 会沿耦合的 transformer 路径反复更新 action chunks，同时使用 observation 和保留的 future tokens。每个 active native action solver update 仍可能读取全部 observation tokens。现有证据既没有测出 action quality 对这些 source interactions 的依赖，也没有测出它们占完整推理耗时的比例；只看保留了多少 tokens 或端到端 latency，无法判断这条路径是否值得优化。\n\n近来的 WAM 研究把问题收窄为一个推理时测试：Sparse-WAM（2026-09）减少 future-side computation，WAMachine（2026-09）研究状态与 residual reuse，Efficient-WAM（2026-06）则区分 video 和 action 的更新计划。仍未回答的问题是 action-query 对 observation 的敏感性及其成本。本方案会 profile 这条路径，并在冻结模型上比较保留 QK/AV（query-key/attention-value）边数相同的 masks。这个计划并未确认所需 checkpoint、source-provenance 接口或 compact kernels 已经可用。\n\n已有方法停在相邻机制上。Sparse-WAM 选择 future visual tokens，并复用已选区域或被省略区域的预测；它仍保留全部 observation/action tokens，并重新计算 actions。WAMachine 会重映射 trajectories、在执行期间重新绑定 observations，并在 probe 后复用中间 residuals；但它没有单独检验每次 action update 会读取哪些当前 observation-source edges。Efficient-WAM 减少 video updates 并缓存 video keys 和 values，同时继续更新 actions；但它没有测量这些 action updates 对 observation 的敏感性和相关成本。C3ache 跨 chunks 复用 action-expert denoising residuals；FBFM 通过 feedback 注入新状态约束和已提交 action 的重叠部分；GlanceWAM 则把稀疏 future imagination 与执行并行，并针对 staleness 训练。这些工作都没有在 frozen inference 中给 observation sources 排序并移除对应 edges。\n\n如果结果为正，它会分别说明：对每个受测 frozen checkpoint，能否在满足原 task-success gate 的同时减少 observation-source edges，以及实测 headroom 是否足以降低完整推理 latency。这会补上一项针对 WAM action conditioning 的测试，并与已有 scoring recipes 做保留边数相同的比较。若结果为负，结论只限定于本次测试的机会，不代表普遍不可能。",
+      "plain_method_steps_en": [
+        {
+          "step_id": "S1",
+          "what_to_do": "Freeze the named checkpoint, native solver schedule, task configuration, and backend separately for FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab. Record that the matching FastWAM-Joint checkpoint is unconfirmed. Treat Motus/RoboTwin 2.0 only as a conditional simulation fallback, not as the matching primary baseline.",
+          "why_this_makes_sense": "The comparison is defined for a particular frozen checkpoint and native evaluation path; changing its weights, schedule, task, or backend changes what is being measured."
+        },
+        {
+          "step_id": "S2",
+          "what_to_do": "Profile the named native paths: FastWAM's `fastwam_joint.py`, `fastwam.py`, and `mot.py`; Cosmos' `omni_mot_model.py` and the RoboLab policy-server entry point. Measure time and FLOPs separately for action-query-to-observation query-key/attention-value (QK/AV), other attention, QKV, feed-forward network (FFN), and mask/packing. Compute `φ_obs`, the measured full-inference time share of action-query-to-observation QK/AV, and its ideal Amdahl upper bound. Stop if attainable savings cannot meet the original latency gate.",
+          "why_this_makes_sense": "Action-update count does not reveal the targeted path's share of complete inference time; the profile checks whether deleting its edges could affect full-path latency."
+        },
+        {
+          "step_id": "S3",
+          "what_to_do": "Use only existing camera/view or other source provenance from the token packer; stop if none is exposed. At each chunk's dense first native action evaluation, `k_ref`, read native attention weights α, values V, and output-projection head slices `W_O`. For each layer and source group, sum the norms of that group's action-query contribution after the native output projection to obtain `r_lg`, then normalize within the layer to obtain `ρ_lg`. If the normalization denominator is zero, retain every group.",
+          "why_this_makes_sense": "The score measures each observation source's output-projected contribution while keeping the dense reference inputs, weights, image, instruction, future/action queries, and training objective fixed."
+        },
+        {
+          "step_id": "S4",
+          "what_to_do": "On held-out selection episodes `D_select`, order groups by descending `r_lg` and break ties by native source order. Choose ε in [0,1) so `S_l(ε)` is the shortest prefix whose cumulative `ρ_lg` reaches 1−ε. Among masks that pass the original frozen task-success gate, select the one with the lowest measured full-path latency. If no pre-existing gate applies, report the success-latency curve without declaring a pass.",
+          "why_this_makes_sense": "The frozen success gate constrains how much context can be removed, and keeping `D_select` separate from paired evaluation prevents choosing ε from the outcomes used to judge the candidate."
+        },
+        {
+          "step_id": "S5",
+          "what_to_do": "For later native action-solver evaluations in the same chunk, send action queries and retained observation keys/values to a true variable-length or block-sparse kernel, and verify omitted QK/AV work is not executed. Recompute softmax over retained keys, pass the attention output through the original residual/transformer blocks, and let the changed action hidden state and velocity update the original flow state. Leave video-query paths, future/action interactions, FFN, and solver schedule native.",
+          "why_this_makes_sense": "This implements edge skipping in the action branch and distinguishes actual saved work from a dense mask. Recomputed attention may change the action trajectory; the method gives no fidelity or task-success guarantee."
+        },
+        {
+          "step_id": "S6",
+          "what_to_do": "On paired evaluation episodes `D_eval` not used to choose ε, compare dense inference, `ρ_lg`-ranked masks, and same-retained-edge-cost source-group-permutation masks. Also compare native attention-mass, ToPi/VATP value-norm, and CAPA output-projected-score controls. Use the same frozen checkpoint, `k_ref` dense forward, exact retained-edge budget `B_l`, and compact kernel. For score controls, sum token scores within existing groups, rank groups with native source order breaking ties, keep whole ranked groups, then add a boundary-group token prefix ordered by the same token score until exactly `B_l` edges are retained; token ties use native token order. Run a permutation only if it is a distinct legal equal-cost mask; otherwise report it unavailable. Record task success, per-path FLOPs, full latency including scoring, packing, kernel launch and remaining model paths, action-chunk deviation, and first action divergence; then apply the original frozen gates.",
+          "why_this_makes_sense": "The permutation tests source assignment at fixed cost; score controls test whether `ρ_lg` adds task-action value beyond prior ranking recipes. Quality and cost remain separate evidence. A WAM-specific score advantage requires `ρ_lg` to beat every matched-cost score arm under the original gates."
+        },
+        {
+          "step_id": "S7",
+          "what_to_do": "Consider a physical-robot phase only after simulation passes the frozen gate and the matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are confirmed. Account for baseline post-training separately; the mask itself remains training-free and does not update weights.",
+          "why_this_makes_sense": "Physical prerequisites are unconfirmed, so simulation or recorded-data results cannot stand in for a closed-loop robot result."
+        }
+      ],
+      "plain_method_steps_zh": [
+        {
+          "step_id": "S1",
+          "what_to_do": "分别冻结 FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 的指定 checkpoint、native solver schedule、task configuration 和 backend。注明匹配的 FastWAM-Joint checkpoint 尚未确认。Motus/RoboTwin 2.0 只能作为有条件的仿真 fallback，不能记作匹配的主 baseline。",
+          "why_this_makes_sense": "比较对象是一个确定的 frozen checkpoint 和 native evaluation path；换 weights、schedule、task 或 backend，测量对象也会改变。"
+        },
+        {
+          "step_id": "S2",
+          "what_to_do": "按计划检查 native paths：FastWAM 的 `fastwam_joint.py`、`fastwam.py`、`mot.py`，以及 Cosmos 的 `omni_mot_model.py` 和 RoboLab policy-server entry point。分别测 action-query 到 observation 的 query-key/attention-value（QK/AV）、其他 attention、QKV、feed-forward network（FFN）和 mask/packing 的耗时与 FLOPs。计算 `φ_obs`（目标 QK/AV 占完整推理耗时的实测比例）及理想 Amdahl 上界。如果可达到的节省无法满足原 latency gate，就停止。",
+          "why_this_makes_sense": "action update 的次数不能说明目标路径占完整推理耗时多少；这项 profile 用来判断删掉这些 edges 是否可能影响完整路径 latency。"
+        },
+        {
+          "step_id": "S3",
+          "what_to_do": "只使用 token packer 已有的 camera/view 或其他 source provenance；如果没有提供，就停止，不自行推断分组。在每个 chunk 首次进行 dense native action evaluation 时，即 `k_ref`，读取 native attention weights α、values V 和 output-projection 的各 head slices `W_O`。对每层每个 source group，把该组对 action queries 的 contribution 经 native output projection 后取范数并求和，得到 `r_lg`；再在层内归一化为 `ρ_lg`。若归一化分母为零，就保留全部 groups。",
+          "why_this_makes_sense": "这个分数衡量每个 observation source 经 output projection 后对 action queries 的贡献；dense reference 的输入、weights、image、instruction、future/action queries 和 training objective 都保持固定。"
+        },
+        {
+          "step_id": "S4",
+          "what_to_do": "在留出的选择 episodes `D_select` 上，按 `r_lg` 降序排列 groups，并用 native source order 打破并列。选择 ε∈[0,1)，使 `S_l(ε)` 成为累计 `ρ_lg` 达到 1−ε 的最短前缀。在通过原 frozen task-success gate 的 masks 中，选实测 full-path latency 最低者。如果没有预先设定的 gate，就报告 success-latency 曲线，不宣称通过。",
+          "why_this_makes_sense": "原 success gate 限定可以删掉多少 context；`D_select` 与后续 paired evaluation 分开，避免用判定候选效果的 outcomes 来选择 ε。"
+        },
+        {
+          "step_id": "S5",
+          "what_to_do": "在同一 chunk 后续的 native action-solver evaluations 中，把 action queries 和保留的 observation keys/values 送入真正的 variable-length 或 block-sparse kernel，并验证被省略的 QK/AV 运算确实没有执行。只对保留的 keys 重新计算 softmax，再把 attention output 送入原 residual/transformer blocks；由变化后的 action hidden state 和 velocity 更新原 flow state。video-query paths、future/action interactions、FFN 和 solver schedule 都保持 native。",
+          "why_this_makes_sense": "这一步在 action branch 中真正跳过 edges，可以区分实际省算和仅加 dense mask。重新计算 attention 可能改变 action trajectory；该方法不保证 fidelity 或 task success。"
+        },
+        {
+          "step_id": "S6",
+          "what_to_do": "在没有用于选择 ε 的配对评估 episodes `D_eval` 上，对比 dense inference、按 `ρ_lg` 排名的 masks，以及保留边成本相同的 source-group-permutation masks。还要比较 native attention-mass、ToPi/VATP value-norm 和 CAPA output-projected-score controls。每组比较使用相同 frozen checkpoint、`k_ref` dense forward、精确保留边预算 `B_l` 和 compact kernel。对评分 controls，先将 token scores 在已有 groups 内求和，再按 group score 排序并以 native source order 打破并列；先保留完整的 ranked groups，再按相同 token score 排序 boundary group 的 tokens 并取前缀，直到恰好保留 `B_l` 条 edges；token 并列按 native token order。只有存在不同且合法的等成本 mask 时才运行 permutation，否则报告 unavailable。记录 task success、逐路径 FLOPs、包含 scoring、packing、kernel launch 和其余 model paths 的完整 latency、action-chunk deviation、first action divergence，再应用原 frozen gates。",
+          "why_this_makes_sense": "Permutation 检验固定成本后 source assignment 是否重要；评分对照检验 `ρ_lg` 是否比已有排序 recipes 带来额外 task-action value。质量与成本是独立证据；只有 `ρ_lg` 在原 gates 下胜过所有同成本评分对照，才支持 WAM-specific score advantage。"
+        },
+        {
+          "step_id": "S7",
+          "what_to_do": "只有仿真通过 frozen gate，而且匹配的 AgileX Cobot Magic policy/checkpoint、demonstrations/data、source implementation 和同类型 hardware 均已确认后，才考虑真机阶段。baseline 原有 post-training 单独核算；mask 本身仍是 training-free，也不更新 weights。",
+          "why_this_makes_sense": "真机前提尚未确认，因此仿真或 recorded-data 结果不能代替 closed-loop robot 结果。"
+        }
+      ],
+      "plain_method_modules_en": [
+        {
+          "module_id": "M0_background",
+          "module_title": "Background",
+          "purpose_oneline": "Fix each baseline and check measured headroom before applying the proposed mask.",
+          "step_ids": [
+            "S1",
+            "S2"
+          ]
+        },
+        {
+          "module_id": "M1_source_scoring",
+          "module_title": "Source scoring and mask choice",
+          "purpose_oneline": "Rank sources by output-projected action contribution and freeze a mask using separate held-out episodes.",
+          "step_ids": [
+            "S3",
+            "S4"
+          ]
+        },
+        {
+          "module_id": "M2_sparse_update",
+          "module_title": "Sparse action updates",
+          "purpose_oneline": "Apply the frozen mask through a kernel that actually skips omitted action-to-observation computation.",
+          "step_ids": [
+            "S5"
+          ]
+        },
+        {
+          "module_id": "M3_validation",
+          "module_title": "Paired evaluation",
+          "purpose_oneline": "Test the mask against dense inference and matched-cost controls; any robot phase remains conditional.",
+          "step_ids": [
+            "S6",
+            "S7"
+          ]
+        }
+      ],
+      "plain_method_modules_zh": [
+        {
+          "module_id": "M0_background",
+          "module_title": "背景",
+          "purpose_oneline": "分别固定各 baseline，并先测量目标路径是否有足够 headroom。",
+          "step_ids": [
+            "S1",
+            "S2"
+          ]
+        },
+        {
+          "module_id": "M1_source_scoring",
+          "module_title": "来源评分与掩码选择",
+          "purpose_oneline": "按 source 对 action 的 output-projected contribution 排序，再用单独留出的 episodes 固定 mask。",
+          "step_ids": [
+            "S3",
+            "S4"
+          ]
+        },
+        {
+          "module_id": "M2_sparse_update",
+          "module_title": "稀疏动作更新",
+          "purpose_oneline": "用真正跳过被删 action-to-observation 运算的 kernel 应用 frozen mask。",
+          "step_ids": [
+            "S5"
+          ]
+        },
+        {
+          "module_id": "M3_validation",
+          "module_title": "配对验证",
+          "purpose_oneline": "将 mask 与 dense inference 和同成本 controls 比较；真机阶段须满足前提后再考虑。",
+          "step_ids": [
+            "S6",
+            "S7"
+          ]
+        }
+      ],
+      "plain_core_claim_en": "This proposal tests whether output-projected observation-source contributions measured at the first action update can choose same-cost masks that preserve the frozen task-success gate and improve full inference latency in each tested joint WAM. A WAM-specific score advantage is claimed only if paired outcomes beat every matched-cost scoring control.",
+      "plain_core_claim_zh": "本方案检验：第一次 action update 上测得的 observation-source output-projected contributions，能否选出保留边成本相同的 masks，并在每个受测 joint WAM 上满足 frozen task-success gate、降低完整推理 latency。只有 paired outcomes 在同成本下胜过所有评分对照，才主张存在 WAM-specific score advantage。",
+      "plain_falsification_en": "First profile action-query-to-observation QK/AV in available frozen FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab routes, reporting the pairings separately. The matching FastWAM-Joint checkpoint is unconfirmed; if it cannot be confirmed, that route remains unavailable and Motus/RoboTwin is not an equivalent replacement. Stop if the ideal Amdahl upper bound or measured compact-kernel savings after scoring and packing cannot improve full-inference latency or meet the original latency gate. Even with saved computation, retain the method only if task success passes the original frozen success gate.\n\nOn matched episodes, compare dense inference, ρ_lg-ranked masks, and source-group permutations at exactly the same retained-edge cost. Also compare native attention-mass, ToPi/VATP value-norm, and CAPA output-projected-score controls for each same frozen checkpoint and `k_ref` dense forward. Native attention-mass sums each token's attention weights across action queries and native heads. ToPi/VATP weight those contributions by the token's value-vector L2 or L1 norm. CAPA measures each token's attention-weighted value after native output projection and sums across action queries. Sum token scores within existing provenance groups; rank groups by score with native source order breaking ties; keep whole ranked groups, then take a boundary-group token prefix in the same score order until the exact `B_l` edge budget is met, with native token order breaking token ties. Use the same compact kernel for every arm. If existing groups do not allow a distinct legal equal-cost permutation, report it unavailable rather than use an unequal-cost arm.\n\nUse paired `D_eval` episodes that did not select ε, separate from held-out `D_select`. Record task success, per-path FLOPs, full latency including scoring, packing, kernel launch and other model paths, action-chunk deviation, and first action divergence; apply the original frozen gates. The prediction is that permuting ρ_lg across source groups lowers downstream LIBERO/RoboLab task success versus the contribution-ranked mask; no difference means the ranking mechanism is not established. A WAM-specific score advantage requires the paired task-success effect for ρ_lg to beat every matched-cost scoring arm under the original gates. Simulation is not closed-loop robot evidence; a physical AgileX Cobot Magic phase waits for a passing simulation gate and confirmation of the matching policy/checkpoint, demonstrations/data, source implementation, and same-type hardware.\n\nThis is an idea-depth proposal, not an experiment report. The audit records no model, kernel, benchmark, or episode run. A previous synthetic trace checked scoring-rule arithmetic only; coherence or post-review passes are process checks and do not establish tensor access, task success, or latency.",
+      "plain_falsification_zh": "先在可用的 frozen FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 路径 profile action-query-to-observation QK/AV，并分开报告两组 baseline。匹配的 FastWAM-Joint checkpoint 尚未确认；若无法确认，该路线保持 unavailable，不能用 Motus/RoboTwin 冒充等价 baseline。如果理想 Amdahl 上界，或扣除 scoring 和 packing 后的 compact-kernel 实测节省，不能降低完整推理 latency 或满足原 latency gate，就停止。即使能省算，也只有 task success 通过原 frozen success gate 才保留方法。\n\n在匹配 episodes 上比较 dense inference、按 ρ_lg 排名的 masks，以及保留边成本完全相同的 source-group permutations。每组还比较 native attention-mass、ToPi/VATP value-norm 与 CAPA output-projected-score controls，并使用相同 frozen checkpoint 和 `k_ref` dense forward。Native attention-mass 把每个 token 在 action queries 和 native heads 上的 attention weights 加总。ToPi/VATP 再分别按 token value vector 的 L2 或 L1 norm 加权。CAPA 先让 token 的 attention-weighted value 经过 native output projection，再对 action queries 求和。将 token scores 在已有 provenance groups 内求和；按 group score 排序，以 native source order 打破并列；先保留完整 groups，再从 boundary group 按同一 token score 顺序取前缀，直到恰好达到 `B_l` 条 edges，token 并列按 native token order。所有 arm 用同一 compact kernel。若现有 groups 无法形成不同且合法的等成本 permutation，就报告 unavailable，不用成本不等的 arm 代替。\n\npaired `D_eval` 不参与 ε 选择，并与留出的 `D_select` 分开。记录 task success、逐路径 FLOPs、包含 scoring、packing、kernel launch 与其他 model paths 的完整 latency、action-chunk deviation、first action divergence，再应用原 frozen gates。预测是：置换 ρ_lg 的 source-group 分配后，LIBERO/RoboLab 下游 task success 会低于按贡献排序的 mask；若没有差别，就没有建立该排序机制。只有 ρ_lg 的 paired task-success effect 在原 gates 下胜过所有同成本评分 arm，才支持 WAM-specific score advantage。仿真不是 closed-loop robot evidence；真机 AgileX Cobot Magic 阶段要等仿真通过 gate，并确认匹配 policy/checkpoint、demonstrations/data、source implementation 与同类型 hardware。\n\n本方案处于 idea-depth，不是实验报告。审计记录没有运行 model、kernel、benchmark 或 episodes。此前的 synthetic trace 只检查评分规则算术；coherence 或 post-review pass 是流程检查，不能证明 tensor 可访问、task success 或 latency 改善。",
+      "plain_resource_summary_en": "Original estimate: this generation used 0 GPU-days and 0 USD external API cost. Future profiling and paired-benchmark GPU-days remain unestimated pending confirmation of the FastWAM-Joint checkpoint, both kernel paths, and Amdahl headroom. Current estimate: unknown for future profiles, paired runs, and external API cost. User ceiling/authorization: no GPU-day or dollar ceiling is assumed; this stage authorizes literature and mechanism diagnosis only, with no GPU/cluster experiments. Feasibility against a compute ceiling is unknown. Main cost drivers are integration and full-path profiling for two frozen backends, fused-attention attribution, a compact kernel that truly skips QK/AV, and paired episodes including scoring/packing/launch overhead. Any AgileX baseline post-training is accounted for separately from the training-free mask.",
+      "plain_resource_summary_zh": "原估算：本轮 generation 使用 0 GPU-days、external API 成本 0 USD。未来 profile 与 paired benchmark 的 GPU-days 尚未估算，须先确认 FastWAM-Joint checkpoint、两套 kernel 路径和 Amdahl headroom。当前估算：未来 profiling、paired runs 和 external API 成本均未知。用户预算与授权：没有假定 GPU-day 或美元上限；本阶段只授权文献与机制诊断，不授权 GPU/cluster 实验，因此无法对照 compute ceiling 判断可行性。主要成本来自两个 frozen backends 的集成与完整路径 profiling、fused-attention attribution、确实跳过 QK/AV 的 compact kernel，以及计入 scoring/packing/launch overhead 的 paired episodes。AgileX baseline 若需 post-training，须与 training-free mask 分开核算。",
+      "plain_open_questions_en": "1. S1 — Exact checkpoint identities, solver schedules, task configurations, backend versions, and joint-model/deployment entry points are not pinned for both pairings. The matching FastWAM-Joint checkpoint is unconfirmed. Motus/RoboTwin cannot be recorded as an equivalent substitute.\n2. S2 — The original latency-gate artifact/value and measured action-query-to-observation QK/AV share φ_obs are absent. Intended hardware and path profiles are also missing, so Amdahl headroom and the stop/continue decision remain unknown.\n3. S3 — The token packer's source-provenance interface is unconfirmed. So is fused-attention attribution for per-head α, V, and W_O at `k_ref`; a separate pass may add cost that must be charged to scoring and full-path latency. Stop if provenance is unavailable.\n4. S4 — The held-out `D_select` split, original frozen success-gate value, and measured full-path latency are not identified; ε cannot yet be selected.\n5. S5 — Neither backend's exact joint entry point/configuration nor a variable-length/block-sparse kernel that truly skips omitted QK/AV is verified. Retained-key softmax, native residual/flow behavior, and proof that work was skipped remain to be established.\n6. S6 — The implementation audit flags a source omission: technical S6 lacks the exact-cost boundary-token rule. The candidate specifies summing token scores within groups, stable native-order ties, and a boundary-group token prefix to reach exactly `B_l`; restore this rule in technical S6. Check whether provenance groups permit a distinct legal equal-cost permutation; if not, report it unavailable. No paired `D_eval` task-success, full-path latency, per-path profile, or action-divergence results exist.\n7. S7 — Matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are unconfirmed; simulation has not passed the frozen gate.\n8. Evidence — This run is idea-depth and unvalidated. The audit records no model, kernel, benchmark, or episode run. Its earlier synthetic trace checks scoring arithmetic only. Coherence and post-review passes are process/rule checks, not experimental evidence.",
+      "plain_open_questions_zh": "1. S1 — 两组 baseline 的 exact checkpoint identities、solver schedules、task configurations、backend versions 和 joint-model/deployment entry points 尚未固定。匹配的 FastWAM-Joint checkpoint 未确认；Motus/RoboTwin 不能登记为等价替代。\n2. S2 — 原 latency gate 的 artifact/value 和 action-query-to-observation QK/AV 实测比例 φ_obs 都缺失。目标硬件和路径 profile 也未确定，因此 Amdahl headroom 及停止/继续判断仍未知。\n3. S3 — token packer 是否提供 source-provenance interface 尚未确认。`k_ref` 上 fused-attention 是否能取得每头 α、V、W_O 也未确认；若需单独 attribution pass，其成本必须计入 scoring 和 full-path latency。没有 provenance 时按方案停止。\n4. S4 — 留出的 `D_select`、原 frozen success-gate 数值和实测 full-path latency 尚未确定，因此目前不能选择 ε。\n5. S5 — 两个 backend 的 exact joint entry point/configuration，以及真正跳过被省略 QK/AV 的 variable-length/block-sparse kernel 都未验证。还需确认 retained-key softmax、native residual/flow 行为，并证明运算确实被跳过。\n6. S6 — 实现审计标出 source omission：技术版 S6 缺少精确匹配边成本的 boundary-token 规则。candidate 已规定组内汇总 token scores、以 native order 稳定打破并列，并从 boundary group 取 token 前缀直到恰好达到 `B_l`；需把规则补回技术版 S6。还要确认 provenance groups 是否允许不同且合法的等成本 permutation；若不允许，就报告 unavailable。目前没有 paired `D_eval` 的 task-success、完整 latency、逐路径 profile 或 action-divergence 结果。\n7. S7 — 匹配的 AgileX Cobot Magic policy/checkpoint、demonstrations/data、source implementation 和同类型 hardware 尚未确认；仿真未通过 frozen gate。\n8. 证据 — 本 run 处于 idea-depth，尚未实验验证。审计记录没有运行 model、kernel、benchmark 或 episodes。此前 synthetic trace 只检查评分算术。Coherence 和 post-review pass 属于流程/规则检查，不是实验依据。"
+    }
+  }
+}

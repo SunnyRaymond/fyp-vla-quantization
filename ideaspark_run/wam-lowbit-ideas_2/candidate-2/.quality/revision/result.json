@@ -1,0 +1,76 @@
+{
+  "contract_version": 2,
+  "request_id": "5c12aa47-795a-40f0-94b5-8245beeb04f5",
+  "artifacts": {
+    "phase3_revise/phase3_revise_output.json": {
+      "contract_version": 2,
+      "base_candidate_sha256": "db94e92cdfc46da3eef8304f359288d9985cac42e869c6c5d965c8b9a8b28f4d",
+      "candidate_id": null,
+      "applied_revisions": [
+        {
+          "target_id": "R1",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "core_mechanism",
+          "value": "For any activation row with max_j|x_bp,j|=0, define its quantized activation x_tilde_bp=0 and skip computing Δ_bp, the x/Δ division, activation quantization, and dither correction for that row, while keeping the ordinary Linear bias/epilogue path active.",
+          "outcome": "applied",
+          "delta_summary": "定义全零 activation row 的零输出与旁路规则，同时保留普通 Linear bias/epilogue。"
+        },
+        {
+          "target_id": "R1",
+          "scope": "tactical",
+          "op": "replace",
+          "field": "core_mechanism_steps",
+          "value": "1. 下载/加载 Fast-WAM 官方 released Optional IDM checkpoint 与 yuanty/LIBERO-fastwam 的现有 observation/goal logs；冻结 first_frame mode、scheduler、normalization 和 action parameterization，输出固定 BF16 reference path。\n2. 将所有指定 denoiser Linear 权重打包成 signed symmetric groupwise W4，固定 G、zero point=0 与 group clipping/scale；其余明示的非 Linear 运算保留 BF16/FP32，输出唯一 W4 bank。\n3. 在当前完整量化路径上逐 token row 计算 m_bp=max_j|x_bp,j|；若 m_bp=0，直接输出零 A8 activation row，并跳过该 row 的 Δ 计算与除法；否则设 Δ_bp=m_bp/126。抽样轨迹标识确定的 per-sample base draw u_b；输出 live row scales 和真实 full-path activation rows，不用 FP 输入代替。\n4. 在每次 Linear activation quantizer 设置 φ_r；对 nonzero rows 计算 d_br=frac(u_b+φ_r)，将同一 scalar 对齐广播到该调用的 nonzero token rows 与 hidden columns，再执行 round/dequant；zero rows 保持零 A8 activation，不进入除法或 activation quantization。输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。\n5. 从每个 packed/dequantized W4 Linear 权重计算 per-output column sum c_j；对 nonzero rows 将 -Δ_bp d_br c_j 加入同一 GEMM 的 FP32 epilogue。zero rows 跳过 dither correction，但仍经过普通 Linear bias/epilogue 路径；输出 BF16 hidden state，不增设高精度权重分支。\n6. 仅在 calibration trajectories 上，以完整 W4A8 action-chunk MSE 做 Φ 周期坐标搜索；同时用当前 full-path VJP J_r 记录线性化的 cross-term 诊断，phase 更新后重放路径并刷新 J_r。\n7. 在 trajectory-disjoint held-out observations 与配对 scheduler draws 上，对照同 scale/clip RTN、独立 dither、site-label phase permutation 和同预算 direct endpoint PTQ；报告精确 action-chunk MSE、饱和计数、路径中 J_r cross-term 诊断，若 endpoint 不改善即否证。",
+          "outcome": "applied",
+          "delta_summary": "Step 3 至 Step 5 对零 row 跳过 scale、activation quantization 与 correction，并保留 bias/epilogue。"
+        },
+        {
+          "target_id": "R1",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "core_mechanism_reasoning",
+          "value": "P6 zero-row rule: when max_j|x_bp,j|=0, the activation output is zero and scale division, activation quantization, and dither correction are skipped for that row; the ordinary Linear bias/epilogue remains active.",
+          "outcome": "applied",
+          "delta_summary": "在 premises 中记录全零 row 的定义域边界及保留的 Linear 路径。"
+        },
+        {
+          "target_id": "R1",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "gap_closure[0].how_closed",
+          "value": "The quantizer also defines an all-zero activation row as a zero output, bypasses its scale division and dither correction, and retains the ordinary Linear bias/epilogue path.",
+          "outcome": "applied",
+          "delta_summary": "说明联合量化方法在全零 activation row 上有定义且保留标准 epilogue。"
+        },
+        {
+          "target_id": "W1",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "core_mechanism",
+          "value": "",
+          "outcome": "skipped_already_satisfied",
+          "delta_summary": "R1 的显式零 row 定义已完整覆盖 W1；重复追加相同 guard 会造成冗余。"
+        },
+        {
+          "target_id": "W2",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "core_mechanism",
+          "value": "Here round means round-to-nearest, ties-to-even, with the same implementation used in calibration and evaluation.",
+          "outcome": "applied",
+          "delta_summary": "明确 round 的 ties-to-even 规则并固定 calibration 与 evaluation 的实现一致性。"
+        },
+        {
+          "target_id": "W3",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "core_mechanism_steps",
+          "value": "Step 4 forwards the phase-dependent tensor; final action changes with φ only when its downstream projection is nonzero.",
+          "outcome": "applied",
+          "delta_summary": "将 phase 对最终 action 的影响限定为 downstream projection 非零的情形。"
+        }
+      ]
+    }
+  }
+}

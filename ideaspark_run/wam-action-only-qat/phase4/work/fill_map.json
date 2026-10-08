@@ -1,0 +1,148 @@
+{
+  "method_name": "Student-Path Suffix QAT (SPS-QAT)",
+  "abstract_draft": "Action-generating world-action models (WAMs) can lose control quality under low-bit execution, but near-BF16 W4A8 results from SteerQuant and strong frozen-weight post-training quantization (PTQ) make it unjustified to assume quantization already fails. The unresolved question is whether training-time action-weight adaptation adds value over matched PTQ and teacher distillation when bitwidth, module scope, schedule, excluded precision, controller, and deployed kernel are fixed. We propose Student-Path Suffix QAT: for each WAM, a BF16 teacher and fake-quantized student continue the same remaining native solver suffix from the same state reached by the student, and the student suffix is trained against the teacher endpoint after native action denormalization and executed-prefix selection. Training uses a dimensionless, per-channel-scaled continuous pre-threshold command residual; the exact clipped or thresholded command is measured separately. On the public Fast-WAM Base LIBERO pilot, fixed-input action deviation, closed-loop completion, and full native action-query latency remain separate outcomes, with matched controls for original-endpoint KD, teacher-state suffix KD, and student-state per-step OPD. The falsifiable prediction is that completion gains over matched teacher KD rise with a scalar student-visited suffix-response energy, estimated from one fixed pre-QAT matched-PTQ reference. If confirmed, the study would identify when this fixed-scope training signal is worth its measured cost; transfer to shared-backbone WAMs remains a scope-labeled hypothesis.",
+  "motivation.problem_framing": "The bottleneck is attribution: a low-bit WAM result cannot establish the value of action-path training unless parameter scope, bitwidth, denoising schedule, excluded precision, and inference accounting are matched. This matters because SteerQuant reports near-BF16 LIBERO success at W4A8 with packed weights fixed, QuantWAMs reports strong weight-frozen PTQ, and Q-WAM obtains near-BF16 control with a protected 16-bit subspace under W4A4. These results make a failure premise untenable; they leave the conditional benefit of training-time adaptation over strong PTQ and matched distillation unidentified.\n\nThe initial Fast-WAM Base instance permits an independently parameterized ActionDiT to be targeted while its approximately 5B video expert and visual cache remain BF16; the stated roughly 1B action expert yields only about 1.14x idealized total core-weight reduction when the larger video expert stays BF16. LingBot-VA and Cosmos Policy instead use shared-backbone action/video computation, so adapting their shared denoiser blocks is action-targeted shared-backbone QAT, not weight-scope action-only QAT. The proposal therefore tests one suffix-response training operator under distinct model contracts and keeps fixed-input command fidelity, closed-loop completion, and native full-query latency as separate evidence.",
+  "motivation.why_now": "Recent WAM PTQ work provides strong, concrete matched-scope baselines, while recent diffusion QAT work such as QVGen and EfficientDM shows that low-bit adaptation is technically studied in neighboring generative settings but does not establish robot-action or control fidelity. Public Fast-WAM LIBERO demonstrations, checkpoint and normalization statistics, together with released model interfaces for LingBot-VA and Cosmos Policy, make a bounded first pilot and separately scoped transfer checks formulable now; the available evidence does not establish memory fit, throughput, or a positive result.",
+  "motivation.why_prior_stopped[0].what_they_did": "SteerQuant maps layer, solver-step, and stream quantization errors to downstream action sensitivity, then calibrates shared weight and stream/timestep activation scales while keeping packed weights fixed.",
+  "motivation.why_prior_stopped[0].what_they_did_not_do": "It does not compare training-time action-weight adaptation against matched branch-free W4A8 PTQ and teacher distillation at the same module scope and deployed arithmetic.",
+  "motivation.why_prior_stopped[0].structural_reason_they_stopped": "Its reported mechanism is PTQ calibration with fixed packed weights, so an equal-scope trainable-weight comparison is outside the measured procedure.",
+  "motivation.why_prior_stopped[1].what_they_did": "QuantWAMs aligns PTQ grouping, objective, calibration distribution, and fixed-intervention rollout auditing with WAM structure while retaining pretrained weights.",
+  "motivation.why_prior_stopped[1].what_they_did_not_do": "It does not identify whether action-path adaptation improves outcomes over an equal-scope, matched-cost training comparison.",
+  "motivation.why_prior_stopped[1].structural_reason_they_stopped": "The method calibrates a frozen pretrained model, so its procedure does not update weights to test the incremental QAT effect.",
+  "motivation.why_prior_stopped[2].what_they_did": "Q-WAM protects an action-sensitive subspace in a 16-bit low-rank branch while quantizing the complement to W4A4.",
+  "motivation.why_prior_stopped[2].what_they_did_not_do": "It does not measure a branch-free W4A8 action-targeted QAT contract against matched PTQ and distillation.",
+  "motivation.why_prior_stopped[2].structural_reason_they_stopped": "Its precision allocation and protected branch define a different mechanism and deployment scope from matched branch-free W4A8 weight adaptation.",
+  "motivation.why_prior_stopped[3].what_they_did": "QVGen uses trainable error-compensation auxiliaries and rank decay to stabilize low-bit video-diffusion generation.",
+  "motivation.why_prior_stopped[3].what_they_did_not_do": "Its reported evidence does not establish denormalized robot-action fidelity or closed-loop WAM control.",
+  "motivation.why_prior_stopped[3].structural_reason_they_stopped": "The evaluated objective and outcomes concern video generation and do not include a WAM controller-facing action map or control measurement.",
+  "motivation.why_prior_stopped[4].what_they_did": "EfficientDM combines quantization-aware low-rank updates with teacher denoising-output matching for low-bit image diffusion.",
+  "motivation.why_prior_stopped[4].what_they_did_not_do": "It does not construct a WAM-native suffix endpoint in denormalized executed-action coordinates or establish closed-loop action fidelity.",
+  "motivation.why_prior_stopped[4].structural_reason_they_stopped": "Its image-diffusion task does not provide the robot action normalization, executed-prefix, and controller outcomes needed to identify this WAM-specific question.",
+  "motivation.what_changes_when_gap_closes": "A positive, matched result would identify when updating a fixed W4A8 action-targeted parameter scope adds closed-loop value over strong frozen-weight PTQ and teacher-state distillation, rather than attributing the result to a changed precision or inference contract. Separate Fast-WAM and shared-backbone results would show where that conclusion transfers; fixed-input fidelity or lower action-block time alone would not establish the same capability.",
+  "core_claim": "Under a fixed branch-free W4A8 model-specific deployment scope, training a quantized WAM student on a BF16 teacher's full remaining-suffix endpoint from the student's own solver state may improve closed-loop completion over matched teacher-state KD, with any association to visit-energy remaining an empirical prediction.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "The proposed comparison fixes each WAM's matched W4A8 module set, native solver schedule, non-target precision, action interface, and kernel contract so the incremental effect of weight adaptation is identifiable against frozen-weight PTQ.",
+      "supports_which_aspect": "The bottleneck is attribution under matched precision, parameter scope, solver, and inference accounting."
+    },
+    {
+      "id": "c2",
+      "statement": "The proposed training target is the BF16 teacher's complete remaining native suffix endpoint from the exact state reached by the quantized student, mapped through native denormalization and executed-prefix selection.",
+      "supports_which_aspect": "The candidate's proposed student-visited full-suffix endpoint operator."
+    },
+    {
+      "id": "c3",
+      "statement": "Fixed-input command deviation, closed-loop completion, and full native action-query latency are separate outcomes; shared-backbone results are action-targeted shared-backbone QAT rather than weight-scope action-only QAT.",
+      "supports_which_aspect": "The evidence hierarchy and architecture-specific parameter-scope boundary."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "eq1",
+      "linked_step_id": "S3",
+      "latex": "\\delta^{\\mathrm{PTQ-ref}}_{m,k,u,j}=\\left[E_m\\!\\left(D_m\\!\\left(S[Q_{\\mathrm{ref}}|Q_{\\mathrm{ref}},m,k](x_{Q_{\\mathrm{ref}},m,k},c,\\eta_{>k})\\right)\\right)-E_m\\!\\left(D_m\\!\\left(S[\\mathrm{BF16}|Q_{\\mathrm{ref}},m,k](x_{Q_{\\mathrm{ref}},m,k},c,\\eta_{>k})\\right)\\right)\\right]_{u,j}",
+      "description": "The visit-response difference is measured after the native action map and exact executed-prefix selector, using the same remaining innovations from a state reached by a fixed matched W4A8 PTQ reference student.",
+      "description_zh": "在同一学生到达状态和后续 solver innovations 下，分别运行 PTQ student 与 BF16 teacher 的剩余 suffix，再经原生动作映射和 executed-prefix 选择得到逐时刻、逐通道差值。"
+    },
+    {
+      "id": "eq2",
+      "linked_step_id": "S4",
+      "latex": "\\mathcal{L}_{\\mathrm{train},m}=\\mathbb{E}_{c,z,\\eta,k}\\!\\left[\\frac{1}{T_{\\mathrm{exec},m}|J_m|}\\sum_{u=1}^{T_{\\mathrm{exec},m}}\\sum_{j\\in J_m}\\left(\\frac{\\tilde y_{Q|Q,m,k,u,j}-\\tilde y_{\\mathrm{BF16}|Q,m,k,u,j}}{s_{m,j}}\\right)^2\\right]",
+      "description": "The student suffix is trained on the dimensionless mean squared continuous pre-threshold command residual across every native executed-prefix time step and selected action channel; only the student suffix receives gradient.",
+      "description_zh": "训练损失对完整 native executed prefix 的所有时刻和选中动作通道取均值，并按固定的模型/控制器通道尺度归一化；梯度只回传至 student suffix。"
+    },
+    {
+      "id": "eq3",
+      "linked_step_id": "S6",
+      "latex": "\\mathcal{V}^{\\mathrm{PTQ-ref}}_{\\mathrm{visit},m}=\\mathbb{E}_{c\\sim\\mathcal{D}^{\\mathrm{eval}}_m,z,\\eta,k\\sim\\operatorname{Unif}(K_m)}\\!\\left[\\frac{1}{T_{\\mathrm{exec},m}|J_m|}\\sum_{u=1}^{T_{\\mathrm{exec},m}}\\sum_{j\\in J_m}\\left(\\frac{\\delta^{\\mathrm{PTQ-ref}}_{m,k,u,j}}{s_{m,j}}\\right)^2\\right]",
+      "description": "Phase4 supplement: reduce the exact executed-command response over the full native time-by-channel prefix to one scalar, estimated only from a fixed pre-QAT matched-PTQ checkpoint for every arm; this definition is not a passed post_revision gate.",
+      "description_zh": "Phase4 补充定义：将 exact executed-command response 对完整 native 时间步与动作通道前缀求均值，形成标量；所有对照臂都使用同一个 QAT 前 matched-PTQ checkpoint 估计。本定义不代表 post_revision gate 已通过。"
+    }
+  ],
+  "method_flow.high_level_pipeline": "First record each model's BF16 reference, exact matched branch-free W4A8 module scope, native solver, action maps, prefix selector, and deployment contract. Generate the fake-quant student path from the model's existing LIBERO training episodes and native noise, then sample a native active solver state and restart both the BF16 teacher and student through the same remaining suffix. Train only the student's declared quantized weights with a dimensionless, per-channel-scaled continuous pre-threshold endpoint residual, while separately reporting exact executed-command differences. Compare against matched PTQ and distillation controls, then report fixed-input deviation, closed-loop completion, and full native action-query latency separately before attempting scope-labeled shared-backbone transfer.",
+  "method_flow.steps": [
+    {
+      "step_id": "S1",
+      "title": "Record each model contract",
+      "what_changes": "For Fast-WAM Base, released shared-backbone LingBot-VA, and Cosmos Policy's LIBERO model, record the BF16 reference, native schedule, action normalization/denormalization maps D_m, executed-prefix selector E_m, exact matched branch-free W4A8 module set Q_m, and precision/kernel contract; designate only existing trainable weights theta_m in Q_m. Fast-WAM's independent ActionDiT is a weight-scope action-only target, whereas shared denoiser blocks in the other two models must be labeled action-targeted shared-backbone scope.",
+      "why_this_step": "A comparison cannot identify the incremental value of adaptation if module scope, non-target precision, schedule, or deployed arithmetic changes across arms.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "The named BF16 checkpoints, model-specific LIBERO interfaces, native solver and action/controller contracts.",
+      "output": "A model-specific scope manifest, fixed comparison contract, and theta_m subset."
+    },
+    {
+      "step_id": "S2",
+      "title": "Generate the quantized student path",
+      "what_changes": "Split each named LIBERO dataset by episode, sample training contexts c only from its training episodes, draw initial noise z and solver innovations eta from that model's native inference distribution, and run the fake-quant student through its native schedule to record the required evolving states x_Q[m,k] for active indices K_m. The state contains action latents for Fast-WAM and coupled video/action state for shared models.",
+      "why_this_step": "The target is conditioned on states the quantized model itself reaches, while the fixed context/noise protocol preserves paired comparisons and does not claim to model environment observations after executed actions.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Scope manifest, training-episode split, c, z, eta, and fake-quantized model.",
+      "output": "Student-path states x_Q[m,k] over the active native solver indices."
+    },
+    {
+      "step_id": "S3",
+      "title": "Pair the remaining suffixes",
+      "what_changes": "Sample k uniformly from K_m, detach x_Q[m,k], and restart both the BF16 teacher and fake-quant student from that identical state with the same c and remaining native innovations eta_after_k; apply each unchanged full remaining suffix S[b,m,k] and retain both endpoint action chunks.",
+      "why_this_step": "This is the candidate's load-bearing operator: compare suffix response from a state reached by the student, rather than only comparing teacher and student at their original noise-seed endpoints or at teacher-visited states.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Detached x_Q[m,k], c, remaining innovations, BF16 reference, and fake-quant student.",
+      "output": "Paired BF16 and student suffix endpoint action chunks from the same student-visited state."
+    },
+    {
+      "step_id": "S4",
+      "title": "Train on the scaled action endpoint",
+      "what_changes": "Apply D_m and E_m to each endpoint up to any hard clip or gripper threshold to obtain continuous pre-threshold commands; when gripper thresholding exists, use its continuous pre-threshold signal for gradients. Scale every selected channel j in J_m by its existing positive model/controller scale s[m,j], fixed across arms, average the squared residual across all T_exec,m native prefix steps and J_m channels, and backpropagate only through the student suffix into theta_m. Separately report exact clipped/thresholded executed-command deviation per channel in native units; keep quantizer scales, schedule, excluded precision, and action interface fixed. The training residual or any required STE is a gradient-bearing surrogate related to, but not identical to, the exact physical-command metric.",
+      "why_this_step": "Native denormalization and prefix selection place the target in controller-facing coordinates; temporal and per-channel averaging makes the training signal a scalar without pretending the differentiable surrogate equals the executed command.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "Paired suffix outputs, D_m, E_m, J_m, s[m,j], and the differentiable student suffix.",
+      "output": "Scalar L_train,m, student-suffix gradient and updated theta_m, plus separately measured exact command deviations."
+    },
+    {
+      "step_id": "S5",
+      "title": "Match training controls and accounting",
+      "what_changes": "Compare the candidate with ordinary action-only QAT plus teacher KD, matched branch-free W4A8 PTQ, original-noise-seed endpoint KD, teacher-state suffix KD restarted from x_FP[m,k], and student-state per-step OPD at x_Q[m,k]. Count vanilla action-only QAT plus teacher KD and teacher KD at teacher states as one arm whenever targets and objectives are identical. Match total measured training GPU-time or, when matching solver work, total teacher and student NFE; keep model-specific episode splits, scope, contexts, and paired noise/solver-index draws aligned, and report teacher/student NFEs, GPU-time, examples, unique-context and repeated exposure, optimizer updates, and teacher-suffix work. For a shared-backbone per-step OPD comparison, mask loss to controller-selected action channels and native prefix steps with no video-output loss, and label it action-targeted shared-backbone training; any video-plus-action objective is a separately named scope and cost.",
+      "why_this_step": "The matched controls isolate whether the paired full-suffix endpoint target adds value beyond QAT, ordinary endpoint KD, teacher-state suffix KD, and student-state per-step supervision while making teacher-paid work visible.",
+      "linked_component": "engineering",
+      "linked_falsification": "mechanism_distinguisher",
+      "input": "Candidate training signal, fixed data/scope protocol, runnable PTQ comparator, and explicit KD/OPD controls.",
+      "output": "Matched-cost control results with teacher/student work, context exposure, and update counts reported."
+    },
+    {
+      "step_id": "S6",
+      "title": "Separate fidelity, control, and latency outcomes",
+      "what_changes": "On held-out fixed contexts and paired noise, measure exact denormalized executed-action deviation separately from LIBERO closed-loop completion; then measure full native W4A8 action-query latency without a teacher, including video/context prefill. Compute the visit-energy diagnostic over the entire native prefix time-by-channel tensor as a scalar using the same fixed pre-QAT matched-PTQ reference checkpoint in every arm; this Phase4 supplement clarifies estimator definition and provenance only, and is not a passed post_revision gate. Report measured action-time share and use Amdahl's law for any whole-query speed inference; do not turn an action-layer 4x storage reduction into a whole-WAM 4x compression or speed claim.",
+      "why_this_step": "Fixed-input action fidelity, closed-loop success, and deployed latency answer different questions; the association between the visit-energy scalar and completion benefit remains an empirical prediction.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "Held-out contexts, paired noise, evaluation episodes, fixed PTQ reference estimator, and declared native W4A8 kernel.",
+      "output": "Separate action deviation, LIBERO completion, full action-query latency, and scalar visit-energy measurements with scoped claims."
+    },
+    {
+      "step_id": "S7",
+      "title": "Test transfer under shared-backbone contracts",
+      "what_changes": "Attempt separate transfer checks on released shared-backbone LingBot-VA and Cosmos Policy only under their native scope contracts; record that updating shared denoiser blocks changes video and action computation, retain the action-only output mask for action-targeted controls, and do not pool their results with Fast-WAM or call shared weights weight-scope action-only.",
+      "why_this_step": "The user-specified extension tests whether the operator applies beyond Fast-WAM while respecting that the target models do not expose the same independent action-weight subset.",
+      "linked_component": "engineering",
+      "linked_falsification": "metric_specification",
+      "input": "Released shared-backbone checkpoints, model-specific action interfaces, and the scope-labeled transfer protocol.",
+      "output": "Separate transfer outcomes and a bounded statement of which architecture contracts were evaluated."
+    }
+  ],
+  "method_flow.design_reasoning_echo": "The design tests one unresolved contrast: whether a low-bit WAM needs weight adaptation once the quantized solver leaves the BF16 path, beyond what strong fixed-weight PTQ and matched teacher distillation provide. Its proposed signal compares complete teacher and student suffix responses from the same quantized-student state in controller-facing action coordinates, while keeping the solver and deployment contract fixed. This is incremental method work; fake quantization, on-policy student-state supervision, action masking, channel scaling, and teacher distillation are not claimed as novel by themselves. The full-suffix endpoint remains a plausible structural delta against low-bit on-policy distillation, DiffusionOPD, AnyFlow, and DiffusionOPSD, not an established novelty result. The supplied scalar operator counterexample also shows that reducing suffix loss can worsen original-endpoint error when solver errors compensate, so the method predicts an empirical closed-loop association and retains direct original-endpoint KD and per-step OPD controls rather than treating internal mismatch as a control defect.",
+  "feasibility_validation.data.verdict": "feasible",
+  "feasibility_validation.data.rationale": "The initial public Fast-WAM LIBERO demonstrations, checkpoint and paired normalization statistics are identified in the supplied inputs, with public LingBot-VA and Cosmos Policy data/interfaces named for separately scoped transfer.",
+  "feasibility_validation.theoretical.verdict": "n/a",
+  "feasibility_validation.theoretical.rationale": "The proposal makes no theorem or proof claim; its contribution is an empirical mechanism and matched falsification comparison.",
+  "feasibility_validation.engineering.verdict": "tight",
+  "feasibility_validation.engineering.rationale": "Suffix QAT needs student and teacher denoising paths, action-context prefill, backward activations, and a deployable native W4A8 kernel; the ceiling is at most four separate A100-SXM4-40GB devices, not pooled VRAM, while QAT peak memory and throughput are unmeasured and shared-backbone transfer may require additional model state, so first bound per-example memory/throughput and report action-time share before any whole-query Amdahl inference.",
+  "feasibility_validation.falsification.verdict": "tight",
+  "feasibility_validation.falsification.rationale": "The Fast-WAM LIBERO controls, paired suffix intervention, exact executed-command metric, separate closed-loop outcome, and native latency measurement are specified, but end-to-end QAT, matched teacher/suffix cost, and native-kernel availability have not been demonstrated.",
+  "feasibility_validation.overall": "tight",
+  "reviewer_concerns_and_responses[0].response": "The core_mechanism and S3–S4 define only the paired full-remaining-suffix endpoint from an exact student-visited state as a plausible structural delta: Train Where the Quantized Model Goes already covers low-bit on-policy teacher guidance, DiffusionOPD uses student-state per-step transition supervision, AnyFlow uses on-policy flow-map backward simulation/DMD, and DiffusionOPSD anchors reward-derived clean outputs at behavior-policy query states; generic QAT, suffix rebasing, controller masking, and channel scaling are not presented as novelty. The Phase 3.2 verdict_rationale's scalar example shows suffix loss can decrease while original-endpoint error increases, so the falsification_prediction retains matched original-endpoint KD, teacher-state suffix KD, and student-state per-step OPD controls, and neither novelty nor a control gain is established. The Phase4 supplement defines V_visit as a full-prefix time-by-channel scalar from one fixed pre-QAT matched-PTQ reference across arms, but this authoring clarification does not pass the recorded post_revision F1 gate or change the needs_work / FAILED VALIDATION lineage.",
+  "domain_landscape.position_note": "The candidate uses generative_process_redesign, a mid-frequency pattern in the Phase 0 landscape, by changing the operating state for teacher suffix supervision; it does not claim that the pattern or student-state supervision is novel, and the hypothesized full-suffix endpoint difference remains to be tested."
+}

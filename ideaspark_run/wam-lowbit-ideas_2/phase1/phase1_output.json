@@ -1,0 +1,195 @@
+{
+  "intake": {
+    "domain": "机器人 World Action Models（WAM）的权重/激活低比特量化",
+    "venue": "未指定",
+    "time": "当前日期 2026-10-03；截止时间未指定",
+    "data": [
+      "未指定 WAM checkpoint、calibration observations/conditions、closed-loop task 与 evaluator"
+    ],
+    "compute": "未知；用户未指定硬件或预算。后续只建议小规模 pilot envelope，不采用 150 GPU-days 默认值。",
+    "expertise": "Computer Science undergraduate research context；具体 WAM/PTQ 实验经验与可用资源未指定。",
+    "preference": "both",
+    "baseline": "Q-WAM（W4A4）、SteerQuant、QuantWAMs 与 PreDE；候选阶段需锁定同一 WAM checkpoint 和 evaluator。",
+    "user_direction": "最好量化层级能到W4A4/W4A8，混合精度或者单一精度都可以",
+    "excluded_direction": "n_a",
+    "limitation": "用户要求 WAM 量化 idea，目标位宽为 W4A4/W4A8，可选混合精度或单一精度；具体失效机制未指定。本 Phase 1 聚焦低比特筛选信号与机器人实际执行行为之间的可测错位。",
+    "contribution_type": "method",
+    "_inferred_fields": [
+      "venue",
+      "time",
+      "data",
+      "compute",
+      "expertise",
+      "preference",
+      "baseline",
+      "limitation",
+      "contribution_type"
+    ]
+  },
+  "bottleneck_statement": "对按块生成动作并由机器人控制器执行的 WAM，完整 action chunk 的量化误差不是实际送入控制器的 command 误差：Q-WAM 将误差映到完整动作块，SteerQuant 对标准化完整 action chunk 计量影响，PreDE 也固定 chunk length、execution rate 与 action parameterization 后在 observation log 上评估（arxiv:2609.33269v1; arxiv:2609.39056v1; arxiv:2609.19441v1）。当部署只执行 chunk 的一个 prefix，随后还经过反归一化、裁剪、gripper threshold 或 temporal ensembling 时，这些完整块指标无法确定已执行命令是否保真，因此可能把低位宽候选按与实际控制目标不同的量排序；相关论文未报告对这一 controller-transformed prefix 目标的专项比较。",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2609.33269v1",
+      "is_anchor": true,
+      "summary_and_residue": "Q-WAM 用完整 denoising Jacobian 构造 Action Observability Gramian，再以 action-sensitive 16-bit branch 保护敏感 activation directions，其余采用 W4A4。它假设 layer/token-step quantization residuals 零均值且互不相关以消去交叉项，并以完整 action chunk 为终点，未确定实际执行 prefix 经 controller 变换后的 command 偏差。"
+    },
+    {
+      "paper_id": "arxiv:2609.39056v1",
+      "is_anchor": false,
+      "summary_and_residue": "SteerQuant 按 layer、denoising step、stream 计算局部误差经 full-precision Jacobian 对完整 action chunk 的影响，再校准 shared channel scaling 与 stream-specific activation modulation。各区域输入取自 full-precision forward 以排除上游量化误差，因此该分数不刻画多个同时量化区域的联合误差。"
+    },
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "is_anchor": false,
+      "summary_and_residue": "QuantWAMs 在兼容坐标内校准 shared-basis outlier mask，并用 rollout snapshot 与固定 all-low-bit intervention 审计 precision schedule。schedule proposal 来自 FP16 reference-state replay，quantized-state profile 只是 shift diagnostic 且 local profile 不等于 marginal task gain，故 proxy 对候选诱发的闭环历史迁移仍未确立。"
+    },
+    {
+      "paper_id": "arxiv:2609.19441v1",
+      "is_anchor": false,
+      "summary_and_residue": "PreDE 用少量带 closed-loop outcome 的配置标定 policy-specific action-deviation 阈值，并在固定 observation log 上筛选候选配置。它固定 observation preprocessing、action parameterization、chunk length、execution rate 与 denoising steps，因此结论不覆盖执行条件变化或 controller-transformed command 目标。"
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "[subtractive] Q-WAM、SteerQuant、QuantWAMs 与 PreDE 都在完整 chunk 或固定 execution condition 下定义量化分数；尚无文献检验“完整生成 chunk 足以代表部署 fidelity”这一共享前提，在只执行某个 prefix 并经固定 controller 运算后是否仍成立。Phase 2 的构造交付应是在固定 controller 与 W4A4/W4A8 条件下，提出并检验能保留已执行 command 行为的量化方法，同时界定完整 chunk 分数何时会失真；不预定其内部机制。若高影响误差集中在首段或控制阈值附近，量化配置可能按未执行尾部误差排序而错过已执行 command 偏差；stakes: practitioner 在机器人部署时会接受错误配置并承担任务失败或重复闭环评估成本，intellectual 上会把 full-chunk similarity 错当成控制等价。",
+    "[additive] 对同时发生于多个 layer、stream 与 denoising step 的低位误差，Q-WAM 明确省略交叉项并依赖零均值/不相关近似，SteerQuant 则以 full-precision 输入单独估计每个区域；因此在 W4A4/W4A8 联合量化时，边际分数是否能预测误差合成后的 action displacement 仍未知，尤其是系统偏移、抵消或同向累积是否改变候选排序。Phase 2 的构造交付应是在固定 WAM 与低位宽下，提出能应对多处残差同时存在的量化方法，并以联合扰动证据检验其 action 误差判断；不预定误差估计或调节机制。stakes: 量化研究者可能把精度预算分给单点敏感却在联合路径中不关键的模块，造成 W4 quality 结论不可复现或无法迁移到不同校准轨迹；intellectual 上会把独立扰动假设当成未经检验的误差几何。",
+    "[additive] Q-WAM 与 SteerQuant 使用离线 calibration probes，QuantWAMs 用 FP16 reference-state replay 提议 schedule 并将 quantized-state profile 作为 shift diagnostic，PreDE 对新配置则查询固定 observation log；这些结果尚未确立当量化动作改变后续 observation history 时，离线分数/阈值对多轮闭环候选排序仍保持校准。Phase 2 的构造交付应是在固定 evaluator 与 W4A4/W4A8 条件下，提出能在候选诱发的新闭环 history 上维持量化质量判断的方法，并通过多轮 evidence 检验迁移；不预定状态适配机制。stakes: 实践者在长序列或接触状态变化时可能遇到离线通过、闭环退化的候选并付出额外仿真或实机成本；intellectual 上，固定输入 evidence 不能支持跨 rollout distribution 的控制保真结论。"
+  ],
+  "method_lineage": {
+    "line": "神经网络 PTQ → diffusion denoiser PTQ → action-conditioned WAM quantization and deployment screening",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "静态 post-training neural-network quantization with representative calibration",
+        "move": "以 calibration activations 确定低位 weights/activations 的离散表示与量化参数，使浮点网络可用更低精度执行。",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "medium",
+        "residual_problem": "局部 calibration 或固定输出重建本身不说明量化误差穿过反复 denoising 后如何影响机器人动作。",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n1",
+        "method": "Q-Diffusion / timestep-aware diffusion PTQ",
+        "move": "将 diffusion denoiser 的阶段或 timestep 差异纳入低位校准，而非把生成过程视作单次前馈网络。",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "图像生成质量和 denoising-stage calibration 不直接给出 action-conditioned WAM 的执行命令或闭环任务后果；WAM frontier 将目标扩展到动作。",
+        "is_frontier_leaf": false
+      },
+      {
+        "node_id": "n2",
+        "method": "Q-WAM: Action Observability Gramian + Action-Subspace Protection",
+        "move": "将层激活扰动经完整 denoising Jacobian 映到 action chunk，并对敏感方向保留高精度分支。",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2609.33269v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "零均值/互不相关假设消去多处量化误差交叉项；chunk endpoint 也未覆盖执行 prefix 经 controller 后的 command。",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n3",
+        "method": "SteerQuant: action-guided layer-step-stream error routing",
+        "move": "按局部量化残差对 full-precision 最终 action 的影响，校准共享通道尺度与分 stream activation 调节。",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2609.39056v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "局部残差在 full-precision 上游输入下独立评分，未定量组合量化区域共同变化时的误差交互。",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n4",
+        "method": "QuantWAMs: shared-basis calibration and rollout-audited precision scheduling",
+        "move": "以 rollout context 约束共享坐标 outlier mask，并用固定低位干预审计保护 step schedule。",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2607.28405v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "schedule proposal 仍依赖 FP16 reference-state replay；quantized rollout profile 与 closed-loop validation 尚未说明 proxy 对候选诱发历史的跨轮迁移。",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "n5",
+        "method": "PreDE: policy-specific offline action-deviation screening",
+        "move": "用固定 observation log 上的 action deviation 与开发配置的 closed-loop labels 标定 accept/reject/defer gate。",
+        "parent": "n1",
+        "provenance": "retrieved:arxiv:2609.19441v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "screening 结论绑定固定 action representation、chunk length 与 execution rate，且 deferred candidates 仍需闭环证据。",
+        "is_frontier_leaf": true
+      },
+      {
+        "node_id": "c1",
+        "method": "Model-predictive / receding-horizon control (Mayne et al., 2000)",
+        "move": "执行有限规划前缀后用新状态重规划，使已执行 horizon 与后续反馈显式分开。",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "high",
+        "residual_problem": "处理执行 horizon 与 feedback，但不建立 WAM low-bit proxy 对实际 controller command 的保真关系。",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c2",
+        "method": "Quantized-feedback stabilization (Liberzon, 2003)",
+        "move": "将有限分辨率控制信号纳入闭环稳定性分析，而非只评价生成模型输出误差。",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "medium",
+        "residual_problem": "稳定性分析未刻画 WAM denoising quantization、mixed precision 或 task-conditioned chunk output。",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "Parametric nodes仅用于防止把旧路线误写成新颖性，不作为检索先例引用。按残余检查了静态PTQ/误差补偿、diffusion跨步量化误差处理、receding-horizon/action-chunk控制、quantized-feedback稳定性、offline配置筛选五类；旧控制类由c1/c2作collateral awareness，近期CTEC/TCEC类已在检索窗内，未另造更早的同机制先例。"
+  },
+  "domain_pattern_distribution": {
+    "n_total": 31,
+    "n_on_topic": 20,
+    "patterns": [
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 15,
+        "share": 0.75,
+        "saturation_band": "saturated"
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 3,
+        "share": 0.15,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 2,
+        "share": 0.1,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 1,
+        "share": 0.05,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 1,
+        "share": 0.05,
+        "saturation_band": "untested"
+      }
+    ],
+    "saturation_threshold_saturated": 0.5,
+    "saturation_threshold_untested_count": 1,
+    "notes": "在 20 篇量化相关 WAM、diffusion 与 robot-policy 工作中，heterogeneous_decomposition 最常见；WAM 论文虽有不同校准对象，但共同依赖离线 proxy 与固定推理条件，尚未把完整 chunk 误差与实际执行命令对齐。"
+  },
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

@@ -1,0 +1,335 @@
+{
+  "request_id": "265b8b6e-8944-4938-bc8e-53b1eaffaccb",
+  "artifacts": {
+    "phase2_coherence/phase2_coherence_output.json": {
+      "contract_version": 2,
+      "base_candidate_sha256": "db94e92cdfc46da3eef8304f359288d9985cac42e869c6c5d965c8b9a8b28f4d",
+      "verdict": "findings",
+      "trace_report": {
+        "formalized_procedure": [
+          {
+            "step": "S1",
+            "consumes": [
+              "checkpoint/config; logs [traj,time,...]"
+            ],
+            "produces": [
+              "a_BF16 [B,H,A]; frozen evaluator/ζ"
+            ],
+            "note": "原句：“1. 下载/加载 Fast-WAM 官方 released Optional IDM checkpoint 与 yuanty/LIBERO-fastwam 的现有 observation/goal logs；冻结 first_frame mode、scheduler、normalization 和 action parameterization，输出固定 BF16 reference path。” 类型流：checkpoint+logs→reference chunks。模型未加载。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S2",
+            "consumes": [
+              "W_r[I,O], named G∈kernel-supported set, PTQ scales"
+            ],
+            "produces": [
+              "packed W4 bank; W_hat_r[I,O]; precision map"
+            ],
+            "note": "原句：“2. 将所有指定 denoiser Linear 权重打包成 signed symmetric groupwise W4，固定 G、zero point=0 与 group clipping/scale；其余明示的非 Linear 运算保留 BF16/FP32，输出唯一 W4 bank。” 类型流：G 有选择范围；T2 假设示例 G=2 可用，W_hat 是 synthetic 已反量化输入。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S3",
+            "consumes": [
+              "x_bpr[I], sample id"
+            ],
+            "produces": [
+              "Δ_bp scalar; u_b∈[0,1); x[B,P,I]"
+            ],
+            "note": "原句：“3. 在当前完整量化路径上逐 token row 计算 A8 scale Δ_bp=max|x_bp|/126，抽样轨迹标识确定的 per-sample base draw u_b；输出 live row scales 和真实 full-path activation rows，不用 FP 输入代替。” 类型流：126 为公式常数；Δ=0 边界放 T3。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S4",
+            "consumes": [
+              "x,Δ,u,φ_r∈[0,1)"
+            ],
+            "produces": [
+              "d; int8 q[I]; x_tilde[I]"
+            ],
+            "note": "原句：“4. 在每次 Linear activation quantizer 设置 φ_r，计算 d_br=frac(u_b+φ_r)，将一个 scalar 对齐广播到所有该调用 token rows 与 hidden columns，再执行 round/dequant；输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。” 类型流：预先选作最可能 fatal：检查 nearest-round 的 [0,1) dither/重构与 S5 correction。T2 两 site、row [126,x]、Δ=1、Φ网格 {0,.25,.5,.75}、N=10000 均是 tracer 示例；round tie 另做双读法。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S5",
+            "consumes": [
+              "q[I], Δ,d,W_hat[I,O]"
+            ],
+            "produces": [
+              "c[O]=Σ_iW_hat[i,:]; y[O] FP32→BF16"
+            ],
+            "note": "原句：“5. 从每个 packed/dequantized W4 Linear 权重计算 per-output column sum c_j，并把 -Δ_bp d_br c_j 加入同一 GEMM 的 FP32 epilogue；输出校正后的 BF16 hidden state，不增设高精度权重分支。” 类型流：Δ(q−d)W=ΔqW−ΔdΣ_iW[i,:]。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S6",
+            "consumes": [
+              "calibration endpoints, Φ,J_r"
+            ],
+            "produces": [
+              "Φ_new; refreshed path/J_r; c_r=J_r(W_hat_r e_r)"
+            ],
+            "note": "原句：“6. 仅在 calibration trajectories 上，以完整 W4A8 action-chunk MSE 做 Φ 周期坐标搜索；同时用当前 full-path VJP J_r 记录线性化的 cross-term 诊断，phase 更新后重放路径并刷新 J_r。” 类型流：符号有定义，更新后重放无环。G、Φ 均为命名变量；没有未绑定数值门槛。网格/停止数只为 T2 实例化。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S7",
+            "consumes": [
+              "held-out observations, paired u/ζ, Φ"
+            ],
+            "produces": [
+              "held-out endpoint MSE; saturation; J cross terms; arm results"
+            ],
+            "note": "原句：“7. 在 trajectory-disjoint held-out observations 与配对 scheduler draws 上，对照同 scale/clip RTN、独立 dither、site-label phase permutation 和同预算 direct endpoint PTQ；报告精确 action-chunk MSE、饱和计数、路径中 J_r cross-term 诊断，若 endpoint 不改善即否证。” 类型流：目标与 BLOCK1 的 D_eval、反归一化前完整 action chunk 一致；S6 calibration 用于选参，S7 才测 holdout。",
+            "status": "instantiated"
+          }
+        ],
+        "negative_control": {
+          "executed": true,
+          "moved_outcome": true,
+          "evidence": "主 T2 的 Φ=(.75,0) heldout MSE=.08583333；site swap (0,.75)=.28583333，变化 +.20。另在合法 gauge regime Φ=(0,.5) swap 后仍 .12333333：只是对该相位族的 no-op，不是所有置换都不动。"
+        },
+        "dry_run": {
+          "instance": "不模拟模型。两个 synthetic site 的投影误差输入 x_small=(.20,.40)，每行 [126,x]、Δ=1、W_hat/J=1；calibration=(.20,.40)，heldout=(.21,.41)。U 用 N=10000 midpoint；Φ 网格 {0,.25,.5,.75}²，从(0,0)逐坐标最多8轮。所有是 tracer illustrative values。",
+          "execution": {
+            "mode": "executed",
+            "script": "import math\nN=10000; GRID=(0.,.25,.5,.75)\nrnd=lambda z: math.floor(z+.5)\ne=lambda x,d: rnd(x+d)-d-x\ndef mse(xs,ps):\n return sum((sum(e(x,(i+.5)/N+v) for x,v in zip(xs,ps)))**2 for i in range(N))/N\ndef cd(xs):\n p=[0.]*len(xs)\n for _ in range(8):\n  old=tuple(p)\n  for j in range(len(p)):\n   p[j]=min(GRID,key=lambda v:mse(xs,tuple(v if k==j else p[k] for k in range(len(p)))))\n  if tuple(p)==old: break\n return tuple(p),mse(xs,p)\ncal=(.20,.40); test=(.21,.41); phi,cal_m=cd(cal); score=mse(test,phi); perm=mse(test,phi[::-1])\n# Synthetic already-dequantized W4 weight; verify column-sum FP32 epilogue identity.\nx=(126.,.20); d=.37; delta=max(map(abs,x))/126; q=tuple(rnd(v/delta+d) for v in x); xh=tuple(delta*(v-d) for v in q); w=(.25,-.5); gemm=delta*sum(a*b for a,b in zip(q,w)); corr=-delta*d*sum(w); direct=sum(a*b for a,b in zip(xh,w))\nmu=sum(e(.20,(i+.5)/N) for i in range(N))/N\nqbound=[rnd(z+v) for z in (-126.,126.) for v in (0.,.4999,.5001,.9999)]\ne0=[e(test[0],(i+.5)/N) for i in range(N)]; e1=[e(test[1],(i+.5)/N) for i in range(N)]; m0=sum(e0)/N; m1=sum(e1)/N; s0=sum(a*a for a in e0)/N; s1=sum(a*a for a in e1)/N; independent=s0+s1+2*m0*m1\nrtn=(rnd(test[0])-test[0]+rnd(test[1])-test[1])**2\ngauge0=mse(test,(0.,.5)); gauge1=mse(test,(.5,0.))\nshift0=mse(test,phi); shift1=mse(test,tuple((v+.5)%1 for v in phi))\n# Downstream projection can annihilate equal quantizer errors.\niner=[]\nfor u,p in ((.37,0.),(.37,.5),(.82,.25)):\n di=(u+p)%1; row=(126.,.20,.20); qs=[rnd(v+di) for v in row]; xhs=[v-di for v in qs]; iner.append(xhs[1]-xhs[2])\nte=(.25,.25); ties=(round(sum(te))-te[1],rnd(sum(te))-te[1])\nprint(f\"N={N}; cal={cal}; heldout={test}; phase grid={GRID}; selected Phi={phi}; cal MSE={cal_m:.8f}.\")\nprint(f\"epilogue: Delta={delta:.1f}, d={d}, q={q}, xhat={xh}; GEMM={gemm:.6f}, correction={corr:.6f}, direct={direct:.6f}, absdiff={abs(gemm+corr-direct):.3g}.\")\nprint(f\"fixed x/Delta=.2 mean error={mu:.8f} Delta (integral=0); q boundary=[{min(qbound)},{max(qbound)}].\")\nprint(f\"heldout shared MSE={score:.8f}; permuted {phi[::-1]} MSE={perm:.8f}; delta={perm-score:+.8f}.\")\nprint(f\"RTN MSE={rtn:.8f}; independent-dither MSE={independent:.8f} (means={m0:.8f},{m1:.8f}; second moments={s0:.8f},{s1:.8f}).\")\nprint(f\"gauge swap: {gauge0:.8f}->{gauge1:.8f}; common shift: {shift0:.8f}->{shift1:.8f}.\")\nprint(f\"projection W=(0,1,-1) outputs={tuple(iner)}; tie z=d=.25: even/half-up xhat={ties}.\")\n",
+            "output": "N=10000; cal=(0.2, 0.4); heldout=(0.21, 0.41); phase grid=(0.0, 0.25, 0.5, 0.75); selected Phi=(0.75, 0.0); cal MSE=0.08583333.\nepilogue: Delta=1.0, d=0.37, q=(126, 1), xhat=(125.63, 0.63); GEMM=31.000000, correction=0.092500, direct=31.092500, absdiff=3.55e-15.\nfixed x/Delta=.2 mean error=-0.00000000 Delta (integral=0); q boundary=[-126,127].\nheldout shared MSE=0.08583333; permuted (0.0, 0.75) MSE=0.28583333; delta=+0.20000000.\nRTN MSE=0.38440000; independent-dither MSE=0.16666667 (means=0.00000000,0.00000000; second moments=0.08333333,0.08333333).\ngauge swap: 0.12333333->0.12333333; common shift: 0.08583333->0.08583333.\nprojection W=(0,1,-1) outputs=(0.0, 0.0, 0.0); tie z=d=.25: even/half-up xhat=(-0.25, 0.75).\n"
+          },
+          "computed_quantities": [
+            {
+              "quantity": "S5 校正",
+              "value": "31+.0925=31.0925；direct=31.0925",
+              "arithmetic": "q=(126,1), Δ=1,d=.37,W=(.25,−.5),c=−.25。"
+            },
+            {
+              "quantity": "固定输入 dither",
+              "value": "mean error=0; q∈[−126,127]",
+              "arithmetic": "period-1 nearest-round error 在长1区间积分为0；midpoint 数值见脚本。"
+            },
+            {
+              "quantity": "搜索/holdout",
+              "value": "Φ=(.75,0); MSE_cal=.08583333; MSE_test=.08583333",
+              "arithmetic": "两 site endpoint error 为 e0+e1，在同一 shared U 上求平方均值。"
+            },
+            {
+              "quantity": "负对照",
+              "value": ".08583333→.28583333",
+              "arithmetic": "同一 heldout 输入/随机数，交换两 site 的 phase。"
+            },
+            {
+              "quantity": "naive",
+              "value": "RTN=.3844; independent dither=.16666667",
+              "arithmetic": "RTN: (−.21−.41)^2；独立 dithers: 1/12+1/12。"
+            },
+            {
+              "quantity": "gauge / projection / tie",
+              "value": "(.0,.5) swap MSE=.12333333 两侧相等；annihilated projection=(0,0,0); tie xhat=−.25 vs +.75",
+              "arithmetic": "分别见同一执行脚本的 U 重参数化、W=(0,1,−1)、nearest tie 双读法。"
+            }
+          ],
+          "anomalies": [
+            {
+              "anomaly": "S4 的“确实改变后续 action path”并非普遍成立；synthetic W=(0,1,−1) 消掉相同 phase-error 坐标，action projection 三次均为0。",
+              "kind": "instance_contingent",
+              "why": "特定 W/J 投影消去误差；其他投影可以暴露它，不能据此断言普遍失败。",
+              "contradicts_claim": "“输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。”"
+            },
+            {
+              "anomaly": "Φ=(0,.5) 两 site 的 site swap 不改变期望端点 MSE。",
+              "kind": "structural",
+              "why": "d=(U,U+.5 mod1)；swap 等于 U′=frac(U+.5)，仍是同一均匀联合分布。只对该 admissible phase regime no-op。",
+              "contradicts_claim": "“保持其取值集合不变而随机置换 site 对应关系，预测 held-out endpoint MSE 上升。”"
+            }
+          ]
+        },
+        "degenerate_probes": [
+          {
+            "probe": "empty calibration set",
+            "behavior": "empirical mean 无分母；既定 logs 缺失，违反 P1 输入前提。",
+            "finding": null
+          },
+          {
+            "probe": "k=0 sites",
+            "behavior": "Φ 为空、搜索空操作；不是定义的 WAM denoiser。",
+            "finding": null
+          },
+          {
+            "probe": "all-identical nonzero rows",
+            "behavior": "Δ>0，运算有定义；不保证收益，不构成算法异常。",
+            "finding": null
+          },
+          {
+            "probe": "all-zero row",
+            "behavior": "Δ=max|x|/126=0，S4 出现 0/0。仅此 regime 失败。",
+            "finding": "N1"
+          },
+          {
+            "probe": "精确 round tie",
+            "behavior": "z=d=.25 时 ties-even 输出−.25，half-up 输出+.75；两者终止，但书面 round 未选其一。连续 U 命中率为0。",
+            "finding": "N2"
+          },
+          {
+            "probe": "single element",
+            "behavior": "x≠0 时 Δ=|x|/126>0；x=0 归 N1。",
+            "finding": null
+          },
+          {
+            "probe": "maximum",
+            "behavior": "无 site/token 上界，最大 shape 未定义；INT8 q 界为[−126,127]，相位域周期且 φ→1 等价0。",
+            "finding": null
+          }
+        ],
+        "claim_step_map": [
+          {
+            "claim": "固定、独立输入/Δ且无饱和时的 subtractive-dither 条件零均值",
+            "established_by": "S4",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "column-sum correction 对同一 W_hat 的减法项",
+            "established_by": "S5",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "单一 W4 bank、无 BF16 权重分支",
+            "established_by": "S2,S5",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "S4 “因而确实改变后续 action path”",
+            "established_by": "S4 只建立 tensor forwarding",
+            "strength_grade": "overclaim",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "phase 可能降低完整路径 endpoint MSE；cross terms 可能改变",
+            "established_by": "S6,S7",
+            "strength_grade": "empirical",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "每 sweep 重放并刷新 J，局部诊断不替代 endpoint estimand",
+            "established_by": "S6",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          }
+        ],
+        "naive_comparison": {
+          "declared_branch": "(i) false-premise（BLOCK2 称独立/零均值合成是假设）",
+          "naive_version": "独立构造：相同 W4A8、W_hat、Δ 与 endpoint 下使用常规 per-Linear RTN；不加 dither 或 phase search。",
+          "naive_fairness": "同 bit-width、权重、尺度、输入信息、部署和 compute ceiling；RTN 更简单，省掉随机状态和坐标校准，不增加预算或信息。",
+          "declared_naive": {
+            "version": "BLOCK2 的 per-Linear independent dither + local reconstruction scale + independent residual 假设；公平同尺度 arm 固定 Δ=max|x|/126，仅执行其 independent-draw 规则，不把尺度放宽。",
+            "instance_behavior": "独立 dither MSE=.16666667，高于 phase 结果 .08583333。",
+            "agrees_with_constructed": "yes；两个同约束 baseline 在本 synthetic fixture 均高于机制。"
+          },
+          "instance_behavior": {
+            "naive": "RTN MSE=.38440000",
+            "mechanism": "phase MSE=.08583333",
+            "divergence": "改善 .29856667；declared independent-dither 高 .08083334",
+            "kind": "instance_contingent"
+          },
+          "naive_kind": "alternative_design",
+          "identity": "differs",
+          "verdict": "confronts_obstacle",
+          "reasoning": "此示例中 RTN 残差同向，独立 dither 保留两边际方差之和；选定相对相位产生负交叉项并降低 MSE。单个 synthetic 轨迹只能作 depth 执行确认，不能升级为 WAM 收益证据。"
+        }
+      },
+      "unrepaired": [
+        {
+          "finding": "N1 零 activation row 令 Δ=0，S4 的除法为 0/0。",
+          "severity": "note",
+          "why_not_repaired": "只发生于合法零 row regime，不是对所有输入的不可能性；报告局部公式建议。",
+          "tag": "regime",
+          "source": "T3",
+          "derivation": "x=0→max|x|/126=0→x/Δ=0/0；非零 row 可运行。",
+          "repair_kind": "formula",
+          "verbatim_step_quote": "3. 在当前完整量化路径上逐 token row 计算 A8 scale Δ_bp=max|x_bp|/126，抽样轨迹标识确定的 per-sample base draw u_b；输出 live row scales 和真实 full-path activation rows，不用 FP 输入代替。",
+          "executed_evidence": "代入全零 row 得 Δ=0；S4 分母为0。",
+          "reading_dependence": "reading_robust",
+          "structural_requirement": null
+        },
+        {
+          "finding": "N2 nearest-round tie convention 未指定。",
+          "severity": "note",
+          "why_not_repaired": "仅精确 tie 输入区别两种常见读法；有限 deterministic draw 仍可命中。",
+          "tag": "instance_contingent",
+          "source": "T1",
+          "derivation": "z=d=.25：ties-even q=0,xhat=−.25；half-up q=1,xhat=.75。",
+          "repair_kind": "formula",
+          "verbatim_step_quote": "4. 在每次 Linear activation quantizer 设置 φ_r，计算 d_br=frac(u_b+φ_r)，将一个 scalar 对齐广播到所有该调用 token rows 与 hidden columns，再执行 round/dequant；输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。",
+          "executed_evidence": "脚本执行 tie probe，输出差 1·Δ；连续 U 下 measure zero。",
+          "reading_dependence": "reading_dependent: ties-to-even versus half-up",
+          "structural_requirement": null
+        },
+        {
+          "finding": "N3 转发 phase-dependent tensor 不保证最终 action 对 phase 敏感。",
+          "severity": "note",
+          "why_not_repaired": "是零 downstream projection 的 instance，不否定一般机制；建议精确限定 step 的保证。",
+          "tag": "instance_contingent",
+          "source": "T4",
+          "derivation": "row=(126,.2,.2), Δ=1，W=(0,1,−1)；两小坐标相同，投影恒为0。",
+          "repair_kind": "formula",
+          "verbatim_step_quote": "4. 在每次 Linear activation quantizer 设置 φ_r，计算 d_br=frac(u_b+φ_r)，将一个 scalar 对齐广播到所有该调用 token rows 与 hidden columns，再执行 round/dequant；输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。",
+          "executed_evidence": "已执行三个 u/φ，投影均为0。",
+          "reading_dependence": "reading_robust",
+          "structural_requirement": null
+        },
+        {
+          "finding": "N4 在 Φ=(0,1/2) 两 site regime，随机 site-label swap 可因 global gauge 对称而不移动 MSE。",
+          "severity": "note",
+          "why_not_repaired": "主 T2 permutation 会移动结果；此合法子域是控制 no-op，falsification field 属 audit-owned，trace 不改写。",
+          "tag": "regime",
+          "source": "T2b",
+          "derivation": "(U,U+1/2 mod1) 交换后等同 U′=frac(U+1/2)，U′仍 Uniform；endpoint law 与 MSE 不变。",
+          "repair_kind": "formula",
+          "verbatim_step_quote": "唯一 load-bearing variable 是 site phase table Φ：保持其取值集合不变而随机置换 site 对应关系，预测 held-out endpoint MSE 上升；",
+          "executed_evidence": "本 synthetic input 下 .12333333→.12333333；另有主 instance .08583333→.28583333。",
+          "reading_dependence": "reading_robust",
+          "structural_requirement": null
+        }
+      ],
+      "suggested_repairs": [
+        {
+          "kind": "definition",
+          "op": "append_sentence",
+          "field": "core_mechanism",
+          "value": "If max_j|x_bp,j|=0, emit x_tilde_bp=0 and skip activation quantization and dither correction for that row, while retaining the ordinary Linear bias/epilogue path.",
+          "delta_summary": "T3 N1：max/126 的零 row 使 S4 出现 0/0；只补边界定义。"
+        },
+        {
+          "kind": "wording",
+          "op": "append_sentence",
+          "field": "core_mechanism",
+          "value": "Here round means round-to-nearest, ties-to-even, with the same implementation used for calibration and evaluation.",
+          "delta_summary": "T1/T3 N2：明示半格规则可消除两个 defensible exact-output readings。"
+        },
+        {
+          "kind": "claim_grade",
+          "op": "append_sentence",
+          "field": "core_mechanism_steps",
+          "value": "Step 4 forwards the phase-dependent tensor; final action changes with φ only when its downstream projection is nonzero.",
+          "delta_summary": "T4 N3：W/J 可消去 phase error，故把无条件 action-path 保证限定为非零 downstream projection。"
+        }
+      ],
+      "applied_revisions": []
+    }
+  }
+}

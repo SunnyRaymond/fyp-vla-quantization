@@ -1,0 +1,48 @@
+#!/bin/bash
+#PBS -N fw_plus_aggregate
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing to run on a login node' >&2; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ $rc -eq 0 ]]; then touch "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+}
+trap finish EXIT
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+SOURCES=${FW_SHARD_SOURCES:-$ROOT/shard_sources.json}
+MANIFEST=${FW_MANIFEST:-$ROOT/manifest.json}
+OUTPUT=${FW_AGGREGATE_OUTPUT:-$ROOT/aggregate}
+test -s "$SIF" -a -s "$SOURCES" -a -s "$MANIFEST" -a -s "$ROOT/aggregate.py"
+cp "$ROOT/aggregate.pbs" "$ROOT/aggregate.py" "$ARTIFACTS/"
+cp -- "$SOURCES" "$ARTIFACTS/shard_sources.json"
+cp -- "$MANIFEST" "$ARTIFACTS/manifest.json"
+ARGS=("$ARTIFACTS/aggregate.py" --sources "$SOURCES" --manifest "$MANIFEST" --output "$OUTPUT")
+if [[ -n "${FW_PERFORMANCE_ARTIFACTS:-}" ]]; then ARGS+=(--performance "$FW_PERFORMANCE_ARTIFACTS"); fi
+if [[ "${FW_INVENTORY_ONLY:-0}" == 1 ]]; then ARGS+=(--inventory-only); fi
+apptainer exec --cleanenv \
+  --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+  --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,OMP_NUM_THREADS=8,PYTHONUNBUFFERED=1" \
+  "$SIF" "$BASE/venv/bin/python" "${ARGS[@]}" 2>&1 | tee "$ARTIFACTS/aggregate.log"

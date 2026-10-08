@@ -1,0 +1,126 @@
+#!/bin/bash
+#PBS -N libero_plus_wand_probe
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" > "/tmp/libero-plus-wand-probe-$PBS_JOBID.txt"
+grep -Eq 'job_state = R' "/tmp/libero-plus-wand-probe-$PBS_JOBID.txt" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+DEPS="$ROOT/deps"
+OUT="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$OUT/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+cp "/tmp/libero-plus-wand-probe-$PBS_JOBID.txt" "$OUT/allocation.txt"
+printf 'WAND_NATIVE_PROBE_START job=%s host=%s gpu=0\n' "$PBS_JOBID" "$HOST"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+printf 'HOST_LD_LIBRARY_PATH=%s\n' "$LD_LIBRARY_PATH"
+printf '%s\n' '=== HOST IMAGE-MAGICK MODULE CANDIDATES ==='
+module -t avail 2>&1 | grep -iE 'imagemagick|(^|/)magick' | head -20 || true
+printf '%s\n' '=== HOST LDCONFIG CANDIDATES ==='
+ldconfig -p 2>/dev/null | grep -iE 'libMagick(Wand|Core)' | head -20 || true
+for path in \
+  /usr/lib64/libMagickWand-7.Q16HDRI.so.10 /usr/lib64/libMagickCore-7.Q16HDRI.so.10 \
+  /usr/lib64/libMagickWand-7.Q16.so.10 /usr/lib64/libMagickCore-7.Q16.so.10 \
+  /usr/lib64/libMagickWand-6.Q16.so.6 /usr/lib64/libMagickCore-6.Q16.so.6 \
+  /usr/lib/x86_64-linux-gnu/libMagickWand-7.Q16HDRI.so.10 /usr/lib/x86_64-linux-gnu/libMagickCore-7.Q16HDRI.so.10 \
+  /usr/lib/x86_64-linux-gnu/libMagickWand-7.Q16.so.10 /usr/lib/x86_64-linux-gnu/libMagickCore-7.Q16.so.10 \
+  /usr/lib/x86_64-linux-gnu/libMagickWand-6.Q16.so.6 /usr/lib/x86_64-linux-gnu/libMagickCore-6.Q16.so.6; do
+  if test -e "$path"; then stat -c 'HOST_LIBRARY %n %F %s' "$path"; fi
+done
+
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  fi
+done
+container_exec() {
+  test -n "${PBS_JOBID:-}" && test -r "${PBS_NODEFILE:-}" || return 64
+  node=$(hostname -s)
+  case "$node" in *login*) return 64;; esac
+  awk -v host="$node" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || return 64
+  qstat -f "$PBS_JOBID" > "/tmp/libero-plus-wand-probe-$PBS_JOBID.txt" || return 64
+  grep -Eq 'job_state = R' "/tmp/libero-plus-wand-probe-$PBS_JOBID.txt" || return 64
+  apptainer exec --cleanenv "${BIND_ARGS[@]}" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST,LD_LIBRARY_PATH=$LD_LIBRARY_PATH,PYTHONPATH=$DEPS" \
+    "$@"
+}
+
+test -x "$BASE/venv/bin/python" && test -r "$SIF"
+container_exec --env "ROOT=$ROOT,DEPS=$DEPS,OUT=$OUT" "$SIF" "$BASE/venv/bin/python" - <<'PY'
+import ctypes.util
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import traceback
+from pathlib import Path
+
+def output(args):
+    if not shutil.which(args[0]):
+        return None
+    result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
+    return result.stdout[:12000]
+
+release = Path("/etc/os-release").read_text(encoding="utf-8", errors="replace") if Path("/etc/os-release").is_file() else "missing"
+runtime = {"python": sys.executable, "platform": platform.platform(), "libc": platform.libc_ver(), "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH"), "MAGICK_HOME": os.environ.get("MAGICK_HOME"), "WAND_MAGICK_LIBRARY_SUFFIX": os.environ.get("WAND_MAGICK_LIBRARY_SUFFIX")}
+print("CONTAINER_OS_RELEASE", release[:4000], flush=True)
+print("CONTAINER_RUNTIME", json.dumps(runtime, sort_keys=True), flush=True)
+names = ("MagickWand-7.Q16HDRI", "MagickCore-7.Q16HDRI", "MagickWand-7.Q16", "MagickCore-7.Q16", "MagickWand-6.Q16", "MagickCore-6.Q16", "MagickWand-6.Q16HDRI", "MagickCore-6.Q16HDRI", "MagickWand", "MagickCore")
+found = {name: ctypes.util.find_library(name) for name in names}
+print("FIND_LIBRARY", json.dumps(found, sort_keys=True), flush=True)
+candidate_names = ("libMagickWand-7.Q16HDRI.so.10", "libMagickCore-7.Q16HDRI.so.10", "libMagickWand-7.Q16.so.10", "libMagickCore-7.Q16.so.10", "libMagickWand-6.Q16.so.6", "libMagickCore-6.Q16.so.6", "libMagickWand-6.Q16HDRI.so.6", "libMagickCore-6.Q16HDRI.so.6")
+candidate_dirs = ("/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/usr/lib", "/usr/local/lib", "/app/apps/lib")
+present = [str(Path(directory, name)) for directory in candidate_dirs for name in candidate_names if Path(directory, name).is_file()]
+print("FIXED_LIBRARY_CANDIDATES", json.dumps(present), flush=True)
+for tool in ("ldconfig", "dpkg-query", "rpm", "convert", "magick", "MagickWand-config"):
+    print("TOOL", tool, shutil.which(tool), flush=True)
+for command in (["ldconfig", "-p"], ["dpkg-query", "-W", "imagemagick", "libmagickwand-6.q16-6", "libmagickcore-6.q16-6", "libmagickwand-7.q16-10", "libmagickcore-7.q16-10"], ["rpm", "-q", "ImageMagick-libs", "ImageMagick"]):
+    try:
+        result = output(command)
+        if result is not None:
+            if command[0] == "ldconfig":
+                result = "\n".join(line for line in result.splitlines() if "magickwand" in line.lower() or "magickcore" in line.lower())[:6000]
+            print("PACKAGE_QUERY", command[0], result, flush=True)
+    except Exception as exc:
+        print("PACKAGE_QUERY_ERROR", command[0], type(exc).__name__, str(exc), flush=True)
+
+wand_result, wand_error = "missing", None
+try:
+    from wand.api import library
+    library.MagickWandGenesis()
+    library.MagickWandTerminus()
+    wand_result = "MagickWandGenesis/Terminus passed"
+except Exception as exc:
+    wand_error = f"{type(exc).__name__}: {exc}"
+    traceback.print_exc()
+    print("WAND_NATIVE_IMPORT_ERROR", wand_error, flush=True)
+result = {"job_id": os.environ["PBS_JOBID"], "container_os_release": release, "find_library": found, "fixed_library_candidates": present, "wand_result": wand_result, "wand_error": wand_error}
+target = Path(os.environ["OUT"]) / "wand_native_probe.json"
+target.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+print("WAND_NATIVE_PROBE_COMPLETE " + json.dumps({"wand_result": wand_result, "candidate_count": len(present)}, sort_keys=True), flush=True)
+PY
+
+touch "$OUT/SUCCESS"
+printf 'WAND_NATIVE_PROBE_COMPLETE job=%s gpu=0\n' "$PBS_JOBID"

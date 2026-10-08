@@ -1,0 +1,31 @@
+{
+  "contract_version": 2,
+  "request_id": "37e22d08-c33a-4dd4-afc8-49d4014565d7",
+  "artifacts": {
+    "phase3_revise/phase3_revise_output.json": {
+      "contract_version": 2,
+      "base_candidate_sha256": "2c4af33ea4edcbfc36cb9d803e10e4350a020e2eee5b635a0101ee265867616b",
+      "candidate_id": null,
+      "applied_revisions": [
+        {
+          "target_id": "R1",
+          "scope": "tactical",
+          "op": "replace",
+          "field": "core_mechanism_steps",
+          "value": "1. Freeze one released Fast-WAM checkpoint, inference mode, observation preprocessing, denoising schedule, LIBERO-Goal evaluator, controller, execution prefix, and calibration/development/test episode splits.\n2. Quantize every denoiser Linear projection (joint-attention Q/K/V/O, FFN/MoE, conditioning/AdaLN, and action projections) to signed groupwise W4 weights with zero point 0 and signed symmetric A8 activations with zero point 0. Keep W4 group scales fixed; define one A8 clipping limit alpha_{l,s,t} per target layer, stream, and denoising step.\n3. Initialize alpha from ordinary static PTQ calibration on the available reference-policy histories, producing the W4A8 starting candidate; do not update any WAM weights.\n4. Run that candidate closed-loop on the calibration episodes under the frozen evaluator and record every pre-replan observation, model history/cache needed for inference, executed action history, and denoising seed. The environment produces D_Q(phi); controller and replanning rules remain unchanged.\n5. At each recorded observation, replay the candidate and BF16 checkpoint with matched denoising randomness, compare the full generated action chunks after the checkpoint's existing action normalization, and accumulate L_act(phi;D_Q(phi)).\n6. Update only alpha_{l,s,t} by minimizing the mean L_act on the collected Q-history observations; W4 weight scales, model parameters, bit allocation, and controller stay fixed. Re-run the quantized policy to refresh D_Q after each update. For Step 6, define the held-out action-discrepancy set as the frozen development split; do not use the test split for stopping, and reserve the test split for Step 7 evaluation. Stop when development-split action discrepancy ceases to improve or the preregistered pilot compute budget B is reached.\n7. Freeze the final W4A8 quantizer and evaluate it without BF16 teacher calls on the independent frozen test split of LIBERO-Goal episodes; report action discrepancy on its own visited histories and closed-loop success as separate outcomes. No native speed claim is made until a WAM-compatible packed W4A8 kernel is measured.",
+          "outcome": "applied",
+          "delta_summary": "将 Step 6 停止依据限定到 frozen development split，并将独立 frozen test split 专用于 Step 7。"
+        },
+        {
+          "target_id": "W1",
+          "scope": "tactical",
+          "op": "append_sentence",
+          "field": "core_mechanism_steps",
+          "value": "",
+          "outcome": "skipped_already_satisfied",
+          "delta_summary": "R1 的 Step 6/7 重写已包含 W1 的 development 停止与 test 评估分离措辞，不重复追加。"
+        }
+      ]
+    }
+  }
+}

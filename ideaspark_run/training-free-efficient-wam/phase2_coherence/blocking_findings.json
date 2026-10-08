@@ -1,0 +1,36 @@
+{
+  "findings": [],
+  "suggested_repairs": [],
+  "regime": [
+    {
+      "finding": "The source-group permutation control cannot always provide a distinct mask at exactly equal retained-edge cost when source groups have unequal token counts.",
+      "severity": "note",
+      "why_not_repaired": "This is a legal size regime affecting the later falsification control, not the candidate's score-and-mask computation; equal-sized groups in the main T2 instance give a valid equal-cost control.",
+      "tag": "regime",
+      "source": "T5",
+      "derivation": null,
+      "repair_kind": null,
+      "verbatim_step_quote": "6. 对 dense、rho-ranked mask、保留边成本相同的 source-group permutation mask 做 paired comparison；计入评分、压紧、kernel launch 与其余模型路径的完整 latency，记录 per-path FLOPs、task success、action-chunk deviation 和首次 action divergence。Amdahl headroom不足、稀疏 kernel 未真实省算、或 permutation 不影响 task outcome，任一项成立即停止候选。",
+      "executed_evidence": "With token counts A=1,B=2,C=3 and the T2 r=(3,2.5,0.5), ranked mask AB costs 3 edges. Enumerating all six score permutations gives masks/costs AB:3, AC:4, AB:3, AC:4, BC:5, BC:5; no distinct mask has cost 3.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "parameter_notes": [
+    {
+      "finding": "For an all-identical per-head value assignment, removing group C leaves the numerical sparse attention output unchanged ([2,1] before and after), although the primary T2 assignment changes it. The action-output effect is therefore value-dependent.",
+      "severity": "note",
+      "why_not_repaired": "This is a parameter/risk note from one synthetic assignment, not a universal procedural defect; the method remains executable and another admissible assignment changes the output.",
+      "tag": "parameter",
+      "source": "T3",
+      "derivation": null,
+      "repair_kind": null,
+      "verbatim_step_quote": "保留下来的 attention output 进入原 residual/transformer blocks，得到新的 action velocity 并更新原 flow state，所以稀疏图直接改变 action chunk 与后续控制，而不是只改计时或风险分数。",
+      "executed_evidence": "toy_dry_run.py sets h1 values equal to [2,0] and h2 values equal to [0,1] across A/B/C; alpha=(0.5,0.25,0.25). The mask selects AB, yet dense and retained-key-renormalized outputs both equal [2,1]. The main T2 values instead yield dense [3.5,2.5] and sparse [4,10/3].",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "t5_notes": [],
+  "demoted_to_notes": []
+}

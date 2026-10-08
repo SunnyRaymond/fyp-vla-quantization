@@ -1,0 +1,72 @@
+{
+  "removal_tests": [
+    {
+      "component": "all-zero activation-row guard: emit zero activation; skip scale/division, quantization and dither correction; retain bias/epilogue",
+      "field": "core_mechanism",
+      "executed": true,
+      "claims_unchanged": false,
+      "evidence": "移除此 guard 并取合法 x=[0,0,0]，则 Δ=max|x|/126=0，q=round(x/Δ+d) 含 0/0，原 quantizer 对该 row 未定义；当前 guard 将 x_tilde 明确置零并保留 bias/epilogue，因此完整 Linear 路径定义改变。"
+    },
+    {
+      "component": "round-to-nearest, ties-to-even convention shared by calibration and evaluation",
+      "field": "core_mechanism",
+      "executed": true,
+      "claims_unchanged": false,
+      "evidence": "在半格输入 2.5，ties-to-even 给 2，其他 defensible tie rule 可给 3；移除该约定会改变边界处精确 A8 tensor，恢复了本方法要求的同一确定 quantizer 用于 calibration/evaluation 的定义。"
+    }
+  ],
+  "verdict": "pass",
+  "reason": "R1 的零 row 公式缺口已在机制、步骤、reasoning 与 gap closure 中一致封闭；round 规则及 phase 对 action 的限定也已明确。执行的合法小例支持 correction 代数，所需检查均通过或带明示条件；无需 consistency_patch。",
+  "checks": {
+    "dataflow": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "对 nonzero row，数据流为 m=max|x|>0、Δ=m/126、d=frac(u+φ)、q=round(x/Δ+d)、x_tilde=Δ(q-d)；整数 GEMM 先算 W_hat(qΔ)，列和 c_j=Σ_i W_hat_ij 后加 −Δd c_j，代数上恰为 W_hat x_tilde。zero row 旁路为 x_tilde=0，GEMM 零输入仍走 ordinary bias/epilogue。"
+    },
+    "dry_run": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "已运行最小例：x=[1,−1,0.5]、Δ=1/126、d=0.5、W=[[1,0],[0,2],[1,−1]]；ties-to-even 得 q=[126,−126,64]，c=[2,1]。整数 GEMM 加列和修正为 [1.5,−2.5119047619]，直接计算 W x_tilde 得相同结果，最大误差为 0。未运行模型或 benchmark。"
+    },
+    "degenerate_probes": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "已探测 zero row：不计算 Δ 或 x/Δ，activation 置零且 bias/epilogue 保留；d=0 时修正项为零；ties-to-even 的 2.5→2、3.5→4 与约定一致。另运行 phase-null 例：x/Δ=[10.1,10.1]、d 从 0.2 改为 0.3、W=[1,−1]，activation 从 [9.8,9.8] 改为 [9.7,9.7]，下游点积仍为 0，说明 phase 变化不保证改变最终 action。"
+    },
+    "claim_step_map": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "冻结模型、数据、reference 由 step 1；W4 唯一权重 bank 由 step 2；A8 scale/zero-row 分支由 step 3；phase、round/dequant 与真实 downstream tensor 由 step 4；column-sum epilogue correction 由 step 5；校准目标与 VJP 诊断由 step 6；paired held-out action-chunk MSE 和对照由 step 7。精确 endpoint MSE 是主指标，J_r 项只作诊断；没有推出 latency、closed-loop 或任务成功结论。"
+    },
+    "falsification": {
+      "status": "conditional",
+      "executed": true,
+      "evidence": "phase2_generate_output 与 final_candidate 的 falsification_prediction 完全未变，故没有授权重写且无需新旧文本 diff。结构仍命名 trajectory-held-out paired-draw pilot、held-out full action-chunk MSE、唯一变量 Φ、site-permutation 对 outcome 的负控预测，并以 RTN、independent dither 和同预算 direct endpoint PTQ 对照；无 numeric outcome bar。未执行 pilot。phase-label permutation 在特定对称 phase 子域可成为 no-op（blocking_findings 的 N4），因此将该负控读作条件性诊断；其他 outcome arms 仍在。"
+    },
+    "novelty": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "signature_terms 与 alias_terms 均逐项确认与修订前相同；改动仅为 zero-row 定义、tie 规则和 claim 限定，不需扩展 retrieval。对 supplied collision pool 的近邻核对：openalex:W7170224929 描述独立逐项 rounding/dither 矩阵乘法误差下界；arxiv:2606.28842v2 是满足条件与低 overload 下的标量 subtractive-dither channel 模型；它们未披露共享 per-sample draw、site phase table 与冻结 W4A8 WAM action-endpoint 校准的组合。critique 亦指出最近的主文明确排除 correlated errors。边界小修订不改变该增量性定位；这是对所给检索池的有界判断，不声称穷尽 novelty。"
+    },
+    "target_resolution": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "critique 的唯一 revision target R1 已落实：core_mechanism 定义全零 activation 输出及旁路，steps 3–5 分别实施 scale、quantizer 与 correction 旁路并保留 bias/epilogue，reasoning P6 与 gap_closure[0].how_closed 对齐。W1 已由 R1 覆盖；W2 在 mechanism 全局定义并约束 calibration/evaluation 同实现；W3 在 step 4 限定最终 action 仅在 downstream projection 非零时受 phase 影响。未发现剩余 field-level stale clause。"
+    }
+  },
+  "confirmed_terms": {
+    "signature_terms": [
+      "shared base-draw phase schedule",
+      "subtractive activation dither",
+      "joint denoising residual action error",
+      "Fast-WAM W4A8 full-path calibration"
+    ],
+    "alias_terms": [
+      "receding horizon control action prefixes",
+      "quantized feedback stabilization in control",
+      "dithered quantization error shaping",
+      "stochastic rounding covariance control"
+    ]
+  },
+  "consistency_patch": []
+}

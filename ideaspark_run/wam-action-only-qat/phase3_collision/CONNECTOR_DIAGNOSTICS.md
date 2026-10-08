@@ -1,0 +1,5 @@
+# Phase 3.1 connector diagnostics
+
+- The native collision run wrote 10-month signature and 48-month alias results for arXiv, OpenAlex, and OpenReview. `collision_hits.full.json` contains 1,769,363 bytes; `collision_hits.json` contains 312,250 bytes after the native cap.
+- No `semanticscholar_collision.json` or `semanticscholar_alias_collision.json` was written. The Semantic Scholar subprocess was observed active beyond five minutes and later absent; the installed runner's per-connector timeout is 300 seconds. The host did not retain the command session's final stderr, so the exact current-run HTTP/error cause is unknown. Prior Phase 0 diagnostics document Semantic Scholar rate limits/timeouts.
+- Therefore Phase 3.1 has genuine results from three connectors, with Semantic Scholar coverage absent. Do not describe collision retrieval as exhaustive. No connector result, cache entry, sentinel, or success marker was synthesized; the native navigator accepted the available results and advanced to critique preparation.

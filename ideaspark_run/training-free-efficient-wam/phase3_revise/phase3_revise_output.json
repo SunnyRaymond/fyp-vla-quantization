@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "base_candidate_sha256": "f104bc86b18ed81b78036b7f8de2b4df8e2bb33969074de97c340736476b63ca",
+  "candidate_id": null,
+  "applied_revisions": [
+    {
+      "target_id": "R1",
+      "scope": "falsification",
+      "op": "rewrite_falsification",
+      "field": "falsification_prediction",
+      "value": "先在可用的 frozen FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 路径做 action-query→observation QK/AV 分项 profile，再在匹配 episodes 上比较 dense、rho-ranked mask、保留边成本相同的 source-group permutation；两种 baseline 分开报告，FastWAM-Joint 权重缺失时不能以 Motus 冒名替代。若完整省略路径的 Amdahl 上限或 compact-kernel 实测 savings 扣掉评分/packing 后无法改善完整 inference latency，或未超过原有 latency gate，立即终止；即使能省算也只有 task success 满足原冻结 gate 才保留。Load-bearing variable 是 rho_lg；置换 rho 对 source groups 的分配但固定保留边成本，预测 downstream LIBERO/RoboLab task success 低于 contribution-ranked mask，若无差别则机制排序不成立。真机闭环需等待 AgileX Cobot Magic 的 matching policy/data/source/hardware 可用，仿真结果不充当该证据。 各评分对照在每个相同 frozen WAM/checkpoint、matched episodes 与 k_ref 的 dense forward 上计算：native attention mass 为 m^l_j=∑_{q∈Q_l,h∈H_l}α^l_h(q,j)，ToPi/VATP value-norm 分别为 v^{l,2}_j=∑_{q,h}α^l_h(q,j)‖V^l_h(j)‖_2 与 v^{l,1}_j=∑_{q,h}α^l_h(q,j)‖V^l_h(j)‖_1，CAPA per-token output-projected contribution 为 c^l_j=∑_{q∈Q_l}‖∑_{h∈H_l}W^l_{O,h}(α^l_h(q,j)V^l_h(j))‖_2（H_l 是 layer l 的 native attention heads）；各 token score 在 G_o 内求和形成 group score，按分数降序并以 native source order 稳定打破并列，完整保留 ranked groups 后由边界 group 中按同一 token score 排序的 token 前缀补足，恰好匹配 B_l=|Q_l||H_l|∑_{g∈S_l(ε)}|g| 个 action-query→observation QK/AV edges，token 并列按 native token order；每个 mask 固定用于同 chunk 后续 native action updates 并走同一 compact kernel；dense、rho_lg-ranked 与 permutation arms、task-success metric、原冻结 success/latency gates 与原 claim 均保持不变；每臂完整 latency 计入对应 scoring、packing、kernel launch 与其余模型路径，只有 rho_lg 在原 gate 下的 paired task-success effect 优于所有同边预算评分臂，才支持 WAM-specific score advantage。",
+      "outcome": "applied",
+      "delta_summary": "在原 falsification 段落后追加 attention-mass、ToPi/VATP value-norm 与 CAPA projected-contribution 对照的确定公式、等边预算匹配规则和同 gate 的成对判断。"
+    }
+  ]
+}

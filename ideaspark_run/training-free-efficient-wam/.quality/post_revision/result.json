@@ -1,0 +1,68 @@
+{
+  "contract_version": 2,
+  "request_id": "bcc3034a-55c5-43f7-a43f-0bda325ddba4",
+  "artifacts": {
+    "phase3_revise/post_revision_audit.json": {
+      "removal_tests": [],
+      "verdict": "pass",
+      "reason": "R1 的原有 falsification 段落、load-bearing rho_lg、dense/permutation controls、task-success/latency gates 与完整路径 accounting 均保留；新增比较把四类 token score 映射到同一 native source-group 对象并匹配 action-query→observation edge budget。合成算术 trace 可执行。文献新颖性、目标 checkpoint 可用性、paired task/latency 与真机结果仍是明确的后续条件，未被本审查声称成立。",
+      "checks": {
+        "dataflow": {
+          "status": "pass",
+          "executed": true,
+          "evidence": "final_candidate.json/core_mechanism 定义 r_lg=Σ_q ||Σ_h W_O,h(Σ_{j∈g}α_h(q,j)V_h(j))||₂，ρ_lg=r_lg/Σ_g r_lg；分母为零时回退 dense，按 r_lg 降序和 native source order 稳定并列后取累计 ρ≥1−ε 的最小 group 前缀。step 3 在每个 chunk 的 k_ref dense forward 计算分数；step 4 选择 mask；step 5 仅在后续 native action-query evaluations 中删减 observation K/V edges，保留 video-query 路径、QKV/FFN 与原 flow schedule，attention 输出经 residual 得到新的 action velocity。phi_obs/Amdahl 是 profile 后的潜在上界，step 2/6 仍要求计入 scoring、packing、kernel launch 和完整模型路径的 latency。ρ 是排序 proxy，candidate 自己把跨 step 稳定性、任务敏感性和实际 headroom 标为 untested。"
+        },
+        "dry_run": {
+          "status": "pass",
+          "executed": true,
+          "evidence": "已执行 phase3_revise/post_review_toy/toy_rule_trace.py（仅 Python 标准库）。显式赋值 Q=1、H=2，source groups A/B/C 的 token 数为 2/1/3，ε=0.4，W_O slices 为 identity；计算得 r_A=0.390512、r_B=0.360555、r_C=0.894427，ρ_C+ρ_A=0.780883≥0.6，故保留 C、A 共 5 tokens。B_l=|Q||H|Σ_g|g|=1×2×5=10 edges；dense 为 1×2×6=12。显式枚举 query/head/token edge 数等于公式。mass、v_l2、v_l1、CAPA-projected controls 均按 G_o group sum 与 boundary token-prefix 规则匹配为 5 tokens/10 edges；单独 boundary-prefix probe 也得到 5 tokens/10 edges。没有加载模型，也没有模拟 task success 或 latency。"
+        },
+        "degenerate_probes": {
+          "status": "pass",
+          "executed": true,
+          "evidence": "同一 trace 实测 ε=0 时保留所有正分数组，ε=0.99 时只留最高分组 C；等分数按 native order 得 A、B；全部 r_lg=0 时按 candidate 规则回退 A/B/C 全量；ε=1 被 [0,1) 合法域拒绝。边界组部分 token 按对应 comparator 的 token score 和 native token order 取前缀，edge 计数仍精确等于 B_l。零分组可被累计阈值排除；这只说明规则可计算，不说明被删组在后续 action states 中无效。"
+        },
+        "claim_step_map": {
+          "status": "pass",
+          "executed": true,
+          "evidence": "按 core_mechanism_steps 映射：冻结模型、schedule 与 baseline 身份→step 1；原路径 profile、phi_obs 和 Amdahl/latency stop→step 2；native provenance、dense k_ref 与 rho 计算→step 3；ε 与 task-success gate 下选 mask→step 4；只删 action-query→observation QK/AV 并把输出送回原 action flow→step 5；matched scoring/permutation、完整 latency、success 和 edge/FLOP accounting→step 6；training-free 改动与 baseline post-training/真机前置条件分开→step 7。task benefit 与实际加速仍是待测主张，未被 trace 当作已证结果。"
+        },
+        "falsification": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "phase2_generate_output.json 的旧段落是 final_candidate.json 当前 falsification_prediction 的逐字前缀；其中原文“Load-bearing variable 是 rho_lg；置换 rho 对 source groups 的分配但固定保留边成本，预测 downstream LIBERO/RoboLab task success 低于 contribution-ranked mask，若无差别则机制排序不成立”保持不变，dense、rho-ranked、等成本 source-group permutation、task-success direction、原 success/latency gates、FastWAM 缺权重时不得冒称 Motus、以及评分/packing/kernel launch 加完整路径 accounting 均保留。新增段落在同一 checkpoint、matched episodes、k_ref 上定义 native mass、ToPi/VATP 的 L2/L1 value-norm、CAPA per-token W_O-projected score；token scores 在 G_o 内求和、稳定排序，并按 boundary token prefix 精确匹配 B_l。它将新评分臂固定于同一 chunk mask 和 compact kernel，并明确只有 rho_lg 在原 gate 下优于所有同边预算评分臂才支持 WAM-specific score advantage。无新数值 task bar 或样本数。条件：ε 应在与 paired score evaluation 分开的 held-out episodes 上选；candidate 说 held-out 但未明确两组是否 disjoint，故保留为执行条件。置换臂的 exact-cost permutation 仍依赖合法等尺寸 groups（phase2_coherence/critique 已把该情形列为 regime note），不作为普遍保证。"
+        },
+        "novelty": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "已核对 primary sources：ToPi, “Token Pruning for In-Context Generation in Diffusion Transformers” (arXiv:2602.01609v1), §4.2 Eq.(9), §4.3 Eq.(10–11), https://arxiv.org/html/2602.01609v1，已有 attention-weighted value-norm、累计贡献选集及 anchor-step 更新/跨步复用；它用于 Flux.1-Kontext/Qwen-Image-Edit，没有 WAM action-observation edges 或 robot task outcome。CAPA, “Contribution-Aware Pruning and FFN Approximation for Efficient Large Vision-Language Models” (arXiv:2602.00247v1), §4.1 Eq.(2), https://arxiv.org/html/2602.00247v1，已有经 W_O 投影、跨 head 汇总后按 per-token residual contribution norm 排序；所以 output projection 本身不新。VATP, “Attention Score is not All You Need for Token Importance Indicator in KV Cache Reduction: Value Also Matters” (arXiv:2406.12335v2), arXiv abstract https://arxiv.org/abs/2406.12335，明确使用 attention score 与 value L1 norm；它未被本 resolver 注册。已核实 ToPi/CAPA 在 phase0/lit_results.json 与 phase3_collision/extra_verified_priors.json 标作 retrieved_via=host_web，但不在原 226 条 phase3_collision/collision_hits.json；未将 supplement 伪称原 collision hit。候选只可主张待验证的 WAM-specific action-query→observation edge/task effect；新 score arms 是 falsification 方案，不等于 novelty 已证、完整 ToPi/CAPA 系统胜出、双 baseline 迁移或真机成立。"
+        },
+        "target_resolution": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "已读指定 HEADROOM_NOTE.zh.md、baseline_feasibility.zh.md、fallback_baseline_feasibility.zh.md 与 RETRIEVAL_LIMITATIONS.zh.md，并核对 primary pages。FastWAM 官方权重页 https://huggingface.co/yuanty/fastwam 当前列出 LIBERO Base 与 Optional IDM 等 checkpoint，没有 matching FastWAM-Joint；故该目标只能在相符 checkpoint 真正可用时执行，不能用 Motus 冒名。NVIDIA Cosmos3-Edge-Policy-DROID 官方卡 https://huggingface.co/nvidia/Cosmos3-Edge-Policy-DROID 确认公开 4B DROID action model/MoT 与迭代 denoising 架构，但 exact joint video/action benchmark entry 仍未由材料钉定。Motus 官方仓库 https://github.com/thu-ml/Motus 提供 Stage-3 RoboTwin2 checkpoint 与评测入口，可作为不同 backbone/task 的 fallback，不能代替 FastWAM 的同模型复现。Sparse-WAM/AgileX Cobot Magic matching policy、数据、source、硬件未就绪；candidate 明确不把仿真当真机证据。当前审查无 GPU/cluster/model/robot 运行；没有因此产生双 baseline transfer、task success 或 latency 结论。"
+        }
+      },
+      "confirmed_terms": {
+        "signature_terms": [
+          "action-conditioned observation-edge mask",
+          "per-layer source-group contribution ranking",
+          "denoising-step context sparsification",
+          "frozen joint-WAM action inference",
+          "action-velocity fidelity under sparse context"
+        ],
+        "alias_terms": [
+          "locality-sensitive sparse attention",
+          "random feature linear attention",
+          "visual token pruning",
+          "adaptive token halting",
+          "diffusion feature reuse",
+          "active sensing value of information",
+          "cost-sensitive feature acquisition",
+          "conditional computation routing"
+        ]
+      },
+      "consistency_patch": []
+    }
+  }
+}

@@ -1,0 +1,85 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.55cm]{geometry}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{fontspec}
+\usepackage[CJKmath=true]{xeCJK}
+% CJK main font is resolved at COMPILE time on the actual machine, not baked in at
+% generation time, so a .tex generated on one OS still renders on another (the older
+% Python-side probe hardcoded one OS's font name into the file and broke when moved).
+% Walk a cross-platform priority list and use the first font that exists; AutoFakeBold
+% + AutoFakeSlant give bold/italic CJK even on faces that ship no bold/italic cut.
+\newcommand{\setCJKto}[1]{\setCJKmainfont{#1}[AutoFakeBold=true,AutoFakeSlant=0.2]}
+\IfFontExistsTF{Noto Sans CJK SC}{\setCJKto{Noto Sans CJK SC}}{%        % Linux (fonts-noto-cjk); cross-platform if installed
+ \IfFontExistsTF{Source Han Sans SC}{\setCJKto{Source Han Sans SC}}{%   % Adobe 思源黑体; cross-platform
+  \IfFontExistsTF{PingFang SC}{\setCJKto{PingFang SC}}{%               % macOS 10.11+
+   \IfFontExistsTF{Hiragino Sans GB}{\setCJKto{Hiragino Sans GB}}{%    % older macOS
+    \IfFontExistsTF{Microsoft YaHei}{\setCJKto{Microsoft YaHei}}{%     % Windows
+     \IfFontExistsTF{WenQuanYi Micro Hei}{\setCJKto{WenQuanYi Micro Hei}}{% % older Linux
+      \setCJKto{Songti SC}}}}}}}                                       % macOS bottom fallback
+\definecolor{cblue}{HTML}{4C72B0}
+\setlength{\parskip}{3pt}\setlength{\parindent}{0pt}
+\setlist[enumerate]{topsep=2pt,itemsep=2pt,parsep=1pt,partopsep=0pt}
+\setlist[itemize]{topsep=2pt,itemsep=2pt,parsep=1pt,partopsep=0pt}
+% Let prose-embedded inline math break across lines and absorb small overflows, so simple
+% formulas inserted mid-sentence stop running past the right margin.
+\tolerance=1200
+\emergencystretch=2.5em
+\relpenalty=20
+\binoppenalty=40
+\hfuzz=1pt
+\begin{document}
+\begin{center}\fbox{\textbf{FAILED VALIDATION - NOT EXPERIMENTALLY VALIDATED}}\end{center}\par\smallskip
+
+\section*{Student-Path Suffix QAT for World-Action Models}
+\textbf{Method.} Student-Path Suffix QAT (SPS-QAT)
+\section*{Motivation}
+Strong low-bit results leave it unclear whether training a world-action model (WAM) adds value beyond strong frozen-weight quantization and a matched teacher target. Quantization-aware training (QAT) updates weights while simulating low-bit arithmetic;\allowbreak{} post-training quantization (PTQ) keeps pretrained weights fixed. Recent WAM work reports strong low-bit control results, so this proposal does not assume W4A8 already fails.
+
+Fast-WAM Base is the initial platform: its roughly 1B ActionDiT can be the weight-scope action-only target while its roughly 5B video expert stays BF16 (16-bit brain floating point). Transfer is only a scoped hypothesis for shared-backbone LingBot-VA and Cosmos Policy. Updating their shared denoiser weights affects video and action computation, so this is action-targeted shared-backbone QAT, not action-only weight quantization.
+
+The proposed operator pairs a BF16 teacher and fake-quantized student from the same detached state the student actually reached, then runs both through the same complete remaining native solver suffix with the same context and remaining noise updates. The teacher endpoint is a model prediction, not original-noise-endpoint KD or a physical oracle. After native action denormalization and executed-prefix selection, training uses a per-channel-scaled continuous command residual before clipping or gripper thresholding;\allowbreak{} exact clipped or thresholded commands are measured separately.
+
+The testable difference from vanilla QAT plus matched teacher knowledge distillation (KD) is the full remaining-suffix endpoint target from a student-visited state. This is a hypothesis about the target, not a proven novelty or a claim of first WAM QAT. The prediction that completion gains over matched teacher-state KD rise with \(`V_{visit}`\) is empirical. \(`V_{visit}`\) is a per-task diagnostic on a held-out context subset, estimated using one fixed pre-QAT matched-PTQ reference for every arm, with no post-treatment per-arm ranking. The Phase4 clarification does not pass the earlier gate: status remains post\_revision FAILED VALIDATION.
+\section*{Method}
+\subsection*{M1\_background}
+\emph{Record each model's contract and generate the fake-quant student's own solver path.}
+\begin{enumerate}[leftmargin=*,start=1]
+  \item For Fast-WAM Base, shared-backbone LingBot-VA, and Cosmos Policy, record each BF16 checkpoint, native solver schedule, action maps and executed-prefix selector, matched branch-free W4A8 modules, excluded precision, and deployment kernel. Fast-WAM's independent ActionDiT is weight-scope action-only;\allowbreak{} the other two use action-targeted shared-backbone scope.
+\par\emph{Why:} A comparison only isolates weight adaptation when scope, schedule, precision, action interface, and deployed arithmetic stay matched.
+  \item Split each LIBERO dataset by episode. From training episodes, draw contexts and native initial noise and solver updates, run the fake-quant student through its native schedule, and save the states it visits. These are action latents for Fast-WAM and coupled video/action states for shared-backbone models.
+\par\emph{Why:} The target uses states the quantized student itself reaches;\allowbreak{} the fixed context and noise protocol supports paired comparisons and does not model observations after physical actions.
+\end{enumerate}
+\subsection*{M2\_suffix\_target}
+\emph{Train from a student-visited state using paired full-suffix endpoints.}
+\begin{enumerate}[leftmargin=*,start=3]
+  \item Sample a native solver index, stop gradients through the student-visited state, and restart both BF16 teacher and fake-quant student from that identical state. Give both the same context and remaining native noise updates, run each unchanged full remaining suffix, and keep both endpoint action chunks.
+\noindent\emph{The visit-response difference is measured after the native action map and exact executed-prefix selector, using the same remaining innovations from a state reached by a fixed matched W4A8 PTQ reference student.}
+\begin{equation}
+\resizebox{\ifdim\width>\linewidth \linewidth\else\width\fi}{!}{$\displaystyle \delta^{\mathrm{PTQ-ref}}_{m,k,u,j}=\left[E_m\!\left(D_m\!\left(S[Q_{\mathrm{ref}}|Q_{\mathrm{ref}},m,k](x_{Q_{\mathrm{ref}},m,k},c,\eta_{>k})\right)\right)-E_m\!\left(D_m\!\left(S[\mathrm{BF16}|Q_{\mathrm{ref}},m,k](x_{Q_{\mathrm{ref}},m,k},c,\eta_{>k})\right)\right)\right]_{u,j}$} \tag{1}
+\end{equation}
+\par\emph{Why:} This tests suffix response from a student-visited state, rather than only from the original noise endpoint or a teacher-visited state.
+  \item Convert both endpoints with each model's native action denormalization and executed-prefix selection. Train on the continuously valued command before clipping or gripper thresholding, scaled by each selected channel's fixed positive controller scale and averaged over every native prefix step and selected channel. Backpropagate through the student suffix only. Separately report exact clipped or thresholded command differences in native units.
+\noindent\emph{The student suffix is trained on the dimensionless mean squared continuous pre-threshold command residual across every native executed-prefix time step and selected action channel;\allowbreak{} only the student suffix receives gradient.}
+\begin{equation}
+\resizebox{\ifdim\width>\linewidth \linewidth\else\width\fi}{!}{$\displaystyle \mathcal{L}_{\mathrm{train},m}=\mathbb{E}_{c,z,\eta,k}\!\left[\frac{1}{T_{\mathrm{exec},m}|J_m|}\sum_{u=1}^{T_{\mathrm{exec},m}}\sum_{j\in J_m}\left(\frac{\tilde y_{Q|Q,m,k,u,j}-\tilde y_{\mathrm{BF16}|Q,m,k,u,j}}{s_{m,j}}\right)^2\right]$} \tag{2}
+\end{equation}
+\par\emph{Why:} The continuous, dimensionless training signal is differentiable, while the exact command the controller executes is a separate outcome;\allowbreak{} the two must not be treated as identical.
+\end{enumerate}
+\subsection*{M3\_validation}
+\emph{Compare matched training controls, separate outcomes, and test scoped transfer.}
+\begin{enumerate}[leftmargin=*,start=5]
+  \item Compare with matched branch-free W4A8 PTQ, vanilla action-only QAT plus teacher KD, original-noise-endpoint KD, teacher-state suffix KD, and student-state per-step OPD. Deduplicate teacher-state arms with identical targets. Match either measured training GPU-time or total teacher and student NFE, and report both work totals, examples, context exposure, updates, and teacher-suffix work. In shared-backbone OPD, an action-output loss mask selects action channels and prefix steps;\allowbreak{} it does not make shared weights action-only.
+\par\emph{Why:} These controls test whether the full student-state suffix endpoint adds value beyond ordinary QAT, PTQ, endpoint or teacher-state distillation, and per-step student supervision, while making teacher cost visible.
+  \item On held-out fixed contexts and paired noise, report exact executed-action deviation, LIBERO closed-loop completion, and full native action-query latency as separate results;\allowbreak{} latency includes video/context prefill and no teacher. Estimate scalar \(`V_{visit}`\) over the full native prefix time-by-channel response, on a held-out context subset and from the same fixed pre-QAT matched-PTQ reference in every arm. Report measured action-time share before using Amdahl's law for whole-query speed.
+\noindent\emph{Phase4 supplement: reduce the exact executed-command response over the full native time-by-channel prefix to one scalar, estimated only from a fixed pre-QAT matched-PTQ checkpoint for every arm;\allowbreak{} this definition is not a passed post\_revision gate.}
+\begin{equation}
+\resizebox{\ifdim\width>\linewidth \linewidth\else\width\fi}{!}{$\displaystyle \mathcal{V}^{\mathrm{PTQ-ref}}_{\mathrm{visit},m}=\mathbb{E}_{c\sim\mathcal{D}^{\mathrm{eval}}_m,z,\eta,k\sim\operatorname{Unif}(K_m)}\!\left[\frac{1}{T_{\mathrm{exec},m}|J_m|}\sum_{u=1}^{T_{\mathrm{exec},m}}\sum_{j\in J_m}\left(\frac{\delta^{\mathrm{PTQ-ref}}_{m,k,u,j}}{s_{m,j}}\right)^2\right]$} \tag{3}
+\end{equation}
+\par\emph{Why:} Command fidelity, task completion, and deployed latency answer different questions. \(`V_{visit}`\) is a fixed-reference diagnostic and an empirical moderator hypothesis, not proof of benefit. The Phase4 clarification does not pass the earlier gate;\allowbreak{} post\_revision status remains FAILED VALIDATION.
+  \item Run separate transfer checks on shared-backbone LingBot-VA and Cosmos Policy under each model's native scope. Label shared denoiser updates as affecting both video and action computation, and keep their results separate from Fast-WAM.
+\par\emph{Why:} This tests the scoped transfer hypothesis without treating shared weights as weight-scope action-only or pooling distinct model contracts.
+\end{enumerate}
+\end{document}

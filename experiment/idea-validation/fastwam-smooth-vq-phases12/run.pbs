@@ -1,0 +1,58 @@
+#!/bin/bash
+#PBS -N fwsv12
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS="$DIAG_ROOT/artifacts/$PBS_JOBID"
+PHASE=${FW_PHASE:-preflight}
+[[ "$PHASE" == preflight || "$PHASE" == full ]] || exit 64
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  if [[ -n "${GPU_MONITOR_PID:-}" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ $rc -eq 0 ]]; then touch "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+FW_REQUIRE_GPU=1
+test -s "$SOURCE_ROOT/plan.json"
+cp "$DIAG_ROOT/run.pbs" "$DIAG_ROOT/environment.sh" "$DIAG_ROOT/run_validation.py" "$DIAG_ROOT/smooth_vq.py" "$DIAG_ROOT/test_smooth_vq.py" "$DIAG_ROOT/protocol.json" "$ARTIFACTS/"
+cp "$SOURCE_ROOT/run_diagnostic.py" "$SOURCE_ROOT/plan.json" "$ARTIFACTS/"
+cp "$ROOT/runner.py" "$ROOT/quantization.py" "$ROOT/libero_state_loader.py" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+run_python - "$CUDA_VISIBLE_DEVICES" <<'PY_GPU'
+import sys, torch
+mask=sys.argv[1]
+assert mask.startswith('GPU-') and ',' not in mask, mask
+assert torch.cuda.device_count()==1, torch.cuda.device_count()
+props=torch.cuda.get_device_properties(0)
+assert str(props.uuid).removeprefix('GPU-').lower()==mask.removeprefix('GPU-').lower()
+print('Allocated GPU verified:', props.name, str(props.uuid), flush=True)
+PY_GPU
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python "$ARTIFACTS/test_smooth_vq.py"
+run_python "$ARTIFACTS/run_validation.py" --phase "$PHASE" --source-root "$SOURCE_ROOT" --protocol "$ARTIFACTS/protocol.json" --out "$DIAG_ROOT/results/$PHASE"
+cp "$DIAG_ROOT/results/$PHASE/summary.json" "$ARTIFACTS/summary.json"
+echo SMOOTH_VQ_PHASE12_COMPLETE

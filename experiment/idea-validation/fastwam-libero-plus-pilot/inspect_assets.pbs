@@ -1,0 +1,74 @@
+#!/bin/bash
+#PBS -N libero_plus_layout
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" > "/tmp/libero-plus-layout-$PBS_JOBID.txt"
+grep -Eq 'job_state = R' "/tmp/libero-plus-layout-$PBS_JOBID.txt" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+ZIP="$ROOT/downloads/assets-b548dd25ee0401c46217ba7e3614a598e8979e48.zip"
+DEST="$ROOT/LIBERO-plus/libero/libero"
+OUT="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+cp "/tmp/libero-plus-layout-$PBS_JOBID.txt" "$OUT/allocation.txt"
+printf 'LAYOUT_PROBE_START job=%s host=%s\n' "$PBS_JOBID" "$HOST"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+python - "$ZIP" "$DEST" "$OUT/asset_layout.json" <<'PY'
+import collections
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+archive_path, destination, output_path = map(Path, sys.argv[1:])
+if not archive_path.is_file():
+    raise FileNotFoundError(archive_path)
+with zipfile.ZipFile(archive_path) as archive:
+    members = archive.infolist()
+    top = collections.Counter()
+    first_names = []
+    for member in members:
+        name = member.filename.lstrip("./")
+        if not name:
+            continue
+        pieces = [part for part in name.split("/") if part]
+        if not pieces:
+            continue
+        top[pieces[0]] += 1
+        if len(first_names) < 40:
+            first_names.append(member.filename)
+
+roots = []
+for name in ("assets", "libero", "libero-plus", "LIBERO-plus", "LIBERO_PLUS", "LIBERO", "dataset"):
+    path = destination / name if name else destination
+    roots.append({"name": name or ".", "exists": path.is_dir()})
+
+document = {
+    "zip": str(archive_path),
+    "zip_bytes": archive_path.stat().st_size,
+    "member_count": len(members),
+    "first_member_names": first_names,
+    "top_level_member_counts": dict(sorted(top.items())),
+    "destination": str(destination),
+    "destination_candidate_roots": roots,
+}
+output_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+print("ZIP_MEMBER_COUNT", len(members), flush=True)
+print("ZIP_FIRST_MEMBERS", json.dumps(first_names, ensure_ascii=False), flush=True)
+print("ZIP_TOP_LEVEL", json.dumps(document["top_level_member_counts"], ensure_ascii=False), flush=True)
+print("DEST_ROOTS", json.dumps(roots, ensure_ascii=False), flush=True)
+PY
+touch "$OUT/SUCCESS"
+printf 'LAYOUT_PROBE_COMPLETE job=%s\n' "$PBS_JOBID"

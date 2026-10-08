@@ -1,0 +1,286 @@
+{
+  "request_id": "661d2cc1-67ab-4bab-92b4-8f925ee04320",
+  "artifacts": {
+    "phase4/work/phase4_implementability.json": {
+      "contract_version": 2,
+      "reviewed_step_ids": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7"
+      ],
+      "trace_report": {
+        "formalized_procedure": [
+          {
+            "step": "S1",
+            "quoted": "Lock each checkpoint, native solver schedule, task configuration, and backend. Keep FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab as separate primary pairings; record that the FastWAM-Joint matching checkpoint is unconfirmed, and treat Motus/RoboTwin 2.0 only as a conditional simulation fallback.",
+            "consumes": [
+              "Exact frozen checkpoint identities",
+              "Native solver schedules",
+              "Task and backend configurations"
+            ],
+            "produces": [
+              "One fixed inference context per primary pairing",
+              "A recorded checkpoint availability condition"
+            ],
+            "status": "stopped",
+            "stopped_reason": "The canonical candidate itself says the matching FastWAM-Joint checkpoint is unconfirmed; the allowed inputs do not identify exact checkpoint revisions or instantiate either baseline configuration. The conditional Motus/RoboTwin fallback cannot stand in for FastWAM-Joint.",
+            "source_present": "no",
+            "note": "This is a baseline-identity prerequisite, not evidence that either pairing was run.",
+            "suggestion": "Resolve and record exact checkpoint, solver, task, backend, and hardware identities for each primary pairing. Keep the pairings separate; if FastWAM-Joint remains unavailable, report that route blocked and keep the named fallback conditional."
+          },
+          {
+            "step": "S2",
+            "quoted": "Profile the native paths in FastWAM's fastwam_joint.py/fastwam.py/mot.py and Cosmos' omni_mot_model.py plus the RoboLab policy-server entry point. Separate action-query-to-observation QK/AV, other attention, QKV, FFN, and mask/packing cost; compute phi_obs and its Amdahl upper bound, and stop if measured savings cannot meet the original latency gate.",
+            "consumes": [
+              "Frozen native inference paths",
+              "Per-path timing and FLOP profiles",
+              "The pre-existing latency gate"
+            ],
+            "produces": [
+              "Measured phi_obs and its ideal Amdahl bound",
+              "A continue-or-stop decision"
+            ],
+            "status": "stopped",
+            "stopped_reason": "No measured profile, verified joint-model entry point, hardware target, or exact original latency-gate value is present in the permitted inputs, so neither headroom nor the stop decision can be instantiated.",
+            "source_present": "no",
+            "note": "The equation is an ideal upper bound only; it excludes attribution, scoring, packing, kernel launch, and the other model paths.",
+            "suggestion": "After the checkpoint and gate are identified, profile the named native paths on the intended evaluation hardware and report every named cost component. Count scoring and packing in the full path; do not infer a latency pass from the Amdahl bound."
+          },
+          {
+            "step": "S3",
+            "quoted": "Use only the token packer's existing camera/view or other source provenance; if it does not expose provenance, stop rather than infer groups. On each chunk's dense first native action evaluation k_ref, read native attention alpha, values V, and output-projection head slices W_O, then compute r_lg and rho_lg; retain all groups if the normalization denominator is zero.",
+            "consumes": [
+              "Existing observation-token provenance groups",
+              "The dense k_ref attention weights and values",
+              "Native output-projection head slices"
+            ],
+            "produces": [
+              "Per-layer source-group r_lg and rho_lg scores",
+              "A dense fallback for a zero normalization denominator"
+            ],
+            "status": "instantiated",
+            "note": "A prior reviewer check recorded in mechanism_record.post_revision_evidence used Q=1, H=2, groups A/B/C of 2/1/3 tokens, epsilon=0.4, and identity W_O; it computed r_A=0.390512, r_B=0.360555, r_C=0.894427 and verified the stated ranking arithmetic. This audit reused that record and did not rerun the toy. It verifies only the synthetic scoring rule, not access to these tensors in either fused native attention path.",
+            "unbound_defaults": [
+              {
+                "parameter": "Native source-provenance interface",
+                "basis": "The candidate requires existing camera/view provenance but does not identify the packer API or confirm that the two target paths expose it.",
+                "suggestion": "Inspect the existing token packer for stable source IDs; if it does not expose them, stop as specified rather than infer groups."
+              },
+              {
+                "parameter": "Fused-attention attribution path for alpha, V, and W_O",
+                "basis": "The score requires per-head attention weights, values, and output-projection slices at k_ref; no extraction interface or cost is identified.",
+                "suggestion": "Confirm the native fused path can expose the required tensors without changing its math. If a separate attribution pass is needed, include its full cost in scoring and end-to-end latency."
+              }
+            ]
+          },
+          {
+            "step": "S4",
+            "quoted": "On held-out selection episodes D_select, sort groups by descending r_lg with native source order breaking ties, and choose epsilon in [0,1) so S_l(epsilon) is the shortest prefix whose cumulative rho_lg reaches 1-epsilon. Subject to the original frozen task-success gate, select the epsilon with the lowest measured full-path latency; if no pre-existing gate applies, report the success-latency curve without declaring a pass.",
+            "consumes": [
+              "S3 scores",
+              "A frozen D_select split",
+              "The original success gate",
+              "Measured full-path latency"
+            ],
+            "produces": [
+              "A selected epsilon",
+              "A frozen per-layer group mask and retained key/value indices"
+            ],
+            "status": "stopped",
+            "stopped_reason": "The mask rule is specified, but no held-out episodes, gate values, or measured full-path latencies are available; therefore the epsilon-selection criterion cannot be applied.",
+            "source_present": "no",
+            "note": "The prior synthetic check used epsilon=0.4 illustratively; it did not select epsilon using task success or measured latency.",
+            "suggestion": "Use the existing held-out split and unchanged gate. Evaluate the distinct prefix-change masks induced by the measured cumulative rho values, choose the lowest-latency mask that passes the existing gate, and report a curve without a pass if no pre-existing gate applies."
+          },
+          {
+            "step": "S5",
+            "quoted": "For later native action solver evaluations in the chunk, send action queries and retained observation keys/values to a true variable-length or block-sparse kernel and verify omitted QK/AV is not executed. Recompute softmax over retained keys, feed the resulting attention output through the original residual/transformer blocks, and let the changed action hidden state/velocity update the original flow state; leave video-query paths, future/action interactions, FFN, and solver schedule native.",
+            "consumes": [
+              "Frozen S_l masks",
+              "Retained observation keys/values",
+              "Native action queries and flow state"
+            ],
+            "produces": [
+              "Attention recomputed over retained keys",
+              "The original residual/flow path with changed action updates",
+              "Evidence omitted QK/AV was actually skipped"
+            ],
+            "status": "stopped",
+            "stopped_reason": "Neither target backend's compact variable-length/block-sparse implementation or joint entry-point integration is verified in the allowed inputs. A dense mask alone would not establish skipped work or latency improvement.",
+            "source_present": "no",
+            "note": "The residual, flow schedule, video-query, future/action, and FFN paths are explicitly held native; the actual sparse kernel and its per-backend support remain the central engineering gap.",
+            "suggestion": "For each frozen backend, identify or implement the compact kernel at the native joint entry point, preserve the specified retained-key softmax and residual path, and verify omitted QK/AV is not executed. Measure the kernel together with attribution, score, packing, and launch overhead."
+          },
+          {
+            "step": "S6",
+            "quoted": "On paired evaluation episodes D_eval not used to select epsilon, compare dense, rho_lg-ranked, and same-retained-edge-cost source-group-permutation masks, alongside native attention-mass, ToPi/VATP value-norm, and CAPA output-projected score controls. Use the same frozen checkpoint, k_ref dense forward, exact retained edge budget, and compact kernel; record task success, per-path FLOPs, full latency including scoring/packing/kernel launch, action-chunk deviation, and first action divergence, then apply the original frozen gates. Require a legally matched-cost source-group permutation; if existing provenance groups do not permit one, report that control as unavailable rather than substitute an unequal-cost arm.",
+            "consumes": [
+              "Frozen paired D_eval episodes",
+              "S3/S4 masks and same-cost scoring controls",
+              "Verified compact kernel",
+              "Original task-success and latency gates"
+            ],
+            "produces": [
+              "Per-backbone paired success, cost, and divergence results",
+              "A stop/retain decision under unchanged gates"
+            ],
+            "status": "stopped",
+            "stopped_reason": "The canonical candidate supplies the omitted exact-cost boundary-token rule, but no paired evaluation, task-success result, full-path latency, or legal source-group permutation is established by these inputs. The requested comparison is a planned empirical test, not an observed result.",
+            "source_present": "yes",
+            "note": "The expansion says same-cost source-group permutation but omits the canonical candidate's boundary-token rule for exact edge matching; restore that rule from final_candidate. The source also requires the permutation arm be reported unavailable when existing groups cannot provide a legal equal-cost mask.",
+            "suggestion": "Use the canonical candidate's specified token-score/group-sum ordering, native-order tie breaks, and boundary-group token prefix to match the exact retained-edge budget. Check whether a distinct legal source-group permutation exists; if not, report it unavailable. Keep both primary baselines separate and include scoring, packing, and kernel-launch costs in each full-path latency."
+          },
+          {
+            "step": "S7",
+            "quoted": "Discuss a physical-robot phase only after simulation passes the frozen gate and a matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are confirmed. Account for any baseline post-training separately; the mask itself remains training-free and does not update weights.",
+            "consumes": [
+              "Simulation results passing the frozen gate",
+              "Matching robot policy/checkpoint and demonstrations/data",
+              "Source implementation and same-type hardware"
+            ],
+            "produces": [
+              "A conditional true-robot evaluation route",
+              "A boundary separating baseline post-training from the training-free mask"
+            ],
+            "status": "stopped",
+            "stopped_reason": "The candidate and intake say the matching AgileX policy/checkpoint, demonstrations/data, source implementation, and local same-type hardware are unconfirmed; no simulation gate was run.",
+            "source_present": "no",
+            "note": "No robot result is asserted or implied by the simulation route.",
+            "suggestion": "Keep physical evaluation conditional. Confirm each stated prerequisite and simulation gate before planning a robot run; account for baseline post-training separately."
+          }
+        ],
+        "dry_run": {
+          "instance": "Idea-depth document audit using the five permitted inputs and the existing post_revision_evidence record.",
+          "execution": {
+            "mode": "unexecuted",
+            "script": "n/a",
+            "output": "No model, kernel, benchmark, episode, or new toy was run in this audit. The prior recorded synthetic trace was reviewed as bounded rule evidence only; it contains no task-success or latency result."
+          },
+          "computed_quantities": [],
+          "anomalies": [
+            {
+              "anomaly": "The technical expansion's S6 names a same-edge-cost source-group permutation but omits the candidate's exact boundary-token procedure for matching the retained-edge budget.",
+              "kind": "structural",
+              "why": "final_candidate.falsification_prediction specifies token-score aggregation, stable native-order ties, and a boundary-group token prefix; this is a source omission that can be restored without changing the method. It also directs the implementer to report the permutation control unavailable when no legal equal-cost grouping exists.",
+              "contradicts_claim": null
+            }
+          ]
+        },
+        "negative_control": {
+          "executed": false,
+          "moved_outcome": false,
+          "evidence": "The matched-cost source-group-permutation arm was not run, so no outcome movement was measured. The false value means movement was not demonstrated in this audit, not that the control has no effect."
+        },
+        "degenerate_probes": [
+          {
+            "probe": "epsilon=0 boundary (previous recorded synthetic trace)",
+            "behavior": "The recorded probe retained all positive-score groups.",
+            "finding": "Rule behavior only; not evidence of task fidelity."
+          },
+          {
+            "probe": "epsilon=0.99 boundary (previous recorded synthetic trace)",
+            "behavior": "The recorded probe retained only the highest-score group C.",
+            "finding": "Rule behavior only; not evidence of task fidelity."
+          },
+          {
+            "probe": "Zero score denominator (previous recorded synthetic trace)",
+            "behavior": "The recorded probe retained all groups A/B/C as specified.",
+            "finding": "The dense fallback is operationally defined."
+          },
+          {
+            "probe": "Tied group scores and epsilon=1 (previous recorded synthetic trace)",
+            "behavior": "Ties followed native order; epsilon=1 was rejected as outside [0,1).",
+            "finding": "These boundary behaviors are specified; no empirical claim follows."
+          },
+          {
+            "probe": "Boundary-token edge matching for score controls (previous recorded synthetic trace)",
+            "behavior": "The record reports 5 tokens and 10 edges for the matched score controls.",
+            "finding": "It does not establish a distinct legal source-group permutation or task outcome."
+          }
+        ],
+        "claim_step_map": [
+          {
+            "claim": "The proposal tests whether first-update output-projected observation-source contributions can select same-cost masks that preserve the frozen task-success gate and improve full inference latency in each tested joint WAM, with WAM-specific score advantage claimed only if paired outcomes beat all matched-cost scoring controls.",
+            "established_by": "S3, S4, S5, S6",
+            "strength_grade": "empirical"
+          }
+        ],
+        "naive_comparison": {
+          "verdict": "confronts_obstacle",
+          "reasoning": "The canonical candidate directly adds same-edge-budget controls for native attention mass, ToPi/VATP value-norm, and CAPA-style output-projected scores, addressing the nearest contribution-ranking recipes. This specifies a discriminating test; it does not establish that rho_lg wins or that the intervention improves latency."
+        }
+      },
+      "underspecified_points": [
+        {
+          "step_id": "S1",
+          "kind": "mechanism_blocking",
+          "hole": "Exact frozen checkpoint identities, solver schedules, task configurations, backend versions, and the actual joint-model/deployment entry points are not pinned for both primary pairings.",
+          "evidence": "final_candidate.falsification_prediction states “FastWAM-Joint 权重缺失时不能以 Motus 冒名替代”; phase1.intake says the matching FastWAM-Joint checkpoint is unconfirmed, while the Cosmos3-Edge/DROID/RoboLab path is public but was not evaluated.",
+          "suggestion": "Resolve and record exact immutable identities for each pairing before profiling. If FastWAM-Joint remains unavailable, report that primary route as unavailable; do not substitute Motus/RoboTwin as an equivalent baseline."
+        },
+        {
+          "step_id": "S2",
+          "kind": "mechanism_blocking",
+          "hole": "The exact pre-existing latency-gate artifact/value and measured action-query-to-observation QK/AV share are absent, so phi_obs, the Amdahl bound, and the continue-or-stop decision remain unknown.",
+          "evidence": "technical_expansion.method_flow.steps[S2] requires the “original latency gate” and measured path profile; feasibility_validation.compute is “Awaiting current-version resource assessment.” No permitted input contains a measured profile or gate value.",
+          "suggestion": "Use the unchanged original gate and profile the named components on the intended evaluation hardware. If the gate cannot be located, report the success-latency curve without declaring a pass, as the candidate specifies."
+        },
+        {
+          "step_id": "S3",
+          "kind": "mechanism_blocking",
+          "hole": "The native token packer’s provenance interface and fused-attention attribution path for per-head alpha, V, and W_O at k_ref are unconfirmed; obtaining scores may require instrumentation or an extra pass whose cost could erase headroom.",
+          "evidence": "technical_expansion.method_flow.steps[S3] requires existing camera/view provenance and native alpha, V, and W_O. feasibility_validation.engineering calls provenance-aware grouping and a truly skipping compact kernel the binding implementation cost and says support paths are unconfirmed.",
+          "suggestion": "Check provenance and tensor-attribution availability in each exact joint entry point. If provenance is absent, stop as specified. If attribution requires a separate pass, preserve the dense reference result and charge that pass to scoring and full-path latency."
+        },
+        {
+          "step_id": "S4",
+          "kind": "implementation_choice",
+          "hole": "The actual held-out D_select episode split and the original frozen success gate are not identified, and no measured latency data exists to select epsilon.",
+          "evidence": "technical_expansion.method_flow.steps[S4] conditions epsilon on held-out episodes, the original gate, and measured full-path latency, none of which is instantiated in the allowed inputs.",
+          "suggestion": "Reuse the existing held-out protocol and unchanged gate; evaluate only the distinct prefix-change masks induced by rho_lg. Do not invent episode counts, a success threshold, or a new gate."
+        },
+        {
+          "step_id": "S5",
+          "kind": "mechanism_blocking",
+          "hole": "A backend-specific variable-length/block-sparse kernel that truly avoids omitted QK/AV work, preserves retained-key softmax and native residual/flow semantics, and exposes a verification route has not been identified or validated.",
+          "evidence": "technical_expansion.feasibility_validation.engineering rates this support as tight and says the compact kernel paths are unconfirmed; the method explicitly requires proving omitted QK/AV is not executed.",
+          "suggestion": "Resolve the kernel and joint-entry integration separately for each frozen backend. Verify skipped work and account for any attention replacement, packing, and launch overhead in full-path measurements; do not infer savings from a dense mask."
+        },
+        {
+          "step_id": "S6",
+          "kind": "source_omission",
+          "hole": "The expansion omits the candidate's exact rule for matching scoring-control edge counts when source groups have unequal sizes.",
+          "evidence": "technical_expansion.method_flow.steps[S6] requires an exact retained-edge budget; final_candidate.falsification_prediction specifies score aggregation over existing groups, stable native-order ties, and a boundary-group token prefix to reach the exact budget.",
+          "suggestion": "Restore that existing token-prefix rule in S6. If the source groups do not permit a distinct legal equal-cost permutation, report the permutation control unavailable; do not replace it with an unequal-cost arm."
+        },
+        {
+          "step_id": "S6",
+          "kind": "mechanism_blocking",
+          "hole": "No paired D_eval results, full-path timing including scoring/packing/kernel launch, task-success results, or action-divergence records exist for either primary baseline.",
+          "evidence": "The candidate frames these as the falsification experiment and explicitly says no new evaluation was performed; run_contract.depth is “idea.”",
+          "suggestion": "Once authorized and prerequisites are met, run the unchanged paired protocol for FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab separately. Keep the frozen gates, episodes, and stated compute budget intact."
+        },
+        {
+          "step_id": "S7",
+          "kind": "mechanism_blocking",
+          "hole": "The matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware remain unconfirmed.",
+          "evidence": "phase1.intake.data and technical_expansion.method_flow.steps[S7] explicitly list these prerequisites as unconfirmed and condition robot evaluation on simulation passing its frozen gate.",
+          "suggestion": "Keep the robot route conditional until all named prerequisites and the simulation gate are confirmed; do not treat simulation as closed-loop robot evidence."
+        }
+      ]
+    },
+    "phase4/work/cost_assessment.json": {
+      "candidate_sha256": "be82888c2f7737543d6fbcccbe911ba41512f3e504f926b7d582093fa5a4a826",
+      "user_budget": "本阶段只做文献与机制诊断；没有GPU/cluster实验授权。不假定GPU-day或美元预算。ASPIRE2A login仅轻量控制；加速方法保持training-free，baseline原有post-training单列。",
+      "original_estimate": "本 generation 未运行实验：GPU-days 为 0，external API 为 $0。后续 path profile 与 paired benchmark 的 GPU-days 暂不估算，须先确认 FastWAM-Joint checkpoint、两套 kernel 支持和 Amdahl headroom，再由获批 compute allocation 估算；没有假定 GPU-day 或付费 API 预算。AgileX 路线若需 baseline 原有 task post-training，其成本与本 training-free mask 方法分开核算。",
+      "current_estimate": "unknown (future path-profile and paired-benchmark GPU-days and any external API cost are not estimated)",
+      "status": "unknown",
+      "basis": "Main drivers are integration and full-path profiling for two separate frozen WAM backends, fused-attention attribution, a compact kernel that really skips QK/AV, and paired benchmark episodes including scoring/packing/launch overhead. The inputs provide no verified checkpoint for the FastWAM-Joint pairing, no kernel support, no measured headroom, hardware/runtime, or episode totals; therefore no defensible order-of-magnitude compute estimate against an authorized ceiling can be made. The recorded GPU-days=0 and external API=$0 describe only the already completed generation, not the future method cost.",
+      "change_reason": "Unchanged from the candidate's original estimate: future profiling and paired-benchmark cost stays explicitly unestimated pending checkpoint, kernel-support, and Amdahl-headroom confirmation. No budget ceiling or experimental scope was changed."
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "contract_version": 2,
+  "request_id": "85838a8b-7c16-4c31-81b9-2ae1430aa350",
+  "artifacts": {
+    "phase3_revise/post_revision_audit.json": {
+      "removal_tests": [
+        {
+          "component": "Student-visited state rebasing with the full remaining teacher/student suffix endpoint target",
+          "field": "core_mechanism",
+          "executed": true,
+          "claims_unchanged": false,
+          "evidence": "Removing this changes the defining target to teacher-state or per-step distillation; the candidate's claimed student-path suffix response is no longer present."
+        },
+        {
+          "component": "Dimensionless per-channel continuous pre-threshold residual as the gradient-bearing surrogate",
+          "field": "core_mechanism",
+          "executed": true,
+          "claims_unchanged": false,
+          "evidence": "Removing this leaves no specified differentiable loss where a hard gripper threshold is enabled and removes the candidate's explicit separation between its training surrogate and exact executed-command metric."
+        }
+      ],
+      "verdict": "needs_work",
+      "reason": "The suffix operator is computable in a legal instance and the compensating-error example is a bounded objective trade-off, not a global impossibility. Two bounded specification gaps remain: the action-prefix loss and V_visit may be vectors over executed time because no time reduction is defined; and R1 does not establish comparable total training cost/NFE or a fully specified fair per-step OPD loss for shared backbones.",
+      "checks": {
+        "dataflow": {
+          "status": "fail",
+          "executed": true,
+          "evidence": "The revised core says J_m selects action channels and defines L_train as (1/|J_m|) sum over j of the squared scaled residual. If E_m returns T_exec>1 native prefix steps, each y_tilde[...,j] is a T_exec-vector, so this expression is not scalar; the V_visit sum has the same missing time reduction. An illustrative T_exec=2, two-channel residual [[0.1,0.2],[0.3,0.4]] with scales [0.5,2] yields per-time values [0.025,0.20], not one loss. Preserve the native prefix and define a scalar reduction over (time,channel) or an equivalent norm/mean."
+        },
+        "dry_run": {
+          "status": "pass",
+          "executed": true,
+          "evidence": "Hand-derived legal scalar instance (illustrative values): detached x_Q=0.5; S_Q(x)=0.5x+theta with theta=0.4; S_FP(x)=0.5x+0.5; D=E=identity; one channel with s=0.5. Outputs are 0.65 and 0.75, giving L=((−0.10)/0.5)^2=0.04 and dL/dtheta=−0.8. The target and student-suffix gradient compute; the detached prelude and teacher receive no gradient. No model code or experiment was run."
+        },
+        "degenerate_probes": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "Exact teacher/student suffix agreement gives zero loss and gradient, as expected. If K_m is interpreted to include a terminal state with an empty remaining suffix, both branches return the same detached state and that sample is also zero-gradient; interpreting K_m as active transitions avoids it. This is an index-convention note, not a blocker. The continuous surrogate can differ from a configured hard gripper threshold, which the candidate appropriately says must be reported separately."
+        },
+        "claim_step_map": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "Candidate steps 1–4 cover scope, student-path sampling, shared-state suffix branches and the training update; step 6 covers fixed-input and closed-loop outcomes, and step 7 labels shared-backbone transfer. R1's four added controls appear in falsification_prediction but step 5 only operationalizes ordinary QAT/teacher-KD and PTQ, and step 6 does not explicitly define the V_visit time aggregation."
+        },
+        "falsification": {
+          "status": "fail",
+          "executed": true,
+          "evidence": "R1 preserves its prior setup/outcomes/prediction/control and adds vanilla QAT+teacher KD, original-noise-seed endpoint KD, teacher-state suffix KD, and student-state per-step OPD. The sentence holds contexts and paired noise/index draws fixed, so the Fast-WAM data pool and deployment scope are aligned in principle. It only says to match measured teacher-query and suffix work; it does not match or report total training GPU time or total teacher/student NFE, and the added vanilla-QAT+KD arm is not distinguished from the pre-existing 'teacher KD at teacher states' arm. For any shared-backbone per-step OPD comparison, it does not specify an action-only output mask versus joint video+action loss. Thus the arms point toward the needed contrasts but do not yet establish incremental value under a defined equal-cost/fair-operator comparison. No experiment was run."
+        },
+        "novelty": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "Compared operators, targets and gradients in the supplied/versioned sources. Train Where the Quantized Model Goes (arXiv:2609.26708v1, §§3.2, 4.1–4.2) already uses quantized student prefixes with frozen-teacher token guidance and verifier reward; that makes student-state exposure itself non-novel, while its autoregressive token/reward target differs from a WAM full-suffix action endpoint. DiffusionOPD (arXiv:2605.15055v2, §§3.2–3.3) sums same-student-state per-step transition KL/direct L2 with stopped rollout-distribution gradients; this proposal branches both solvers at x_Q[k] and regresses a full suffix endpoint with gradients through the student suffix. AnyFlow (arXiv:2605.13724v1, §§3.2, 4.2.2) uses learned two-time flow maps, backward-simulation shortcuts and DMD clean-sample distribution matching; it changes the transition operator and target, unlike this unchanged native solver. DiffusionOPSD (arXiv:2608.24646v1; Phase 0 abstract) uses behavior-policy query states and reward-derived detached clean-output targets with finite fitting/EMA refresh, unlike the paired BF16 suffix target. The narrow suffix operator remains a hypothesis, not a novelty verdict. Phase 3 has arXiv/OpenAlex/OpenReview results but no Semantic Scholar files, so coverage is not exhaustive. No broad search was added."
+        },
+        "target_resolution": {
+          "status": "conditional",
+          "executed": true,
+          "evidence": "Fast-WAM's local LIBERO path applies normalizer.backward in _denormalize_action (eval_libero_single.py) and has no hard clip there; after denormalization it rescales/inverts gripper and optionally applies sign when EVALUATION.binarize_gripper is true (default false). The candidate is honest that its continuous scaled surrogate is not the exact clipped/thresholded metric and calls for separate exact reporting. For the optional threshold, the exact y=E_m(D_m(...)) expression must include the post-denormalization command transform in D_m/E_m; the current interface text does not locate it. This is bounded to command-map specification, with no claim that D_m itself is hard-clipped."
+        }
+      },
+      "confirmed_terms": {
+        "signature_terms": [
+          "student-visited suffix endpoint matching",
+          "quantized solver state response",
+          "denormalized executed action targets",
+          "shared-backbone WAM QAT"
+        ],
+        "alias_terms": [
+          "learned activation clipping",
+          "teacher student knowledge distillation",
+          "on-policy distillation DAgger",
+          "diffusion trajectory sampling distillation",
+          "truncated backpropagation through time",
+          "ordinary endpoint knowledge distillation",
+          "low-bit on-policy distillation",
+          "continuous-state on-policy distillation",
+          "flow-map backward simulation",
+          "behavior-state clean-endpoint anchors",
+          "HAWQ-style Hessian-aware mixed-precision allocation",
+          "Learned Step Size Quantization (LSQ)"
+        ]
+      },
+      "consistency_patch": []
+    }
+  }
+}

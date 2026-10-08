@@ -1,0 +1,96 @@
+#!/bin/bash -l
+#PBS -N cos3_wheel_net
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=1gb
+#PBS -l place=free
+#PBS -l walltime=00:05:00
+#PBS -j oe
+set -euo pipefail
+
+TASK_ROOT="/scratch/users/ntu/yguo017/cosmos3-edge-robolab120"
+[[ -n "${PBS_JOBID:-}" ]] || { echo "FAIL_CLOSED: PBS_JOBID is missing"; exit 90; }
+[[ -n "${PBS_NODEFILE:-}" && -r "$PBS_NODEFILE" ]] || { echo "FAIL_CLOSED: PBS_NODEFILE is missing or unreadable"; exit 91; }
+HOST_SHORT="$(hostname -s)"
+case "$HOST_SHORT" in asp2a-login*|*login*) echo "FAIL_CLOSED: login node $HOST_SHORT"; exit 92;; esac
+awk -v h="$HOST_SHORT" '$1 == h || index($1, h ".") == 1 { found=1 } END { exit !found }' "$PBS_NODEFILE" || {
+  echo "FAIL_CLOSED: current host is not in PBS_NODEFILE"; exit 93;
+}
+
+mkdir -p "$TASK_ROOT/logs"
+LOG="$TASK_ROOT/logs/wheel-net-probe-${PBS_JOBID}.log"
+RECEIPT="$TASK_ROOT/logs/wheel-net-probe-${PBS_JOBID}.env"
+exec > >(tee -a "$LOG") 2>&1
+PROBE_TMP=""
+finish_probe() {
+  local status="$?" tmp="$RECEIPT.tmp.$$"
+  trap - EXIT
+  if [[ -n "$PROBE_TMP" && -d "$PROBE_TMP" ]]; then
+    rm -f -- "$PROBE_TMP"/*
+    rmdir -- "$PROBE_TMP" 2>/dev/null || true
+  fi
+  if [[ -f "$RECEIPT" ]]; then
+    { grep -Ev '^(EXIT_STATUS|FINISHED)=' "$RECEIPT" || true; } > "$tmp"
+    printf 'EXIT_STATUS=%s\nFINISHED=%s\n' "$status" "$(date -Is)" >> "$tmp"
+    mv -f -- "$tmp" "$RECEIPT"
+  fi
+  exit "$status"
+}
+trap finish_probe EXIT
+
+printf 'PBS_JOBID=%s\nHOST=%s\nSTARTED=%s\n' "$PBS_JOBID" "$(hostname -f)" "$(date -Is)"
+printf 'TARGET_JOBID=25660513.pbs101\nPROBE_SCOPE=public wheel HTTP range only; no shared cache or environment writes\n'
+cat > "$RECEIPT" <<EOF
+PBS_JOBID=$PBS_JOBID
+HOST=$HOST_SHORT
+TARGET_JOBID=25660513.pbs101
+PROBE_STATUS=IN_PROGRESS
+EOF
+
+for tool in date hostname mktemp rm rmdir stat tee; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "FAIL_CLOSED: missing tool $tool"; exit 94; }
+done
+PROBE_TMP="$(mktemp -d /tmp/cosmos-wheel-range.XXXXXX)"
+[[ -d "$PROBE_TMP" ]] || { echo 'FAIL_CLOSED: could not create node-local temporary directory'; exit 95; }
+
+SIF="/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif"
+USE_CONTAINER=0
+if ! command -v curl >/dev/null 2>&1; then
+  if ! command -v apptainer >/dev/null 2>&1 && type module >/dev/null 2>&1; then
+    module load apptainer/1.5.0 >/dev/null 2>&1 || true
+  fi
+  command -v apptainer >/dev/null 2>&1 || { echo 'FAIL_CLOSED: curl and apptainer are unavailable'; exit 96; }
+  [[ -r "$SIF" ]] || { echo "FAIL_CLOSED: reusable SIF unavailable: $SIF"; exit 97; }
+  USE_CONTAINER=1
+fi
+
+run_curl() {
+  if [[ "$USE_CONTAINER" == 1 ]]; then
+    apptainer exec --bind "$PROBE_TMP:$PROBE_TMP" "$SIF" curl "$@"
+  else
+    curl "$@"
+  fi
+}
+
+probe_one() {
+  local label="$1" url="$2" out="$PROBE_TMP/$1.part" metrics rc bytes
+  set +e
+  metrics="$(run_curl --silent --location --range 0-1048575 --max-filesize 1048576 \
+    --max-time 40 --connect-timeout 10 --retry 0 --output "$out" \
+    --write-out 'http_code=%{http_code} curl_bytes=%{size_download} dns_s=%{time_namelookup} connect_s=%{time_connect} tls_s=%{time_appconnect} ttfb_s=%{time_starttransfer} total_s=%{time_total} speed_Bps=%{speed_download}' \
+    "$url" 2>/dev/null)"
+  rc=$?
+  set -e
+  bytes=0
+  [[ ! -f "$out" ]] || bytes="$(stat -c '%s' "$out")"
+  printf 'WHEEL=%s curl_exit=%s file_bytes=%s %s\n' "$label" "$rc" "$bytes" "$metrics"
+  if (( bytes > 1048576 )); then
+    echo "FAIL_CLOSED: range response exceeded byte cap for $label"
+    return 98
+  fi
+  return 0
+}
+
+probe_one torch 'https://download-r2.pytorch.org/whl/cu128/torch-2.10.0%2Bcu128-cp313-cp313-manylinux_2_28_x86_64.whl'
+probe_one flash_attn 'https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/v1.5.0/flash_attn-2.7.4.post1%2Bcu128.torch210-cp313-cp313-linux_x86_64.whl'
+sed -i 's/^PROBE_STATUS=.*/PROBE_STATUS=COMPLETE/' "$RECEIPT"
+printf 'PROBE_FINISHED=%s\n' "$(date -Is)"

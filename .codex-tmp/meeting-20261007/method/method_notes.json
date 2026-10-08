@@ -1,0 +1,87 @@
+{
+  "status": "proposal_only_unimplemented_unvalidated",
+  "figure_labels_en": {
+    "title": "Action-Sensitive Weight Vector Quantization",
+    "subtitle": "Fast-WAM IDM action module | proposed baseline",
+    "activation_path": [
+      "Activation X",
+      "Calibrated channel scaling D^-1",
+      "Orthogonal Hadamard transform H",
+      "Measure post-transform activation tails"
+    ],
+    "weight_path": [
+      "FP16 weight W",
+      "Matched transform W' = WDH",
+      "Weight-vector groups w'_{l,j}",
+      "Sensitivity-weighted codebook",
+      "Reconstructed weight W'_VQ"
+    ],
+    "join": "Linear / GEMM",
+    "output": "Action output â",
+    "evaluation": "Action fidelity + closed-loop success",
+    "objective": "Calibration-weighted VQ distortion",
+    "caveat": "H alone does not guarantee lower activation outliers",
+    "status_badge": "PROPOSAL — NOT YET VALIDATED"
+  },
+  "speaker_notes_zh": "先在 Fast-WAM 的 IDM action module 上试 weight vector quantization。对单个 Linear，按相同输入通道变换 activation 与 weight：用校准得到的对角 D 把部分 activation range 压力转移到 weight，再测试正交 Hadamard H 是否改善量化前的 activation 尾部；H 保范数，但不保证任意分布的最大值或 outlier 都下降。随后将变换后的 weight 分组，以 calibration-derived action-sensitivity metric 拟合 codebook；量化后的 action fidelity 和 closed-loop success 仍需实测。图中方法全部是 proposal，没有实现或验证结论。",
+  "math_audit": {
+    "conventions": "For a batch of row activations X in R^(n×d), weight W in R^(m×d), and output Y=XW^T, let D be an invertible positive diagonal d×d matrix and H be an orthogonal d×d matrix (HH^T=I).",
+    "equivalent_transform": "X' = X D^-1 H; W' = W D H; therefore X'(W')^T = X D^-1 H H^T D W^T = XW^T.",
+    "conditions_and_scope": "D and H act on the same input-feature axis, and the identity is for the real-valued linear layer before quantization. After replacing W' by its VQ reconstruction W'_VQ, equality is approximate. If a transform crosses normalization, nonlinear, residual, or positional operators, it must be placed or fused so the full computation remains equivalent.",
+    "proposed_codebook_objective": "Let w'_{l,j} be transformed weight-vector group j and c_{z_j} its assigned codeword. L_VQ = sum_j (w'_{l,j}-c_{z_j})^T M_{l,j}(w'_{l,j}-c_{z_j}).",
+    "action_metric_interpretation": "A locally motivated calibration metric is M_{l,j}=E[J_{l,j}^T J_{l,j}], where J_{l,j}=∂a/∂w'_{l,j} is estimated at the FP16 calibration point and maps a perturbation of this transformed weight group to the final action across the relevant denoising steps. A cheaper proposed PSD proxy is M_{l,j}≈λI+αg_{l,j}g_{l,j}^T, with λ>0, α≥0, and g in the same vector coordinates. Tying M across groups gives a cheaper layer-level M_l.",
+    "approximation_boundary": "The Jacobian interpretation is local. Summing per-group quadratic terms drops cross-group terms in the total action error; estimate/calibrate the proxy and test it against measured action outputs and closed-loop outcomes. Computing weight-to-action Jacobians may also be costly."
+  },
+  "slide_followup_en": {
+    "title": "Staged path beyond the IDM pilot",
+    "bullets": [
+      "Start with weight-VQ PTQ on the Fast-WAM IDM action module; establish the baseline before transfer.",
+      "If the baseline gate passes, extend in sequence to LingBot-VA, then Cosmos-Policy.",
+      "Next study KV-cache quantization; then build and benchmark a packed VQ lookup/GEMM kernel, borrowing Rudder-style fusion principles without assuming Rudder already supports VQ.",
+      "Try QAT only if GPU budget permits and PTQ diagnostics justify it."
+    ]
+  },
+  "test_ladder": [
+    "Check the pre-quantization transform identity numerically on the target Linear and verify transform placement around adjacent operators.",
+    "On calibration data, compare D-only and D+H activation-tail/error metrics; retain H only if the measured target improves at acceptable runtime cost.",
+    "At fixed vector grouping and codebook/index budget, compare Euclidean VQ with the proposed sensitivity-weighted objective; derive the metric from calibration and freeze it before held-out evaluation.",
+    "Evaluate action-output fidelity and closed-loop success on held-out episodes against the FP16 baseline; do not infer task success from weight MSE alone.",
+    "Only after numerical and control gates pass, measure actual packed bytes (including codebook/index/metadata) and native-kernel, denoising-cycle, and end-to-end latency.",
+    "After a Fast-WAM IDM baseline gate, try the named model transfers; treat KV-cache quantization, kernel work, and optional QAT as separate follow-on gates."
+  ],
+  "risk_boundaries": [
+    "SmoothQuant motivates an equivalent diagonal rescaling that redistributes activation/weight quantization difficulty; applying it to this Fast-WAM action module is a proposal, not an established WAM result.",
+    "An orthogonal Hadamard transform preserves vector norms but does not universally reduce coordinate maxima or activation outliers. Measure the chosen D,H on calibration and held-out data; include online transform cost unless it is fused or absorbed exactly.",
+    "Action-sensitivity-aware quantization is already a neighboring WAM research direction. The proposed group-wise VQ metric is not claimed novel; compare it with established action-sensitivity baselines before making novelty claims.",
+    "SteerQuant's Rudder is described as a fused low-bit inference engine. That does not establish support for VQ codebook/index lookups; a VQ-specific packed kernel and its actual performance must be implemented and measured.",
+    "Weight VQ means quantizing model parameters with vector codebooks; it is distinct from action tokenization, video tokenization, and latent-dynamics VQ.",
+    "A smaller checkpoint or fake-quant result alone does not establish lower deployed memory, faster inference, or closed-loop benefit."
+  ],
+  "primary_sources": [
+    {
+      "title": "SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models (ICML 2023)",
+      "url": "https://proceedings.mlr.press/v202/xiao23c.html",
+      "used_for": "Primary source for equivalent per-channel scaling and shifting quantization difficulty from activations toward weights; its evidence is for LLMs, not this WAM proposal."
+    },
+    {
+      "title": "QuaRot: Outlier-Free 4-Bit Inference in Rotated LLMs (NeurIPS 2024)",
+      "url": "https://papers.nips.cc/paper/2024/hash/b5b939436789f76f08b9d0da5e81af7c-Abstract-Conference.html",
+      "used_for": "Primary source for compensated Hadamard rotations in quantized Transformers; supports careful transform placement, not a universal outlier-reduction guarantee for an arbitrary layer."
+    },
+    {
+      "title": "VPTQ: Extreme Low-bit Vector Post-Training Quantization for Large Language Models (EMNLP 2024)",
+      "url": "https://aclanthology.org/2024.emnlp-main.467/",
+      "used_for": "Primary source illustrating weight-vector codebooks and index-based model quantization; do not imply the generic VQ object or codebook is novel."
+    },
+    {
+      "title": "Q-WAM: 4-Bit Quantization of World Action Models with Action-Subspace Protection (arXiv:2609.33269v1)",
+      "url": "https://arxiv.org/abs/2609.33269v1",
+      "used_for": "Primary neighboring WAM work using an action-output Jacobian/AOG for quantization sensitivity; it is not the same as the proposed transformed-weight-group VQ metric."
+    },
+    {
+      "title": "SteerQuant: Steering Quantization Error with Action-Guided Scaling in World-Action Models (arXiv:2609.39056v1)",
+      "url": "https://arxiv.org/abs/2609.39056v1",
+      "used_for": "Primary source for Rudder as a fused low-bit inference engine; it does not establish support for vector-codebook lookup kernels."
+    }
+  ]
+}

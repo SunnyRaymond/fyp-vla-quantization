@@ -1,0 +1,96 @@
+{
+  "intake": {
+    "domain": "Low-bit quantization and adaptation for action-generating world-action models (WAMs)",
+    "venue": "Top-tier conference; exact venue unspecified",
+    "time": "Deadline and venue cycle unspecified; current formulation date is 2026-10-03",
+    "data": [
+      "Initial Fast-WAM Base pilot: public LIBERO-fastwam demonstrations, libero_uncond_2cam224.pt, and paired normalization statistics",
+      "Transfer anchors: LingBot-VA and Cosmos Policy; respect their distinct shared-backbone contracts"
+    ],
+    "compute": "At most 4 separate A100-SXM4-40GB GPUs; total GPU-hour/GPU-day budget is unspecified. Keep feasibility conditional; do not assume an 80GB-class or 150-GPU-day profile.",
+    "expertise": "FYP-level WAM/model-interface familiarity; specific QAT and low-bit-kernel experience is unspecified",
+    "preference": "both",
+    "baseline": "BF16 reference; ordinary action-only QAT; matched teacher distillation; SteerQuant, QuantWAMs, Q-WAM; adjacent QVGen and EfficientDM",
+    "user_direction": "WAM action-only QAT idea",
+    "excluded_direction": "Do not declare transplantation of video QAT or generic distillation to robot action as novelty.",
+    "limitation": "The incremental value of adapting a low-bit action path over strong frozen-weight WAM PTQ is unknown under matched precision, parameter scope, inference semantics, and cost; this is especially consequential when video stays BF16 or shares weights with action tokens.",
+    "contribution_type": "method",
+    "_inferred_fields": ["domain", "venue", "time", "expertise", "preference", "limitation", "contribution_type"]
+  },
+  "bottleneck_statement": "Across action-generating WAMs, low-bit results cannot be attributed to action-path adaptation unless parameter scope, bitwidth, denoising schedule, precision exclusions, and inference accounting are held fixed. SteerQuant reports W4A8 LIBERO success within 0.8 percentage points of BF16 while keeping quantized weights fixed (arxiv:2609.39056v1); QuantWAMs reports near-FP16 outcomes with weight-frozen PTQ and fixed-intervention rollout auditing (arxiv:2607.28405v1); and Q-WAM obtains near-BF16 control with W4A4 plus protected 16-bit subspaces (arxiv:2609.33269v1). The field therefore cannot identify the conditional action/control benefit of training-time adaptation over strong PTQ or matched teacher distillation at identical deployment scope. In the stated Fast-WAM instance, retaining the approximately 5B video expert in BF16 and quantizing the approximately 1B ActionDiT gives only about 1.14x idealized total core-weight reduction; LingBot-VA and Cosmos Policy share their main backbone and do not expose the same separable action-weight subset. Near-BF16 W4A8 PTQ is not evidence of failure; the open bottleneck is when any incremental action benefit justifies training and deployment cost across WAM architectures.",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2609.39056v1",
+      "is_anchor": true,
+      "summary_and_residue": "SteerQuant maps layer/step/stream quantization errors to downstream action sensitivity, then calibrates shared weight scaling and stream/timestep activation gains with packed weights fixed; its map uses full-precision inputs and stays fixed during calibration. It reports near-BF16 LIBERO success at W4A8 across three WAMs, but does not compare weight adaptation at the same parameter scope and deployed arithmetic, leaving the marginal benefit of learned low-bit action weights unresolved."
+    },
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "is_anchor": false,
+      "summary_and_residue": "QuantWAMs aligns PTQ grouping, objective, and calibration distributions with model structure and real-rollout states, using joint video-action gradient saliency and fixed-intervention rollout auditing while leaving pretrained weights unchanged. Its W4A4-dominant results are near FP16, but they do not identify how an equal-scope training comparison changes action outcomes."
+    },
+    {
+      "paper_id": "arxiv:2609.33269v1",
+      "is_anchor": false,
+      "summary_and_residue": "Q-WAM estimates action observability through unrolled denoising and protects sensitive directions in a small 16-bit low-rank branch while quantizing the complement to W4A4. Its result is tied to protected precision, so it does not establish the quality-cost tradeoff of a branch-free W4A8 action-only contract or training at that contract."
+    },
+    {
+      "paper_id": "arxiv:2505.11497v5",
+      "is_anchor": false,
+      "summary_and_residue": "QVGen stabilizes low-bit video-diffusion QAT with trainable error-compensation auxiliaries and removes their inference overhead through rank decay. Its evidence concerns video-generation quality rather than denormalized robot actions or closed-loop control, leaving transfer to WAM action paths unresolved."
+    },
+    {
+      "paper_id": "arxiv:2310.03270v4",
+      "is_anchor": false,
+      "summary_and_residue": "EfficientDM uses a mergeable quantization-aware low-rank adapter and teacher denoising-output loss, with scale-aware optimization and timestep-varying activation quantizers, for low-bit image diffusion. Its image-synthesis results do not establish action-space or closed-loop fidelity in WAMs."
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "Across the retrieved WAM PTQ leaves, the missing outcome is a fixed-semantics action-only comparison reporting denormalized action deviation, closed-loop completion, and native action-query latency while holding parameter scope, non-target precision, denoising steps, action chunk, controller, and kernel path constant; near-BF16 success and block-level speed figures do not identify it. — stakes: practitioners may spend scarce training time for negligible full-policy benefit or overstate block speed as policy acceleration, while transfer beyond the measured setup remains unknown.",
+    "SteerQuant, QuantWAMs, and Q-WAM all keep pretrained WAM weights fixed and manage low-bit action error through calibration or protected precision; no retrieved WAM leaf tests whether this immutability is necessary for their quality-cost boundary. — stakes: researchers may infer that static PTQ is sufficient without evidence, or fund expensive adaptation without evidence that frozen weights are the limiting factor, weakening principled method selection.",
+    "QVGen shows video-generation gains from low-bit QAT, but no retrieved leaf establishes whether a low-bit generative model preserves controller-relevant action chunks when earlier action errors alter later observations, especially across independent-expert and shared-backbone WAMs. — stakes: video-quality results could be transferred into failed manipulation, and action-only claims for shared backbones would remain unsupported by control evidence."
+  ],
+  "method_lineage": {
+    "line": "Low-bit quantization of iterative generative models for robot action generation: frozen-weight WAM PTQ versus train-time quantization adaptation",
+    "nodes": [
+      {"node_id":"n0","method":"Low-bit neural-network weight/activation quantization","move":"Represent weights and/or activations on a finite low-bit grid for inference.","parent":null,"provenance":"parametric","age_band":">16y","confidence":"high","residual_problem":"Rounding and clipping can move outputs away from the full-precision function.","is_frontier_leaf":false},
+      {"node_id":"n1","method":"Post-training quantization with representative-data calibration","move":"Choose quantizer scales after pretraining without updating pretrained weights.","parent":"n0","provenance":"parametric","age_band":"8-16y","confidence":"high","residual_problem":"Local calibration error does not specify its effect on iterative generation or task-level action outputs.","is_frontier_leaf":false},
+      {"node_id":"n2","method":"Timestep-aware diffusion PTQ (Q-Diffusion family)","move":"Account for activation-distribution changes across denoising steps.","parent":"n1","provenance":"parametric","age_band":"2-4y","confidence":"medium","residual_problem":"Denoising-aware local calibration does not ensure precision choices reflect WAM action impact, coupled pathways, or deployed control outcomes.","is_frontier_leaf":false},
+      {"node_id":"n3","method":"SteerQuant","move":"Map layer/step/stream errors to action impact and calibrate shared weight and stream-specific activation scales at fixed bit widths.","parent":"n2","provenance":"retrieved:arxiv:2609.39056v1","age_band":"0-2y","confidence":"high","residual_problem":"Weights stay fixed and the impact map uses full-precision inputs; equal-scope action-path adaptation value is unmeasured.","is_frontier_leaf":true},
+      {"node_id":"n4","method":"QuantWAMs","move":"Align PTQ pooling and saliency with structure, joint objectives, and fixed-intervention real-rollout states.","parent":"n2","provenance":"retrieved:arxiv:2607.28405v1","age_band":"0-2y","confidence":"high","residual_problem":"Its backward pass does not update pretrained weights, leaving equal-scope adaptation value unidentified.","is_frontier_leaf":true},
+      {"node_id":"n5","method":"Q-WAM","move":"Use action observability to protect sensitive directions in a 16-bit branch and quantize the complement to W4A4.","parent":"n2","provenance":"retrieved:arxiv:2609.33269v1","age_band":"0-2y","confidence":"high","residual_problem":"Quality-cost evidence includes protected 16-bit compute and W4A4 rather than a branch-free action-only W4A8 comparison.","is_frontier_leaf":true},
+      {"node_id":"n6","method":"Straight-through-estimator QAT (DoReFa-Net-era)","move":"Optimize a quantized-forward model with surrogate gradients so parameters can adapt to low-bit inference.","parent":"n0","provenance":"parametric","age_band":"8-16y","confidence":"high","residual_problem":"Generic quantized training does not specify WAM action outputs or closed-loop control as the preserved quantity.","is_frontier_leaf":false},
+      {"node_id":"n7","method":"EfficientDM","move":"Apply quantization-aware low-rank updates and teacher denoising-output matching for data-free diffusion fine-tuning.","parent":"n6","provenance":"retrieved:arxiv:2310.03270v4","age_band":"2-4y","confidence":"high","residual_problem":"Image-diffusion noise matching does not establish robot action-chunk fidelity or control outcomes.","is_frontier_leaf":false},
+      {"node_id":"n8","method":"QVGen","move":"Add trainable error-compensation auxiliaries to low-bit video-diffusion QAT and remove them by rank decay.","parent":"n6","provenance":"retrieved:arxiv:2505.11497v5","age_band":"0-2y","confidence":"high","residual_problem":"Video-generation quality does not show whether low-bit adaptation preserves WAM action semantics or control.","is_frontier_leaf":true},
+      {"node_id":"n9","method":"PACT-style learned activation clipping","move":"Learn clipping thresholds to trade saturation error against quantization resolution.","parent":null,"provenance":"parametric","age_band":"8-16y","confidence":"high","residual_problem":"Range learning alone does not establish WAM action/control value.","is_frontier_leaf":false,"is_collateral":true},
+      {"node_id":"n10","method":"HAWQ-style Hessian-aware mixed-precision allocation","move":"Use curvature estimates to allocate precision unevenly under a bit budget.","parent":null,"provenance":"parametric","age_band":"4-8y","confidence":"high","residual_problem":"Sensitivity-based allocation does not determine the value of adaptation under a fixed action-only scope.","is_frontier_leaf":false,"is_collateral":true},
+      {"node_id":"n11","method":"Teacher-student knowledge distillation","move":"Use teacher outputs as a training signal for a lower-capacity or lower-precision student.","parent":null,"provenance":"parametric","age_band":"8-16y","confidence":"high","residual_problem":"Output matching alone does not establish actuator-space or closed-loop benefit for quantized WAM actions.","is_frontier_leaf":false,"is_collateral":true},
+      {"node_id":"n12","method":"Learned Step Size Quantization (LSQ)","move":"Learn quantizer step sizes jointly with the quantized model.","parent":null,"provenance":"parametric","age_band":"4-8y","confidence":"high","residual_problem":"Learned scales do not by themselves establish action-targeted adaptation value under WAM deployment constraints.","is_frontier_leaf":false,"is_collateral":true}
+    ],
+    "notes": "Retrieved leaves ground the current frontier; parametric nodes are awareness-only. Families checked were PTQ calibration/timestep granularity, quantized-forward training, learned range/step size, curvature-based mixed precision, and teacher distillation; QVGen-style rank-decayed compensation has a current leaf, but no older representative is asserted. Direct WAM PTQ leaves share immutable pretrained weights and offline precision decisions. Fast-WAM's independent ActionDiT permits a weight-scope action-only pilot with BF16 video/cache; released LingBot-VA and Cosmos Policy share main weights, so their action-targeted quantization/training scope must be labeled separately."
+  },
+  "domain_pattern_distribution": {
+    "n_total":100,
+    "n_on_topic":86,
+    "patterns":[
+      {"pattern_id":"adapt_via_conditioning","count":2,"share":0.02,"saturation_band":"mid_frequency"},
+      {"pattern_id":"architectural_operator_substitution","count":18,"share":0.21,"saturation_band":"mid_frequency"},
+      {"pattern_id":"assumption_audit_and_pivot","count":4,"share":0.05,"saturation_band":"mid_frequency"},
+      {"pattern_id":"controlled_diagnostic_design","count":4,"share":0.05,"saturation_band":"mid_frequency"},
+      {"pattern_id":"decompose_and_delegate","count":7,"share":0.08,"saturation_band":"mid_frequency"},
+      {"pattern_id":"generative_process_redesign","count":16,"share":0.19,"saturation_band":"mid_frequency"},
+      {"pattern_id":"heterogeneous_decomposition","count":26,"share":0.30,"saturation_band":"mid_frequency"},
+      {"pattern_id":"reframe_as_solvable_object","count":4,"share":0.05,"saturation_band":"mid_frequency"},
+      {"pattern_id":"self_supervised_signal_engineering","count":5,"share":0.06,"saturation_band":"mid_frequency"},
+      {"pattern_id":"structural_prior_encoding","count":12,"share":0.14,"saturation_band":"mid_frequency"},
+      {"pattern_id":"targeted_self_supervised_objective","count":1,"share":0.01,"saturation_band":"untested"},
+      {"pattern_id":"unify_into_shared_representation","count":23,"share":0.27,"saturation_band":"mid_frequency"}
+    ],
+    "saturation_threshold_saturated":0.50,
+    "saturation_threshold_untested_count":1,
+    "notes":"heterogeneous_decomposition is most-used (26/86); its closest direct WAM quantization papers calibrate/allocate precision with pretrained weights fixed and do not measure equal-scope action-path adaptation."
+  },
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

@@ -1,0 +1,301 @@
+{
+  "trace_report": {
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "consumes": [
+          "frozen checkpoint",
+          "native solver schedule",
+          "task/backend configuration",
+          "observation token packer"
+        ],
+        "produces": [
+          "fixed inference context",
+          "source-provenance groups"
+        ],
+        "note": "Verbatim candidate step: 1. 冻结每个 baseline 的 checkpoint、solver schedule、任务配置和 backend。主配对为 FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab；后者有公开 checkpoint 路径但本轮未运行，FastWAM-Joint matching checkpoint 尚未确认，缺失时明确标阻塞。Motus/RoboTwin 2.0 仅作条件性仿真 fallback，不冒名为 FastWAM-Joint。 In this trace the interface is represented by synthetic inputs only; matching FastWAM checkpoint availability remains an empirical prerequisite.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S2",
+        "consumes": [
+          "dense baseline path",
+          "real path profiler output",
+          "frozen latency/success gate"
+        ],
+        "produces": [
+          "phi_obs",
+          "Amdahl upper bound 1/(1-phi_obs)",
+          "continue-or-stop decision"
+        ],
+        "note": "Verbatim candidate step: 2. 在原生推理路径拆分计时/计 FLOPs：FastWAM 的 src/fastwam/models/wan22/fastwam_joint.py、fastwam.py、mot.py；Cosmos 的 cosmos_framework/model/generator/omni_mot_model.py，RoboLab policy server 是部署入口。分别测 action-query→observation QK/AV、其他 attention、QKV、FFN 与 mask/packing 代价，得 phi_obs 和 Amdahl 上限；若只有 dense mask 或上限不足以抵偿 overhead/满足冻结 latency gate，立即 NO-GO。 The algebra is formalized, but no real profile or gate is available here; latency/headroom decision is not executed.",
+        "status": "stopped",
+        "stopped_reason": "Requires measured frozen-model path timing and the pre-existing evaluation gate; this coherence trace does not run the model or GPU."
+      },
+      {
+        "step": "S3",
+        "consumes": [
+          "dense native attention alpha",
+          "per-head values",
+          "output-projection head slices",
+          "source groups"
+        ],
+        "produces": [
+          "r_lg per layer/group",
+          "rho_lg normalized by sum_g r_lg",
+          "all-groups fallback if denominator is zero"
+        ],
+        "note": "Verbatim candidate step: 3. 在现有 token packer 上携带 observation token 的原生 source provenance；不改变 token 值、权重、图像、instruction、future/action query 或训练目标。对 k_ref dense forward 导出 alpha、V 与 output projection slices，计算每层 r_lg、rho_lg；输出是 per-layer source contribution table。 The synthetic trace computes one layer with one query and two heads; no learned component is simulated.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S4",
+        "consumes": [
+          "r_lg/rho_lg",
+          "epsilon in [0,1)",
+          "held-out episodes",
+          "frozen success gate and full-path latency"
+        ],
+        "produces": [
+          "minimal source-ordered S_l(epsilon) meeting cumulative rho >= 1-epsilon"
+        ],
+        "note": "Verbatim candidate step: 4. 从 held-out benchmark episodes 选择 epsilon：按 rho 降序压紧到累计份额 1-epsilon，epsilon 只在 [0,1) 内选择；以既有冻结 task-success gate 为约束选完整推理时延最低者。若 gate 未预先存在，只报告 success-latency 曲线而不挑通过点；保存 S_l 与压紧后的 key/value indices。 epsilon=0.25 is an explicitly illustrative admissible value; no held-out gate or latency point is claimed.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S5",
+        "consumes": [
+          "S_l",
+          "retained observation K/V",
+          "native action queries and solver state"
+        ],
+        "produces": [
+          "attention output with softmax recomputed over retained keys",
+          "residual/flow update"
+        ],
+        "note": "Verbatim candidate step: 5. 在后续 native action solver evaluations，把每层 action queries 与 S_l 对应的观测 keys/values 输入真正 variable-length/block-sparse kernel，并核实被省略 QK/AV 不执行。video queries、future/action interactions、各层 FFN 和 joint flow schedule 不变；attention result 返回 residual stream，改写 action hidden/velocity，沿原 sampler 影响最终 action chunk。 The toy computes the retained-key softmax exactly from synthetic logits; real kernel execution is not simulated.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S6",
+        "consumes": [
+          "dense/ranked/permuted paired rollouts",
+          "full-path timing",
+          "task-success/action-deviation measures"
+        ],
+        "produces": [
+          "paired quality, cost and divergence comparisons",
+          "stop/continue decision"
+        ],
+        "note": "Verbatim candidate step: 6. 对 dense、rho-ranked mask、保留边成本相同的 source-group permutation mask 做 paired comparison；计入评分、压紧、kernel launch 与其余模型路径的完整 latency，记录 per-path FLOPs、task success、action-chunk deviation 和首次 action divergence。Amdahl headroom不足、稀疏 kernel 未真实省算、或 permutation 不影响 task outcome，任一项成立即停止候选。 The toy only compares synthetic projected attention outputs and edge counts; it does not measure task success or latency.",
+        "status": "stopped",
+        "stopped_reason": "A real frozen benchmark rollout, sparse-kernel profiler and task-success outcome are outside this dry-run and were not run."
+      },
+      {
+        "step": "S7",
+        "consumes": [
+          "simulation passing the frozen gate",
+          "matching policy/data/source/hardware prerequisites"
+        ],
+        "produces": [
+          "conditional true-robot evaluation plan"
+        ],
+        "note": "Verbatim candidate step: 7. 只有仿真通过冻结 gate 后才讨论真机：Sparse-WAM 的 AgileX Cobot Magic 路线还需任务适配 FastWAM-Joint checkpoint、示范数据、source implementation 和同型平台，这些当前未确认。该 policy 原有 post-training 是 baseline 前置成本，单列；本 mask 不训练、不蒸馏、不更新权重，且不声称已完成真机。 No simulation gate was evaluated and the candidate itself says the hardware/data/source prerequisites are unconfirmed.",
+        "status": "stopped",
+        "stopped_reason": "The candidate's stated prerequisite for a robot phase is not established; no robot run was performed."
+      }
+    ],
+    "negative_control": {
+      "executed": true,
+      "moved_outcome": true,
+      "evidence": "On the illustrative T2 instance the ranked mask AB yields synthetic sparse attention output [4, 10/3]; swapping the B/C contribution scores yields equal-cost mask AC and output [14/3, 0]. Both retain 2 of 3 one-token edges, so this synthetic attention-output quantity moves. This is not a task-success result."
+    },
+    "dry_run": {
+      "instance": "Illustrative values only: one layer, one action query, two heads, three source groups A/B/C with one token each; epsilon=0.25; both heads use dense alpha=(0.5,0.25,0.25); identity output-projection head slices; head values h1: A=(2,0), B=(0,8), C=(4,0), h2: A=(4,0), B=(0,2), C=(-2,0). No checkpoint, learned component, task environment, latency or GPU is modeled.",
+      "execution": {
+        "mode": "executed",
+        "script": "\"\"\"Stdlib-only illustrative execution of the candidate's score-and-mask rules.\"\"\"\nimport itertools\nimport json\nimport math\n\n\nGROUPS = [\"A\", \"B\", \"C\"]\nEPSILON = 0.25  # illustrative admissible value; candidate range is [0, 1)\nALPHA = {\"h1\": {\"A\": 0.5, \"B\": 0.25, \"C\": 0.25},\n         \"h2\": {\"A\": 0.5, \"B\": 0.25, \"C\": 0.25}}\n# Synthetic values make alpha * V equal the listed per-head/group vectors.\nVALUES = {\n    \"h1\": {\"A\": [2.0, 0.0], \"B\": [0.0, 8.0], \"C\": [4.0, 0.0]},\n    \"h2\": {\"A\": [4.0, 0.0], \"B\": [0.0, 2.0], \"C\": [-2.0, 0.0]},\n}\n\n\ndef add(a, b):\n    return [a[0] + b[0], a[1] + b[1]]\n\n\ndef scale(x, a):\n    return [x[0] * a, x[1] * a]\n\n\ndef dense_group_vectors(groups, alpha, values):\n    # The output-projection head slices are illustrative 2x2 identity maps.\n    return {\n        g: add(*(scale(values[h][g], alpha[h][g]) for h in alpha))\n        for g in groups\n    }\n\n\ndef contribution_scores(groups, alpha, values):\n    vectors = dense_group_vectors(groups, alpha, values)\n    return {g: math.hypot(*vectors[g]) for g in groups}, vectors\n\n\ndef choose(scores, epsilon, source_order):\n    total = sum(scores.values())\n    if total == 0:\n        return list(source_order)\n    ranked = sorted(source_order, key=lambda g: (-scores[g], source_order.index(g)))\n    keep, cumulative = [], 0.0\n    for g in ranked:\n        keep.append(g)\n        cumulative += scores[g] / total\n        if cumulative >= 1.0 - epsilon:\n            break\n    return keep\n\n\ndef masked_attention_output(groups, selected, logits_by_head, values_by_head):\n    # Sparse attention renormalizes native softmax over the retained keys.\n    output = [0.0, 0.0]\n    for head in logits_by_head:\n        weights = [math.exp(logits_by_head[head][g]) for g in selected]\n        z = sum(weights)\n        head_out = [0.0, 0.0]\n        for g, weight in zip(selected, weights):\n            head_out = add(head_out, scale(values_by_head[head][g], weight / z))\n        output = add(output, head_out)\n    return output\n\n\ndef mask_from_scores(scores, epsilon, source_order):\n    return choose(scores, epsilon, source_order)\n\n\nLOGITS = {h: {g: math.log(ALPHA[h][g]) for g in GROUPS} for h in ALPHA}\nscores, group_vectors = contribution_scores(GROUPS, ALPHA, VALUES)\ntotal = sum(scores.values())\nrho = {g: scores[g] / total for g in GROUPS}\nranked = mask_from_scores(scores, EPSILON, GROUPS)\n\n# Source-group permutation swaps B/C scores while preserving mask cardinality.\npermuted_scores = {\"A\": scores[\"A\"], \"B\": scores[\"C\"], \"C\": scores[\"B\"]}\npermuted = mask_from_scores(permuted_scores, EPSILON, GROUPS)\n\ndense_output = masked_attention_output(GROUPS, GROUPS, LOGITS, VALUES)\nranked_output = masked_attention_output(GROUPS, ranked, LOGITS, VALUES)\npermuted_output = masked_attention_output(GROUPS, permuted, LOGITS, VALUES)\n\n# Independently constructed naive: keep the first two source groups at the same\n# two-edge budget, without computing contribution scores.\nconstructed_naive = GROUPS[:len(ranked)]\nconstructed_naive_output = masked_attention_output(\n    GROUPS, constructed_naive, LOGITS, VALUES)\n\n# Candidate-declared naive: average dense attention mass, with stable source ties.\nmass_scores = {g: sum(ALPHA[h][g] for h in ALPHA) / len(ALPHA) for g in GROUPS}\ndeclared_naive = mask_from_scores(mass_scores, EPSILON, GROUPS)\ndeclared_naive_output = masked_attention_output(\n    GROUPS, declared_naive, LOGITS, VALUES)\n\n# All-identical per-head values: pruning changes the graph but not this output.\nIDENTICAL_VALUES = {\n    \"h1\": {g: [2.0, 0.0] for g in GROUPS},\n    \"h2\": {g: [0.0, 1.0] for g in GROUPS},\n}\nidentical_scores, _ = contribution_scores(GROUPS, ALPHA, IDENTICAL_VALUES)\nidentical_mask = mask_from_scores(identical_scores, EPSILON, GROUPS)\nidentical_dense = masked_attention_output(\n    GROUPS, GROUPS, LOGITS, IDENTICAL_VALUES)\nidentical_sparse = masked_attention_output(\n    GROUPS, identical_mask, LOGITS, IDENTICAL_VALUES)\n\n# Ties and degenerate branches required by the trace prompt.\ntie_mask = mask_from_scores({g: 1.0 for g in GROUPS}, EPSILON, GROUPS)\nsingle_group_mask = mask_from_scores({\"A\": 2.0}, EPSILON, [\"A\"])\nzero_score_mask = mask_from_scores({g: 0.0 for g in GROUPS}, EPSILON, GROUPS)\nepsilon_zero_mask = mask_from_scores(scores, 0.0, GROUPS)\n\n# Unequal source-group sizes expose whether a distinct permuted mask can match\n# the same edge count; the score/mask rule itself is unchanged.\nsizes = {\"A\": 1, \"B\": 2, \"C\": 3}\npermutation_costs = []\nfor assignment in itertools.permutations([scores[g] for g in GROUPS]):\n    assigned = dict(zip(GROUPS, assignment))\n    mask = mask_from_scores(assigned, EPSILON, GROUPS)\n    permutation_costs.append({\"mask\": \"\".join(g for g in GROUPS if g in mask),\n                              \"edges\": sum(sizes[g] for g in mask)})\nbase_edge_cost = sum(sizes[g] for g in ranked)\ndistinct_same_cost = sorted({p[\"mask\"] for p in permutation_costs\n                             if p[\"edges\"] == base_edge_cost\n                             and p[\"mask\"] != \"\".join(g for g in GROUPS if g in ranked)})\n\nprint(json.dumps({\n    \"status\": \"illustrative synthetic rule execution only\",\n    \"weights_loaded\": False,\n    \"gpu_used\": False,\n    \"illustrative_values\": {\n        \"epsilon\": EPSILON,\n        \"groups\": GROUPS,\n        \"one_query_one_layer_two_heads\": True,\n        \"attention_mass_per_head\": ALPHA[\"h1\"],\n        \"synthetic_head_values\": VALUES,\n        \"output_projection_head_slices\": \"identity matrices\",\n        \"source_group_token_counts\": {g: 1 for g in GROUPS},\n    },\n    \"group_projected_vectors\": group_vectors,\n    \"r\": scores,\n    \"sum_r\": total,\n    \"rho\": rho,\n    \"target_mass\": 1.0 - EPSILON,\n    \"ranked_mask\": ranked,\n    \"ranked_edges\": len(ranked),\n    \"dense_attention_output\": dense_output,\n    \"ranked_sparse_output\": ranked_output,\n    \"ranked_vs_dense_l2\": math.dist(ranked_output, dense_output),\n    \"permuted_scores\": permuted_scores,\n    \"permuted_mask\": permuted,\n    \"permuted_edges\": len(permuted),\n    \"permuted_sparse_output\": permuted_output,\n    \"control_moved_synthetic_attention_output\": permuted_output != ranked_output,\n    \"constructed_naive\": {\n        \"mask\": constructed_naive,\n        \"output\": constructed_naive_output,\n        \"bit_identical_to_mechanism_output\": constructed_naive_output == ranked_output,\n    },\n    \"candidate_declared_attention_mass_naive\": {\n        \"mass_scores\": mass_scores,\n        \"mask\": declared_naive,\n        \"output\": declared_naive_output,\n        \"bit_identical_to_mechanism_output\": declared_naive_output == ranked_output,\n    },\n    \"all_identical_value_probe\": {\n        \"r\": identical_scores,\n        \"mask\": identical_mask,\n        \"edges_retained\": len(identical_mask),\n        \"dense_output\": identical_dense,\n        \"sparse_output\": identical_sparse,\n        \"numeric_output_changed\": identical_dense != identical_sparse,\n    },\n    \"degenerate_probes\": {\n        \"all_score_ties_epsilon_0_25_mask\": tie_mask,\n        \"single_positive_group_mask\": single_group_mask,\n        \"all_zero_r_fallback_mask\": zero_score_mask,\n        \"epsilon_zero_mask\": epsilon_zero_mask,\n    },\n    \"unequal_group_size_control_probe\": {\n        \"token_counts\": sizes,\n        \"ranked_mask\": ranked,\n        \"ranked_edge_cost\": base_edge_cost,\n        \"permuted_masks_and_costs\": permutation_costs,\n        \"distinct_same_cost_permuted_masks\": distinct_same_cost,\n    },\n    \"scope\": \"Values are illustrative only; no learned component, checkpoint, environment, task-success outcome, or latency was simulated.\",\n}, ensure_ascii=False, sort_keys=True, indent=2))\n\r\n",
+        "output": "{\r\n  \"all_identical_value_probe\": {\r\n    \"dense_output\": [\r\n      2.0,\r\n      1.0\r\n    ],\r\n    \"edges_retained\": 2,\r\n    \"mask\": [\r\n      \"A\",\r\n      \"B\"\r\n    ],\r\n    \"numeric_output_changed\": false,\r\n    \"r\": {\r\n      \"A\": 1.118033988749895,\r\n      \"B\": 0.5590169943749475,\r\n      \"C\": 0.5590169943749475\r\n    },\r\n    \"sparse_output\": [\r\n      2.0,\r\n      1.0\r\n    ]\r\n  },\r\n  \"candidate_declared_attention_mass_naive\": {\r\n    \"bit_identical_to_mechanism_output\": true,\r\n    \"mask\": [\r\n      \"A\",\r\n      \"B\"\r\n    ],\r\n    \"mass_scores\": {\r\n      \"A\": 0.5,\r\n      \"B\": 0.25,\r\n      \"C\": 0.25\r\n    },\r\n    \"output\": [\r\n      4.0,\r\n      3.333333333333333\r\n    ]\r\n  },\r\n  \"constructed_naive\": {\r\n    \"bit_identical_to_mechanism_output\": true,\r\n    \"mask\": [\r\n      \"A\",\r\n      \"B\"\r\n    ],\r\n    \"output\": [\r\n      4.0,\r\n      3.333333333333333\r\n    ]\r\n  },\r\n  \"control_moved_synthetic_attention_output\": true,\r\n  \"degenerate_probes\": {\r\n    \"all_score_ties_epsilon_0_25_mask\": [\r\n      \"A\",\r\n      \"B\",\r\n      \"C\"\r\n    ],\r\n    \"all_zero_r_fallback_mask\": [\r\n      \"A\",\r\n      \"B\",\r\n      \"C\"\r\n    ],\r\n    \"epsilon_zero_mask\": [\r\n      \"A\",\r\n      \"B\",\r\n      \"C\"\r\n    ],\r\n    \"single_positive_group_mask\": [\r\n      \"A\"\r\n    ]\r\n  },\r\n  \"dense_attention_output\": [\r\n    3.5,\r\n    2.5\r\n  ],\r\n  \"gpu_used\": false,\r\n  \"group_projected_vectors\": {\r\n    \"A\": [\r\n      3.0,\r\n      0.0\r\n    ],\r\n    \"B\": [\r\n      0.0,\r\n      2.5\r\n    ],\r\n    \"C\": [\r\n      0.5,\r\n      0.0\r\n    ]\r\n  },\r\n  \"illustrative_values\": {\r\n    \"attention_mass_per_head\": {\r\n      \"A\": 0.5,\r\n      \"B\": 0.25,\r\n      \"C\": 0.25\r\n    },\r\n    \"epsilon\": 0.25,\r\n    \"groups\": [\r\n      \"A\",\r\n      \"B\",\r\n      \"C\"\r\n    ],\r\n    \"one_query_one_layer_two_heads\": true,\r\n    \"output_projection_head_slices\": \"identity matrices\",\r\n    \"source_group_token_counts\": {\r\n      \"A\": 1,\r\n      \"B\": 1,\r\n      \"C\": 1\r\n    },\r\n    \"synthetic_head_values\": {\r\n      \"h1\": {\r\n        \"A\": [\r\n          2.0,\r\n          0.0\r\n        ],\r\n        \"B\": [\r\n          0.0,\r\n          8.0\r\n        ],\r\n        \"C\": [\r\n          4.0,\r\n          0.0\r\n        ]\r\n      },\r\n      \"h2\": {\r\n        \"A\": [\r\n          4.0,\r\n          0.0\r\n        ],\r\n        \"B\": [\r\n          0.0,\r\n          2.0\r\n        ],\r\n        \"C\": [\r\n          -2.0,\r\n          0.0\r\n        ]\r\n      }\r\n    }\r\n  },\r\n  \"permuted_edges\": 2,\r\n  \"permuted_mask\": [\r\n    \"A\",\r\n    \"C\"\r\n  ],\r\n  \"permuted_scores\": {\r\n    \"A\": 3.0,\r\n    \"B\": 0.5,\r\n    \"C\": 2.5\r\n  },\r\n  \"permuted_sparse_output\": [\r\n    4.666666666666666,\r\n    0.0\r\n  ],\r\n  \"r\": {\r\n    \"A\": 3.0,\r\n    \"B\": 2.5,\r\n    \"C\": 0.5\r\n  },\r\n  \"ranked_edges\": 2,\r\n  \"ranked_mask\": [\r\n    \"A\",\r\n    \"B\"\r\n  ],\r\n  \"ranked_sparse_output\": [\r\n    4.0,\r\n    3.333333333333333\r\n  ],\r\n  \"ranked_vs_dense_l2\": 0.9718253158075498,\r\n  \"rho\": {\r\n    \"A\": 0.5,\r\n    \"B\": 0.4166666666666667,\r\n    \"C\": 0.08333333333333333\r\n  },\r\n  \"scope\": \"Values are illustrative only; no learned component, checkpoint, environment, task-success outcome, or latency was simulated.\",\r\n  \"status\": \"illustrative synthetic rule execution only\",\r\n  \"sum_r\": 6.0,\r\n  \"target_mass\": 0.75,\r\n  \"unequal_group_size_control_probe\": {\r\n    \"distinct_same_cost_permuted_masks\": [],\r\n    \"permuted_masks_and_costs\": [\r\n      {\r\n        \"edges\": 3,\r\n        \"mask\": \"AB\"\r\n      },\r\n      {\r\n        \"edges\": 4,\r\n        \"mask\": \"AC\"\r\n      },\r\n      {\r\n        \"edges\": 3,\r\n        \"mask\": \"AB\"\r\n      },\r\n      {\r\n        \"edges\": 4,\r\n        \"mask\": \"AC\"\r\n      },\r\n      {\r\n        \"edges\": 5,\r\n        \"mask\": \"BC\"\r\n      },\r\n      {\r\n        \"edges\": 5,\r\n        \"mask\": \"BC\"\r\n      }\r\n    ],\r\n    \"ranked_edge_cost\": 3,\r\n    \"ranked_mask\": [\r\n      \"A\",\r\n      \"B\"\r\n    ],\r\n    \"token_counts\": {\r\n      \"A\": 1,\r\n      \"B\": 2,\r\n      \"C\": 3\r\n    }\r\n  },\r\n  \"weights_loaded\": false\r\n}\r\n\r\n"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "Projected group vectors",
+          "value": "A=[3,0], B=[0,2.5], C=[0.5,0]",
+          "arithmetic": "For each group, sum the two identity-projected head contributions alpha_hg*V_hg."
+        },
+        {
+          "quantity": "Contribution scores r",
+          "value": "A=3, B=2.5, C=0.5; sum=6",
+          "arithmetic": "Euclidean norms of the projected group vectors; denominator is nonzero."
+        },
+        {
+          "quantity": "Normalized rho and target",
+          "value": "A=0.5, B=5/12, C=1/12; target=1-epsilon=0.75",
+          "arithmetic": "rho_g=r_g/6; stable descending order is A,B,C; cumulative after A is 0.5 and after B is 11/12, so S={A,B}."
+        },
+        {
+          "quantity": "Dense versus ranked masked attention output",
+          "value": "dense=[3.5,2.5]; sparse AB=[4,10/3]; L2 difference=sqrt(17/18)≈0.971825",
+          "arithmetic": "The retained-key native softmax renormalizes weights from (0.5,0.25) to (2/3,1/3); outputs sum the two identity-projected heads."
+        },
+        {
+          "quantity": "Retained QK/AV edges",
+          "value": "2 of 3 in both ranked and permuted masks",
+          "arithmetic": "One query and one token per source group; this is an illustrative edge count, not latency."
+        },
+        {
+          "quantity": "Independent naive and declared naive",
+          "value": "Both select AB and output [4,10/3], exactly matching the mechanism on this instance",
+          "arithmetic": "Constructed naive keeps the first two source groups at the same two-edge budget; candidate-declared average-attention-mass scores are (0.5,0.25,0.25), with native-order tie break."
+        },
+        {
+          "quantity": "All-identical-value probe",
+          "value": "Dense=[2,1]; mask AB=[2,1] despite retaining only 2 of 3 edges",
+          "arithmetic": "Each head has the same value across all groups, so any softmax renormalization preserves that head output."
+        }
+      ],
+      "anomalies": []
+    },
+    "degenerate_probes": [
+      {
+        "probe": "Empty source-group set",
+        "behavior": "Outside the ordinary WAM observation domain implied by the native observation packer. If injected, denominator=0 and all-groups fallback returns an empty set; attention over zero keys is undefined.",
+        "finding": null
+      },
+      {
+        "probe": "k=0",
+        "behavior": "Not applicable: the candidate has no k parameter; its decision variable is epsilon and S_l.",
+        "finding": null
+      },
+      {
+        "probe": "All-identical per-head values",
+        "behavior": "For the listed illustrative values, contribution ranking removes C and retains AB, but dense and masked outputs are both [2,1].",
+        "finding": "Parameter/risk note only: this assignment shows numerical action output need not change for every mask; the main T2 assignment does change it."
+      },
+      {
+        "probe": "Tied r values at epsilon=0.25",
+        "behavior": "With r=(1,1,1), stable native source order is A,B,C; cumulative mass after two is 2/3<0.75, so all three groups are retained and the rule halts.",
+        "finding": null
+      },
+      {
+        "probe": "Single positive group",
+        "behavior": "rho=1 and the sole group is retained; denominator is nonzero and the rule halts.",
+        "finding": null
+      },
+      {
+        "probe": "All r values zero",
+        "behavior": "The explicit zero-denominator branch retains all groups and avoids division by zero.",
+        "finding": null
+      },
+      {
+        "probe": "epsilon=0 and epsilon approaching 1",
+        "behavior": "At epsilon=0 all positive-score mass is required; as epsilon approaches 1 from below, the positive denominator still makes the top positive group meet a positive target. epsilon=1 is outside the declared range.",
+        "finding": null
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "Weights/checkpoint/schedule remain frozen; this intervention does not train or update weights.",
+        "established_by": "S1, S7",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "r_lg, rho_lg, stable cumulative-threshold mask and zero-denominator fallback are constructed as specified.",
+        "established_by": "S3, S4",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "A variable-length/sparse kernel actually skips omitted QK/AV edges and reduces end-to-end latency.",
+        "established_by": "S5, S6 (as a test requirement)",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The first solver evaluation's rho ordering predicts later solver-state action relevance and omitted low-rho groups lack high-leverage control cues.",
+        "established_by": "UNESTABLISHED; listed as untested premises",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The numerical action chunk changes whenever the selected mask removes groups.",
+        "established_by": "UNESTABLISHED as a universal numeric guarantee; S5 changes the graph, not necessarily the output value",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Paired task-success and latency results meet the frozen gates on each backbone.",
+        "established_by": "S6 is the proposed measurement; no experiment was run",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "(ii) incremental",
+      "naive_version": "At the same two-edge budget, retain the first two native source groups by source order without computing contribution scores.",
+      "naive_fairness": "Uses the same frozen model, source metadata, information available at the chunk start, two-edge budget and compact-kernel deployment; it is simpler because it skips the contribution scoring pass.",
+      "declared_naive": {
+        "version": "BLOCK 2's average-attention-mass ranking over observation groups.",
+        "instance_behavior": "mass scores A=0.5, B=0.25, C=0.25; stable source order selects AB and yields [4,10/3].",
+        "agrees_with_constructed": "yes"
+      },
+      "instance_behavior": {
+        "naive": "mask AB, output [4,10/3]",
+        "mechanism": "mask AB, output [4,10/3]",
+        "divergence": "none on this illustrative instance",
+        "kind": "instance_contingent"
+      },
+      "naive_kind": "alternative_design",
+      "identity": "bit_identical",
+      "verdict": "equivalent_to_naive",
+      "reasoning": "The two simpler rankings agree with the mechanism on this one synthetic instance; the candidate declared branch (ii), where adjacency/equivalence is expected. The distinct projected-contribution scores are surfaced (3,2.5,0.5) but happen to induce the same mask here."
+    }
+  },
+  "contract_version": 2,
+  "base_candidate_sha256": "f104bc86b18ed81b78036b7f8de2b4df8e2bb33969074de97c340736476b63ca",
+  "verdict": "pass",
+  "unrepaired": [
+    {
+      "finding": "For an all-identical per-head value assignment, removing group C leaves the numerical sparse attention output unchanged ([2,1] before and after), although the primary T2 assignment changes it. The action-output effect is therefore value-dependent.",
+      "severity": "note",
+      "why_not_repaired": "This is a parameter/risk note from one synthetic assignment, not a universal procedural defect; the method remains executable and another admissible assignment changes the output.",
+      "tag": "parameter",
+      "source": "T3",
+      "derivation": null,
+      "repair_kind": null,
+      "verbatim_step_quote": "保留下来的 attention output 进入原 residual/transformer blocks，得到新的 action velocity 并更新原 flow state，所以稀疏图直接改变 action chunk 与后续控制，而不是只改计时或风险分数。",
+      "executed_evidence": "toy_dry_run.py sets h1 values equal to [2,0] and h2 values equal to [0,1] across A/B/C; alpha=(0.5,0.25,0.25). The mask selects AB, yet dense and retained-key-renormalized outputs both equal [2,1]. The main T2 values instead yield dense [3.5,2.5] and sparse [4,10/3].",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    },
+    {
+      "finding": "The source-group permutation control cannot always provide a distinct mask at exactly equal retained-edge cost when source groups have unequal token counts.",
+      "severity": "note",
+      "why_not_repaired": "This is a legal size regime affecting the later falsification control, not the candidate's score-and-mask computation; equal-sized groups in the main T2 instance give a valid equal-cost control.",
+      "tag": "regime",
+      "source": "T5",
+      "derivation": null,
+      "repair_kind": null,
+      "verbatim_step_quote": "6. 对 dense、rho-ranked mask、保留边成本相同的 source-group permutation mask 做 paired comparison；计入评分、压紧、kernel launch 与其余模型路径的完整 latency，记录 per-path FLOPs、task success、action-chunk deviation 和首次 action divergence。Amdahl headroom不足、稀疏 kernel 未真实省算、或 permutation 不影响 task outcome，任一项成立即停止候选。",
+      "executed_evidence": "With token counts A=1,B=2,C=3 and the T2 r=(3,2.5,0.5), ranked mask AB costs 3 edges. Enumerating all six score permutations gives masks/costs AB:3, AC:4, AB:3, AC:4, BC:5, BC:5; no distinct mask has cost 3.",
+      "reading_dependence": "reading_robust",
+      "structural_requirement": null
+    }
+  ],
+  "previous_findings_status": [],
+  "suggested_repairs": [],
+  "applied_revisions": []
+}

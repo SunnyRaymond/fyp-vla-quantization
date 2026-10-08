@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N fwsvanalysis
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ $rc -eq 0 ]]; then touch "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+cp "$ROOT/analysis.py" "$ROOT/analysis.pbs" "$ARTIFACTS/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+python3 "$ARTIFACTS/analysis.py" --root "$ROOT"
+echo ANALYSIS_COMPLETE

@@ -1,0 +1,159 @@
+{
+  "contract_version": 2,
+  "candidate_sha256": "b4be1cb4a5046ccfaf6cf1f09d2b46a7eadaa12d54f9dbea7ca65a89ed985ed9",
+  "sources": {
+    "core_mechanism": "For each model m, let Q_m be the exact module set quantized by its matched branch-free W4A8 PTQ comparator and let theta_m be the existing trainable weights in Q_m; Fast-WAM uses its independent ActionDiT, while the released shared-backbone LingBot-VA and Cosmos Policy require quantizing and updating the declared shared denoiser blocks, so those results are action-targeted shared-backbone QAT rather than weight-scope action-only QAT. With conditioning c, initial noise z, and native solver innovations eta, run the fake-quantized student to its own states x_Q[m,k], containing every evolving state needed by the query: action latent for Fast-WAM and coupled video/action state for shared models. Let K_m be the model's active native solver indices and sample k uniformly from K_m; detach x_Q[m,k], then restart both BF16 teacher and quantized student from that state and apply each unchanged remaining suffix with the same c and eta. Let S[b,m,k] denote that suffix, D_m the native action denormalization map, and E_m the controller's executed-prefix selector. Let J_m be the action channels selected by E_m, and let s[m,j] > 0 be the per-channel scale specified by model m's existing action-normalization/controller contract for channel j, fixed across comparison arms. For each branch b, define y_tilde[b|Q,m,k] as its denormalized, selected command immediately before any hard clipping or gripper threshold; when gripper thresholding is present, use the continuous pre-threshold gripper command for this training signal. Define the exact executed command y[b|Q,m,k] = E_m(D_m(S[b,m,k](x_Q[m,k], c, eta_after_k))) including the model's native clipping and thresholding, and delta_visit[m,k] = y[Q|Q,m,k] - y[BF16|Q,m,k]. Train theta_m with the expectation over training contexts, native noise/innovations, and k of L_train = (1/|J_m|) sum over j in J_m of ((y_tilde[Q|Q,m,k,j] - y_tilde[BF16|Q,m,k,j]) / s[m,j]) squared; backpropagate only through the student suffix. This dimensionless continuous pre-threshold residual (or an STE if required by a model implementation) is a gradient-bearing surrogate related to, but not identical to, the exact physical-command metric; report the exact clipped/thresholded executed-command deviation separately, including per-channel values in native units. This is a suffix endpoint target, not a per-step velocity loss or a change to the solver. The teacher suffix is conditioned on a state reached by the quantized student, so its endpoint is not the teacher's original noise-seed endpoint and it is not a physical oracle; the teacher is removed completely at evaluation. Training contexts come from the existing model-specific LIBERO training data, while only internal denoising states are student-generated; this does not claim to correct environment observations induced by earlier executed actions. The same target definition transfers across architectures, but module scope, coupled state and normalization remain model-specific, and transfer is a hypothesis until tested. For the native executed prefix, let T_exec,m be the number of time steps selected by E_m and index them by u; the scalar training objective is L_train = (1/(T_exec,m * |J_m|)) * sum_{u=1}^{T_exec,m} sum_{j in J_m} (((y_tilde[Q|Q,m,k,u,j] - y_tilde[BF16|Q,m,k,u,j]) / s[m,j])^2), retaining every native prefix step.",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES\n- Native WAM solvers are iterative, and changing quantized transitions can change later solver inputs; the model interfaces and common error bookkeeping define these paths, while the size and task consequence of the shift are untested — falsification target.\n- A BF16 model can be queried at a state produced by its quantized counterpart; both model interfaces expose the relevant inference computation, but memory and throughput for suffix training are unmeasured.\n- The action denormalizer D_m and executed-prefix selector E_m define the controller-facing output; latent error alone is not an actuator-space metric.\n- Load-bearing variable and estimand: V_visit[m] is the expectation over held-out contexts c from model m's named LIBERO evaluation distribution, native initial noise z, native innovations eta, and uniformly sampled active solver index k of (1/|J_m|) times the sum over selected channels j of (delta_visit[m,k,j]/s[m,j]) squared. Here delta_visit is the exact clipped/thresholded executed-command difference, and s[m,j] comes from the existing model/controller channel scale; report exact command deviations per channel in native units as a separate outcome. The association of this dimensionless V_visit with closed-loop benefit is untested — falsification target.\n- Observation model: training c is sampled from the existing training episodes for each model (Fast-WAM's public LIBERO-fastwam demonstrations for the initial pilot); episodes are temporally clustered and demonstrator-selected, not an unbiased sample of quantized-student closed-loop observations. Student-generated x_Q states expose denoising-path shift conditional on those contexts only; environmental occupancy shift remains an explicit limitation.\n\nBLOCK 2 — NAIVE-BASELINE AUDIT\nNaive version: initialize from the BF16 WAM, fake-quantize the matched module set to W4A8, and train it with ordinary action/denoising loss plus matched BF16 teacher KD evaluated on teacher-visited states. This is a credible baseline that may work, so branch (ii): the contribution is incremental and does not claim that generic QAT, KD, or trainable weights are novel. The added mechanism is the teacher's full remaining suffix endpoint evaluated from the quantized student's own latent state, with a dimensionless channel-scaled residual on the continuous pre-threshold command; this training surrogate is not identical to the exact clipped/thresholded physical-command metric. Whether the suffix operator is distinct from low-bit on-policy distillation, continuous-state diffusion OPD, flow-map backward simulation or behavior-state clean-endpoint anchoring remains an open prior-art question. The load-bearing artifact is this matched student-state suffix response, not generic STE training, ordinary endpoint KD, PTQ scale calibration, mixed-precision allocation, or a protected high-bit branch.\n\nBLOCK 3 — DESIGN RATIONALE\nA single mechanism closes the anchor because the unresolved variable is whether fixed-weight PTQ suffices once its own quantized solver leaves the teacher path; the action endpoint suffix target changes that training signal without adding a separate evaluation leg. I rejected environment-rollout DAgger as the core method because the available training contexts are demonstrator data and that would require an additional simulator-interaction data pipeline; closed-loop rollout remains a separate falsification. I also rejected learned quantizer scales and error-compensation branches because they would confound the weight-adaptation comparison and approach LSQ/QVGen/Q-WAM mechanisms already named in the lineage.",
+    "core_mechanism_steps": "1. For Fast-WAM Base, LingBot-VA's released shared-backbone checkpoint, and Cosmos Policy's LIBERO model, record each BF16 reference, native schedule, action normalization/denormalization map, executed-prefix selector, and exact W4A8 PTQ module set Q_m; output a model-specific scope manifest. 2. Split each named LIBERO dataset by episode; sample training context c only from its training episodes, draw z and solver innovations from that model's native inference distribution, and run the fake-quant student to record x_Q[m,k]; output the student path states. 3. Sample k uniformly from the active native indices K_m and detach x_Q[m,k]; from this identical state and remaining innovations, run a BF16 teacher suffix and a fake-quant student suffix; output the two suffix endpoint actions. 4. Apply D_m and E_m up to any hard clip or gripper threshold to obtain each continuous pre-threshold command; use the continuous gripper signal when thresholding is present, scale each selected channel j by its existing positive model/controller scale s[m,j], and backpropagate the mean squared dimensionless residual only through the student suffix into theta_m. Separately compute and report the exact clipped/thresholded executed-command deviation per channel in native units; keep quantizer scales, schedule, excluded precision and action interface fixed. 5. Train the ordinary action-only QAT and matched teacher-KD controls with the same examples and matched measured training compute, and include the strongest runnable branch-free W4A8 PTQ comparator; report added teacher-suffix work explicitly. 6. On held-out fixed contexts and paired noise, report denormalized executed-action deviation separately from LIBERO closed-loop completion; then measure full action-query latency with the declared native W4A8 kernel, including context/video prefill, without a teacher. 7. Attempt transfer to LingBot-VA and Cosmos Policy only under their shared-backbone contracts, recording that shared blocks affect video and action states and making no weight-scope action-only claim. For each matched contrast, keep the same model-specific training and evaluation data split and deployment scope, and compare arms under a common total measured training GPU-time budget or, when compute is matched by solver calls, matched total teacher and student NFE; report total GPU-time, separate teacher/student NFEs, examples and unique-context exposure, repeated exposure, and optimizer updates so differences remain visible. Count 'vanilla action-only QAT plus teacher KD' and 'teacher KD at teacher states x_FP[m,k]' as one arm whenever their objective and targets are identical. For shared-backbone per-step OPD, define the loss with an action-only output mask over controller-selected action channels and prefix steps, with no video-output loss, and label it action-targeted shared-backbone training; any joint video-plus-action loss is a separately named arm with its own cost and scope.",
+    "gap_closure": [
+      {
+        "gap": "SteerQuant, QuantWAMs, and Q-WAM all keep pretrained WAM weights fixed and manage low-bit action error through calibration or protected precision; no retrieved WAM leaf tests whether this immutability is necessary for their quality-cost boundary. — stakes: researchers may infer that static PTQ is sufficient without evidence, or fund expensive adaptation without evidence that frozen weights are the limiting factor, weakening principled method selection.",
+        "main_pattern": "generative_process_redesign",
+        "sub_pattern_not_applicable_reason": "",
+        "sub_pattern": "C24 (Liberate a Fixed Generative Component)",
+        "companion_pattern": null,
+        "how_closed": "C24's conditioning/operating-state move is instantiated as teacher supervision re-queried from the quantized student's own denoising states; its suffix endpoint loss makes the weight-adaptation method concrete. The sub-pattern evidence is structurally adjacent through iterative generative refinement, though not WAM-QAT-specific."
+      }
+    ],
+    "falsification_prediction": "On the Fast-WAM Base pilot with public LIBERO-fastwam train/evaluation episodes, compare BF16, matched branch-free W4A8 PTQ, ordinary action-only QAT, teacher KD at teacher states, and student-path suffix QAT while holding model, data split, schedule, chunk, controller, normalization and kernel path fixed. Measure fixed-input denormalized executed-action deviation, LIBERO closed-loop completion, and native full action-query latency as separate outcomes; the candidate predicts its completion gain over matched teacher KD increases with task-level V_visit rank, while low-V_visit tasks show little gain. As a mechanism control, permute BF16 suffix endpoints among quantized student states matched by model and solver index while preserving their marginal endpoint distribution; the predicted downstream effect is loss of the candidate's closed-loop completion gain and disappearance of the V_visit-linked gain pattern, not merely a change in V_visit itself. No teacher is used at evaluation, and transfer to shared-backbone LingBot-VA/Cosmos Policy is a separate scope-labeled falsification rather than a pooled success claim. Add matched-measured-compute controls for explicit vanilla QAT plus teacher KD, ordinary original-noise-seed endpoint KD, teacher-state suffix KD restarted from teacher-visited x_FP[m,k], and student-state per-step OPD at x_Q[m,k], matching measured teacher-query and suffix work across arms under the same contexts and paired noise/solver-index draws; a completion gain beyond these controls is the evidence relevant to the paired full-suffix endpoint target."
+  },
+  "claim_step_map": [
+    {
+      "claim": "The teacher suffix starts from the exact quantized-student state with the same remaining innovations; its endpoint is not the teacher's original noise-seed endpoint or a physical oracle.",
+      "established_by": "S3",
+      "strength_grade": "established",
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "The target is measured after native denormalization and executed-prefix selection in controller-facing action units.",
+      "established_by": "S4",
+      "strength_grade": "established",
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "Only the student suffix receives gradient; quantizer scales, schedule, excluded precision and interface stay fixed.",
+      "established_by": "S4",
+      "strength_grade": "established",
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "The teacher is removed completely at evaluation and no teacher inference branch is added.",
+      "established_by": "S6",
+      "strength_grade": "established",
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "Shared-backbone transfer to LingBot-VA/Cosmos Policy follows their shared scope and is a hypothesis until tested.",
+      "established_by": "S7",
+      "strength_grade": "empirical",
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "Student-path suffix QAT improves closed-loop completion preferentially as student-visited suffix-response energy rises.",
+      "established_by": "S6",
+      "strength_grade": "empirical",
+      "arbitration": "argument",
+      "measured": null
+    }
+  ],
+  "dataflow": [
+    {
+      "step": "S1",
+      "consumes": [
+        "each model's BF16 reference, native schedule, D_m, E_m, matched W4A8 module set Q_m and precision/kernel contract"
+      ],
+      "produces": [
+        "model-specific scope manifest; trainable theta_m subset"
+      ],
+      "note": "Verbatim: \"For Fast-WAM Base, LingBot-VA's released shared-backbone checkpoint, and Cosmos Policy's LIBERO model, record each BF16 reference, native schedule, action normalization/denormalization map, executed-prefix selector, and exact W4A8 PTQ module set Q_m; output a model-specific scope manifest.\" Q_m and theta_m are defined in core_mechanism.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S2",
+      "consumes": [
+        "model-specific episode-split training episodes; native initial-noise and innovation distributions"
+      ],
+      "produces": [
+        "training contexts c, noise z, innovations eta, and full fake-quantized student path states x_Q[m,j] for j in K_m"
+      ],
+      "note": "Verbatim: \"Split each named LIBERO dataset by episode; sample training context c only from its training episodes, draw z and solver innovations from that model's native inference distribution, and run the fake-quant student to record x_Q[m,k]; output the student path states.\" Likely-fatal step selected first: the singular x_Q[m,k] references k before S3 samples it. The full-path reading is executable and matches the plural output; the alternative selected-state reading is a forward reference and cannot instantiate S2 as ordered. This is a reading/wording note, not an impossibility across readings.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S3",
+      "consumes": [
+        "K_m, sampled k, detached x_Q[m,k], c, and eta after k"
+      ],
+      "produces": [
+        "BF16 teacher-suffix and fake-quant student-suffix endpoint action chunks from the same state and remaining innovations"
+      ],
+      "note": "Verbatim: \"Sample k uniformly from the active native indices K_m and detach x_Q[m,k]; from this identical state and remaining innovations, run a BF16 teacher suffix and a fake-quant student suffix; output the two suffix endpoint actions.\" The numeric trace attacked this state-alignment step first; with supplied synthetic suffix outputs, both branches compute.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S4",
+      "consumes": [
+        "two suffix endpoints, D_m, E_m and student-suffix differentiable path to theta_m"
+      ],
+      "produces": [
+        "delta_visit, squared endpoint loss, student-suffix gradient and updated theta_m"
+      ],
+      "note": "Verbatim: \"Apply D_m and E_m to both endpoints, compute delta_visit, backpropagate its squared norm only through the student suffix into theta_m, and keep quantizer scales, schedule, excluded precision and action interface fixed; output updated quantized weights.\" Synthetic local derivatives and one illustrative SGD step are stated in T2; no learned component was modeled.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S5",
+      "consumes": [
+        "same examples and matched measured training compute; ordinary action-only QAT, teacher-state KD and branch-free PTQ controls"
+      ],
+      "produces": [
+        "matched control/comparator results and stated teacher-suffix training cost"
+      ],
+      "note": "Verbatim: \"Train the ordinary action-only QAT and matched teacher-KD controls with the same examples and matched measured training compute, and include the strongest runnable branch-free W4A8 PTQ comparator; report added teacher-suffix work explicitly.\"",
+      "status": "instantiated"
+    },
+    {
+      "step": "S6",
+      "consumes": [
+        "held-out fixed contexts, paired noise, evaluation episodes and declared native W4A8 kernel"
+      ],
+      "produces": [
+        "separate denormalized action-deviation, closed-loop-completion and full action-query-latency outcomes, with no teacher at evaluation"
+      ],
+      "note": "Verbatim: \"On held-out fixed contexts and paired noise, report denormalized action deviation separately from LIBERO closed-loop completion; then measure full action-query latency with the declared native W4A8 kernel, including context/video prefill, without a teacher.\"",
+      "status": "instantiated"
+    },
+    {
+      "step": "S7",
+      "consumes": [
+        "shared-backbone LingBot-VA/Cosmos Policy contracts and their measured transfer outcomes"
+      ],
+      "produces": [
+        "scope-labeled transfer falsification; no pooled action-only weight-scope claim"
+      ],
+      "note": "Verbatim: \"Attempt transfer to LingBot-VA and Cosmos Policy only under their shared-backbone contracts, recording that shared blocks affect video and action states and making no weight-scope action-only claim.\"",
+      "status": "instantiated"
+    }
+  ],
+  "dataflow_status": "stale_since_revision",
+  "regime_notes": [],
+  "limits": "Source record, not proof. Final independent review checks semantic correspondence.",
+  "revision_changed_fields": [
+    "core_mechanism",
+    "core_mechanism_reasoning",
+    "core_mechanism_steps",
+    "falsification_prediction"
+  ],
+  "authority": "sources (the post-revision candidate) are the authority; dataflow and claim_step_map trace the PRE-revision design and must not be used where they disagree with sources.",
+  "post_revision_evidence": {
+    "dataflow": "L_train is defined as (1/(T_exec,m*|J_m|))*sum_u sum_j[((y_tilde[Q|Q,u,j]-y_tilde[BF16|Q,u,j])/s[m,j])^2]; s[m,j]>0 keeps each channel scaled dimensionlessly, and all u=1..T_exec,m remain included. By contrast, V_visit still sums over j without a time index/reduction although E_m returns the native executed prefix, so its task-level diagnostic is not explicitly scalar. Its pre-QAT/PTQ versus per-arm post-training provenance is also unstated; this is the remaining F1 scope/interpretation gap.",
+    "dry_run": "Illustrative legal linear suffix: detach x_Q, hold teacher outputs fixed, and let student-minus-teacher continuous outputs be theta*[[0.1,0.2],[0.3,0.4]], with T_exec=2, J={1,2}, s=[0.5,2]. At theta=1 the full time-by-channel loss is 0.1125 and dL/dtheta=0.225; the detached prelude and teacher receive no gradient. This is a hand derivation, not model execution.",
+    "degenerate_probes": "Equal teacher/student suffix commands give zero loss and gradient; T_exec=1 reduces to the usual channel mean. Positive scales avoid division by zero, and the candidate samples active solver indices, avoiding an empty terminal suffix. Hard gripper thresholding uses the continuous pre-threshold training signal and is reported separately as an exact command metric.",
+    "claim_step_map": "Steps 1-4 define model scope, student-path states, paired suffix branches, and the scalar student-suffix update; step 5 covers controls and matched-cost reporting; step 6 separates fixed-input action deviation, closed-loop completion, and native latency; step 7 labels shared-backbone transfer and scope. The V_visit diagnostic remains the F1 gap recorded above."
+  }
+}

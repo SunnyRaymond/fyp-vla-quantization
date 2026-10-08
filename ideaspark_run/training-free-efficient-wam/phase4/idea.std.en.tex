@@ -1,0 +1,86 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.55cm]{geometry}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{fontspec}
+\usepackage[CJKmath=true]{xeCJK}
+% CJK main font is resolved at COMPILE time on the actual machine, not baked in at
+% generation time, so a .tex generated on one OS still renders on another (the older
+% Python-side probe hardcoded one OS's font name into the file and broke when moved).
+% Walk a cross-platform priority list and use the first font that exists; AutoFakeBold
+% + AutoFakeSlant give bold/italic CJK even on faces that ship no bold/italic cut.
+\newcommand{\setCJKto}[1]{\setCJKmainfont{#1}[AutoFakeBold=true,AutoFakeSlant=0.2]}
+\IfFontExistsTF{Noto Sans CJK SC}{\setCJKto{Noto Sans CJK SC}}{%        % Linux (fonts-noto-cjk); cross-platform if installed
+ \IfFontExistsTF{Source Han Sans SC}{\setCJKto{Source Han Sans SC}}{%   % Adobe 思源黑体; cross-platform
+  \IfFontExistsTF{PingFang SC}{\setCJKto{PingFang SC}}{%               % macOS 10.11+
+   \IfFontExistsTF{Hiragino Sans GB}{\setCJKto{Hiragino Sans GB}}{%    % older macOS
+    \IfFontExistsTF{Microsoft YaHei}{\setCJKto{Microsoft YaHei}}{%     % Windows
+     \IfFontExistsTF{WenQuanYi Micro Hei}{\setCJKto{WenQuanYi Micro Hei}}{% % older Linux
+      \setCJKto{Songti SC}}}}}}}                                       % macOS bottom fallback
+\definecolor{cblue}{HTML}{4C72B0}
+\setlength{\parskip}{3pt}\setlength{\parindent}{0pt}
+\setlist[enumerate]{topsep=2pt,itemsep=2pt,parsep=1pt,partopsep=0pt}
+\setlist[itemize]{topsep=2pt,itemsep=2pt,parsep=1pt,partopsep=0pt}
+% Let prose-embedded inline math break across lines and absorb small overflows, so simple
+% formulas inserted mid-sentence stop running past the right margin.
+\tolerance=1200
+\emergencystretch=2.5em
+\relpenalty=20
+\binoppenalty=40
+\hfuzz=1pt
+\begin{document}
+
+\section*{Action-Context Source Masking for Frozen Joint WAMs}
+\textbf{Method.} Action-Context Source Masking (ACSM)
+\section*{Motivation}
+In frozen joint World Action Models (WAMs), reducing future-side computation does not tell us whether each action update can stop reading the full observation. WAMs repeatedly update action chunks through coupled transformer paths while conditioning on observations and retained future tokens;\allowbreak{} each active native action solver update may still read all observation tokens. Existing evidence measures neither how action quality depends on those source interactions nor what share of full-inference time they consume, so token retention and end-to-end latency alone cannot answer whether this path is a useful target.
+
+Recent work makes a bounded inference-time test possible: Sparse-WAM (2026-09) reduces future-side computation, WAMachine (2026-09) studies state and residual reuse, and Efficient-WAM (2026-06) separates video and action schedules. The remaining question is action-query-to-observation sensitivity and cost. This proposal profiles that path and compares masks with equal query-key/attention-value (QK/AV) edge counts on frozen models. It does not establish that the required checkpoints, source-provenance interface, or compact kernels are available.
+
+Prior methods stop at neighboring mechanisms. Sparse-WAM selects future visual tokens and reuses selected or omitted-region predictions, while retaining all observation/action tokens and recomputing actions. WAMachine remaps trajectories, rebinds observations during execution, and reuses intermediate residuals after probes, but does not isolate current observation-source edges used by each action update. Efficient-WAM reduces video updates and caches video keys and values while continuing action updates, but leaves their observation sensitivity and cost unmeasured. C3ache reuses action-expert denoising residuals across chunks;\allowbreak{} FBFM injects new-state constraints and committed-action overlap through feedback;\allowbreak{} GlanceWAM overlaps sparse future imagination with execution and trains for staleness. These works do not rank and remove source-specific observation edges during frozen inference.
+
+A positive result would show, for each tested frozen checkpoint, whether observation-source edges can be reduced while meeting the original task-success gate and whether measured headroom remains to lower full-inference latency. It would add a WAM-specific action-conditioning test and a same-edge-budget comparison with earlier scoring recipes. A negative result would bound only the tested opportunity, not prove a general impossibility.
+\section*{Method}
+\subsection*{M0\_background}
+\emph{Fix each baseline and check measured headroom before applying the proposed mask.}
+\begin{enumerate}[leftmargin=*,start=1]
+  \item Freeze the named checkpoint, native solver schedule, task configuration, and backend separately for FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab. Record that the matching FastWAM-Joint checkpoint is unconfirmed. Treat Motus/RoboTwin 2.0 only as a conditional simulation fallback, not as the matching primary baseline.
+\par\emph{Why:} The comparison is defined for a particular frozen checkpoint and native evaluation path;\allowbreak{} changing its weights, schedule, task, or backend changes what is being measured.
+  \item Profile the named native paths: FastWAM's `fastwam\_joint.py`, `fastwam.py`, and `mot.py`;\allowbreak{} Cosmos' `omni\_mot\_model.py` and the RoboLab policy-server entry point. Measure time and FLOPs separately for action-query-to-observation query-key/attention-value (QK/AV), other attention, QKV, feed-forward network (FFN), and mask/packing. Compute \(`\phi _{obs}`\), the measured full-inference time share of action-query-to-observation QK/AV, and its ideal Amdahl upper bound. Stop if attainable savings cannot meet the original latency gate.
+\noindent\emph{phi\_obs is the measured full-inference time share of action-query-to-observation QK/AV;\allowbreak{} this ideal Amdahl upper bound excludes scoring, packing, kernel, and other model-path costs.}
+\par\noindent{\small\ttfamily [eq~1, raw LaTeX, not typeset] \textbackslash\{\}mathrm\{speedup\}\_\{\textbackslash\{\}max\}=\textbackslash\{\}frac\{1\}\{1-\textbackslash\{\}phi\_\{\textbackslash\{\}mathrm\{obs\}\}\}}
+\par\emph{Why:} Action-update count does not reveal the targeted path's share of complete inference time;\allowbreak{} the profile checks whether deleting its edges could affect full-path latency.
+\end{enumerate}
+\subsection*{M1\_source\_scoring}
+\emph{Rank sources by output-projected action contribution and freeze a mask using separate held-out episodes.}
+\begin{enumerate}[leftmargin=*,start=3]
+  \item Use only existing camera/view or other source provenance from the token packer;\allowbreak{} stop if none is exposed. At each chunk's dense first native action evaluation, \(`k_{ref}`\), read native attention weights \(\alpha \), values V, and output-projection head slices \(`W_{O}`\). For each layer and source group, sum the norms of that group's action-query contribution after the native output projection to obtain \(`r_{lg}`\), then normalize within the layer to obtain \(`\rho _{lg}`\). If the normalization denominator is zero, retain every group.
+\noindent\emph{For each layer and observation-source group, \(r_{lg}\) sums the norm of its action-query attention contribution after the native output projection.}
+\par\noindent{\small\ttfamily [eq~2, raw LaTeX, not typeset] r\_\{lg\}=\textbackslash\{\}sum\_\{q\textbackslash\{\}in Q\_l\}\textbackslash\{\}left\textbackslash\{\}|\textbackslash\{\}sum\_\{h\textbackslash\{\}in H\_l\}W\textasciicircum{}\{l\}\_\{O,h\}\textbackslash\{\}left(\textbackslash\{\}sum\_\{j\textbackslash\{\}in g\}\textbackslash\{\}alpha\textasciicircum{}\{l\}\_\{h\}(q,j)V\textasciicircum{}\{l\}\_\{h\}(j)\textbackslash\{\}right)\textbackslash\{\}right\textbackslash\{\}|\_2}
+\noindent\emph{\(rho_{lg}\) normalizes each group contribution within its layer;\allowbreak{} if the denominator is zero, the rule retains every group.}
+\par\noindent{\small\ttfamily [eq~3, raw LaTeX, not typeset] \textbackslash\{\}rho\_\{lg\}=\textbackslash\{\}frac\{r\_\{lg\}\}\{\textbackslash\{\}sum\_\{g'\textbackslash\{\}in G\_o\}r\_\{lg'\}\}}
+\par\emph{Why:} The score measures each observation source's output-projected contribution while keeping the dense reference inputs, weights, image, instruction, future/action queries, and training objective fixed.
+  \item On held-out selection episodes \(`D_{select}`\), order groups by descending \(`r_{lg}`\) and break ties by native source order. Choose \(\epsilon \) in [0,1) so \(`S_{l}(\epsilon )`\) is the shortest prefix whose cumulative \(`\rho _{lg}`\) reaches \(1- \epsilon \). Among masks that pass the original frozen task-success gate, select the one with the lowest measured full-path latency. If no pre-existing gate applies, report the success-latency curve without declaring a pass.
+\noindent\emph{The \(g_{i}\) are ordered by descending \(r_{lg}\) with native source order breaking ties;\allowbreak{} \(S_{l}\) is the shortest prefix meeting the cumulative-share target, with epsilon selected in [0,1).}
+\par\noindent{\small\ttfamily [eq~4, raw LaTeX, not typeset] S\_l(\textbackslash\{\}epsilon)=\textbackslash\{\}\{g\_1,\textbackslash\{\}ldots,g\_m\textbackslash\{\}\},\textbackslash\{\}quad m=\textbackslash\{\}min\textbackslash\{\}left\textbackslash\{\}\{t:\textbackslash\{\}sum\_\{i=1\}\textasciicircum{}\{t\}\textbackslash\{\}rho\_\{l g\_i\}\textbackslash\{\}geq 1-\textbackslash\{\}epsilon\textbackslash\{\}right\textbackslash\{\}\}}
+\par\emph{Why:} The frozen success gate constrains how much context can be removed, and keeping \(`D_{select}`\) separate from paired evaluation prevents choosing \(\epsilon \) from the outcomes used to judge the candidate.
+\end{enumerate}
+\subsection*{M2\_sparse\_update}
+\emph{Apply the frozen mask through a kernel that actually skips omitted action-to-observation computation.}
+\begin{enumerate}[leftmargin=*,start=5]
+  \item For later native action-solver evaluations in the same chunk, send action queries and retained observation keys/values to a true variable-length or block-sparse kernel, and verify omitted QK/AV work is not executed. Recompute softmax over retained keys, pass the attention output through the original residual/transformer blocks, and let the changed action hidden state and velocity update the original flow state. Leave video-query paths, future/action interactions, FFN, and solver schedule native.
+\par\emph{Why:} This implements edge skipping in the action branch and distinguishes actual saved work from a dense mask. Recomputed attention may change the action trajectory;\allowbreak{} the method gives no fidelity or task-success guarantee.
+\end{enumerate}
+\subsection*{M3\_validation}
+\emph{Test the mask against dense inference and matched-cost controls;\allowbreak{} any robot phase remains conditional.}
+\begin{enumerate}[leftmargin=*,start=6]
+  \item On paired evaluation episodes \(`D_{eval}`\) not used to choose \(\epsilon \), compare dense inference, \(`\rho _{lg}`-ranked\) masks, and same-retained-edge-cost source-group-permutation masks. Also compare native attention-mass, ToPi/VATP value-norm, and CAPA output-projected-score controls. Use the same frozen checkpoint, \(`k_{ref}`\) dense forward, exact retained-edge budget \(`B_{l}`\), and compact kernel. For score controls, sum token scores within existing groups, rank groups with native source order breaking ties, keep whole ranked groups, then add a boundary-group token prefix ordered by the same token score until exactly \(`B_{l}`\) edges are retained;\allowbreak{} token ties use native token order. Run a permutation only if it is a distinct legal equal-cost mask;\allowbreak{} otherwise report it unavailable. Record task success, per-path FLOPs, full latency including scoring, packing, kernel launch and remaining model paths, action-chunk deviation, and first action divergence;\allowbreak{} then apply the original frozen gates.
+\noindent\emph{\(B_{l}\) is the retained action-query-to-observation edge budget used to match ranked masks and scoring controls.}
+\par\noindent{\small\ttfamily [eq~5, raw LaTeX, not typeset] B\_l=|Q\_l||H\_l|\textbackslash\{\}sum\_\{g\textbackslash\{\}in S\_l(\textbackslash\{\}epsilon)\}|g|}
+\par\emph{Why:} The permutation tests source assignment at fixed cost;\allowbreak{} score controls test whether \(`\rho _{lg}`\) adds task-action value beyond prior ranking recipes. Quality and cost remain separate evidence. A WAM-specific score advantage requires \(`\rho _{lg}`\) to beat every matched-cost score arm under the original gates.
+  \item Consider a physical-robot phase only after simulation passes the frozen gate and the matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are confirmed. Account for baseline post-training separately;\allowbreak{} the mask itself remains training-free and does not update weights.
+\par\emph{Why:} Physical prerequisites are unconfirmed, so simulation or recorded-data results cannot stand in for a closed-loop robot result.
+\end{enumerate}
+\end{document}

@@ -1,0 +1,33 @@
+{
+  "contract_version": 2,
+  "selected_gaps": [
+    {
+      "gap": "[subtractive] Q-WAM、SteerQuant、QuantWAMs 与 PreDE 都在完整 chunk 或固定 execution condition 下定义量化分数；尚无文献检验“完整生成 chunk 足以代表部署 fidelity”这一共享前提，在只执行某个 prefix 并经固定 controller 运算后是否仍成立。Phase 2 的构造交付应是在固定 controller 与 W4A4/W4A8 条件下，提出并检验能保留已执行 command 行为的量化方法，同时界定完整 chunk 分数何时会失真；不预定其内部机制。若高影响误差集中在首段或控制阈值附近，量化配置可能按未执行尾部误差排序而错过已执行 command 偏差；stakes: practitioner 在机器人部署时会接受错误配置并承担任务失败或重复闭环评估成本，intellectual 上会把 full-chunk similarity 错当成控制等价。",
+      "chosen_pattern_id": "assumption_audit_and_pivot",
+      "anchor_alternates": [],
+      "companion_pattern": null,
+      "sibling_dependency": null,
+      "companion_dependency": null,
+      "companion_rationale": "",
+      "selection_rationale": "该 gap 直接挑战本轮 WAM PTQ 共同采用的完整 chunk/fixed execution condition 前提，且 Phase 1 将其列为最重要的部署控制错位。pivot 将量化校准目标改为固定 evaluator 实际执行 prefix 经 controller 后发出的 command，并据此构造 W4A8 PTQ。"
+    }
+  ],
+  "coherence_thread_type": "n_a",
+  "deliverable_coverage": "method — anchor gap → assumption_audit_and_pivot 将固定 controller 后的已执行 command 保真定义为交付目标，并由 command-loss 校准构造可部署 W4A8 quantizer。",
+  "user_direction_disposition": {
+    "verdict": "adopted",
+    "user_wanted": "最好量化层级能到W4A4/W4A8，混合精度或者单一精度都可以",
+    "chosen": "采用 frozen-backbone、统一 W4A8 的权重/激活 PTQ；高精度只留给非 Linear 控制与数值算子。"
+  },
+  "composition_note": "单一 W4A8 frozen-backbone PTQ；c1/c2 collateral 分别用 receding-horizon 与 quantized-feedback 词汇覆盖。直接对 controller command 的 task-aware calibration 属通用原则，单靠 prefix reweighting 不构成新方法；若 branch signature 无额外可验证作用，则应降为应用级增量。",
+  "deferred_gaps": [
+    {
+      "gap": "[additive] 对同时发生于多个 layer、stream 与 denoising step 的低位误差，Q-WAM 明确省略交叉项并依赖零均值/不相关近似，SteerQuant 则以 full-precision 输入单独估计每个区域；因此在 W4A4/W4A8 联合量化时，边际分数是否能预测误差合成后的 action displacement 仍未知，尤其是系统偏移、抵消或同向累积是否改变候选排序。Phase 2 的构造交付应是在固定 WAM 与低位宽下，提出能应对多处残差同时存在的量化方法，并以联合扰动证据检验其 action 误差判断；不预定误差估计或调节机制。stakes: 量化研究者可能把精度预算分给单点敏感却在联合路径中不关键的模块，造成 W4 quality 结论不可复现或无法迁移到不同校准轨迹；intellectual 上会把独立扰动假设当成未经检验的误差几何。",
+      "reason": "Deferred: 本候选只改固定 controller-prefix command 的校准目标；建模多层/多步残差交互需要另一误差机制，不是 anchor 方法的必要组件。"
+    },
+    {
+      "gap": "[additive] Q-WAM 与 SteerQuant 使用离线 calibration probes，QuantWAMs 用 FP16 reference-state replay 提议 schedule 并将 quantized-state profile 作为 shift diagnostic，PreDE 对新配置则查询固定 observation log；这些结果尚未确立当量化动作改变后续 observation history 时，离线分数/阈值对多轮闭环候选排序仍保持校准。Phase 2 的构造交付应是在固定 evaluator 与 W4A4/W4A8 条件下，提出能在候选诱发的新闭环 history 上维持量化质量判断的方法，并通过多轮 evidence 检验迁移；不预定状态适配机制。stakes: 实践者在长序列或接触状态变化时可能遇到离线通过、闭环退化的候选并付出额外仿真或实机成本；intellectual 上，固定输入 evidence 不能支持跨 rollout distribution 的控制保真结论。",
+      "reason": "Deferred: reference-state 上的 command PTQ 不含量化模型诱发的新 observation history；闭环分布适配属于独立后续方法与证据范围。"
+    }
+  ]
+}

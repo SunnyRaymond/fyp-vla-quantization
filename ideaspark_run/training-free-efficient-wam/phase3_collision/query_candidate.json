@@ -1,0 +1,118 @@
+{
+  "contract_version": 2,
+  "title": "Action-Context Source Masking for Frozen Joint WAMs",
+  "intervention_object": {
+    "acts_on": "每层 native action queries 到 observation-source groups 的 attention edges；action-action、action-future 与所有 video-query 路径保持原图。",
+    "operator": "在每个 inference chunk 的首个 native action solver evaluation 读取 dense forward 的 output-projected source-group action contributions，按贡献份额构造 mask；后续 action updates 仅把保留的 observation keys/values 压紧送入真正跳过省略 QK/AV 的 sparse 或 variable-length attention kernel。",
+    "decision_variables": "各层 observation source group 的保留集合 S_l(epsilon)；epsilon 是允许丢弃的贡献份额，取值在 [0,1)，按既有冻结 task-success gate 与完整路径实测时延选择。"
+  },
+  "hook": "候选检验一个对控制有实际后果的区分：同样缩短 action-query 的 observation key set 时，首步 attention mass 不如经 output projection 的 source-group action contribution 能预测下游动作价值。若按该贡献选出的 mask 在相同保留边成本下优于 group-permuted control、降低真实端到端推理时延且通过原任务 success gate，才支持它是可省的 action-conditioning 计算；任一条件失败即停止。",
+  "hook_shape_rationale": "选择形状 (a)：方向性指标是相同保留边成本下 contribution-ranked mask 的 LIBERO/RoboLab task success 高于 group-permuted mask；Sparse-WAM 只报告 action-guided future-token selection，没有测 action-query 到 observation-source 的下游作用。形状 (b) 可把 Sparse-WAM 保留全部 observation tokens 重读为默认条件接口，但论文明确写出这一选择，它不是未命名假设，因此不满足该形状的 admission test。",
+  "gap_closure": [
+    {
+      "gap": "在joint WAM把future表示稀疏化或缓存后，是否仍必须让每个native action update使用完整可见observation与保留future context，还是该dense conditioning只是继承自joint predictor的默认接口，尚未被检验。",
+      "main_pattern": "generative_process_redesign",
+      "sub_pattern_not_applicable_reason": "",
+      "sub_pattern": "C24 (Liberate a Fixed Generative Component)",
+      "companion_pattern": null,
+      "how_closed": "在既有 retained-future-context 设置下，把被冻结的 conditioning interface 改为按首个 native action update 的投影贡献选出的 observation-source edge mask；后续 action velocity 与 sampler state因而实际改变，compact kernel执行更短的observation key set。"
+    }
+  ],
+  "core_mechanism": "范围固定在 Sparse-WAM-like retained-future-token setting，专门检验仍 dense 的 action-query→observation path，不声称重新稀疏 future path。对冻结 joint WAM，令 k_ref 为每个 inference chunk 中首个 native action solver evaluation，L_a 为所有含 action queries 的 transformer layers，Q_l 为 layer l 的全部 action queries，G_o 为原 token packer 给出的 observation-source groups（按现有 camera/view 或其他 source provenance 划分，不新造窗口）。在 dense forward 中，alpha^l_h(q,j) 是 native attention 权重、V^l_h(j) 是对应 value，W^l_O,h 是 output projection 的 head slice；定义 r_lg = sum over q in Q_l of norm2(sum over h W^l_O,h (sum over j in g alpha^l_h(q,j)V^l_h(j)))，并令 rho_lg = r_lg / sum over g' r_lg'，分母为零时该层回退保留所有组。S_l(epsilon) 是按 r_lg 降序、并以 native source order 稳定打破并列后，累计 rho 至少为 1-epsilon 的最小组集合；epsilon 在 [0,1) 内按 held-out episodes 上既有冻结 success gate 与完整路径实测时延选择，若没有既有 gate 则只报告曲线、不宣告通过。k_ref 仍用原 dense action update；本 chunk 后续 updates 的 action queries 只读 S_l(epsilon)，其余 observation 边由 compact sparse/variable-length kernel 真正跳过，action-future 与全部 video-query 路径仍保持 native。保留下来的 attention output 进入原 residual/transformer blocks，得到新的 action velocity 并更新原 flow state，所以稀疏图直接改变 action chunk 与后续控制，而不是只改计时或风险分数。负载假设是 k_ref 的 rho 排序能代表后续 solver updates 的动作相关性，且遗漏低份额组不会藏有高杠杆接触线索；这些都是 untested。令 phi_obs 为完整推理中 action-query-to-observation QK/AV 的实测时间份额，即使理想消除此路径，忽略其它开销的 Amdahl 上限也只有 1/(1-phi_obs)；mask/packing overhead、video QKV/FFN 与 action-query 数量带来的低 headroom 必须先实测。",
+  "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger:\n- Observation-model: rho 来自现有 LIBERO/RoboLab rollout 当前 observation/instruction 与 native 首个 solver update 的 model-internal attention/value readout；这是按当前输入及 denoising noise 条件化的 within-rollout signal，不是 IID 样本、动作标签或无偏的跨步敏感度估计。\n- Source grouping premise: FastWAM/Cosmos token packer 可把视觉 conditioning tokens 追溯到原有 view/source metadata；若该接口不暴露 provenance，需停而不能手工猜分组。\n- Untested — falsification target: k_ref 的 rho 排序在该 chunk 后续 solver states 仍保留足够动作相关顺序；目前没有跨步稳定证据。\n- Untested — falsification target: 低 rho source group 不会承载低 attention 但控制关键的接触/遮挡 cue；由任务 success 与等成本 group-permutation control 检验。\n- Untested — falsification target: action-query→observation 的 QK/AV 占有足够全模型时间且 compact kernel 净省时；源码路径和 token 数本身不能证明 headroom。\n- ESTIMAND: 在各自 frozen checkpoint、native solver schedule、原生 benchmark rollout distribution 与评测 hardware 下，候选相对 dense baseline 的 task-success 差及完整 inference-latency / action-query→observation-attention FLOP 差；FastWAM 与 Cosmos 分开估计，不合并宣称跨骨干效果。\n\nBLOCK 2 — NAIVE-BASELINE AUDIT: 最直观做法是在一次 dense forward 中按平均 attention mass 丢弃低分 observation groups，并把同一 mask 用在之后所有 action steps。按 branch (ii) 作增量审计：attention-guided compute allocation 已由 Sparse-WAM 用于 future tokens，直接把 mass ranking 移到 observation keys 只是未证明有效的近邻迁移，不足以承载新方法；attention mass 也忽略 value direction 与后续非线性，不能当作 task-action sensitivity。候选因此把对象限定为 output-projected source-group action contribution，并要求同成本 permutation 的下游 task outcome 及真正省略 QK/AV 的 kernel 一起支持机制；若仅有普通 attention ranking 收益，应诚实标为 application-grade。\n\nBLOCK 3 — DESIGN RATIONALE: 两个 phase1 gaps 共用 action-context importance 与成本，但第一个 gap 是 measurement/boundary，不构成独立 inference capability，故放入首个 falsification/Amdahl gate，不虚构诊断 sibling。选择重构 conditioning interface；拒绝“observation latent 固定所以 hidden/KV 固定”的缓存假设，因为 timestep modulation、mask 与 coupling 可能改变 hidden/KV；也拒绝跨步 residual reuse，因为 WAMachine/C3ache 已占该轴；DriveCache 与本地 CREC 分别以 action/motion 或 per-unit risk envelope 决定 cache refresh，本候选不建缓存、不做风险校准；GeoBoN 的 action-future consistency gating 与几何 best-of-N 排序改变候选筛选，不删除 action-conditioning edges。候选的实际改动是本 chunk 内删除 source-specific action-conditioning edges；它不宣称权重不变就等于已加速，也不把跨骨干迁移或真机成功当成事实。",
+  "core_mechanism_steps": "1. 冻结每个 baseline 的 checkpoint、solver schedule、任务配置和 backend。主配对为 FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab；后者有公开 checkpoint 路径但本轮未运行，FastWAM-Joint matching checkpoint 尚未确认，缺失时明确标阻塞。Motus/RoboTwin 2.0 仅作条件性仿真 fallback，不冒名为 FastWAM-Joint。\n2. 在原生推理路径拆分计时/计 FLOPs：FastWAM 的 src/fastwam/models/wan22/fastwam_joint.py、fastwam.py、mot.py；Cosmos 的 cosmos_framework/model/generator/omni_mot_model.py，RoboLab policy server 是部署入口。分别测 action-query→observation QK/AV、其他 attention、QKV、FFN 与 mask/packing 代价，得 phi_obs 和 Amdahl 上限；若只有 dense mask 或上限不足以抵偿 overhead/满足冻结 latency gate，立即 NO-GO。\n3. 在现有 token packer 上携带 observation token 的原生 source provenance；不改变 token 值、权重、图像、instruction、future/action query 或训练目标。对 k_ref dense forward 导出 alpha、V 与 output projection slices，计算每层 r_lg、rho_lg；输出是 per-layer source contribution table。\n4. 从 held-out benchmark episodes 选择 epsilon：按 rho 降序压紧到累计份额 1-epsilon，epsilon 只在 [0,1) 内选择；以既有冻结 task-success gate 为约束选完整推理时延最低者。若 gate 未预先存在，只报告 success-latency 曲线而不挑通过点；保存 S_l 与压紧后的 key/value indices。\n5. 在后续 native action solver evaluations，把每层 action queries 与 S_l 对应的观测 keys/values 输入真正 variable-length/block-sparse kernel，并核实被省略 QK/AV 不执行。video queries、future/action interactions、各层 FFN 和 joint flow schedule 不变；attention result 返回 residual stream，改写 action hidden/velocity，沿原 sampler 影响最终 action chunk。\n6. 对 dense、rho-ranked mask、保留边成本相同的 source-group permutation mask 做 paired comparison；计入评分、压紧、kernel launch 与其余模型路径的完整 latency，记录 per-path FLOPs、task success、action-chunk deviation 和首次 action divergence。Amdahl headroom不足、稀疏 kernel 未真实省算、或 permutation 不影响 task outcome，任一项成立即停止候选。\n7. 只有仿真通过冻结 gate 后才讨论真机：Sparse-WAM 的 AgileX Cobot Magic 路线还需任务适配 FastWAM-Joint checkpoint、示范数据、source implementation 和同型平台，这些当前未确认。该 policy 原有 post-training 是 baseline 前置成本，单列；本 mask 不训练、不蒸馏、不更新权重，且不声称已完成真机。",
+  "falsification_prediction": "先在可用的 frozen FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 路径做 action-query→observation QK/AV 分项 profile，再在匹配 episodes 上比较 dense、rho-ranked mask、保留边成本相同的 source-group permutation；两种 baseline 分开报告，FastWAM-Joint 权重缺失时不能以 Motus 冒名替代。若完整省略路径的 Amdahl 上限或 compact-kernel 实测 savings 扣掉评分/packing 后无法改善完整 inference latency，或未超过原有 latency gate，立即终止；即使能省算也只有 task success 满足原冻结 gate 才保留。Load-bearing variable 是 rho_lg；置换 rho 对 source groups 的分配但固定保留边成本，预测 downstream LIBERO/RoboLab task success 低于 contribution-ranked mask，若无差别则机制排序不成立。真机闭环需等待 AgileX Cobot Magic 的 matching policy/data/source/hardware 可用，仿真结果不充当该证据。",
+  "compute_budget": "本 generation 未运行实验：GPU-days 为 0，external API 为 $0。后续 path profile 与 paired benchmark 的 GPU-days 暂不估算，须先确认 FastWAM-Joint checkpoint、两套 kernel 支持和 Amdahl headroom，再由获批 compute allocation 估算；没有假定 GPU-day 或付费 API 预算。AgileX 路线若需 baseline 原有 task post-training，其成本与本 training-free mask 方法分开核算。",
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2609.38984v1",
+      "delta": "Sparse-WAM 用 action-to-future attention 选择 future tokens 并跨步复用省略区域预测、同时保留 observation/action tokens；本候选只改 action queries 到 observation-source groups 的边，并要求 output-projected contribution 的同成本 permutation control 与真实 sparse QK/AV 省算。"
+    },
+    {
+      "paper_id": "arxiv:2609.34608v1",
+      "delta": "WAMachine 跨 replans remap trajectory、执行期 rebinding 并 probe 后复用中间层 residual；本候选不搬运旧状态，而在当前 native action update 中改 observation conditioning 图。"
+    },
+    {
+      "paper_id": "openalex:W7164153965",
+      "delta": "Efficient-WAM 的 inference-only asymmetric schedule 停止较早 video updates 并缓存 video K/V；本候选保留原两路 solver schedule，只尝试减少 action-query 读取 observation sources 的计算。"
+    },
+    {
+      "paper_id": "openalex:W7172338867",
+      "delta": "FBFM 以到达的真实 state 和已提交 action overlap 经 Jacobian/pseudoinverse 修正 active flow；本候选不校正 vector field 或增加反馈，而尝试跳过当前 action attention 的观测源边。"
+    },
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "delta": "C3ache 跨 inference chunks 复用同 denoising step 的 action-expert residual；本候选不缓存 residual 或依赖跨 chunk 相似性，只在单 chunk 内压紧 action-to-observation attention。"
+    },
+    {
+      "paper_id": "arxiv:2608.16354v1",
+      "delta": "DriveCache 用动作/场景运动信号为 diffusion backbone output 安排复用与 refresh；本候选不作 cache schedule、风险阈值或失效判断，而改变当前 action query 实际读取的 observation key set。"
+    },
+    {
+      "paper_id": "arxiv:2608.23927v2",
+      "delta": "GlanceWAM 用 co-trained dual-timescale architecture 异步生成 lookahead latent；本候选不新增 action head、训练目标或异步执行路径，仍运行同一冻结 joint predictor。"
+    }
+  ],
+  "almost_prior_paper_id": "arxiv:2609.38984v1",
+  "what_step_was_missed": "Sparse-WAM 若要已经包含此候选，需要构造由 action-query output-projected contribution 定义的 observation-source edge mask，在 action stream 中压紧 key/value 并证明 kernel 真实减少 action-query QK/AV 成本，同时用等成本 group-permutation 检验下游 task success；其现有方法是选择 future tokens，且保留全部 observation tokens。",
+  "signature_terms": [
+    "action-conditioned observation-edge mask",
+    "per-layer source-group contribution ranking",
+    "denoising-step context sparsification",
+    "frozen joint-WAM action inference",
+    "action-velocity fidelity under sparse context"
+  ],
+  "alias_terms": [
+    "locality-sensitive sparse attention",
+    "random feature linear attention",
+    "visual token pruning",
+    "adaptive token halting",
+    "diffusion feature reuse",
+    "active sensing value of information",
+    "cost-sensitive feature acquisition",
+    "conditional computation routing"
+  ],
+  "composition_note": "单机制候选；观测—动作敏感性与成本占比作为 falsification 和 Amdahl 首停门，不另立 controlled_diagnostic_design 腿。",
+  "explored_candidates": [
+    {
+      "name": "Source-group action-conditioning edge mask",
+      "mechanism": "按每层 output-projected action contribution 排序，在后续 native action updates 中压紧 observation keys/values，并以真实 sparse/varlen kernel 删除低贡献 QK/AV 边。",
+      "critical_premise": "首个 solver update 的 source-group ranking 能代表同 chunk 后续 action updates；该路径有足够全模型 headroom，且 kernel 真正跳过计算。",
+      "prior_threats": "Sparse-WAM action-guided future selection 与 generic sparse attention/token pruning；GeoBoN action-future consistency gate and geometric candidate ranking are adjacent but do not remove current action-conditioning edges。完整 novelty gauntlet 尚未完成。",
+      "disposition": "暂留唯一 canonical candidate；前提未验证，Amdahl 上限或负控不通过即淘汰。",
+      "audit_depth": "Phase 2 preliminary; full prior/collision gauntlet and empirical validation remain."
+    },
+    {
+      "name": "Exact observation K/V reuse",
+      "mechanism": "若模型图证明 observation hidden/K/V 对 solver timestep 与变化中的 action/future state 严格不变，则在 action queries 间或 solver updates 间复用投影。",
+      "critical_premise": "存在由 mask 与 timestep modulation 保证的精确不变层；latent 固定本身不够。",
+      "prior_threats": "Efficient-WAM video K/V cache 与 WAMachine intermediate-state reuse；FastWAM-Joint API/不变性未确认。",
+      "disposition": "淘汰为当前主机制：条件未证且可能退化成已有 cache。",
+      "audit_depth": "Preliminary prior screen only; no implementation or novelty gauntlet."
+    },
+    {
+      "name": "Within-chunk action residual reuse",
+      "mechanism": "按相邻 solver evaluations 的 action-branch residual 相似性跳过部分 transformer layer computation。",
+      "critical_premise": "动作 residual 跨 active flow steps 稳定，且 probe/refresh 成本低于重算。",
+      "prior_threats": "WAMachine Residual Rescaling、C3ache residual reuse 与本地 CREC risk-envelope cache。",
+      "disposition": "淘汰：核心对象已与 state/residual reuse priors 邻近，改用 action branch 或风险分数不足以形成新机制。",
+      "audit_depth": "Preliminary prior screen only; no implementation or novelty gauntlet."
+    },
+    {
+      "name": "Low-rank action-context operator",
+      "mechanism": "用 low-rank 或 random-feature surrogate 替换 action-query 对 context keys 的 dense softmax interaction。",
+      "critical_premise": "跨 layer、timestep 与 embodiment 存在可压缩谱，且 approximation error 能联系到 action/task outcome。",
+      "prior_threats": "Performer-style random-feature linear attention 与既有 approximate-attention families；无已知 WAM 控制保真界。",
+      "disposition": "淘汰：目前只有通用 operator approximation，没有已知 WAM-specific invariant。",
+      "audit_depth": "Preliminary prior screen only; no implementation or novelty gauntlet."
+    },
+    {
+      "name": "Async lookahead/action separation",
+      "mechanism": "将 future predictor 放到慢时钟，让 action policy 在快时钟读取 held lookahead latent。",
+      "critical_premise": "stale future latent 仍支持操作质量且该调度改善同步推理成本。",
+      "prior_threats": "GlanceWAM asynchronous lookahead/co-training、WAMachine observation rebinding/execution slack、FBFM asynchronous feedback。",
+      "disposition": "淘汰：机制轴高度邻近，所需 co-training 也不符合 frozen training-free 条件。",
+      "audit_depth": "Preliminary prior screen only; no implementation or novelty gauntlet."
+    }
+  ]
+}

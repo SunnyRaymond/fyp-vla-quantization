@@ -1,0 +1,73 @@
+{
+  "removal_tests": [
+    {
+      "component": "full native executed-prefix time-by-channel mean for L_train",
+      "field": "core_mechanism",
+      "executed": true,
+      "claims_unchanged": false,
+      "evidence": "With T_exec=2, two channels, scales [0.5,2], and illustrative residuals [[0.1,0.2],[0.3,0.4]], the defined full-prefix mean is the scalar 0.1125. Removing that reduction leaves no scalar update objective for a multi-step prefix."
+    }
+  ],
+  "verdict": "needs_work",
+  "reason": "F2 is repaired. L_train is now an executable scalar mean over every native prefix step and selected channel. F1 remains open for V_visit: its diagnostic formula lacks temporal reduction and does not identify whether values come from a fixed pre-QAT/PTQ reference or each arm after training.",
+  "checks": {
+    "dataflow": {
+      "status": "fail",
+      "executed": true,
+      "evidence": "L_train is defined as (1/(T_exec,m*|J_m|))*sum_u sum_j[((y_tilde[Q|Q,u,j]-y_tilde[BF16|Q,u,j])/s[m,j])^2]; s[m,j]>0 keeps each channel scaled dimensionlessly, and all u=1..T_exec,m remain included. By contrast, V_visit still sums over j without a time index/reduction although E_m returns the native executed prefix, so its task-level diagnostic is not explicitly scalar. Its pre-QAT/PTQ versus per-arm post-training provenance is also unstated; this is the remaining F1 scope/interpretation gap."
+    },
+    "dry_run": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "Illustrative legal linear suffix: detach x_Q, hold teacher outputs fixed, and let student-minus-teacher continuous outputs be theta*[[0.1,0.2],[0.3,0.4]], with T_exec=2, J={1,2}, s=[0.5,2]. At theta=1 the full time-by-channel loss is 0.1125 and dL/dtheta=0.225; the detached prelude and teacher receive no gradient. This is a hand derivation, not model execution."
+    },
+    "degenerate_probes": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "Equal teacher/student suffix commands give zero loss and gradient; T_exec=1 reduces to the usual channel mean. Positive scales avoid division by zero, and the candidate samples active solver indices, avoiding an empty terminal suffix. Hard gripper thresholding uses the continuous pre-threshold training signal and is reported separately as an exact command metric."
+    },
+    "claim_step_map": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "Steps 1-4 define model scope, student-path states, paired suffix branches, and the scalar student-suffix update; step 5 covers controls and matched-cost reporting; step 6 separates fixed-input action deviation, closed-loop completion, and native latency; step 7 labels shared-backbone transfer and scope. The V_visit diagnostic remains the F1 gap recorded above."
+    },
+    "falsification": {
+      "status": "conditional",
+      "executed": true,
+      "evidence": "The current prediction preserves the phase2 setup/outcomes/control verbatim and adds matched-cost vanilla QAT+teacher KD, original-noise-seed endpoint KD, teacher-state suffix KD, and student-state per-step OPD. It matches total measured training GPU-time or total teacher and student NFE, holds model-specific data split/deployment scope, reports total GPU-time, separate NFEs, unique/repeated context exposure and updates, coalesces duplicate teacher-state KD labels, and defines shared-backbone per-step OPD as action-output-masked with joint video+action a separate arm. The bounded b=1, c in {-1,-0.5,0} example shows suffix loss can improve while original endpoint error worsens, but does not imply universal failure; the endpoint/control comparisons address this risk. V_visit temporal reduction/provenance remains conditional. No experiment ran."
+    },
+    "novelty": {
+      "status": "conditional",
+      "executed": true,
+      "evidence": "The confirmed term lists are unchanged. Train Where the Quantized Model Goes uses quantized autoregressive prefixes with token-level teacher guidance and verifier reward; student-state exposure itself is not novel. DiffusionOPD uses same-state per-step transition KL (direct L2 in the deterministic regime) with stopped rollout-distribution gradients. AnyFlow learns a new two-time flow-map operator and uses backward simulation/DMD with gradients through its chain. DiffusionOPSD's supplied Phase 0 evidence is abstract-level: behavior-policy query states and reward-derived clean-output anchors. These targets/operators/gradients are adjacent but not identical to a paired BF16/fake-W4A8 native-suffix endpoint with student-suffix gradients; that narrow distinction remains a hypothesis. WAM-OPD is also a retrieved neighbor with joint video/action history supervision. Semantic Scholar produced no collision files; coverage is not exhaustive. No broad search or experiments were added."
+    },
+    "target_resolution": {
+      "status": "conditional",
+      "executed": true,
+      "evidence": "The candidate uses the model-native denormalization and executed-prefix selector, per-channel positive scales, a continuous pre-threshold surrogate, and separate exact clipped/thresholded reporting. Fast-WAM's documented LIBERO path optionally binarizes the gripper after denormalization (default false); the exact post-denormalization command transform must be included in D_m/E_m when enabled. No claim is made that the threshold is always active."
+    }
+  },
+  "confirmed_terms": {
+    "signature_terms": [
+      "student-visited suffix endpoint matching",
+      "quantized solver state response",
+      "denormalized executed action targets",
+      "shared-backbone WAM QAT"
+    ],
+    "alias_terms": [
+      "learned activation clipping",
+      "teacher student knowledge distillation",
+      "on-policy distillation DAgger",
+      "diffusion trajectory sampling distillation",
+      "truncated backpropagation through time",
+      "ordinary endpoint knowledge distillation",
+      "low-bit on-policy distillation",
+      "continuous-state on-policy distillation",
+      "flow-map backward simulation",
+      "behavior-state clean-endpoint anchors",
+      "HAWQ-style Hessian-aware mixed-precision allocation",
+      "Learned Step Size Quantization (LSQ)"
+    ]
+  },
+  "consistency_patch": []
+}

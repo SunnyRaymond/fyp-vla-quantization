@@ -1,0 +1,197 @@
+{
+  "contract_version": 2,
+  "candidate_sha256": "be82888c2f7737543d6fbcccbe911ba41512f3e504f926b7d582093fa5a4a826",
+  "sources": {
+    "core_mechanism": "范围固定在 Sparse-WAM-like retained-future-token setting，专门检验仍 dense 的 action-query→observation path，不声称重新稀疏 future path。对冻结 joint WAM，令 k_ref 为每个 inference chunk 中首个 native action solver evaluation，L_a 为所有含 action queries 的 transformer layers，Q_l 为 layer l 的全部 action queries，G_o 为原 token packer 给出的 observation-source groups（按现有 camera/view 或其他 source provenance 划分，不新造窗口）。在 dense forward 中，alpha^l_h(q,j) 是 native attention 权重、V^l_h(j) 是对应 value，W^l_O,h 是 output projection 的 head slice；定义 r_lg = sum over q in Q_l of norm2(sum over h W^l_O,h (sum over j in g alpha^l_h(q,j)V^l_h(j)))，并令 rho_lg = r_lg / sum over g' r_lg'，分母为零时该层回退保留所有组。S_l(epsilon) 是按 r_lg 降序、并以 native source order 稳定打破并列后，累计 rho 至少为 1-epsilon 的最小组集合；epsilon 在 [0,1) 内按 held-out episodes 上既有冻结 success gate 与完整路径实测时延选择，若没有既有 gate 则只报告曲线、不宣告通过。k_ref 仍用原 dense action update；本 chunk 后续 updates 的 action queries 只读 S_l(epsilon)，其余 observation 边由 compact sparse/variable-length kernel 真正跳过，action-future 与全部 video-query 路径仍保持 native。保留下来的 attention output 进入原 residual/transformer blocks，得到新的 action velocity 并更新原 flow state，所以稀疏图直接改变 action chunk 与后续控制，而不是只改计时或风险分数。负载假设是 k_ref 的 rho 排序能代表后续 solver updates 的动作相关性，且遗漏低份额组不会藏有高杠杆接触线索；这些都是 untested。令 phi_obs 为完整推理中 action-query-to-observation QK/AV 的实测时间份额，即使理想消除此路径，忽略其它开销的 Amdahl 上限也只有 1/(1-phi_obs)；mask/packing overhead、video QKV/FFN 与 action-query 数量带来的低 headroom 必须先实测。",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger:\n- Observation-model: rho 来自现有 LIBERO/RoboLab rollout 当前 observation/instruction 与 native 首个 solver update 的 model-internal attention/value readout；这是按当前输入及 denoising noise 条件化的 within-rollout signal，不是 IID 样本、动作标签或无偏的跨步敏感度估计。\n- Source grouping premise: FastWAM/Cosmos token packer 可把视觉 conditioning tokens 追溯到原有 view/source metadata；若该接口不暴露 provenance，需停而不能手工猜分组。\n- Untested — falsification target: k_ref 的 rho 排序在该 chunk 后续 solver states 仍保留足够动作相关顺序；目前没有跨步稳定证据。\n- Untested — falsification target: 低 rho source group 不会承载低 attention 但控制关键的接触/遮挡 cue；由任务 success 与等成本 group-permutation control 检验。\n- Untested — falsification target: action-query→observation 的 QK/AV 占有足够全模型时间且 compact kernel 净省时；源码路径和 token 数本身不能证明 headroom。\n- ESTIMAND: 在各自 frozen checkpoint、native solver schedule、原生 benchmark rollout distribution 与评测 hardware 下，候选相对 dense baseline 的 task-success 差及完整 inference-latency / action-query→observation-attention FLOP 差；FastWAM 与 Cosmos 分开估计，不合并宣称跨骨干效果。\n\nBLOCK 2 — NAIVE-BASELINE AUDIT: 最直观做法是在一次 dense forward 中按平均 attention mass 丢弃低分 observation groups，并把同一 mask 用在之后所有 action steps。按 branch (ii) 作增量审计：attention-guided compute allocation 已由 Sparse-WAM 用于 future tokens，直接把 mass ranking 移到 observation keys 只是未证明有效的近邻迁移，不足以承载新方法；attention mass 也忽略 value direction 与后续非线性，不能当作 task-action sensitivity。候选因此把对象限定为 output-projected source-group action contribution，并要求同成本 permutation 的下游 task outcome 及真正省略 QK/AV 的 kernel 一起支持机制；若仅有普通 attention ranking 收益，应诚实标为 application-grade。\n\nBLOCK 3 — DESIGN RATIONALE: 两个 phase1 gaps 共用 action-context importance 与成本，但第一个 gap 是 measurement/boundary，不构成独立 inference capability，故放入首个 falsification/Amdahl gate，不虚构诊断 sibling。选择重构 conditioning interface；拒绝“observation latent 固定所以 hidden/KV 固定”的缓存假设，因为 timestep modulation、mask 与 coupling 可能改变 hidden/KV；也拒绝跨步 residual reuse，因为 WAMachine/C3ache 已占该轴；DriveCache 与本地 CREC 分别以 action/motion 或 per-unit risk envelope 决定 cache refresh，本候选不建缓存、不做风险校准；GeoBoN 的 action-future consistency gating 与几何 best-of-N 排序改变候选筛选，不删除 action-conditioning edges。候选的实际改动是本 chunk 内删除 source-specific action-conditioning edges；它不宣称权重不变就等于已加速，也不把跨骨干迁移或真机成功当成事实。",
+    "core_mechanism_steps": "1. 冻结每个 baseline 的 checkpoint、solver schedule、任务配置和 backend。主配对为 FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab；后者有公开 checkpoint 路径但本轮未运行，FastWAM-Joint matching checkpoint 尚未确认，缺失时明确标阻塞。Motus/RoboTwin 2.0 仅作条件性仿真 fallback，不冒名为 FastWAM-Joint。\n2. 在原生推理路径拆分计时/计 FLOPs：FastWAM 的 src/fastwam/models/wan22/fastwam_joint.py、fastwam.py、mot.py；Cosmos 的 cosmos_framework/model/generator/omni_mot_model.py，RoboLab policy server 是部署入口。分别测 action-query→observation QK/AV、其他 attention、QKV、FFN 与 mask/packing 代价，得 phi_obs 和 Amdahl 上限；若只有 dense mask 或上限不足以抵偿 overhead/满足冻结 latency gate，立即 NO-GO。\n3. 在现有 token packer 上携带 observation token 的原生 source provenance；不改变 token 值、权重、图像、instruction、future/action query 或训练目标。对 k_ref dense forward 导出 alpha、V 与 output projection slices，计算每层 r_lg、rho_lg；输出是 per-layer source contribution table。\n4. 从 held-out benchmark episodes 选择 epsilon：按 rho 降序压紧到累计份额 1-epsilon，epsilon 只在 [0,1) 内选择；以既有冻结 task-success gate 为约束选完整推理时延最低者。若 gate 未预先存在，只报告 success-latency 曲线而不挑通过点；保存 S_l 与压紧后的 key/value indices。\n5. 在后续 native action solver evaluations，把每层 action queries 与 S_l 对应的观测 keys/values 输入真正 variable-length/block-sparse kernel，并核实被省略 QK/AV 不执行。video queries、future/action interactions、各层 FFN 和 joint flow schedule 不变；attention result 返回 residual stream，改写 action hidden/velocity，沿原 sampler 影响最终 action chunk。\n6. 对 dense、rho-ranked mask、保留边成本相同的 source-group permutation mask 做 paired comparison；计入评分、压紧、kernel launch 与其余模型路径的完整 latency，记录 per-path FLOPs、task success、action-chunk deviation 和首次 action divergence。Amdahl headroom不足、稀疏 kernel 未真实省算、或 permutation 不影响 task outcome，任一项成立即停止候选。\n7. 只有仿真通过冻结 gate 后才讨论真机：Sparse-WAM 的 AgileX Cobot Magic 路线还需任务适配 FastWAM-Joint checkpoint、示范数据、source implementation 和同型平台，这些当前未确认。该 policy 原有 post-training 是 baseline 前置成本，单列；本 mask 不训练、不蒸馏、不更新权重，且不声称已完成真机。",
+    "gap_closure": [
+      {
+        "gap": "在joint WAM把future表示稀疏化或缓存后，是否仍必须让每个native action update使用完整可见observation与保留future context，还是该dense conditioning只是继承自joint predictor的默认接口，尚未被检验。",
+        "main_pattern": "generative_process_redesign",
+        "sub_pattern_not_applicable_reason": "",
+        "sub_pattern": "C24 (Liberate a Fixed Generative Component)",
+        "companion_pattern": null,
+        "how_closed": "在既有 retained-future-context 设置下，把被冻结的 conditioning interface 改为按首个 native action update 的投影贡献选出的 observation-source edge mask；后续 action velocity 与 sampler state因而实际改变，compact kernel执行更短的observation key set。"
+      }
+    ],
+    "falsification_prediction": "先在可用的 frozen FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 路径做 action-query→observation QK/AV 分项 profile，再在匹配 episodes 上比较 dense、rho-ranked mask、保留边成本相同的 source-group permutation；两种 baseline 分开报告，FastWAM-Joint 权重缺失时不能以 Motus 冒名替代。若完整省略路径的 Amdahl 上限或 compact-kernel 实测 savings 扣掉评分/packing 后无法改善完整 inference latency，或未超过原有 latency gate，立即终止；即使能省算也只有 task success 满足原冻结 gate 才保留。Load-bearing variable 是 rho_lg；置换 rho 对 source groups 的分配但固定保留边成本，预测 downstream LIBERO/RoboLab task success 低于 contribution-ranked mask，若无差别则机制排序不成立。真机闭环需等待 AgileX Cobot Magic 的 matching policy/data/source/hardware 可用，仿真结果不充当该证据。 各评分对照在每个相同 frozen WAM/checkpoint、matched episodes 与 k_ref 的 dense forward 上计算：native attention mass 为 m^l_j=∑_{q∈Q_l,h∈H_l}α^l_h(q,j)，ToPi/VATP value-norm 分别为 v^{l,2}_j=∑_{q,h}α^l_h(q,j)‖V^l_h(j)‖_2 与 v^{l,1}_j=∑_{q,h}α^l_h(q,j)‖V^l_h(j)‖_1，CAPA per-token output-projected contribution 为 c^l_j=∑_{q∈Q_l}‖∑_{h∈H_l}W^l_{O,h}(α^l_h(q,j)V^l_h(j))‖_2（H_l 是 layer l 的 native attention heads）；各 token score 在 G_o 内求和形成 group score，按分数降序并以 native source order 稳定打破并列，完整保留 ranked groups 后由边界 group 中按同一 token score 排序的 token 前缀补足，恰好匹配 B_l=|Q_l||H_l|∑_{g∈S_l(ε)}|g| 个 action-query→observation QK/AV edges，token 并列按 native token order；每个 mask 固定用于同 chunk 后续 native action updates 并走同一 compact kernel；dense、rho_lg-ranked 与 permutation arms、task-success metric、原冻结 success/latency gates 与原 claim 均保持不变；每臂完整 latency 计入对应 scoring、packing、kernel launch 与其余模型路径，只有 rho_lg 在原 gate 下的 paired task-success effect 优于所有同边预算评分臂，才支持 WAM-specific score advantage。"
+  },
+  "claim_step_map": [
+    {
+      "claim": "Weights/checkpoint/schedule remain frozen; this intervention does not train or update weights.",
+      "established_by": "S1, S7",
+      "strength_grade": "established",
+      "assumptions_missing": [],
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "r_lg, rho_lg, stable cumulative-threshold mask and zero-denominator fallback are constructed as specified.",
+      "established_by": "S3, S4",
+      "strength_grade": "established",
+      "assumptions_missing": [],
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "A variable-length/sparse kernel actually skips omitted QK/AV edges and reduces end-to-end latency.",
+      "established_by": "S5, S6 (as a test requirement)",
+      "strength_grade": "empirical",
+      "assumptions_missing": [],
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "The first solver evaluation's rho ordering predicts later solver-state action relevance and omitted low-rho groups lack high-leverage control cues.",
+      "established_by": "UNESTABLISHED; listed as untested premises",
+      "strength_grade": "empirical",
+      "assumptions_missing": [],
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "The numerical action chunk changes whenever the selected mask removes groups.",
+      "established_by": "UNESTABLISHED as a universal numeric guarantee; S5 changes the graph, not necessarily the output value",
+      "strength_grade": "empirical",
+      "assumptions_missing": [],
+      "arbitration": "argument",
+      "measured": null
+    },
+    {
+      "claim": "Paired task-success and latency results meet the frozen gates on each backbone.",
+      "established_by": "S6 is the proposed measurement; no experiment was run",
+      "strength_grade": "empirical",
+      "assumptions_missing": [],
+      "arbitration": "argument",
+      "measured": null
+    }
+  ],
+  "dataflow": [
+    {
+      "step": "S1",
+      "consumes": [
+        "frozen checkpoint",
+        "native solver schedule",
+        "task/backend configuration",
+        "observation token packer"
+      ],
+      "produces": [
+        "fixed inference context",
+        "source-provenance groups"
+      ],
+      "note": "Verbatim candidate step: 1. 冻结每个 baseline 的 checkpoint、solver schedule、任务配置和 backend。主配对为 FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab；后者有公开 checkpoint 路径但本轮未运行，FastWAM-Joint matching checkpoint 尚未确认，缺失时明确标阻塞。Motus/RoboTwin 2.0 仅作条件性仿真 fallback，不冒名为 FastWAM-Joint。 In this trace the interface is represented by synthetic inputs only; matching FastWAM checkpoint availability remains an empirical prerequisite.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S2",
+      "consumes": [
+        "dense baseline path",
+        "real path profiler output",
+        "frozen latency/success gate"
+      ],
+      "produces": [
+        "phi_obs",
+        "Amdahl upper bound 1/(1-phi_obs)",
+        "continue-or-stop decision"
+      ],
+      "note": "Verbatim candidate step: 2. 在原生推理路径拆分计时/计 FLOPs：FastWAM 的 src/fastwam/models/wan22/fastwam_joint.py、fastwam.py、mot.py；Cosmos 的 cosmos_framework/model/generator/omni_mot_model.py，RoboLab policy server 是部署入口。分别测 action-query→observation QK/AV、其他 attention、QKV、FFN 与 mask/packing 代价，得 phi_obs 和 Amdahl 上限；若只有 dense mask 或上限不足以抵偿 overhead/满足冻结 latency gate，立即 NO-GO。 The algebra is formalized, but no real profile or gate is available here; latency/headroom decision is not executed.",
+      "status": "stopped",
+      "stopped_reason": "Requires measured frozen-model path timing and the pre-existing evaluation gate; this coherence trace does not run the model or GPU."
+    },
+    {
+      "step": "S3",
+      "consumes": [
+        "dense native attention alpha",
+        "per-head values",
+        "output-projection head slices",
+        "source groups"
+      ],
+      "produces": [
+        "r_lg per layer/group",
+        "rho_lg normalized by sum_g r_lg",
+        "all-groups fallback if denominator is zero"
+      ],
+      "note": "Verbatim candidate step: 3. 在现有 token packer 上携带 observation token 的原生 source provenance；不改变 token 值、权重、图像、instruction、future/action query 或训练目标。对 k_ref dense forward 导出 alpha、V 与 output projection slices，计算每层 r_lg、rho_lg；输出是 per-layer source contribution table。 The synthetic trace computes one layer with one query and two heads; no learned component is simulated.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S4",
+      "consumes": [
+        "r_lg/rho_lg",
+        "epsilon in [0,1)",
+        "held-out episodes",
+        "frozen success gate and full-path latency"
+      ],
+      "produces": [
+        "minimal source-ordered S_l(epsilon) meeting cumulative rho >= 1-epsilon"
+      ],
+      "note": "Verbatim candidate step: 4. 从 held-out benchmark episodes 选择 epsilon：按 rho 降序压紧到累计份额 1-epsilon，epsilon 只在 [0,1) 内选择；以既有冻结 task-success gate 为约束选完整推理时延最低者。若 gate 未预先存在，只报告 success-latency 曲线而不挑通过点；保存 S_l 与压紧后的 key/value indices。 epsilon=0.25 is an explicitly illustrative admissible value; no held-out gate or latency point is claimed.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S5",
+      "consumes": [
+        "S_l",
+        "retained observation K/V",
+        "native action queries and solver state"
+      ],
+      "produces": [
+        "attention output with softmax recomputed over retained keys",
+        "residual/flow update"
+      ],
+      "note": "Verbatim candidate step: 5. 在后续 native action solver evaluations，把每层 action queries 与 S_l 对应的观测 keys/values 输入真正 variable-length/block-sparse kernel，并核实被省略 QK/AV 不执行。video queries、future/action interactions、各层 FFN 和 joint flow schedule 不变；attention result 返回 residual stream，改写 action hidden/velocity，沿原 sampler 影响最终 action chunk。 The toy computes the retained-key softmax exactly from synthetic logits; real kernel execution is not simulated.",
+      "status": "instantiated"
+    },
+    {
+      "step": "S6",
+      "consumes": [
+        "dense/ranked/permuted paired rollouts",
+        "full-path timing",
+        "task-success/action-deviation measures"
+      ],
+      "produces": [
+        "paired quality, cost and divergence comparisons",
+        "stop/continue decision"
+      ],
+      "note": "Verbatim candidate step: 6. 对 dense、rho-ranked mask、保留边成本相同的 source-group permutation mask 做 paired comparison；计入评分、压紧、kernel launch 与其余模型路径的完整 latency，记录 per-path FLOPs、task success、action-chunk deviation 和首次 action divergence。Amdahl headroom不足、稀疏 kernel 未真实省算、或 permutation 不影响 task outcome，任一项成立即停止候选。 The toy only compares synthetic projected attention outputs and edge counts; it does not measure task success or latency.",
+      "status": "stopped",
+      "stopped_reason": "A real frozen benchmark rollout, sparse-kernel profiler and task-success outcome are outside this dry-run and were not run."
+    },
+    {
+      "step": "S7",
+      "consumes": [
+        "simulation passing the frozen gate",
+        "matching policy/data/source/hardware prerequisites"
+      ],
+      "produces": [
+        "conditional true-robot evaluation plan"
+      ],
+      "note": "Verbatim candidate step: 7. 只有仿真通过冻结 gate 后才讨论真机：Sparse-WAM 的 AgileX Cobot Magic 路线还需任务适配 FastWAM-Joint checkpoint、示范数据、source implementation 和同型平台，这些当前未确认。该 policy 原有 post-training 是 baseline 前置成本，单列；本 mask 不训练、不蒸馏、不更新权重，且不声称已完成真机。 No simulation gate was evaluated and the candidate itself says the hardware/data/source prerequisites are unconfirmed.",
+      "status": "stopped",
+      "stopped_reason": "The candidate's stated prerequisite for a robot phase is not established; no robot run was performed."
+    }
+  ],
+  "dataflow_status": "stale_since_revision",
+  "regime_notes": [
+    {
+      "finding": "For an all-identical per-head value assignment, removing group C leaves the numerical sparse attention output unchanged ([2,1] before and after), although the primary T2 assignment changes it. The action-output effect is therefore value-dependent.",
+      "derivation": "None"
+    },
+    {
+      "finding": "The source-group permutation control cannot always provide a distinct mask at exactly equal retained-edge cost when source groups have unequal token counts.",
+      "derivation": "None"
+    }
+  ],
+  "limits": "Source record, not proof. Final independent review checks semantic correspondence.",
+  "revision_changed_fields": [
+    "falsification_prediction"
+  ],
+  "authority": "sources (the post-revision candidate) are the authority; dataflow and claim_step_map trace the PRE-revision design and must not be used where they disagree with sources.",
+  "post_revision_evidence": {
+    "dataflow": "final_candidate.json/core_mechanism 定义 r_lg=Σ_q ||Σ_h W_O,h(Σ_{j∈g}α_h(q,j)V_h(j))||₂，ρ_lg=r_lg/Σ_g r_lg；分母为零时回退 dense，按 r_lg 降序和 native source order 稳定并列后取累计 ρ≥1−ε 的最小 group 前缀。step 3 在每个 chunk 的 k_ref dense forward 计算分数；step 4 选择 mask；step 5 仅在后续 native action-query evaluations 中删减 observation K/V edges，保留 video-query 路径、QKV/FFN 与原 flow schedule，attention 输出经 residual 得到新的 action velocity。phi_obs/Amdahl 是 profile 后的潜在上界，step 2/6 仍要求计入 scoring、packing、kernel launch 和完整模型路径的 latency。ρ 是排序 proxy，candidate 自己把跨 step 稳定性、任务敏感性和实际 headroom 标为 untested。",
+    "dry_run": "已执行 phase3_revise/post_review_toy/toy_rule_trace.py（仅 Python 标准库）。显式赋值 Q=1、H=2，source groups A/B/C 的 token 数为 2/1/3，ε=0.4，W_O slices 为 identity；计算得 r_A=0.390512、r_B=0.360555、r_C=0.894427，ρ_C+ρ_A=0.780883≥0.6，故保留 C、A 共 5 tokens。B_l=|Q||H|Σ_g|g|=1×2×5=10 edges；dense 为 1×2×6=12。显式枚举 query/head/token edge 数等于公式。mass、v_l2、v_l1、CAPA-projected controls 均按 G_o group sum 与 boundary token-prefix 规则匹配为 5 tokens/10 edges；单独 boundary-prefix probe 也得到 5 tokens/10 edges。没有加载模型，也没有模拟 task success 或 latency。",
+    "degenerate_probes": "同一 trace 实测 ε=0 时保留所有正分数组，ε=0.99 时只留最高分组 C；等分数按 native order 得 A、B；全部 r_lg=0 时按 candidate 规则回退 A/B/C 全量；ε=1 被 [0,1) 合法域拒绝。边界组部分 token 按对应 comparator 的 token score 和 native token order 取前缀，edge 计数仍精确等于 B_l。零分组可被累计阈值排除；这只说明规则可计算，不说明被删组在后续 action states 中无效。",
+    "claim_step_map": "按 core_mechanism_steps 映射：冻结模型、schedule 与 baseline 身份→step 1；原路径 profile、phi_obs 和 Amdahl/latency stop→step 2；native provenance、dense k_ref 与 rho 计算→step 3；ε 与 task-success gate 下选 mask→step 4；只删 action-query→observation QK/AV 并把输出送回原 action flow→step 5；matched scoring/permutation、完整 latency、success 和 edge/FLOP accounting→step 6；training-free 改动与 baseline post-training/真机前置条件分开→step 7。task benefit 与实际加速仍是待测主张，未被 trace 当作已证结果。"
+  }
+}

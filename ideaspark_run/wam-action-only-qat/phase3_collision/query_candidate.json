@@ -1,0 +1,79 @@
+{
+  "contract_version": 2,
+  "title": "Student-Path Suffix QAT for World-Action Models",
+  "intervention_object": {
+    "acts_on": "The W4A8-quantized solver transitions in each model's declared quantized module set, evaluated at states produced by that same quantized solver.",
+    "operator": "At a sampled native solver index, branch the BF16 teacher and fake-W4A8 student from the same student-visited state, run each unchanged remaining suffix with shared innovations, and train the student toward the teacher branch's denormalized executed-action endpoint.",
+    "decision_variables": "Existing quantized weights theta_m in the model-specific trainable set; choose solver start k uniformly from that model's native active solver indices. Quantizer scales, schedule, precision exclusions and action interface are fixed to the matched PTQ contract."
+  },
+  "hook": "A W4A8 WAM can match the BF16 action at the original noise-seed endpoint yet lose control quality when its own denoising path reaches states with different suffix responses; the prediction is that student-path suffix QAT improves closed-loop completion preferentially as the measured student-visited suffix-response energy rises.",
+  "hook_shape_rationale": "Shape (a), surprising empirical reveal: closed-loop completion is predicted to improve selectively with student-visited suffix-response energy despite SteerQuant's reported near-BF16 W4A8 outcomes (arxiv:2609.39056v1), a regime its fixed-weight calibration does not test. Shape (b) is rejected because fixed pretrained weights are explicit in the WAM PTQ papers, and shape (c) is rejected because SteerQuant adds no inference branch, so strict minimality on an axis against that strongest W4A8 baseline is not established.",
+  "gap_closure": [
+    {
+      "gap": "SteerQuant, QuantWAMs, and Q-WAM all keep pretrained WAM weights fixed and manage low-bit action error through calibration or protected precision; no retrieved WAM leaf tests whether this immutability is necessary for their quality-cost boundary. — stakes: researchers may infer that static PTQ is sufficient without evidence, or fund expensive adaptation without evidence that frozen weights are the limiting factor, weakening principled method selection.",
+      "main_pattern": "generative_process_redesign",
+      "sub_pattern_not_applicable_reason": "",
+      "sub_pattern": "C24 (Liberate a Fixed Generative Component)",
+      "companion_pattern": null,
+      "how_closed": "C24's conditioning/operating-state move is instantiated as teacher supervision re-queried from the quantized student's own denoising states; its suffix endpoint loss makes the weight-adaptation method concrete. The sub-pattern evidence is structurally adjacent through iterative generative refinement, though not WAM-QAT-specific."
+    }
+  ],
+  "core_mechanism": "For each model m, let Q_m be the exact module set quantized by its matched branch-free W4A8 PTQ comparator and let theta_m be the existing trainable weights in Q_m; Fast-WAM uses its independent ActionDiT, while the released shared-backbone LingBot-VA and Cosmos Policy require quantizing and updating the declared shared denoiser blocks, so those results are action-targeted shared-backbone QAT rather than weight-scope action-only QAT. With conditioning c, initial noise z, and the model's native solver innovations eta, run the fake-quantized student to its own states x_Q[m,k], where x_Q contains every evolving state needed by that query: action latent for Fast-WAM and coupled video/action state for shared models. Let K_m be the model's active native solver indices and sample k uniformly from K_m; stop the gradient at x_Q[m,k], then restart both the BF16 teacher and quantized student from that exact state and apply each model's unchanged remaining solver suffix with the same c and eta. Let S[b,m,k] denote that suffix, D_m the native action denormalization map, and E_m the controller's executed-prefix selector; define y[b|Q,m,k] = E_m(D_m(S[b,m,k](x_Q[m,k], c, eta_after_k))) and delta_visit[m,k] = y[Q|Q,m,k] - y[BF16|Q,m,k]. Train theta_m with the expectation over training contexts, native noise/innovations, and k of the squared norm of delta_visit; this is a suffix endpoint target, not a per-step velocity loss or a change to the solver. The teacher suffix is conditioned on a state reached by the quantized student, so its endpoint is not the teacher's original noise-seed endpoint and it is not a physical oracle; the teacher is removed completely at evaluation. Training contexts come from the existing model-specific LIBERO training data, while only internal denoising states are student-generated; this does not claim to correct environment observations induced by earlier executed actions. The same target definition transfers across architectures, but module scope, coupled state and normalization remain model-specific, and transfer is a hypothesis until tested.",
+  "core_mechanism_reasoning": "BLOCK 1 — PREMISES\n- Native WAM solvers are iterative, and changing quantized transitions can change later solver inputs; the model interfaces and common error bookkeeping define these paths, while the size and task consequence of the shift are untested — falsification target.\n- A BF16 model can be queried at a state produced by its quantized counterpart; both model interfaces expose the relevant inference computation, but memory and throughput for suffix training are unmeasured.\n- The action denormalizer D_m and executed-prefix selector E_m define the controller-facing output; latent error alone is not an actuator-space metric.\n- Load-bearing variable and estimand: V_visit[m] = E over held-out contexts c from model m's named LIBERO evaluation distribution, native initial noise z, native innovations eta and uniformly sampled active solver index k of ||delta_visit[m,k]|| squared, in denormalized executed-action units. Its association with closed-loop benefit is untested — falsification target.\n- Observation model: training c is sampled from the existing training episodes for each model (Fast-WAM's public LIBERO-fastwam demonstrations for the initial pilot); episodes are temporally clustered and demonstrator-selected, not an unbiased sample of quantized-student closed-loop observations. Student-generated x_Q states expose denoising-path shift conditional on those contexts only; environmental occupancy shift remains an explicit limitation.\n\nBLOCK 2 — NAIVE-BASELINE AUDIT\nNaive version: initialize from the BF16 WAM, fake-quantize the matched module set to W4A8, and train it with ordinary action/denoising loss plus matched BF16 teacher KD evaluated on teacher-visited states. This is a credible baseline that may work, so branch (ii): the contribution is incremental and does not claim that generic QAT, KD, or trainable weights are novel. The added mechanism is the teacher's full remaining suffix endpoint evaluated from the quantized student's own latent state, with the loss measured after model-native denormalization and executed-prefix selection; whether this is distinct from low-bit on-policy distillation, continuous-state diffusion OPD, flow-map backward simulation or behavior-state clean-endpoint anchoring remains an open prior-art question. The load-bearing artifact is this matched student-state suffix response, not generic STE training, ordinary endpoint KD, PTQ scale calibration, mixed-precision allocation, or a protected high-bit branch.\n\nBLOCK 3 — DESIGN RATIONALE\nA single mechanism closes the anchor because the unresolved variable is whether fixed-weight PTQ suffices once its own quantized solver leaves the teacher path; the action endpoint suffix target changes that training signal without adding a separate evaluation leg. I rejected environment-rollout DAgger as the core method because the available training contexts are demonstrator data and that would require an additional simulator-interaction data pipeline; closed-loop rollout remains a separate falsification. I also rejected learned quantizer scales and error-compensation branches because they would confound the weight-adaptation comparison and approach LSQ/QVGen/Q-WAM mechanisms already named in the lineage.",
+  "core_mechanism_steps": "1. For Fast-WAM Base, LingBot-VA's released shared-backbone checkpoint, and Cosmos Policy's LIBERO model, record each BF16 reference, native schedule, action normalization/denormalization map, executed-prefix selector, and exact W4A8 PTQ module set Q_m; output a model-specific scope manifest. 2. Split each named LIBERO dataset by episode; sample training context c only from its training episodes, draw z and solver innovations from that model's native inference distribution, and run the fake-quant student to record x_Q[m,k]; output the student path states. 3. Sample k uniformly from the active native indices K_m and detach x_Q[m,k]; from this identical state and remaining innovations, run a BF16 teacher suffix and a fake-quant student suffix; output the two suffix endpoint actions. 4. Apply D_m and E_m to both endpoints, compute delta_visit, backpropagate its squared norm only through the student suffix into theta_m, and keep quantizer scales, schedule, excluded precision and action interface fixed; output updated quantized weights. 5. Train the ordinary action-only QAT and matched teacher-KD controls with the same examples and matched measured training compute, and include the strongest runnable branch-free W4A8 PTQ comparator; report added teacher-suffix work explicitly. 6. On held-out fixed contexts and paired noise, report denormalized action deviation separately from LIBERO closed-loop completion; then measure full action-query latency with the declared native W4A8 kernel, including context/video prefill, without a teacher. 7. Attempt transfer to LingBot-VA and Cosmos Policy only under their shared-backbone contracts, recording that shared blocks affect video and action states and making no weight-scope action-only claim.",
+  "falsification_prediction": "On the Fast-WAM Base pilot with public LIBERO-fastwam train/evaluation episodes, compare BF16, matched branch-free W4A8 PTQ, ordinary action-only QAT, teacher KD at teacher states, and student-path suffix QAT while holding model, data split, schedule, chunk, controller, normalization and kernel path fixed. Measure fixed-input denormalized executed-action deviation, LIBERO closed-loop completion, and native full action-query latency as separate outcomes; the candidate predicts its completion gain over matched teacher KD increases with task-level V_visit rank, while low-V_visit tasks show little gain. As a mechanism control, permute BF16 suffix endpoints among quantized student states matched by model and solver index while preserving their marginal endpoint distribution; the predicted downstream effect is loss of the candidate's closed-loop completion gain and disappearance of the V_visit-linked gain pattern, not merely a change in V_visit itself. No teacher is used at evaluation, and transfer to shared-backbone LingBot-VA/Cosmos Policy is a separate scope-labeled falsification rather than a pooled success claim.",
+  "compute_budget": "GPU-days cannot be estimated from the supplied facts because campaign hours, samples per second, and suffix-training throughput are unmeasured; cap is at most 4 separate A100-SXM4-40GB devices, not pooled VRAM. First measure peak memory and per-example throughput for the Fast-WAM suffix pilot, including teacher and student suffixes, then bound any transfer campaign before authorization. No paid API is used (US$0); this formulation submits no job.",
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2609.39056v1",
+      "delta": "SteerQuant maps downstream action sensitivity to calibration scales with packed weights fixed and a map based on full-precision inputs; this candidate instead updates matched W4A8 weights against teacher suffix endpoints started from quantized-student states."
+    },
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "delta": "QuantWAMs aligns PTQ calibration and fixed-intervention rollout audits while retaining pretrained weights; this candidate's load-bearing object is a trainable action endpoint suffix target evaluated at a quantized-student state."
+    },
+    {
+      "paper_id": "arxiv:2609.33269v1",
+      "delta": "Q-WAM protects an action-sensitive subspace in a 16-bit branch under W4A4; this candidate proposes no protected branch and holds a branch-free W4A8 scope fixed while adapting existing weights, so their precision regimes are not directly comparable."
+    },
+    {
+      "paper_id": "arxiv:2310.03270v4",
+      "delta": "EfficientDM uses mergeable quantization-aware low-rank updates and teacher denoising-output matching for image diffusion; this candidate constructs teacher/student suffix endpoints in denormalized robot-action coordinates from quantized-student states."
+    },
+    {
+      "paper_id": "arxiv:2505.11497v5",
+      "delta": "QVGen uses trainable video-diffusion error-compensation auxiliaries and rank decay for video quality; this candidate adds no inference auxiliary and targets the WAM's controller-executed action endpoint, without inferring control gains from video quality."
+    },
+    {
+      "paper_id": "arxiv:2608.24646v1",
+      "delta": "The Phase 0 table describes image-level reward guidance for diffusion self-distillation; abstract-only evidence does not establish whether its behavior-state clean-endpoint anchors overlap with the candidate's teacher suffix endpoint from a quantized-student state."
+    },
+    {
+      "paper_id": "arxiv:2609.26708",
+      "delta": "The supplied title identifies low-bit on-policy distillation for reasoning; the candidate's proposed additional construction is a model-native WAM solver suffix target ending in denormalized executed actions, but the overlap remains open pending method-level comparison."
+    }
+  ],
+  "almost_prior_paper_id": "arxiv:2609.26708",
+  "what_step_was_missed": "The proposed WAM-specific step is to start a BF16 teacher suffix from the exact quantized student's intermediate solver state and form its target after the model's native action denormalization and executed-prefix selector; the available title-level collision lead does not establish whether the low-bit reasoning method already contains this construction, so this is a provisional missing-step statement, not a novelty verdict.",
+  "signature_terms": [
+    "student-visited suffix endpoint matching",
+    "quantized solver state response",
+    "denormalized executed action targets",
+    "shared-backbone WAM QAT"
+  ],
+  "alias_terms": [
+    "learned activation clipping",
+    "teacher student knowledge distillation",
+    "on-policy distillation DAgger",
+    "diffusion trajectory sampling distillation",
+    "truncated backpropagation through time",
+    "ordinary endpoint knowledge distillation",
+    "low-bit on-policy distillation",
+    "continuous-state on-policy distillation",
+    "flow-map backward simulation",
+    "behavior-state clean-endpoint anchors",
+    "HAWQ-style Hessian-aware mixed-precision allocation",
+    "Learned Step Size Quantization (LSQ)"
+  ],
+  "composition_note": "Anchor-only: the other gaps supply falsification outcomes rather than additional training capabilities. Nearby low-bit on-policy, diffusion state-anchor and flow-map methods remain open collision questions; aliases retain those search routes. Skip collateral n10 because the mechanism does not allocate precision by curvature, and n12 because its quantizer step sizes stay fixed."
+}

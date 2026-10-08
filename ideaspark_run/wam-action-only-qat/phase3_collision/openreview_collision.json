@@ -1,0 +1,832 @@
+[
+ {
+  "title": "Loss-Level Connectivity Across Optimization Trajectories",
+  "title_norm": "loss level connectivity across optimization trajectories",
+  "abstract": "The training data and optimization process jointly shape how deep neural networks navigate their loss landscapes. This interaction motivates studying not only the geometry of optimization, but also how that geometry relates to the model’s evolving behavior on the training data. Yet, existing studies have largely focused on loss-landscape geometry around converged solutions, where learning from the training data is largely complete. Mode connectivity exemplifies this line of work by asking whether independently trained solutions can be connected through paths of low loss. This perspective naturally raises a question during training: how is this geometry organized while the model is still learning the structure of the training data? However, extending this perspective to intermediate training stages is less straightforward, because the objective itself changes continuously as the network continues to learn from the data. To separate this changing objective value from the geometry being examined, we study connectivity between independently trained states at matched objective levels, which we refer to as loss-level connectivity. In the settings we examine, matched-loss states can be connected by fitted nonlinear paths that approximately preserve the endpoint-defined objective level across multiple stages of training. We then analyze example-wise residuals along these paths. These residuals distinguish controlled subsets of training examples even after matching their endpoint losses, and vary systematically under label-corruption and training interventions. These findings show that path-based measurements can contain information that is not captured by scalar endpoint loss alone.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "bCjfnDnvJI",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=bCjfnDnvJI",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "student-visited suffix endpoint matching"
+  ]
+ },
+ {
+  "title": "Memory for Late Evidence: A Delay–Resolution Phase Law",
+  "title_norm": "memory for late evidence a delay resolution phase law",
+  "abstract": "Sequential state estimators are designed to forget: once a compact state is\nsufficient for predicting the future, the observations that produced it can be\ndiscarded. Late evidence exposes a fundamental limitation of this principle.\nA state may be sufficient for forward prediction yet insufficient to revise the\npresent when an observation about a discarded timestamp arrives later. We\ncharacterize the minimum persistent memory required to support such revisions\nunder arbitrary legal arrival orders. For a class of positive, invertible\n$K$-state models with bounded, locally rich on-time evidence and\nretrodictively observable late evidence, the optimal deterministic code satisfies\n\n$$\n B^\\star_\\epsilon(D)=\n \\Theta\\!\\left((K-1)\\min\\{D+1,\\log(1/\\epsilon)\\}\\log(1/\\epsilon)\\right).\n$$\n\nThus, correction-state memory is delay-limited only up to the point at which\nthe required resolution dominates: beyond this horizon, memory becomes\nresolution-limited and no longer grows with physical delay. The upper bound\nstores a quantized cut belief together with the resolvable suffix, while a\nmatching response-packing converse shows that every retained direction is\nnecessary, ruling out an explanation based solely on truncating a mixing\nfilter. Without bounded evidence, even delay one can preclude any finite\nuniformly accurate code. These results identify statistical resolution, rather\nthan physical delay, as the relevant capacity variable for correctable state\nbeyond the mixing horizon. A packed cut--suffix construction realizes the\npredicted memory and replay-work saturation, while a controlled recurrent\nbottleneck diagnostic reveals the forward--revision tension on\nprediction-equivalent histories. Overall, the theory provides a concrete\ncriterion for sequential representations under late evidence: preserve the\nresponses required for future corrections, not merely the information needed\nfor prediction from the current state.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "qlasgfPyOZ",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=qlasgfPyOZ",
+  "published_iso": "",
+  "_score": 3,
+  "from_query": [
+   "quantized solver state response",
+   "student-visited suffix endpoint matching"
+  ]
+ },
+ {
+  "title": "LLM Agent Refusal Can be Harmful: An Availability Attack through MITM Tampering on Remote MCP Services",
+  "title_norm": "llm agent refusal can be harmful an availability attack through mitm tampering o",
+  "abstract": "Safety-aligned LLM agents refuse sensitive contexts more readily, including the return values of tool calls. We show that this refusal behavior is itself an attack surface: fabricated security alerts embedded in MCP return values induce agents to brick legitimate user requests, constituting an availability attack on agentic harnesses. We propose the ARB attack, which appends covert fake alerts to MCP communications that the attacker hijacks or relays as a man in the middle; the attack targets requests that depend on a remote MCP service and cannot be bypassed by local tools. We formalize the attack with a refusal-probability decomposition into tool-call probability, warning sensitivity, and post-alert verification capability, and validate it on 10 mainstream models across 3 harnesses: ARB exceeds 50% ASR in 90% of the 30 model--harness configurations. We further construct NBMR, the first MCP dataset designed around non-bypassability (8 categories, 160 docker-deployable scenarios), and propose AEPG, an MCTS-based defense that synthesizes AGENTS.md rule files; the synthesized prompt raises executed turns on the attacked agent from 18.8% to 75.0% and scene completion from 12.5% to 75.0%. Stress tests show that the induced refusal persists through the full repetition budget for the most aligned model families.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "tUYDnsZ34t",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=tUYDnsZ34t",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Flash On-Policy Distillation",
+  "title_norm": "flash on policy distillation",
+  "abstract": "Full-vocabulary KL provides on-policy distillation (OPD) with supervision over every next-token alternative, rather than a teacher-top-k truncation or a sampled-token estimate. Making this objective efficient is a framework-level challenge: dense distribution materialization strains memory and communication, while complete-response barriers delay updates and serialize teacher work. We introduce Flash-OPD, an OPD training framework that makes full-vocabulary KL a native training path through three coordinated designs. Partial on-policy rollouts retain unfinished prefixes as context and optimize only fresh suffixes generated by the current student snapshot. Teacher overlap evaluates each ready suffix while other requests continue generating, preserving one synchronized student update per round. A tiled KL loss kernel reconstructs teacher logits from hidden states and a frozen output head, using online normalization and analytic backward recomputation instead of materializing the complete token–vocabulary matrix. Together, these designs preserve full-vocabulary supervision and token-level behavior-policy matching while reducing update latency and loss workspace, with FSDP and vocabulary-parallel Megatron support. In a representative wall-clock comparison, Flash-OPD reaches reverse KL 0.01 in 4.2 hours versus 8.5 hours for full-rollout OPD, a 2.02× time-to-target speedup, with comparable final divergence. Efficient OPD need not obtain its systems benefits by truncating the vocabulary supervision.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "k0lGEf1plv",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=k0lGEf1plv",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "student-visited suffix endpoint matching",
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Do-JEPA: From Masking to Intervention in Latent World Models",
+  "title_norm": "do jepa from masking to intervention in latent world models",
+  "abstract": "Latent world models are trained to predict what happens next, so nothing in their\nobjective separates what an action caused from what merely co-occurred with it.\nObject-masking models such as C-JEPA intervene on what the predictor can see; we\nintervene on what physically happens. From one saved simulator state we run the\ndynamics under an action $a$ and under a reference action $\\anull$, and train the\nmodel to predict the difference $\\Delta z=z^{a}-z^{\\anull}$ between the two latent\nfutures. The resulting objective, Do-JEPA, has an effect loss, a support loss\n(where the action enters), a propagation loss (where its effect travels) and\ninvariance losses (what must not change). In a synthetic system with\nobject-aligned variables, support supervision finds the directly intervened object\nin $99.95\\%$ of test cases, where a sparse action mask sends the action to a\nnuisance slot in every case, and response-onset supervision recovers the\nring-shaped propagation graph (edge AUROC $0.975$ vs.\\ $0.624$). From pixels, the\neffect loss beats a control trained on exactly the same data: it lowers latent\neffect error by $28.4\\%$ on an end-to-end LeWM model ($3/3$ seeds) and physical\neffect error by $13.5\\%$ when trained and tested on natural action sequences, and on three\nindependently generated CausalWorld benchmarks it lowers responsive effect error\nby about $20\\%$ under physics shifts and the latent context sensitivity of\npredicted effects by $66\\%$. Trained from scratch it costs factual accuracy;\nfine-tuning an existing model with it removes this cost. Together, these results show \nthat intervening on the world, rather than on what the model sees, helps latent world models\npredict what their actions cause.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "jA6DsjW60P",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=jA6DsjW60P",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Xbank: Cross-Bank Transfer of Transaction Foundation Models",
+  "title_norm": "xbank cross bank transfer of transaction foundation models",
+  "abstract": "Self-supervised learning enables banks to derive reusable representations from customer transaction histories. However, the large datasets needed for pretraining typically remain proprietary, limiting opportunities to study how these representations transfer across institutions. We introduce \\xbank{}, a dataset comprising around 91.5 million daily-aggregated transaction records from 378,305 corporate clients, with 13 categorical features, two numerical features, and three monthly product-propensity targets. Together with the Multimodal Banking Dataset (\\mbd{}), which contains transaction histories for approximately 1.5 million corporate clients, \\xbank{} supports a benchmark for cross-bank transfer of frozen representations. We evaluate five models spanning contrastive, autoregressive, masked-modelling, and temporal point-process objectives. By evaluating \\mbd{}-pretrained encoders on raw \\mbd{} transactions, their daily aggregates, and \\xbank{}, we isolate the effect of aggregation within the source institution and assess cross-bank transfer at the same aggregation level under each dataset’s native evaluation protocol. To handle unknown field correspondences, we propose a dictionary-free schema-alignment method based on semi-relaxed Fused Gromov-Wasserstein optimization. It combines statistical column profiles with within-bank feature dependencies, accommodates schemas of different sizes, and determines a fixed mapping before evaluation without using downstream labels. Together, these contributions provide a framework for studying the transfer of transaction representations across banks with heterogeneous data schemas.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "nKJXmhUvjs",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=nKJXmhUvjs",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "FireMark: A Benchmark Dataset for Data-Driven Forecasting of Laminar Flame Dynamics",
+  "title_norm": "firemark a benchmark dataset for data driven forecasting of laminar flame dynami",
+  "abstract": "High-fidelity computational fluid-dynamics (CFD) simulations of reacting flows are computationally expensive, limiting their usage in real-time applications. In this context, machine learning (ML) methods offer a promising approach for predicting dynamic flow evolution. However, evaluating them remains an open challenge due to the limited availability of benchmarks that combine high temporal resolution with a diverse range of exogenous inputs. In this work, we introduce FireMark, an open benchmark for evaluating data-driven methods to forecast reacting flows evolution. The benchmark contains multiple simulations of a non-premixed laminar methane/nitrogen coflow flame subjected to time-varying inlet velocities. FireMark includes both thermodynamic and chemical fields, obtained through CFD simulations with a detailed chemical kinetic mechanism. The benchmark is designed to assess the ability of forecasting models to reproduce the evolution of a laminar non-premixed flame and to generalize to unseen input signals. Training data consist of sine-sweep forcing signals at two amplitudes, whereas the test set comprises fixed-frequency sinusoids and step functions, with amplitudes both within and outside the training range. To establish reference performance and demonstrate the benchmark capabilities, we evaluate representative classical reduced-order and ML-based forecasting approaches using a set of quantitative metrics, including measures of physical consistency. A linear or bilinear autoregressive model on a reduced basis is more accurate than every neural forecaster on the same latent space and reproduces the heat-release response best; several neural forecasters fall below the accuracy of a constant initial state predictor; and the Fourier neural Operator (FNO), which has the lowest field error, reproduces the integrated heat release worse than that constant forecast. These results provide a baseline performance against which future forecasting methods can be compared. FireMark is publicly available and provides a standardized framework for the reproducible evaluation of data-driven models for reacting-flow dynamics.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "RbNUj9eyH9",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=RbNUj9eyH9",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Subspace Learning During Population-Loss Plateaus",
+  "title_norm": "subspace learning during population loss plateaus",
+  "abstract": "A nearly constant loss can conceal substantial feature learning. We prove\nthis for two-layer ReLU and leaky-ReLU networks under simultaneous fixed-step\npopulation gradient descent from small IID Gaussian initialization.\nFor positive mixtures of damped cubic links in Gaussian Sobolev space,\nloss stays near one while minimum alignment of the\npredictor's top-$r$ average gradient outer product (AGOP) subspace with the\nteacher subspace improves\nby at least $1/2$. Identically budgeted refitting improves population MSE\nby more than $0.399$, and the unchanged trajectory later reduces its own\nloss. A complementary theorem covers small additive Sobolev perturbations\nof unequal-weight cubic teachers using projected features. For SwiGLU,\nat fixed width and dimension as initialization\nvanishes, we prove leading-AGOP-direction alignment during a loss plateau for square-integrable\nteachers with a nonzero Hermite component of degree one, two, or three;\nunrestricted rank-one cubic refit gains hold at a specified width.\nThese guarantees require structured teachers and restrictive parameters.\nAn approximation result further distinguishes subspace recovery from\nneuron specialization: some interaction targets retain unavoidable\nprediction error when ridge neurons specialize along shared orthogonal\naxes within the teacher subspace.\nPopulation-moment experiments across 21 teacher links and 50\ninitializations compare alignment, refit improvement, and trained-loss reduction.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "iNiv99l1jY",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=iNiv99l1jY",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "The Stable Discriminant and Adaptive Guards for Auditing Stable Matchings",
+  "title_norm": "the stable discriminant and adaptive guards for auditing stable matchings",
+  "abstract": "Auditing a proposed matching need not recover every preference sign. We derive bilateral Gaussian audit games for scalar queries and matching-feasible feedback. The stable game is a concave design over doubly stochastic exposures; a fixed blocker is optimally tested by mixing the proposed matching with a partner swap. Adaptive guards reject a pair as soon as one endpoint suffices, without learning redundant near ties, and are optimal up to logarithmic factors in finite expected deployment rounds. Separate information tracking attains the asymptotic leading constant. A witness-local likelihood boundary removes unnecessary full-market stopping overhead. Concavity yields an assignment-based numerical design check, and confidence envelopes convert it into a simultaneous guarantee for the unknown information rate and an adaptively selected exposure. Implemented trackers, guards, and repeated-look design checks distinguish deployment rounds, scalar observations, numerical error, and statistical uncertainty. Target-separation examples show why auditing, finding an optimal matching, and learning all stable pairs have different information costs.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "ozDcCNMX45",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=ozDcCNMX45",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "student-visited suffix endpoint matching"
+  ]
+ },
+ {
+  "title": "Not Just Saturation: Event-Structured Rewards for Open-Ended Post-Training",
+  "title_norm": "not just saturation event structured rewards for open ended post training",
+  "abstract": "During post-training for open-ended generation, judge scores for responses to the same prompt can concentrate within a narrow range as policy quality improves. We find that the issue is not the disappearance of reward differences, but whether the remaining differences within this narrow range reliably rank candidates by quality. When a limited judge struggles to distinguish closely matched responses, using these differences to estimate relative advantages can introduce noise or misdirect policy updates. Fine-grained rubric-based evaluation can reveal defects that holistic scores overlook, but directly aggregating the resulting diagnoses can introduce new problems. One underlying defect may be reported under multiple criteria, while several independent defects may be collapsed into a single criterion-level score. Poorly calibrated penalties can also overstate the impact of minor flaws and distort candidate rankings. We introduce CARMA, an event-structured reward framework that separates two questions: which diagnoses refer to the same defect, and how strongly each independent defect should affect reward. CARMA groups evidence-linked diagnoses that can be resolved by the same semantic repair into a single event and learns defect costs from same-prompt preferences. CARMA adjusts an independently obtained holistic score using event-level penalties, rather than assigning separate costs to multiple diagnoses of the same defect. In open-ended generation evaluations on Qwen3-8B and Qwen3.5-27B, CARMA-trained policies outperform the tested baselines in pairwise preference comparisons. It also yields more accurate near-tie rankings and advantage vectors that agree more closely with independently constructed references. Integrating event-structured signals into pairwise and feedback-driven training yields further gains over the corresponding methods without CARMA, supporting defect events as a reusable basis for open-ended post-training.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "E3zB17tCkW",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=E3zB17tCkW",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Logical Equivariance in Diffusion Language Models",
+  "title_norm": "logical equivariance in diffusion language models",
+  "abstract": "Rewriting a problem without changing its answer can change whether a language model solves it, even when average accuracy barely moves. We study this as logical equivariance: predictions should transform consistently with answer-preserving input changes. In four diffusion language models, paired evaluations on Sudoku, code, and mathematics reveal many problems solved in one presentation but not another. We build a Sudoku benchmark whose forced targets transport exactly under rotations and reflections, and prove that exact grid equivariance leaves row-major relative-score attention only two or three offset classes, so stability must be learned. In post-training, Reasoning-State Masking (RSM) improves solving but alone reduces stability; presentation randomization (PR) removes this cost, and its gain in normalized reliability is 8.3 points larger with RSM. Matched controls reproduce this interaction at two scales and trace its stability gain to training on partial states at RSM's density. The combined recipe raises LLaDA-8B's all-view correctness from 47.7\\% to 86.1\\% alongside higher accuracy, and improves worst-view maze success by 7.3--18.8 points.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "0OwVrEh7sU",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=0OwVrEh7sU",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "PhysioDyT: Physiologically Directed Dynamic Transport for ECG–PPG Representation Learning",
+  "title_norm": "physiodyt physiologically directed dynamic transport for ecg ppg representation ",
+  "abstract": "Electrocardiography (ECG) and photoplethysmography (PPG) provide complementary views of cardiovascular dynamics: cardiac electrical activity precedes and drives peripheral hemodynamic responses, while the delay between the two modalities varies across individuals, time, and acquisition conditions. Existing multimodal representation learning methods commonly rely on synchronous alignment or symmetric similarity objectives, which may obscure this directed and time-varying relationship. We introduce PhysioDyT, a cross-modal predictive representation learning framework based on physiologically directed dynamic transport. Rather than enforcing fixed one-to-one correspondence, PhysioDyT predicts sample-dependent distributions over positive temporal offsets, preserves temporal ordering through soft monotone transport, and assigns unreliable or unmatched events to a dustbin state. The physiologically directed transport pathway is combined with bidirectional latent prediction to retain information useful to both sensing modalities. We evaluate PhysioDyT on a strictly patient-disjoint and pretraining-disjoint wearable cohort, including PPG-only coronary heart disease prediction across independent pretraining seeds. We further investigate the learned mechanism using direction reversal, cross-patient mismatch, temporal-shift interventions, and transport-component ablations. The experiments assess whether the model responds to physiological direction, patient-specific pairing, and temporal perturbations rather than relying solely on synchronous waveform similarity. Our results support dynamic transport as a structured inductive bias for cross-modal physiological representation learning, while also showing that the learned latent delay should not be interpreted as a direct clinical pulse-arrival-time measurement. PhysioDyT provides a principled and testable framework for learning representations from asynchronously coupled physiological signals.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "ZE56HeqJxT",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=ZE56HeqJxT",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "What Should I Try Next? Decision-Relevant Counterfactual Information Gain for Active World Models",
+  "title_norm": "what should i try next decision relevant counterfactual information gain for act",
+  "abstract": "World models enable agents to evaluate actions through imagined futures, yet\nthese predictions are useful only when the underlying environment dynamics are\nsufficiently identified. Existing exploration methods typically seek novel states,\nlarge prediction errors, local model disagreement, or generic information gain.\nSuch objectives may spend costly interactions resolving uncertainty that has little\neffect on subsequent decisions. We introduce Active Epistemic World Modeling\n(AEWM), a framework that asks which real interaction should be performed now\nto make relevant counterfactual futures more reliable. AEWM distinguishes irre-\nducible outcome noise from reducible uncertainty about latent mechanisms and\ntargets decision-relevant counterfactual information gain. Its practical Counterfac-\ntual Disagreement Reduction (CDR) score estimates query-set variance reduction\nby sampling hypothetical outcomes and reweighting ensemble members without\ninner-loop retraining. In a matched five-seed study on 60 held-out zero-delay\nhidden-physics worlds, CDR lowers one-step prediction RMSE at 32 interactions\nby 19.7% relative to local disagreement. It modestly improves budget-curve area\nrelative to random selection, but matches random at the endpoint and uses roughly\n3.2× more scoring time. Historical model ablations expose a delayed-action\ntraining-target mismatch, and an all-candidate audit finds weak fidelity of the cheap\nCDR rankings. The completed study establishes a one-step acquisition result;\nplanner-generated queries and downstream control remain to be tested.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "4TbO57oz3P",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=4TbO57oz3P",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "RPO-MAS: RECEIVER PREFERENCE OPTIMIZATION FOR SELECTIVE MULTI-AGENT COMMUNICATION",
+  "title_norm": "rpo mas receiver preference optimization for selective multi agent communication",
+  "abstract": "Communication is a critical component of multi-agent reasoning, yet peer communication does not always improve the receiver's decision. \nA peer response that is correct in isolation may be redundant or harmful for a receiver with a different reasoning state, while autonomous refinement or preserving the current response may lead to better outcomes. \nExisting approaches for selective multi-agent communication mainly rely on source reliability, peer selection, or communication structures, providing limited supervision on whether a particular intervention benefits the receiver.\nIn this work, we propose RPO-MAS, a receiver-conditioned preference optimization framework for selective multi-agent communication that learns intervention preferences from receiver-side outcomes. \nRPO-MAS formulates communication selection over three intervention types: peer-conditioned updating (SEND), autonomous refinement (SELF), and state preservation (KEEP). \nStarting from the same receiver state, it compares alternative interventions and constructs outcome-based preferences from their observed correctness outcomes. \nBased on these preferences, RPO-MAS learns a receiver-conditioned scorer to select appropriate interventions among candidate actions.\nEvaluation across seven reasoning benchmarks with Qwen2.5-7B-Instruct and Llama-3.1-8B-Instruct agents shows that RPO-MAS consistently improves multi-agent reasoning performance over independent aggregation and communication-based baselines. \nCompared with Majority Voting, RPO-MAS improves average accuracy from 76.91\\% to 77.72\\% and from 72.42\\% to 73.13\\% on the two backbones, respectively. \nFurther analysis shows that receiver-conditioned supervision improves correction of erroneous states while reducing harmful changes to correct states.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "16CgXjtlgL",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=16CgXjtlgL",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Safe Executions Can Hide Policy Failure: A Proposal-Level Audit of Hybrid Control in Synthetic Interviews",
+  "title_norm": "safe executions can hide policy failure a proposal level audit of hybrid control",
+  "abstract": "Safe executions can conceal unsafe proposals or a policy that avoids useful actions. We audit these failure modes in a synthetic structured-interview benchmark using joint proposal, execution, intervention and utility traces. A common hybrid-action interface supports TD3-style and PPO controllers with memory, reliability conditioning, nuisance consistency and proposal-cost optimization. Across 60 fitted policies and 23,520 evaluation episodes, both full controllers avoid follow-ups in the nominal panel, while a transparent rule achieves higher utility. Component-stack effects reverse direction between algorithms. An auxiliary control isolates exploration-induced constraint pressure: training exploration raises an always-proceed controller's mean discounted proposal cost to 0.696, above its budget of 0.5, despite zero deployed proposal cost. Released checkpoints, turn traces and executable audits connect every outcome table to its source, with explicit denominators and paired subject-level uncertainty. The findings motivate evaluating executed safety jointly with proposal safety and useful activity, and distinguishing exploratory behavior costs from target-policy costs. The evidence concerns a controlled synthetic setting; real-audio transfer and clinical effectiveness remain untested.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "GXCiD3ENSJ",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=GXCiD3ENSJ",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Evidence-Guided Action World Model for Time-Series Forecasting",
+  "title_norm": "evidence guided action world model for time series forecasting",
+  "abstract": "Time-series forecasting aims to predict future system states from historical observations and supports decision-making in applications such as energy management and retail planning. While modern forecasting methods effectively model endogenous temporal dynamics, real-world systems are also influenced by external factors that can alter their future evolution. Existing approaches typically incorporate such information as additional predictive inputs, directly learning mappings from external evidence to future observations. However, this treatment leaves the underlying dynamic response implicit. Importantly, the same external evidence may induce different responses depending on the current system state, making it difficult for existing methods to fully exploit external evidence. We therefore argue that forecasting should explicitly model the dynamic response implied by external evidence and characterize how this response changes system dynamics. Motivated by this perspective, we formulate forecasting under external evidence as an action-conditioned world-model problem, where latent actions explicitly represent dynamic responses to external influences and modulate future state transitions. We propose the \\emph{Evidence-Guided Action World Model} (EGA-WM), which learns a latent action space through a primitive bank, infers state-dependent actions from external evidence, and incorporates them into latent dynamics while modeling their persistent effects. Experiments on electricity-market and retail datasets demonstrate the effectiveness of EGA-WM across diverse forecasting scenarios.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "TvqsIaE2Lm",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=TvqsIaE2Lm",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "HYPE-DTI: VALIDATION-GUARDED KNOWLEDGE EXCHANGE FOR LOW-LABEL DRUG–TARGET INTERACTION PREDICTION",
+  "title_norm": "hype dti validation guarded knowledge exchange for low label drug target interac",
+  "abstract": "Predicting drug--target interactions (DTIs) from few labeled examples requires models to combine molecular, sequence, and relational evidence without amplifying errors during cross-view exchange. Existing dual-view methods integrate these sources, but often couple information transfer with model updating and final fusion, making it difficult to reject unreliable transfers. We introduce Hype-DTI, a dual-expert framework that validates each stage of collaboration. A relation expert provides selected pseudo-labels to a hybrid self expert, the reverse-distillation update is retained only after validation, and the learned gate is deployed only when it outperforms the selected expert. Across three five-fold low-label benchmarks, with each fold containing 10 positive and 10 negative training pairs, Hype-DTI improves mean AUPR over MoseDTI by 6.10 points on AGO, 0.49 on Blocker, and 4.60 on E-. It also outperforms MoseDTI in every matched semi-inductive fold involving unseen drugs, targets, or both. On DrugCentral, Hype-DTI reaches $86.78 \\pm 0.38\\%$ AUPR, the highest score among evaluated methods that do not use additional task-related DTI labels. ConPLex reaches $88.41 \\pm 0.58\\%$ with labeled DUD-E pretraining, illustrating the benefit of stronger external supervision. These results support validation-guarded exchange in the evaluated low-label and semi-inductive DTI settings, while highlighting the effect of external supervision on cross-dataset performance.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "6dR9YFEv74",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=6dR9YFEv74",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Beyond Uniform Lipschitzness: Pathwise Jacobian Stability for Flow Matching Samplers",
+  "title_norm": "beyond uniform lipschitzness pathwise jacobian stability for flow matching sampl",
+  "abstract": "Flow matching samplers integrate a learned velocity field. Existing error bounds often use its largest Jacobian norm over all states, even when generated paths visit only a small part of the space. We develop a framework that weights each velocity error and solver defect by the Jacobian growth that follows it between the compared paths. An exact error identity yields signed segment and tube bounds, with classical uniform Lipschitz estimates as a special case. In an explicit conditional flow matching example with nonzero velocity error, the signed bound equals the terminal Wasserstein error, while the classical bound is more than 500 times larger. We also determine what the population loss guarantees without a uniform Jacobian bound on the learned field. For a fixed population flow and a fixed linear growth class, the sharp worst case rate in state dimension $d$ is $\\sqrt\\eta[1+\\log(1/\\eta)]^{(d+4)/4}$, where $\\eta$ is the population velocity loss. Polynomial state weights reduce the logarithmic factor. Tests on trained samplers connect path growth to terminal sensitivity and use later growth to select paths for numerical refinement. The same flow derivative gives a weighted Poincar\\'e inequality for the output law.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "rnttCOgzRE",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=rnttCOgzRE",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Defect Responses in Visual World Models: Long-Horizon Propagation, Gradient Interaction, and Planning Outcomes",
+  "title_norm": "defect responses in visual world models long horizon propagation gradient intera",
+  "abstract": "Visual world-model predictors are trained on local latent targets, whereas planners rank action sequences through composed predictions. Defect response is the separation between two rollouts that share future actions: one starts from the observed next latent, while the other replaces its non-action channels with the model prediction. We ask whether attenuating this response over long horizons improves planning. Defect-Response Fan (DRF) penalizes the terminal response and assigns predictor-parameter credit only through the injected prediction. A full-gradient all-suffix control (FG-AS), inspired by ACPC's same-action pairing, penalizes every suffix response and differentiates through both branches. We freeze every component except the predictor and compare both objectives with Native one-step training on PushT and PointMaze using five paired seeds, a training-inaccessible candidate bank, and matched 1,200-update and 1,800-second total-wall views. Under matched wall time, FG-AS has lower mean-regret point estimates than Native by 4.57% on PointMaze and 7.03% on PushT, despite reaching fewer updates; at 1,200 updates, the direction reverses on both tasks. All paired regret intervals include zero, so the prespecified cross-task, dual-budget confirmation gate fails. Across 40 method–Native contrasts, three response measures attenuate in 23–25 cases, but their Spearman correlations with true-regret improvement are -0.148, 0.052, and 0.032, with cluster-stratified intervals spanning zero. DRF and FG-AS retain 24.6% and 17.7% of Native optimizer throughput. In this setting, the objectives measurably alter response propagation, but response attenuation is not established as a reliable surrogate for planning quality.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "tHbB13ghLu",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=tHbB13ghLu",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Bag Design for Model Evaluation from Aggregate Labels",
+  "title_norm": "bag design for model evaluation from aggregate labels",
+  "abstract": "Aggregate labels provide responses for groups of instances, or bags, when individual outcomes are unavailable. Existing bag-curation methods target gradient recovery or prediction quality, while evaluating a fixed model requires understanding how grouping affects uncertainty about its ranking performance. Identical group means can support different values of the area under the receiver operating characteristic curve (AUC). We formulate bag design before feedback as minimizing the range of AUC values compatible with exact population group means. When each instance has its own response probability, we derive an exact width formula that sums contributions from score ranks within bags. For distinct scores and equal-capacity bags, adjacent-rank grouping minimizes worst-case width at a fixed overall response probability, provided its product with bag size is an integer. When instances with identical observed features share a response probability, their occurrences across bags couple the constraints. Using specified reference probabilities, we compute the coupled AUC endpoints by linear programming and search for width-reducing swaps that preserve bag sizes. Keeping each repeated state within one bag recovers the sum obtained by treating instance probabilities separately. On twelve-instance blocks, width-minimizing assignments that spread repeated states across bags reduce the median coupled-to-separable width ratio to 0.104, demonstrating that evaluation-width minimization and training-oriented curation can select different bags. In the separate-probability setting, adjacent-rank grouping yields narrower intervals than balanced random assignment across click-log, census and network-traffic workloads. On the click log at a fixed feedback budget, its interval width is 2.4 × 10⁻⁴ versus a balanced-random median of 0.992. These results support designing aggregate-label groups around the performance measure to be evaluated.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "R5trgSDrJp",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=R5trgSDrJp",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "ActCI-Bench: Evaluating Selective Decisions in CI Maintenance Agents",
+  "title_norm": "actci bench evaluating selective decisions in ci maintenance agents",
+  "abstract": "A software agent responding to a failed continuous integration (CI) run must decide whether to modify the repository, take a non-patch action, or defer to another owner. Repair benchmarks that start from known patch tasks do not evaluate this decision. We present ActCI-Bench, an evaluation of selective CI maintenance decisions over 1,543 real failure episodes. Each episode links failure evidence to three targets: actionability for the current author, root cause, and appropriate response. The benchmark combines logs and repository context with available CI history and developer handling, and evaluates both classification quality and false repairs on non-actionable episodes. In our evaluation, 509 episodes (33.0\\%) are non-actionable for the current author. Repository-aware agents achieve higher macro-F1 than specialized triage baselines, yet still propose patches on 41--48\\% of non-actionable cases. Richer context and an explicit diagnosis-before-response workflow improve response selection in the reported retrospective setting. These findings identify response selection and restraint as distinct dimensions of coding-agent capability. Because some evaluated context includes later developer handling, full-context scores should be read as retrospective evidence-rich results rather than estimates of performance at the moment a CI run fails.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "EOyudF7xKU",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=EOyudF7xKU",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Forecast the Envelope, Reconstruct the Details: Learning Dynamic Spectral Priors for Precipitation Nowcasting",
+  "title_norm": "forecast the envelope reconstruct the details learning dynamic spectral priors f",
+  "abstract": "Precipitation nowcasting supports timely flood warnings and emergency response by forecasting the location and intensity of imminent rainfall. However, rapidly evolving echo details remain difficult to predict, and deterministic models often smooth intense local structures as lead time increases. Our analysis reveals that spectral envelopes formed by locally averaging wavelet detail magnitudes exhibit higher temporal coherence than signed coefficients averaged over the same regions. These envelopes summarise the spatial distribution and strength of local variations at multiple scales. Motivated by this observation, we propose DySP (Dynamic Spectral Prior), a deterministic framework that forecasts spectral envelopes to guide the reconstruction of future radar fields. A spectral pathway models multiscale envelope dynamics and produces latent spectral priors and envelope predictions for each forecast lead time. Our prior-guided spatiotemporal block (PGSTB) conditions spatial attention queries and keys on the latent priors and gates the attention output using envelope embeddings. To recover local structures not retained by the pooled envelopes, temporal-difference skip connections enrich the decoder with high-resolution observation features and their recent changes. Experiments on Shanghai, CIKM, and SEVIR demonstrate that DySP achieves state-of-the-art forecasting skill, improving the prediction of intense precipitation and the preservation of local echo structures.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "umT7r9NgxM",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=umT7r9NgxM",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Scale-Local Information Governs Sample Synthesis from Noisy Smoothed Scores",
+  "title_norm": "scale local information governs sample synthesis from noisy smoothed scores",
+  "abstract": "Statistically equivalent targets can have asymptotically different sampling costs under the same score interface. We establish this through an oracle that returns the full normalized smoothed-score vector at one shared scale, with independent Gaussian observation noise and a precision cap. For geometrically spaced Fourier and spatial families, constant target capacity coexists with an optimal cost of $\\\\Theta(\\\\sqrt{d})$ queries at precision $B=d$ and fixed, sufficiently small average total variation error. Preserving the entire statistical experiment, we then construct Blackwell-equivalent spatial targets with a diverging ratio of optimal costs at the same dimension, precision, and accuracy. Matching bounds across all precision levels explain this separation at fixed relative TV accuracy in a local perturbation regime under a uniform prior. Precision determines the feasible coordinate block length; at high precision, the optimal gain over coordinate thinning is of the order of its square root. A blockwise converse quantifies the dependence required by an accurate joint output. Shared activation attains the bound by matching coordinate marginals, cancelling single-coordinate error terms, and controlling the remaining interactions. Nonadaptive samplers match lower bounds allowing adaptive queries and random stopping.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "tyAJldRpPG",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=tyAJldRpPG",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Over-Personalization Is a Decision Failure: Generation-Induced Apply Bias in LLMs",
+  "title_norm": "over personalization is a decision failure generation induced apply bias in llms",
+  "abstract": "Personalized LLMs must decide, for each stored preference, whether the current context calls for applying or suppressing it, which we call its applicability. They frequently over-personalize, applying preferences the context rules out, yet existing benchmarks score only the final response and cannot tell where this failure arises. We decompose preference handling into three stages and measure each separately: (1) knowing whether a preference applies, (2) deciding on an explicit Apply/Suppress label, and (3) generating a response consistent with that label. Using linear probes, we first show that this applicability signal remains decodable from hidden states during generation. By making the decision explicit, we then find that in most settings wrong decisions faithfully followed outnumber correct decisions lost in generation.\nWe thus locate the failure in the decision, which breaks once the model is also asked to answer. To determine whether this reflects lost sensitivity or a response bias, we propose ABIDE (Apply-Bias Investigation via Decision-scorE), which adapts signal detection theory to Apply-vs-Suppress decision scores read directly from logits. ABIDE reveals a generation-induced Apply bias: merely stating an answer-generation objective shifts the decision score toward Apply while sensitivity is largely preserved, and the shift persists under controls for prompt structure, cascades across preference slots, and prompt wording. Finally, we show that subtracting a single bias scalar, estimated on a held-out split, from the decision score at decoding time reduces leakage while largely preserving fulfillment.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "Cgqb9cQ6Fc",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=Cgqb9cQ6Fc",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "CCQ: Compensation-Conditioned Quadratic Selection for Absorbing Skipped Experts in MoE LLMs",
+  "title_norm": "ccq compensation conditioned quadratic selection for absorbing skipped experts i",
+  "abstract": "Executing only half of the routed experts per token halves the routed-expert work of a fine-grained Mixture-of-Experts (MoE) model, but the absent experts leave an error. We split it into a common mode, the mean expert output scaled by the absent routing mass, and an expert-specific remainder. Restoring each part exactly on three MoEs shows that both matter, in model-dependent proportions, and that their costs nearly add, as a second-order analysis of the KL divergence predicts when their interaction is small. We therefore compensate them with different tools. A mass-gated low-rank readout of the always-executed shared expert, trained by KL distillation, recovers what the shared expert predicts of the absent output. Diagnostics show it is not merely a common-mode estimate, yet on the model where the common mode dominates, it removes as much KL as the exact common mode. The readout leaves most of the specific part, but each routed expert's output energy is predictable. We skip the half with the least predicted cost and add a sketch of the costliest absent expert at an eleventh of its width, trained on the residual the readout leaves. Implemented in vLLM with CUDA kernels, on Moonlight-16B-A3B, DeepSeek-V2-Lite and Qwen3.6-35B-A3B, the method, CCQ, lowers the full-vocabulary KL to the full model by 23–80% against skipping alone and by 13–18% against a LoRA with the same distillation budget, the strongest of seven baselines. Selection and sketch provide this gain; the readout alone only matches the LoRA. The method retains 98.0–99.2% of the full model's average score on 12 benchmarks, though mostly not significantly different from the readout or the LoRA. In vLLM's throughput benchmark on one GPU, it generates 1.19–1.23× as many tokens per second as the full model at batch size 1, up to 1.48× at batch size 4 and 1.06–1.15× at 256, mostly owing to skipping itself.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "4pM6vv1w7H",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=4pM6vv1w7H",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Can We Check Whether a World Model Follows Actions Without a Simulator?",
+  "title_norm": "can we check whether a world model follows actions without a simulator",
+  "abstract": "World models predict how an environment changes when an agent acts, and agents plan by comparing these predictions across actions. This only works if changing the action moves the prediction the way the real environment would move. Many existing evaluations check this with cheap probes that need no simulator. We test whether these probes notice when a model’s prediction moves the wrong way. We use simulators that can return to a saved state and run again under a different action. This gives the true effect of each action change. We study 92 robot world models that we trained and 143 released models, including models that predict Atari frames. We also reflect each model’s response to actions, which reverses its direction and keeps its size. We prove that probes that look only at the size of the response cannot detect this, and in our experiments they do not. A popular probe, logged action retrieval, even scores the reflected models higher. Training models on its criterion improves their retrieval score while their true direction gets worse. We also propose the matched probe, which compares the model’s response with pairs of similar situations in the recorded data. It tracks the true direction in all three groups of models. We recommend testing any action probe on reflected models before trusting it.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "wO7Bph04Ga",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=wO7Bph04Ga",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Equivariant Counterfactual Supervision for Hidden-Dynamics Representation Learning",
+  "title_norm": "equivariant counterfactual supervision for hidden dynamics representation learni",
+  "abstract": "We introduce equivariant counterfactual supervision for learning physical context from a robot's interaction history. The method compares simulated responses under controlled changes to an environmental property, using comparison rules appropriate to material and geometric changes. Subtracting the mean response across the compared conditions produces residual targets. A reservoir feature bank summarizes the interaction history, and a learned code predicts these targets at a query from another rollout in the same environment. We evaluate what physical information the code makes accessible and how useful it is to new prediction tasks. Relative to Full-transition supervision, Residual raises steepness linear-probe $R^2$ from 0.555 to 0.907 and improves mean exact-cell retrieval in all ten factor-level holdouts. A paired target-centering ablation corroborates the accessibility difference under matched heads and scales. Fresh predictors show a modest in-distribution full-transition benefit, whereas Full has lower mean error on all four held-out factor-response tasks. The results establish a supervision-dependent accessibility effect whose predictive value depends on the receiving task.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "eQHdBbF1EI",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=eQHdBbF1EI",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Evaluating OOD Actions in Offline RL via Quantile Advantage",
+  "title_norm": "evaluating ood actions in offline rl via quantile advantage",
+  "abstract": "Offline reinforcement learning must improve on recorded behavior while controlling errors in evaluating out-of-distribution (OOD) actions. We introduce Advantage-Based Diffusion Actor-Critic (ADAC), which compares candidate and behavior actions through their successor values. A learned dynamics model predicts these successors; a state-value function learned from offline transitions evaluates them. Subtracting a quantile of behavior-induced values from the candidate's successor value defines its quantile advantage. This signed signal corrects critic targets, guiding a diffusion actor alongside behavior cloning. The comparison covers in-distribution and OOD actions; its accuracy depends on the learned dynamics and values. We characterize reference-value updates and the augmented fixed-policy evaluation operator. ADAC achieves the highest reported mean on 15 of 20 D4RL tasks. Four-domain component ablations support the correction's contribution, and a 15-task quantile study examines its reference threshold. PointMaze illustrates shorter routes beyond the recorded patterns. Code: \\url{https://anonymous.4open.science/r/adac-14D0}.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "DReSwYwieE",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=DReSwYwieE",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Beyond Refusal: Policy-Grounded On-Policy Distillation for Safety Decisions and Recovery",
+  "title_norm": "beyond refusal policy grounded on policy distillation for safety decisions and r",
+  "abstract": "Safety distillation can teach a language model to refuse without teaching it the policy distinction behind the refusal—or how to recover once generation has entered a harmful trajectory. We study this gap in on-policy distillation (OPD) through representation readouts, trajectory diagnostics, and budget-matched interventions. Rule and boundary generalization lag behind refusal, while recovery states become less frequent in student rollouts as refusals emerge; explicit policy supervision improves boundary decisions, and targeted state coverage further improves recovery. Motivated by these findings, we introduce DEEPEN, a policy-grounded OPD framework that makes safety judgments explicit and restores access to decision-critical states. DEEPEN predicts structured safety labels to condition generation, trains on boundary pairs and harmful-prefix starts, and uses brief teacher handoffs triggered by policy errors to supply a corrective segment before returning control to the student. Overlap-aware token-level distillation reinforces local corrections, while handoffs anneal to zero for student-only deployment. Across four preselected representatives from distinct model families under matched response-token budgets, DEEPEN improves mean boundary score (BDA) by 6.6 percentage points and useful recovery by 18.1 points over an adapted PolicyAlign baseline; the largest task-wise capability decrease is 4.5 points relative to the initial student. These results support treating safety distillation as a joint problem of policy-decision learning and safety-critical state coverage, rather than refusal imitation alone.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "MQYHO0Hxwz",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=MQYHO0Hxwz",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Latent Jacobian Steer: Eliciting Complex Contact-Rich Behaviors from Pretrained Humanoid Controllers",
+  "title_norm": "latent jacobian steer eliciting complex contact rich behaviors from pretrained h",
+  "abstract": "Given a pretrained general latent-conditioned whole-body humanoid controller, how can we elicit complex and contact-rich out-of-distribution behaviors? Joint-action exploration enables direct task-specific adjustments but can disrupt coordination learned by the pretrained controller, whereas latent-command exploration retains it but is difficult to steer toward desired physical effects. To combine the complementary strengths of these exploration spaces, we propose Latent Jacobian Steer (LJS), which couples sampling in direct joint-action space with the semantics of the learned frozen controller's input latent space. For a task specified through desired physical effects, we sample task-relevant joint-action perturbations and map them through a damped local inverse of the policy Jacobian to obtain candidate latent commands. These commands are executed through the frozen pretrained policy, while exploration is directed toward the physical outcomes required by the new task. Candidate outcomes are evaluated in simulation and composed into latent-command sequences that accomplish the task. Ablations show that neither action-space nor latent-space exploration alone provides the same capability as their coupling. Across diverse out-of-distribution tasks, test-time searching using this method produces contact-rich behaviors, including hurdling, manipulating articulated objects, pivoting large objects against the environment, and opening doors through non-prehensile contact.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "zc99CgRy2Z",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=zc99CgRy2Z",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Interaction-Conditioned Navigation for End-to-End Autonomous Driving",
+  "title_norm": "interaction conditioned navigation for end to end autonomous driving",
+  "abstract": "Reactive driving requires temporary navigation changes in response to other road users, but trajectory imitation does not explicitly supervise the navigation condition connecting an interaction to its execution. CondAD localizes candidate actors, relates them to the ego route, and verifies their identity on detection-guided image crops. The actor–route interaction becomes a navigation condition, a maneuver command together with a spatial target, and a persistent maneuver state keeps that condition across planning steps. On Bench2Drive, stacked-yield route success rises from 40.00% to 90.00% (9/10), a gain of 50 percentage points. That figure is separate from the Give Way ablation, where Full CondAD reaches 70.00% on the 10-route Give Way set. Progressive ablations on that set support converting trigger information into a command–target condition and retaining the maneuver state during execution.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "c5XrmmJPDS",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=c5XrmmJPDS",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Learning to Compose Evidence with Counterfactual Con- tinuation Values",
+  "title_norm": "learning to compose evidence with counterfactual con tinuation values",
+  "abstract": "Retrieval-augmented question answering selects passages that are consumed\njointly, yet common selectors score passages independently or optimize\nhand-designed set proxies. We study counterfactual continuation-value\nlearning for bounded evidence selection. Given a small candidate pool and\na frozen reader, we evaluate every feasible passage subset, cache its an-\nswer utility, and derive action targets from the best utility reachable after\nadding each passage. A compact selector learns these targets by regression\nand composes a context sequentially, with an explicit stop action. On Hot-\npotQA, it improves over BGE Top-4 on two disjoint 64-question test sets\nacross two training seeds. On a fresh 256-question sample, the budget-5\nselector reaches 53.9 EM / 65.8 F1 versus 47.7 / 59.7 for BGE Top-4 and\n50.8 / 62.7 for All-8. Without retraining, it transfers to two independent\n2WikiMultiHopQA samples: 38.3 / 46.1 versus 31.6 / 40.3 on 256 ques-\ntions, and 34.9 / 41.8 versus 30.3 / 35.3 on a disjoint 768-question sample.\nOn a matched 768-question 2Wiki pool, a GRPO refinement reaches 35.29\nEM / 43.11 F1, exceeding E5 Top-5 by 2.21 / 4.59 points at similar token\ncost. Candidate pools retain annotated supports, so these results evaluate\ncomposition conditional on support availability.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "CcMKe6sPYE",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=CcMKe6sPYE",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "FlowWeaver: Weaving Reasoning Paths with Cross-Trajectory Flow for Fine-Grained Credit Assignment",
+  "title_norm": "flowweaver weaving reasoning paths with cross trajectory flow for fine grained c",
+  "abstract": "A language model may make hundreds of token-level decisions before receiving a single outcome reward, while responses sampled for the same prompt can follow different reasoning paths and reach different outcomes. Turning this cross-trajectory variation into fine-grained credit remains challenging: within-trajectory attribution can identify important tokens but evaluates each response largely in isolation, whereas cross-trajectory methods exploit outcome variation at coarser granularity or rely on shared prefixes or states.\nWe introduce FlowWeaver, which weaves sampled reasoning paths into a shared attribution graph through cross-trajectory information flow for fine-grained credit assignment signals. \nWe build on attention-based flow within each response, constructing paths from prompt to answer using attention weights and quantifying the share of graph propagation routed through each token. \nUsing cumulative flow as a common coordinate, we connect sampled responses through aligned token positions, forming a shared distribution over graph paths from the prompt to different outcomes. We then condition propagation on each response's observed outcome, measuring how much of the group's flow toward that outcome passes through each token. We use these importance scores to shape token-level credit by reweighting GRPO advantages. RL experiments across mathematical reasoning, general reasoning, and agentic tasks demonstrate the effectiveness of \\mymodel{}, highlighting outcome-conditioned flow as a fine-grained signal for allocating outcome supervision.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "yCaCODHKwp",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=yCaCODHKwp",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Read Less, Recall More in Document VLMs",
+  "title_norm": "read less recall more in document vlms",
+  "abstract": "Document vision-language models (VLMs) fine-tuned on forms see sensitive fields both as pixels and as supervised text, yet whether a field's legibility decides what they memorise is untested: resolution studies change the whole page and its visual-token budget. We introduce Visual Canaries, synthetic identifier–secret documents with matched no-canary controls, and run two interventions on 3 released VLMs: a rendering ladder that changes only the secret's glyphs at a fixed target, exposure and token count, and a fixed-weight test that changes only the inference context. On Qwen2-VL-2B-Instruct, lowering the control's transcription accuracy from 1.00 to 0.11 raises the paired memorisation gap from +0.24 to +3.63 [+3.00, +4.26] bits on a 96-distractor rank scale (+13.25 bits on a fitted tail); a corrupted field with the largest glyphs tracks legibility rather than glyph size, the ordering holds on all 3 backbones, and duplication amplifies it by +3.69 bits per doubling. With weights fixed, restoring the page paired with a secret during training recovers +3.18 [+1.90, +4.46] bits although that page holds none of the secret's pixels; a caller with the identifier, the paired page, the caption format and assistant-prefill capability then samples the secret for 96.0% of Qwen and 90.0% of SmolVLM canaries at one query, and for none without the page. Memorisation risk in document fine-tuning thus depends on what the model can read and on the context an auditor supplies: audits must probe with training-like pages, and redaction must cover both pixels and targets.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "Ta2WxQVUhI",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=Ta2WxQVUhI",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "GA-NAR: Geometry-Adaptive Nonlinearity Allocation and Representation for Complex Physical Systems",
+  "title_norm": "ga nar geometry adaptive nonlinearity allocation and representation for complex ",
+  "abstract": "Many complex physical systems exhibit a recurring dominant nonlinear-response structure whose local intensity and dominant/complement allocation vary across operating conditions, while standard supervised surrogates typically apply a fixed pattern of nonlinear computation. We introduce GA-NAR (Geometry-Adaptive Nonlinearity Allocation and Representation), a backbone-compatible framework that adapts neural nonlinear computation to the structure of the physical parameter-to-solution map. GA-NAR comprises two coupled components: Nonlinear Response Geometry Decomposition (NRGD), which identifies a recurring Dominant Nonlinear-Response Subspace together with state-dependent response intensity and subspace allocation, and Geometry-Adaptive Nonlinear Representation (GANR), which uses this information to organize nonlinear computation across subspaces and network depth. Independent experiments on NRGD across five systems verify reliable recovery of the proposed response descriptors, while separate no-physics and shared-physics factorial experiments show that GANR achieves the lowest NRMSE on four of five auxiliary systems under both conditions. The complete GA-NAR framework reduces standardized test MSE in all 18 activation--system comparisons, with median reductions of 11.5\\%, 2.1\\%, and 2.8\\% on IEEE-118, Kuramoto-64, and nonlinear heat FEM, respectively, alongside larger activation-specific gains in several cases. Physical residuals also decrease for most tested activations, showing that the predictive gains generally extend to physical consistency. We will release codes at https://anonymous.4open.science/r/GA-NAR.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "pRmmj8CNc0",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=pRmmj8CNc0",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "CryptoDojo: A Framework for Safety and Security Evaluation of Crypto Agents",
+  "title_norm": "cryptodojo a framework for safety and security evaluation of crypto agents",
+  "abstract": "Crypto agents translate user instructions into transfers, spending permissions, and commitments that can persist long after the decisions that created them. An individually authorized action can become unsafe when state changes or other actions interact with it, and evaluating actions in isolation misses this. We introduce CryptoDojo, a framework that injects controlled interventions during execution and reconstructs their financial effects to grade both policy compliance and task completion, while agents, attacks, defenses, and tasks vary. On CryptoDojo, we propose the Temporal-Compositional Attack Model (T-CAM), which targets the state, authority, ordering, and shared-resource dependencies among authorized actions, and instantiate it as T-CAM Bench. Across four agent configurations on 200 paired instances, safe completion drops from 53.5–90.5% on ordinary tasks to 0.5–14.0% under attack. Adversarial violation rates differ widely (3.5–28.0%), but safe completion does not. In 138 of 145 violations, the requested operation settles in full, and the violation lies in its timing or state, such as payment after a deadline or after a revocation. Configurations that violate less also settle fewer operations, so their safe completion is no higher. Evaluations of crypto agents should measure settlement and policy compliance together and track authority exercised after the agent stops.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "nZw3ZyG6Eh",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=nZw3ZyG6Eh",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "denormalized executed action targets"
+  ]
+ },
+ {
+  "title": "Beyond Forecasting: World Models for Coupled Radio Network Control",
+  "title_norm": "beyond forecasting world models for coupled radio network control",
+  "abstract": "Model-based RAN control requires predicting how future resource allocations reshape network dynamics, including effects that persist after an intervention has passed. We propose TRACTOR+, an action-conditioned world model that separates recurrent network-state evolution from persistent action-response dynamics. TRACTOR+ combines multi-scale recurrent states, an instantaneous action-conditioned predictor, and adaptive fast/medium/slow response memories for free-running multi-horizon rollout. Experiments on three-slice RAN traces show that TRACTOR+ achieves the lowest standardized RMSE across all evaluated natural and allocation-event horizons with only 0.193M parameters. Removing future-action inputs degrades event prediction, while mechanism ablations show that persistent-response memory strengthens action-path discrimination. The learned dynamics also support short-horizon offline planning within the evaluated Near-RT budget. All alternative-action results are interpreted as predictive diagnostics under observational support rather than causal or closed-loop effects.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "YNoiyB0LXB",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=YNoiyB0LXB",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Causal Transfer of Scene Information in Robot Policies",
+  "title_norm": "causal transfer of scene information in robot policies",
+  "abstract": "An internal edit can move a robot toward a donor’s target without identifying what scene information it transferred. We study whether a controlled scene factor can be transported through a policy’s internal state into predictable physical behavior. Using target location, we generate counterfactual observations, replace key–value caches at selected recipient layers with donor caches, and execute all branches from a common simulated physical state. Our primary frozen confirmation compares the true cache difference with four fixed channel-sign transformations that preserve each selected layer’s K/V perturbation norm within 2% while changing its direction. Across two manipulation tasks, FastWAM and π0.5, 128 new model rollouts yield 117 reachable and 114 visually eligible states; all four task–model cells meet the joint criterion for bidirectional relative endpoint effects exceeding the equal-norm controls, with control-adjusted means of 51–72 mm. A separate non-target spatial comparison supports three cells, with the fourth limited by a pre-specified control-visibility requirement. In bounded two-axis development pilots (four model-visited states per policy family), own-axis effects exceeded cross-axis responses for every tested state–axis pair; these pilots are descriptive rather than independent confirmation. Independent offline reconstruction reproduces the primary effects over 2,340 branches. Together, these results show that, under the tested cache intervention and short simulated horizon, the direction of target-conditioned internal differences—not only their magnitude—can be transferred to produce predictable relative object-motion biases.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "ig13XeveLQ",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=ig13XeveLQ",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Answer Interfaces Change the Measured Cost of Early Stopping",
+  "title_norm": "answer interfaces change the measured cost of early stopping",
+  "abstract": "Early-exit methods are commonly compared by reasoning tokens saved and accuracy lost, as if the loss belonged to the stopping rule. Yet a stop returns a reasoning prefix; a terminal interface must still turn it into a scored answer. We hold rule-selected prefixes fixed and cross the interfaces that read them. On Qwen3.5-9B, the same Answer Convergence (AC) stops lose $35.5$ accuracy points under a staged cascade inside the open thinking block and $7.0$ after model-specific closure. Stopping changes how often the answer stage sees an open, unresolved prefix, while requests, prefills and closed generation respond differently to that state. At matched mean reasoning length and a 1K answer allowance, AC trails a fixed-token cut by $9.5$ points under the cascade but leads by $8.0$ after closure. In matched-prefix controls, two closed readouts agree within a pre-specified margin at 2K. The dependence recurs across caps, tasks and checkpoints, while the response to closure and prefill differs across model families. We therefore report complete systems under their own procedures and compare rules conditionally on a specified answer interface.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "6KIMVSXTbA",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=6KIMVSXTbA",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "AlphaCUA: Scaling Safety Benchmarks for Computer-Use Agents by Discovering and Validating Risk Factors",
+  "title_norm": "alphacua scaling safety benchmarks for computer use agents by discovering and va",
+  "abstract": "Computer-use agents (CUAs) execute high-stakes actions through graphical user\ninterfaces, raising safety concerns in real-world deployment. Existing safety\nbenchmarks require substantial manual effort to expand, often overlook unsafe\nresponses, such as unsafe intentions or failed unsafe attempts, that do not lead\nto harmful final outcomes, and provide limited evidence for attributing unsafe\nresponses to specific risk factors, which hinders extending test cases to new sce-\nnarios. To address these limitations, we introduce AlphaCUA, an automated red-\nteaming framework for scalable and interpretable safety evaluation of CUAs, built\non three collaborating agents. A generation agent, guided by reusable skills that\nencode quality standards and safety objectives, constructs executable safety tasks.\nAn analysis agent examines every execution trajectory regardless of its final out-\ncome, attributing observed unsafe responses to candidate risk factors for success-\nful attacks and inferring candidate factors from the agent’s observed actions and\nexpressed intentions for failed ones. A validation agent tests every candidate fac-\ntor, attributed or inferred, by constructing task variants that differ solely in that fac-\ntor and checking whether the target CUA’s response changes accordingly; inferred\nfactors showing partial progress are refined and retested until they are validated or\na refinement limit is reached. Validated factors are fed back to the generation agent\nto construct tasks in new scenarios, closing the loop between risk discovery and\nbenchmark expansion. Applying AlphaCUA, we construct ALPHABENCH-SEED\nfrom initially generated tasks and ALPHABENCH-TRANSFERRED from validated\nrisk factors, each with 100 tasks spanning multiple applications and threat types.\nOf these 200 tasks, 96.5% pass human quality review without revision and the rest\nneed only minor corrections, so benchmark expansion requires minimal human\neffort. Evaluating four CUAs on ALPHABENCH-SEED, we find that trajectory-\nbased attack success rate (ASR) exceeds final-state ASR by 8.75 percentage points\non average, exposing unsafe responses that outcome-based evaluation misses.\nALPHABENCH-TRANSFERRED, which instantiates validated risk factors in new\nscenarios, raises the mean trajectory-based ASR from 44.75% to 60.50% with\nconsistent gains across all four models, indicating that the discovered factors\nare both effective and transferable across scenarios. Our code is available at\n\\url{https://anonymous.4open.science/r/AlphaCUA_2027-7CBD/}.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "Ya6azgvULv",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=Ya6azgvULv",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Compact Closed-Loop Response Representations for Controller--Task Matching",
+  "title_norm": "compact closed loop response representations for controller task matching",
+  "abstract": "Reservoir computing enables robot controllers to exploit temporal information while training only an output readout. However, different trained reservoirs can interact differently with the same plant, making their suitability dependent on the requested motion. We introduce Closed-Loop Response Representations (CLRR) to compare trained nonlinear echo state network controllers through compact, reusable descriptions of their feedback behavior. For each plant, weighted principal component analysis learns a shared basis for local closed-loop response residuals from development controllers, without nonlinear performance labels. In the complex-response formulation, each finite-window multisine tracking task defines an analytical quadratic functional that evaluates the reconstructed response directly in its learned coordinates. After response characterization and encoding within a fixed operating regime, the same controller code supports new task queries without retraining or additional task-specific nonlinear rollouts. A distortion bound relates compression error to response-based task-cost error and controller-comparison margins. In near-equilibrium Cart-Pole simulations, eight coordinates achieve macro Kendall correlation 0.936 across 43 held-out controllers and 36 tasks, outperforming the tested compact spectral summaries. On a separate 16-controller test bank for a simulated seven-joint Panda arm, eight response coordinates plus seven equilibrium offsets achieve correlation 0.538, compared with 0.919 for the full response, yet select the best or second-best controller on all eight tasks. Full and sparse responses select the best throughout. These findings support compact response representations for task-dependent reservoir-controller comparison, while showing that useful controller choices can survive substantial losses in overall ranking fidelity. The quality of the representation therefore depends on the controller distinctions it preserves, not reconstruction accuracy alone.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "7m9v0tDC4r",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=7m9v0tDC4r",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Closed-Form Node Classification with Exact Graph Unlearning",
+  "title_norm": "closed form node classification with exact graph unlearning",
+  "abstract": "Graph neural networks for node classification are typically trained by gradient descent over hundreds or thousands of epochs. Recent work shows that carefully tuned classic GCN, GraphSAGE and GAT architectures can rival graph transformers. We ask a complementary question: can closed-form solvers recover this predictive strength and make exact graph unlearning practical?\n\nOne validation-selected protocol combines multiscale diffusion, nonlinear graph kernels and training-label context with analytical readouts. Across generic and task-aware tracks, **closed-form predictors exceed or come within one point** of the strongest reproduced tuned GNN on all 16 reported benchmarks. The generic protocol achieves this on 14/16, including both OGB graphs; task-aware constructions surpass the remaining two references, setting a new Minesweeper state of the art at 99.95 ROC-AUC with an 11 ms clue-based CPU fit, and reaching 91.60 accuracy on Roman-empire. The generic protocol also exceeds cited retuned GraphGPS and SGFormer means on 14/15 and 12/15 comparisons.\n\nWe derive exact graph-unlearning procedures that recover the result of retraining the same model from scratch after deleting labels, features, edges, nodes or subgraphs. They reuse unaffected information and recompute only what changes. Across 280 deterministic verification cases, 232 match retrained prediction scores exactly; 43 double-precision label updates differ by less than $2.6\\times10^{-11}$, and five Questions updates preserve every predicted class against the single-precision reference. Timed in default GPU mode, cached one-label model updates are a **median 93× faster** than tuned-GNN training steps alone across fifteen same-hardware comparisons, with speedups up to approximately 20,000×. Closed-form fitting therefore supports both strong node prediction and exact, verifiable unlearning.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "z8quNgpYRt",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=z8quNgpYRt",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "When Pairwise Counterfactual Bounds Are Exact: Conflict Certificates and Temporal Compression",
+  "title_norm": "when pairwise counterfactual bounds are exact conflict certificates and temporal",
+  "abstract": "Pairwise counterfactual bounds can combine incompatible response mechanisms. We characterize when a supplied query attains this relaxation and construct a compact attained representation of the complete sharp function for a structured temporal class. For rational mechanism polytopes, occupied Bellman residuals and a backward no-leakage recursion give an exactness criterion and recover a rational witness, with polynomial bit cost at fixed coordinate dimension. For a structured three-state, binary-successor, same-action model with independent untied time laws and nonnegative rational one-defect terminal costs, original-domain repair, control of nonmetric histories, and first-entry counting bound the entire representation by $(392n+81)490^r$, where $r$ counts exceptional layers. The guarantee transfers to standard exact full-cone pruning. Same-support complete-atom transport gives certified enclosures, with error scaled by terminal range and entrance mass. Coverage and chronological attainment are checked separately. Fixed three-state instances require $\\Omega(r)$ attained values. A public token-circulation protocol supplies native $r=0$ dynamics for a shared-response completion query. Synthetic comparisons measure a block/generic cold-cost ratio of $0.6746$ and changes in optimal route designs; supplied-query batches favor diagnosis or direct search. A growing-state construction establishes NP-hard evaluation and an exponential attained-family boundary.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "Xixdkpg3K7",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=Xixdkpg3K7",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Beyond Matching Stability: Solution Selection in Large Language Models",
+  "title_norm": "beyond matching stability solution selection in large language models",
+  "abstract": "Matching problems can have several stable matchings that favor different sides of a market. We measure which stable matching LLMs choose, comparing generic requests for a stable matching with explicit requests for a stable matching that is optimal for neither side of the market. On the same 50 markets with five participants per side and one response per market and request, Opus 5.5, Fable 5.1, and GPT-6 Astra return one side's optimum on 100% of generic requests, yet produce the requested alternative on 98 to 100% of explicit requests, with or without an assurance that one exists. Their one-sided default therefore does not come from an inability to find other stable matchings. GPT-6 Sol, GPT-6 Luna, and GPT-5.6 Terra follow the explicit request less reliably. Across six framings of these markets, the favored side is the one that meets at least two of three conditions: the prompt calls it \"Group 1\", lists its preferences first, and uses its members as the keys of the requested JSON answer. Evaluations should therefore measure the default choice and compliance with a stated selection rule alongside stability. We also discuss the implications of these results for using LLMs as neutral referees in allocation problems.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "Qdlvd9F19R",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=Qdlvd9F19R",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Bgent: A Multi-Task Blockchain Investigation Agent with Executable Claim Checks",
+  "title_norm": "bgent a multi task blockchain investigation agent with executable claim checks",
+  "abstract": "Blockchain investigations connect transaction execution, account behavior, and contract state to explain on-chain activity. Task-specific prediction systems assist investigators, while evidence collection and interpretation still require substantial expertise. We present Bgent, a multi-task blockchain investigation agent that combines tutorial-derived guidance with executable checks of factual claims. Offline distillation extracts tool operations and investigation procedures, producing a tool taxonomy and a reusable skill. At runtime, the investigator retrieves evidence and submits an answer with explicit factual claims. A planner selects checkable claims, and independent validators execute Python predicates over saved tool responses. Failed checks trigger revision within the same investigation session. Experiments on Ethereum cover account classification, attack-transaction detection, and smart-contract fault localization. Bgent achieves 96.45\\% mean F1 on valid attack-detection decisions and 56.86\\% Recall@1 in fault localization. Removing distilled guidance reduces account-classification F1 from 80.40\\% to 38.14\\%. Executable checking corrects specific factual errors in explanations while leaving the reported classification scores unchanged.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "IFjyXrDmQc",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=IFjyXrDmQc",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ },
+ {
+  "title": "Predicting Reasoning Errors Before They Occur: A Prompt-Side  Activation Direction Anticipates Correctness in a  Large Language Model",
+  "title_norm": "predicting reasoning errors before they occur a prompt side activation direction",
+  "abstract": "Responses produced by large language models are eloquent in a way that makes right answers indistinguishable from wrong ones. It is critical to predict the correctness of the model’s response, which significantly helps in either terminating the model from answering or routing it to a bigger model instead of producing incorrect answers eloquently. In this study, we use activation patching to identify a candidate layer for the arithmetic reasoning task. We utilize the hidden state activations at the candidate layer as a direction to develop a difference-in-means measure. We test the performance of the approach across three models: Mistral-7 B, Llama-2-13B, and Qwen 27B. The measure predicts subsequent correctness across all three models (AUC .627, .673, and .786 from smallest to largest model), and the signal emerges around the middle of the network and strengthens toward the task-relevant layers. The learned direction transfers to new formulations and an independent benchmark without retraining (AUC .810 and .864 on the largest model), although its decision threshold shifts across datasets and requires recalibration. These results place correctness information earlier in the computation, before the model commits to an answer, suggesting that reliability can be assessed before generation rather than only diagnosed after it. The principal methodological contribution of this paper is to utilize the activations of causally identified candidate layers and develop a lightweight difference-in-means measure to predict the correctness of models’ responses before the generation of answer tokens.",
+  "year": 2027,
+  "venue": "ICLR.cc/2027/Conference",
+  "authors": [],
+  "citations": null,
+  "source": "openreview",
+  "source_id": "R4mxdyixnH",
+  "doi": "",
+  "paper_url": "https://openreview.net/forum?id=R4mxdyixnH",
+  "published_iso": "",
+  "_score": 2,
+  "from_query": [
+   "quantized solver state response"
+  ]
+ }
+]

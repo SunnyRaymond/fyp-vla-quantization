@@ -1,0 +1,231 @@
+{
+  "trace_report": {
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "consumes": [
+          "each model's BF16 reference, native schedule, D_m, E_m, matched W4A8 module set Q_m and precision/kernel contract"
+        ],
+        "produces": [
+          "model-specific scope manifest; trainable theta_m subset"
+        ],
+        "note": "Verbatim: \"For Fast-WAM Base, LingBot-VA's released shared-backbone checkpoint, and Cosmos Policy's LIBERO model, record each BF16 reference, native schedule, action normalization/denormalization map, executed-prefix selector, and exact W4A8 PTQ module set Q_m; output a model-specific scope manifest.\" Q_m and theta_m are defined in core_mechanism.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S2",
+        "consumes": [
+          "model-specific episode-split training episodes; native initial-noise and innovation distributions"
+        ],
+        "produces": [
+          "training contexts c, noise z, innovations eta, and full fake-quantized student path states x_Q[m,j] for j in K_m"
+        ],
+        "note": "Verbatim: \"Split each named LIBERO dataset by episode; sample training context c only from its training episodes, draw z and solver innovations from that model's native inference distribution, and run the fake-quant student to record x_Q[m,k]; output the student path states.\" Likely-fatal step selected first: the singular x_Q[m,k] references k before S3 samples it. The full-path reading is executable and matches the plural output; the alternative selected-state reading is a forward reference and cannot instantiate S2 as ordered. This is a reading/wording note, not an impossibility across readings.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S3",
+        "consumes": [
+          "K_m, sampled k, detached x_Q[m,k], c, and eta after k"
+        ],
+        "produces": [
+          "BF16 teacher-suffix and fake-quant student-suffix endpoint action chunks from the same state and remaining innovations"
+        ],
+        "note": "Verbatim: \"Sample k uniformly from the active native indices K_m and detach x_Q[m,k]; from this identical state and remaining innovations, run a BF16 teacher suffix and a fake-quant student suffix; output the two suffix endpoint actions.\" The numeric trace attacked this state-alignment step first; with supplied synthetic suffix outputs, both branches compute.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S4",
+        "consumes": [
+          "two suffix endpoints, D_m, E_m and student-suffix differentiable path to theta_m"
+        ],
+        "produces": [
+          "delta_visit, squared endpoint loss, student-suffix gradient and updated theta_m"
+        ],
+        "note": "Verbatim: \"Apply D_m and E_m to both endpoints, compute delta_visit, backpropagate its squared norm only through the student suffix into theta_m, and keep quantizer scales, schedule, excluded precision and action interface fixed; output updated quantized weights.\" Synthetic local derivatives and one illustrative SGD step are stated in T2; no learned component was modeled.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S5",
+        "consumes": [
+          "same examples and matched measured training compute; ordinary action-only QAT, teacher-state KD and branch-free PTQ controls"
+        ],
+        "produces": [
+          "matched control/comparator results and stated teacher-suffix training cost"
+        ],
+        "note": "Verbatim: \"Train the ordinary action-only QAT and matched teacher-KD controls with the same examples and matched measured training compute, and include the strongest runnable branch-free W4A8 PTQ comparator; report added teacher-suffix work explicitly.\"",
+        "status": "instantiated"
+      },
+      {
+        "step": "S6",
+        "consumes": [
+          "held-out fixed contexts, paired noise, evaluation episodes and declared native W4A8 kernel"
+        ],
+        "produces": [
+          "separate denormalized action-deviation, closed-loop-completion and full action-query-latency outcomes, with no teacher at evaluation"
+        ],
+        "note": "Verbatim: \"On held-out fixed contexts and paired noise, report denormalized action deviation separately from LIBERO closed-loop completion; then measure full action-query latency with the declared native W4A8 kernel, including context/video prefill, without a teacher.\"",
+        "status": "instantiated"
+      },
+      {
+        "step": "S7",
+        "consumes": [
+          "shared-backbone LingBot-VA/Cosmos Policy contracts and their measured transfer outcomes"
+        ],
+        "produces": [
+          "scope-labeled transfer falsification; no pooled action-only weight-scope claim"
+        ],
+        "note": "Verbatim: \"Attempt transfer to LingBot-VA and Cosmos Policy only under their shared-backbone contracts, recording that shared blocks affect video and action states and making no weight-scope action-only claim.\"",
+        "status": "instantiated"
+      }
+    ],
+    "negative_control": {
+      "executed": true,
+      "moved_outcome": true,
+      "evidence": "Applied the named permutation to teacher suffix endpoints across two synthetic contexts with the same model and sampled k, preserving the teacher endpoint multiset: mean squared denormalized executed-action mismatch V_visit changed from 2.5 to 4.5. This executes the endpoint-rule consequence only; no closed-loop completion result is available from synthetic endpoints, so the predicted completion-gain effect remains untested."
+    },
+    "dry_run": {
+      "instance": "One illustrative model m; K_m={1,2}, uniform draw u=0.25 selects k=1; two synthetic contexts A/B share that model and k. Student-visited states are x_Q[A,1]=[0.25,-0.5] and x_Q[B,1]=[0.75,0.5]. Supply suffix endpoint chunks directly (no model simulation): A student raw=[1,2], teacher raw=[0.5,1]; B student raw=[2,4], teacher raw=[1,3]. Let D(a)=2a+1 elementwise and E select the first executed action. For the update illustration only, supply d y_student/d theta=2 for both cases and choose SGD eta=0.1. For the independent action-QAT baseline, supply synthetic demonstration/teacher-state targets y=[2.5,4.0].",
+      "execution": {
+        "mode": "executed",
+        "script": "import json\ncontexts = [\n    {\"name\": \"A\", \"student_raw\": [1.0, 2.0], \"teacher_raw\": [0.5, 1.0], \"demo_y\": 2.5},\n    {\"name\": \"B\", \"student_raw\": [2.0, 4.0], \"teacher_raw\": [1.0, 3.0], \"demo_y\": 4.0},\n]\ndef denorm(v): return [2.0*x+1.0 for x in v]\ndef executed(y): return y[0]\ndef mse(a,b): return sum((x-y)**2 for x,y in zip(a,b))/len(a)\nq=[executed(denorm(c[\"student_raw\"])) for c in contexts]\nt=[executed(denorm(c[\"teacher_raw\"])) for c in contexts]\nerr=[a-b for a,b in zip(q,t)]\npre=mse(q,t)\nt_perm=[t[1],t[0]]\nperm=mse(q,t_perm)\ng_suffix=sum(2.0*e*2.0 for e in err)/len(err)\ntheta_suffix=-0.1*g_suffix\nq_suffix_after=[v+2.0*theta_suffix for v in q]\nloss_suffix_after=mse(q_suffix_after,t)\ndemo=[c[\"demo_y\"] for c in contexts]\nerr_demo=[a-b for a,b in zip(q,demo)]\ng_demo=sum(2.0*e*2.0 for e in err_demo)/len(err_demo)\ntheta_demo=-0.1*g_demo\nq_after_demo=[v+2.0*theta_demo for v in q]\nloss_demo=mse(q_after_demo,demo)\nsuffix_loss_after_demo=mse(q_after_demo,t)\nprint(json.dumps({\"V_visit_mean_squared\":pre,\"V_visit_after_permutation\":perm,\"suffix_gradient\":g_suffix,\"suffix_theta_after_one_step\":theta_suffix,\"student_y_after_suffix_update\":q_suffix_after,\"suffix_loss_after_suffix_update\":loss_suffix_after,\"ordinary_qat_gradient\":g_demo,\"ordinary_qat_theta_after_one_step\":theta_demo,\"student_y_after_ordinary_qat\":q_after_demo,\"ordinary_action_loss_after_update\":loss_demo,\"suffix_loss_after_ordinary_qat\":suffix_loss_after_demo},sort_keys=True))",
+        "output": "{\"V_visit_after_permutation\": 4.5, \"V_visit_mean_squared\": 2.5, \"delta_visit\": [1.0, 2.0], \"demo_targets_y\": [2.5, 4.0], \"ordinary_action_loss_after_update\": 0.08500000000000014, \"ordinary_qat_gradient\": 3.0, \"ordinary_qat_theta_after_one_step\": -0.30000000000000004, \"permuted_teacher_y\": [3.0, 2.0], \"student_y\": [3.0, 5.0], \"student_y_after_ordinary_qat\": [2.4, 4.4], \"student_y_after_suffix_update\": [1.7999999999999998, 3.8], \"suffix_gradient\": 6.0, \"suffix_loss_after_ordinary_qat\": 1.0600000000000005, \"suffix_loss_after_suffix_update\": 0.33999999999999986, \"suffix_theta_after_one_step\": -0.6000000000000001, \"teacher_y\": [2.0, 3.0]}"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "A denormalized executed endpoints / delta",
+          "value": "student 3, teacher 2, delta 1",
+          "arithmetic": "D first coordinate: 2*1+1=3; 2*0.5+1=2; E selects first coordinate."
+        },
+        {
+          "quantity": "B denormalized executed endpoints / delta",
+          "value": "student 5, teacher 3, delta 2",
+          "arithmetic": "2*2+1=5; 2*1+1=3; E selects first coordinate."
+        },
+        {
+          "quantity": "V_visit over two contexts",
+          "value": "2.5",
+          "arithmetic": "mean((1)^2,(2)^2)=(1+4)/2=2.5."
+        },
+        {
+          "quantity": "Negative-control V_visit",
+          "value": "4.5",
+          "arithmetic": "After swapping teacher endpoints, deltas are 0 and 3; mean(0^2,3^2)=4.5."
+        },
+        {
+          "quantity": "Suffix-loss gradient and one illustrative update",
+          "value": "gradient 6; theta=-0.6; student endpoints [1.8,3.8]; suffix loss 0.34",
+          "arithmetic": "dy/dtheta=2; mean(2*delta*2)=mean(4,8)=6; theta=0-0.1*6=-0.6; endpoints [3,5]+2*theta=[1.8,3.8]; mean((1.8-2)^2,(3.8-3)^2)=0.34."
+        },
+        {
+          "quantity": "Independent ordinary action-QAT comparison",
+          "value": "gradient 3; theta=-0.3; endpoints [2.4,4.4]; action loss 0.085; suffix mismatch 1.06",
+          "arithmetic": "Targets [2.5,4], initial residuals [0.5,1]; mean(4*residual)=3; theta=-0.3; endpoints [3,5]-0.6=[2.4,4.4]; mean((-.1)^2,(.4)^2)=0.085; against suffix targets [2,3], mean((.4)^2,(1.4)^2)=1.06."
+        }
+      ],
+      "anomalies": []
+    },
+    "degenerate_probes": [
+      {
+        "probe": "empty training-context set",
+        "behavior": "The expectation/sampling operation has no support; the named LIBERO training-episode split is assumed nonempty. This is a data-availability precondition, not a structural defect of the defined rule.",
+        "finding": null
+      },
+      {
+        "probe": "k=0",
+        "behavior": "Computes if 0 is an active index: select x_Q[m,0] and run the remaining native suffix. If 0 is outside K_m, it is not sampled.",
+        "finding": null
+      },
+      {
+        "probe": "all-identical student and teacher endpoints",
+        "behavior": "delta_visit=0 and squared loss=0; the rule returns a zero update signal for that sample, as defined.",
+        "finding": null
+      },
+      {
+        "probe": "ties at every threshold",
+        "behavior": "No threshold or ranking operation occurs in the method; uniform index sampling remains defined.",
+        "finding": null
+      },
+      {
+        "probe": "single context / single active solver index",
+        "behavior": "Both means and uniform sampling are defined; the single synthetic index run is shown in T2.",
+        "finding": null
+      },
+      {
+        "probe": "maximum native active-index set",
+        "behavior": "For finite native K_m, the stated path and suffix operations remain defined; no larger bound is asserted by the candidate.",
+        "finding": null
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "The teacher suffix starts from the exact quantized-student state with the same remaining innovations; its endpoint is not the teacher's original noise-seed endpoint or a physical oracle.",
+        "established_by": "S3",
+        "strength_grade": "established",
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The target is measured after native denormalization and executed-prefix selection in controller-facing action units.",
+        "established_by": "S4",
+        "strength_grade": "established",
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Only the student suffix receives gradient; quantizer scales, schedule, excluded precision and interface stay fixed.",
+        "established_by": "S4",
+        "strength_grade": "established",
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The teacher is removed completely at evaluation and no teacher inference branch is added.",
+        "established_by": "S6",
+        "strength_grade": "established",
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Shared-backbone transfer to LingBot-VA/Cosmos Policy follows their shared scope and is a hypothesis until tested.",
+        "established_by": "S7",
+        "strength_grade": "empirical",
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Student-path suffix QAT improves closed-loop completion preferentially as student-visited suffix-response energy rises.",
+        "established_by": "S6",
+        "strength_grade": "empirical",
+        "arbitration": "argument",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "(ii) incremental",
+      "naive_version": "Independently constructed ordinary action-only QAT: use the same synthetic contexts and W4A8 endpoint interface, but fit controller-facing actions to demonstrator targets without a student-state teacher suffix.",
+      "naive_fairness": "Uses the same contexts, action normalization/selector, quantized deployment scope and one illustrative SGD-update ceiling; it uses no more training compute and omits the suffix-target pass, making it simpler. Teacher-state targets for the declared naive are supplied as synthetic inputs.",
+      "declared_naive": {
+        "version": "Ordinary action/denoising loss plus matched BF16 teacher KD evaluated on teacher-visited states.",
+        "instance_behavior": "With illustrative equal-weight action and teacher-state targets [2.5,4.0], one update gives endpoints [2.4,4.4]; suffix mismatch against student-visited targets is 1.06 versus 0.34 after the candidate suffix update.",
+        "agrees_with_constructed": "yes: both ordinary-QAT readings omit the student-state suffix target; the numerical update differs from the candidate for that explicit reason."
+      },
+      "instance_behavior": {
+        "naive": "Ordinary action-QAT gives [2.4,4.4] and suffix mismatch 1.06 after the illustrative update.",
+        "mechanism": "Student-path suffix loss gives [1.8,3.8] and suffix loss 0.34 after the illustrative update.",
+        "divergence": "Suffix mismatch differs by 0.72 (1.06-0.34); this is a synthetic, instance-contingent update comparison.",
+        "kind": "instance_contingent"
+      },
+      "naive_kind": "alternative_design",
+      "identity": "differs",
+      "verdict": "confronts_obstacle",
+      "reasoning": "On this supplied synthetic instance, the ordinary target leaves greater student-visited suffix mismatch (1.06 vs 0.34), so the named incremental target changes the result; the chosen outputs and local derivative make this instance-contingent, not evidence of real closed-loop benefit. The candidate explicitly surfaced the increment under branch (ii)."
+    }
+  },
+  "contract_version": 2,
+  "base_candidate_sha256": "dc2a7697f5bdbb9728127d59650e55aeb581a0a981eaf28098ee49b22867f401",
+  "verdict": "pass",
+  "unrepaired": [],
+  "suggested_repairs": [],
+  "applied_revisions": []
+}

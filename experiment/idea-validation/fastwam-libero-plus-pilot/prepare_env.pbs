@@ -1,0 +1,369 @@
+#!/bin/bash
+#PBS -N libero_plus_prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" > "/tmp/libero-plus-allocation-$PBS_JOBID.txt"
+grep -Eq 'job_state = R' "/tmp/libero-plus-allocation-$PBS_JOBID.txt" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+REPO="$ROOT/LIBERO-plus"
+DEPS="$ROOT/deps"
+NATIVE_ROOT="$ROOT/native/imagemagick-jammy"
+NATIVE_LIBDIR="$NATIVE_ROOT/usr/lib/x86_64-linux-gnu"
+NATIVE_STATUS="$ROOT/native_status.json"
+LIBERO_CONFIG_PATH="$ROOT/libero-config"
+LIBERO_COMPAT="$ROOT/libero-plus-compat"
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+SOURCE_COMMIT=4976dc30028e805ff8094b55501d532c48fec182
+ASSET_COMMIT=b548dd25ee0401c46217ba7e3614a598e8979e48
+ASSET_BYTES=6395849578
+SOURCE_TARBALL="$ROOT/downloads/LIBERO-plus-$SOURCE_COMMIT.tar.gz"
+ASSET_ZIP="$ROOT/downloads/assets-$ASSET_COMMIT.zip"
+ASSET_MARKER="$ROOT/assets-$ASSET_COMMIT.complete"
+ASSET_ARCHIVE_ROOT="inspire/hdd/project/embodied-multimodality/public/syfei/libero_new/release/dataset/LIBERO-plus-0/assets"
+
+mkdir -p "$ARTIFACTS" "$ROOT/downloads" "$DEPS" "$LIBERO_CONFIG_PATH"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$ARTIFACTS/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+cp "/tmp/libero-plus-allocation-$PBS_JOBID.txt" "$ARTIFACTS/allocation.txt"
+printf 'PREP_START job=%s host=%s time=%s\n' "$PBS_JOBID" "$HOST" "$(date -Is)"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+test -s "$NATIVE_STATUS" || { printf 'Missing CPU-installed native Wand receipt: %s\n' "$NATIVE_STATUS"; exit 67; }
+MAGICK_HOME="$NATIVE_ROOT/usr"
+MAGICK_CONFIGURE_PATH="$NATIVE_ROOT/etc/ImageMagick-6:$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16"
+MAGICK_CODER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders"
+MAGICK_FILTER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/filters"
+export MAGICK_HOME MAGICK_CONFIGURE_PATH MAGICK_CODER_MODULE_PATH MAGICK_FILTER_MODULE_PATH
+export LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+PYTHON="$BASE/venv/bin/python"
+test -x "$PYTHON"
+test -r "$SIF"
+allocation_guard() {
+  test -n "${PBS_JOBID:-}" && test -r "${PBS_NODEFILE:-}" || return 64
+  local node
+  node=$(hostname -s)
+  case "$node" in *login*) return 64;; esac
+  awk -v host="$node" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || return 64
+  qstat -f "$PBS_JOBID" > "/tmp/libero-plus-allocation-$PBS_JOBID.txt" || return 64
+  grep -Eq 'job_state = R' "/tmp/libero-plus-allocation-$PBS_JOBID.txt" || return 64
+}
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  else
+    printf 'HOST_LIBRARY_UNAVAILABLE path=%s\n' "$host_lib"
+  fi
+done
+container_exec() {
+  allocation_guard
+  apptainer exec --cleanenv "${BIND_ARGS[@]}" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST,LD_LIBRARY_PATH=$LD_LIBRARY_PATH,MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR" \
+    "$@"
+}
+printf 'BASE=%s\nSIF=%s\nPYTHON=%s\nSOURCE_COMMIT=%s\nASSET_COMMIT=%s\nASSET_BYTES=%s\n' "$BASE" "$SIF" "$PYTHON" "$SOURCE_COMMIT" "$ASSET_COMMIT" "$ASSET_BYTES"
+stat -c 'PATH %n %F %s' "$BASE/FastWAM" "$PYTHON" "$BASE/libero" "$SIF"
+for path in "$BASE/libero/libero/assets/new_objects" "$BASE/libero/libero/assets/textures" "$ROOT/LIBERO-plus/libero/libero/$ASSET_ARCHIVE_ROOT/new_objects"; do
+  if test -d "$path"; then stat -c 'ASSET_CANDIDATE_PRESENT %n %F %s' "$path"; else printf 'ASSET_CANDIDATE_MISSING %s\n' "$path"; fi
+done
+
+mkdir -p "$REPO" "$ROOT/downloads"
+if ! test -f "$REPO/.source_commit" || test "$(cat "$REPO/.source_commit")" != "$SOURCE_COMMIT"; then
+  if ! test -s "$SOURCE_TARBALL"; then
+    printf 'PROGRESS source_download_start url=codeload.github.com commit=%s\n' "$SOURCE_COMMIT"
+  fi
+  curl --fail --show-error --location --retry 5 --retry-delay 8 --connect-timeout 30 --continue-at - \
+    --output "$SOURCE_TARBALL.part" "https://codeload.github.com/sylvestf/LIBERO-plus/tar.gz/$SOURCE_COMMIT"
+  mv -f "$SOURCE_TARBALL.part" "$SOURCE_TARBALL"
+  printf 'PROGRESS source_download_complete bytes=%s\n' "$(stat -c %s "$SOURCE_TARBALL")"
+  tar -xzf "$SOURCE_TARBALL" --strip-components=1 -C "$REPO"
+  printf '%s\n' "$SOURCE_COMMIT" > "$REPO/.source_commit"
+fi
+test "$(cat "$REPO/.source_commit")" = "$SOURCE_COMMIT"
+test -s "$REPO/setup.py"
+test -s "$REPO/libero/libero/benchmark/task_classification.json"
+printf 'PROGRESS source_ready commit=%s\n' "$SOURCE_COMMIT"
+
+ASSET_DIR="$REPO/libero/libero/$ASSET_ARCHIVE_ROOT"
+if ! test -s "$ASSET_MARKER" || test "$(cat "$ASSET_MARKER" 2>/dev/null || true)" != "$ASSET_COMMIT"; then
+  prior_log="$ROOT/artifacts/25691968.pbs101/job.log"
+  if test -r "$prior_log" \
+    && grep -Fq 'asset_download_complete bytes=6395849578 expected=6395849578' "$prior_log" \
+    && grep -Fq 'ASSET_EXTRACT_COMPLETE files=457675' "$prior_log"; then
+    extraction_complete=1
+    for name in articulated_objects new_objects scenes stable_hope_objects stable_scanned_objects textures turbosquid_objects; do
+      test -d "$ASSET_DIR/$name" || extraction_complete=0
+    done
+    for name in serving_region.xml wall_frames.stl wall.xml; do
+      test -f "$ASSET_DIR/$name" || extraction_complete=0
+    done
+    if test "$extraction_complete" -eq 1; then
+      printf '%s\n' "$ASSET_COMMIT" > "$ASSET_MARKER.tmp"
+      mv -f "$ASSET_MARKER.tmp" "$ASSET_MARKER"
+      printf 'ASSET_MARKER_REUSED_FROM_COMPLETED_JOB source_job=25691968.pbs101 commit=%s\n' "$ASSET_COMMIT"
+    fi
+  fi
+fi
+if ! test -s "$ASSET_MARKER" || test "$(cat "$ASSET_MARKER" 2>/dev/null || true)" != "$ASSET_COMMIT"; then
+  if test -f "$ASSET_ZIP" && test "$(stat -c %s "$ASSET_ZIP")" -ne "$ASSET_BYTES"; then
+    mv "$ASSET_ZIP" "$ASSET_ZIP.incomplete-$PBS_JOBID"
+  fi
+  if ! test -f "$ASSET_ZIP"; then
+    printf 'PROGRESS asset_download_start commit=%s expected_bytes=%s; single_writer=true\n' "$ASSET_COMMIT" "$ASSET_BYTES"
+    curl --fail --show-error --location --retry 8 --retry-delay 10 --connect-timeout 30 --continue-at - \
+      --output "$ASSET_ZIP.part" "https://huggingface.co/datasets/Sylvest/LIBERO-plus/resolve/$ASSET_COMMIT/assets.zip"
+    mv -f "$ASSET_ZIP.part" "$ASSET_ZIP"
+  fi
+  actual_bytes=$(stat -c %s "$ASSET_ZIP")
+  printf 'PROGRESS asset_download_complete bytes=%s expected=%s\n' "$actual_bytes" "$ASSET_BYTES"
+  test "$actual_bytes" -eq "$ASSET_BYTES"
+  printf 'PROGRESS asset_extract_start destination=%s\n' "$ASSET_DIR"
+  container_exec \
+  --env "ASSET_ZIP=$ASSET_ZIP,ASSET_DIR=$REPO/libero/libero" \
+    "$SIF" "$PYTHON" - <<'PY'
+import os
+import zipfile
+from pathlib import Path
+
+source = Path(os.environ["ASSET_ZIP"])
+destination = Path(os.environ["ASSET_DIR"])
+destination.mkdir(parents=True, exist_ok=True)
+with zipfile.ZipFile(source) as archive:
+    members = archive.infolist()
+    total = len(members)
+    for index, member in enumerate(members, 1):
+        archive.extract(member, destination)
+        if index % 1000 == 0 or index == total:
+            print(f"ASSET_EXTRACT_PROGRESS files={index}/{total}", flush=True)
+print(f"ASSET_EXTRACT_COMPLETE files={total}", flush=True)
+PY
+  printf '%s\n' "$ASSET_COMMIT" > "$ASSET_MARKER.tmp"
+  mv -f "$ASSET_MARKER.tmp" "$ASSET_MARKER"
+  printf 'PROGRESS asset_extract_complete marker=%s commit=%s\n' "$ASSET_MARKER" "$ASSET_COMMIT"
+fi
+for name in articulated_objects new_objects scenes stable_hope_objects stable_scanned_objects textures turbosquid_objects; do
+  test -d "$ASSET_DIR/$name" || { printf 'Missing Plus asset directory: %s\n' "$ASSET_DIR/$name"; exit 66; }
+done
+for name in serving_region.xml wall_frames.stl wall.xml; do
+  test -f "$ASSET_DIR/$name" || { printf 'Missing Plus asset file: %s\n' "$ASSET_DIR/$name"; exit 66; }
+done
+mkdir -p "$REPO/libero/datasets"
+printf 'PROGRESS assets_ready path=%s\n' "$ASSET_DIR"
+
+cat > "$LIBERO_CONFIG_PATH/config.yaml" <<EOF
+benchmark_root: $REPO/libero/libero
+bddl_files: $REPO/libero/libero/bddl_files
+init_states: $REPO/libero/libero/init_files
+datasets: $REPO/libero/datasets
+assets: $ASSET_DIR
+EOF
+
+mkdir -p "$LIBERO_COMPAT/libero/libero"
+cat > "$LIBERO_COMPAT/libero/__init__.py" <<'PY'
+"""Task-local top-level package for the isolated LIBERO-Plus source."""
+PY
+cat > "$LIBERO_COMPAT/libero/libero/__init__.py" <<EOF
+import os
+_real_package = "$REPO/libero/libero"
+__path__ = [_real_package]
+_real_init = os.path.join(_real_package, "__init__.py")
+__file__ = _real_init
+with open(_real_init, "rb") as _fh:
+    exec(compile(_fh.read(), _real_init, "exec"), globals(), globals())
+EOF
+
+export PYTHONPATH="$LIBERO_COMPAT:$REPO:$DEPS:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero"
+export LIBERO_CONFIG_PATH
+export MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa LIBGL_ALWAYS_SOFTWARE=1
+export PIP_CACHE_DIR="$ROOT/cache/pip" PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
+mkdir -p "$PIP_CACHE_DIR"
+
+if ! container_exec \
+  --env "PYTHONPATH=$PYTHONPATH,LIBERO_CONFIG_PATH=$LIBERO_CONFIG_PATH,MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1,LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+  "$SIF" "$PYTHON" -c 'import wand, skimage' >/dev/null 2>&1; then
+  printf 'PROGRESS plus_requirements_install_start target=%s\n' "$DEPS"
+  cat > "$ROOT/plus-extra-constraints.txt" <<'EOF'
+wand==0.7.2
+scikit-image==0.26.0
+EOF
+  container_exec \
+    --env "PIP_CACHE_DIR=$PIP_CACHE_DIR" \
+    "$SIF" "$PYTHON" -m pip install --disable-pip-version-check --no-warn-script-location --upgrade --no-deps \
+    --target "$DEPS" -c "$ROOT/plus-extra-constraints.txt" -r "$REPO/extra_requirements.txt" "lazy_loader==0.4"
+  printf 'PROGRESS plus_requirements_install_complete\n'
+fi
+
+container_exec \
+  --env "PYTHONPATH=$PYTHONPATH,LIBERO_CONFIG_PATH=$LIBERO_CONFIG_PATH,MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1,LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+  --env "SOURCE_COMMIT=$SOURCE_COMMIT,ASSET_COMMIT=$ASSET_COMMIT,ASSET_DIR=$ASSET_DIR,ASSET_ARCHIVE_ROOT=$ASSET_ARCHIVE_ROOT,ROOT=$ROOT,DEPS=$DEPS,REPO=$REPO,LIBERO_CONFIG_PATH=$LIBERO_CONFIG_PATH,LIBERO_COMPAT=$LIBERO_COMPAT" \
+  "$SIF" "$PYTHON" - <<'PY'
+import ctypes
+import ctypes.util
+import faulthandler
+import importlib
+import importlib.metadata
+import importlib.util
+import json
+import os
+import socket
+import sys
+from pathlib import Path
+
+faulthandler.dump_traceback_later(180, file=sys.stderr, repeat=False)
+
+def version(distribution):
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+mods = {}
+native_status = json.loads(Path(os.environ["ROOT"], "native_status.json").read_text(encoding="utf-8"))
+if native_status.get("ready") is not True:
+    raise RuntimeError("Task-local native ImageMagick setup is not ready")
+for key, expected in (("magick_home", os.environ["MAGICK_HOME"]),
+                      ("native_library_dir", os.path.join(os.environ["ROOT"], "native/imagemagick-jammy/usr/lib/x86_64-linux-gnu"))):
+    if Path(native_status["paths"][key]).resolve() != Path(expected).resolve():
+        raise RuntimeError(f"Native ImageMagick receipt path mismatch for {key}")
+for name in ("torch", "triton", "cv2", "wand", "skimage", "imagecorruptions", "mujoco", "libero"):
+    try:
+        print(f"IMPORT_START {name}", flush=True)
+        module = importlib.import_module(name)
+        mods[name] = getattr(module, "__version__", "imported")
+        print(f"IMPORT_OK {name} version={mods[name]}", flush=True)
+    except Exception as exc:
+        mods[name] = f"ERROR:{type(exc).__name__}:{exc}"
+        print(f"IMPORT_ERROR {name} {mods[name]}", flush=True)
+
+print("IMPORT_START libero.libero.benchmark", flush=True)
+import libero
+import libero.libero as libero_core
+from libero.libero import benchmark
+print("IMPORT_OK libero.libero.benchmark", flush=True)
+print("IMPORT_START libero.libero.envs.OffScreenRenderEnv", flush=True)
+from libero.libero.envs import OffScreenRenderEnv
+print("IMPORT_OK libero.libero.envs.OffScreenRenderEnv", flush=True)
+envs_module = importlib.import_module("libero.libero.envs")
+classification_path = Path(benchmark.__file__).resolve().parent / "task_classification.json"
+source_package = (Path(os.environ["REPO"]) / "libero" / "libero").resolve()
+provenance = {
+    "libero_file": getattr(libero, "__file__", None),
+    "libero_path": list(getattr(libero, "__path__", [])),
+    "libero_core_file": getattr(libero_core, "__file__", None),
+    "libero_core_path": list(getattr(libero_core, "__path__", [])),
+    "benchmark_file": str(Path(benchmark.__file__).resolve()),
+    "offscreen_env_file": str(Path(envs_module.__file__).resolve()),
+    "classification_path": str(classification_path),
+}
+print("LIBERO_IMPORT_PROVENANCE " + json.dumps(provenance, sort_keys=True), flush=True)
+try:
+    Path(benchmark.__file__).resolve().relative_to(source_package)
+except ValueError as exc:
+    raise RuntimeError(f"LIBERO-Plus benchmark import came from outside {source_package}") from exc
+try:
+    Path(envs_module.__file__).resolve().relative_to(source_package)
+except ValueError as exc:
+    raise RuntimeError(f"LIBERO-Plus OffScreenRenderEnv import came from outside {source_package}") from exc
+if not classification_path.is_file():
+    raise RuntimeError(f"LIBERO-Plus classification file is missing: {classification_path}")
+assert OffScreenRenderEnv is not None
+osmesa = ctypes.util.find_library("OSMesa")
+if not osmesa:
+    raise RuntimeError("OSMesa could not be resolved inside the container")
+ctypes.CDLL(osmesa)
+try:
+    from wand.api import library, libmagick
+    library.MagickWandGenesis()
+    library.MagickWandTerminus()
+    wand_native = "MagickWandGenesis/Terminus passed"
+    wand_library = str(Path(library._name).resolve())
+    magick_core_library = str(Path(libmagick._name).resolve())
+except Exception as exc:
+    raise RuntimeError(f"Wand native ImageMagick check failed: {type(exc).__name__}: {exc}") from exc
+for required in ("torch", "triton", "cv2", "wand", "skimage", "mujoco"):
+    if str(mods.get(required, "")).startswith("ERROR:"):
+        raise RuntimeError(f"Required import failed: {required}={mods[required]}")
+if importlib.util.find_spec("imagecorruptions") is None:
+    print("OPTIONAL imagecorruptions=not-installed (not an upstream LIBERO-Plus extra)", flush=True)
+else:
+    print("IMPORT_START imagecorruptions", flush=True)
+    importlib.import_module("imagecorruptions")
+    print("IMPORT_OK imagecorruptions", flush=True)
+
+faulthandler.cancel_dump_traceback_later()
+
+status = {
+    "source_commit": os.environ["SOURCE_COMMIT"],
+    "assets": {"repository": "https://huggingface.co/datasets/Sylvest/LIBERO-plus", "commit": os.environ["ASSET_COMMIT"], "path": os.environ["ASSET_DIR"], "archive_root": os.environ["ASSET_ARCHIVE_ROOT"]},
+    "paths": {"plus_repo": os.environ["REPO"], "plus_package_root": str(source_package), "plus_assets": os.environ["ASSET_DIR"], "dependency_target": os.environ["DEPS"], "libero_config_path": os.environ["LIBERO_CONFIG_PATH"], "libero_compat": os.environ["LIBERO_COMPAT"], "native_root": native_status["paths"]["native_root"], "native_library_dir": native_status["paths"]["native_library_dir"], "magick_home": native_status["paths"]["magick_home"], "magick_configure_path": native_status["paths"]["magick_configure_path"], "magick_coder_module_path": native_status["paths"]["magick_coder_module_path"], "magick_filter_module_path": native_status["paths"]["magick_filter_module_path"], "native_setup_receipt": str(Path(os.environ["ROOT"]) / "native_status.json"), "pythonpath": os.environ["PYTHONPATH"].split(":"), "python": sys.executable},
+    "versions": {"torch": getattr(importlib.import_module("torch"), "__version__", None), "torch_cuda_build": importlib.import_module("torch").version.cuda, "triton": version("triton"), "opencv": version("opencv-python") or getattr(importlib.import_module("cv2"), "__version__", None), "wand": version("Wand"), "scikit_image": version("scikit-image"), "imagecorruptions": version("imagecorruptions"), "mujoco": version("mujoco")},
+    "imports": mods,
+    "import_provenance": provenance,
+    "checks": {"libero_libero": str(Path(benchmark.__file__).resolve()), "offscreen_render_env": f"{OffScreenRenderEnv.__module__}.{OffScreenRenderEnv.__name__}", "classification_path": str(classification_path), "osmesa_library": osmesa, "wand_native": wand_native, "wand_library": wand_library, "magick_core_library": magick_core_library, "wand_native_package_version": native_status["package_version"], "wand_noise_png_roundtrip": native_status["gaussian_noise_png_roundtrip"], "gpu_loaded": False},
+    "pbs_job_id": os.environ["PBS_JOBID"],
+    "host": socket.gethostname(),
+}
+target = Path(os.environ["ROOT"], "env_status.pre.json")
+temp = target.with_suffix(".json.tmp")
+temp.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+temp.replace(target)
+print("ENV_IMPORTS_OK " + json.dumps(status["versions"], sort_keys=True), flush=True)
+PY
+
+printf 'PROGRESS manifest_start seed=20261005 suites=4 dimensions=7 per_cell=50\n'
+container_exec \
+  --env "PYTHONPATH=$PYTHONPATH,LIBERO_CONFIG_PATH=$LIBERO_CONFIG_PATH,MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1,LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+  "$SIF" "$PYTHON" "$ROOT/prepare_manifest.py" --repo "$REPO" --base-repo "$BASE/libero" --output "$ROOT/manifest.json" --env-status "$ROOT/env_status.pre.json"
+
+container_exec \
+  --env "ROOT=$ROOT" \
+  "$SIF" "$PYTHON" - <<'PY'
+import json
+import os
+import socket
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+host = socket.gethostname().split(".")[0]
+nodes = {line.split(".")[0] for line in Path(os.environ["PBS_NODEFILE"]).read_text().split()}
+if not os.environ.get("PBS_JOBID") or "login" in host or host not in nodes:
+    raise RuntimeError("Approved PBS compute allocation required")
+status = json.loads((root / "env_status.pre.json").read_text(encoding="utf-8"))
+summary = json.loads((root / "manifest_summary.json").read_text(encoding="utf-8"))
+status["paths"]["manifest"] = str(root / "manifest.json")
+status["checks"]["ready"] = True
+status["checks"]["manifest_ready"] = True
+status["manifest"] = {
+    "path": str(root / "manifest.json"),
+    "bytes": summary["manifest_bytes"],
+    "variant_count": summary["variant_count"],
+    "seed": summary["seed"],
+}
+status["pbs_job_id"] = os.environ["PBS_JOBID"]
+temp = root / "env_status.json.tmp"
+temp.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+temp.replace(root / "env_status.json")
+print("ENV_STATUS_READY " + json.dumps(status["manifest"], sort_keys=True), flush=True)
+PY
+rm -f "$ROOT/env_status.pre.json"
+
+printf 'PREP_COMPLETE job=%s source_commit=%s asset_commit=%s env_status=%s manifest=%s\n' "$PBS_JOBID" "$SOURCE_COMMIT" "$ASSET_COMMIT" "$ROOT/env_status.json" "$ROOT/manifest.json"
+touch "$ARTIFACTS/SUCCESS"
+date -Is

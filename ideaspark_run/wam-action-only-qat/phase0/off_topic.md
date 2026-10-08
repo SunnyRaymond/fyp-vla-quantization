@@ -1,0 +1,62 @@
+# Off-topic papers removed from the gap corpus (Phase 0.4 host partition)
+
+These were retrieved by a connector but the host judged them outside the research direction (cross-domain "memory-augmented" false positives, surveys, unrelated fields). They are archived here for transparency but do NOT feed Phase 1 or the deep-read pool.
+
+- **Adaptive Compression and Quantization Techniques for Robust and Scalable Generative Diffusion Networ** (`openalex:W4413963139`)
+  - Pure survey of generic diffusion compression and quantization, with no original action-policy or WAM method.
+- **Quantizing Diffusion Models for Scalable and Efficient Generative Inference Across Diverse Hardware ** (`openalex:W4412704439`)
+  - Pure review of diffusion quantization across hardware platforms rather than an original WAM or action-QAT method.
+- **Strategies for Deploying High-Fidelity Generative Diffusion Models at Scale under Computational and ** (`openalex:W4413499428`)
+  - Pure survey of generic diffusion deployment and quantization strategies, not an original action-QAT contribution.
+- **Beyond Random: Automatic Inner-loop Optimization in Dataset Distillation** (`openalex:W4414972364`)
+  - Dataset distillation optimizes synthetic classification datasets, not policy-model distillation or WAM action quantization.
+- **Artificial Intelligence for Biomedical Video Generation** (`openalex:W4404400215`)
+  - Survey of biomedical video-generation applications; pure review and a different application domain.
+- **WikiVideo: Article Generation from Multiple Videos** (`openalex:W4417232145`)
+  - Generating articles from videos is a language-generation task; no robot policy, WAM compression, or numeric quantization mechanism is identified.
+- **NextAds: Towards Next-generation Personalized Video Advertising** (`openalex:W7133293810`)
+  - Personalized video advertising and ad-serving generation are unrelated to robot action models or low-precision control.
+- **Accelerating Fokker--Planck Regularization For Force Field Learning** (`openreview:Vno5uUQDSW`)
+  - Fokker-Planck regularization for molecular force-field learning is a different physical modeling task, without robot policies or low-bit diffusion deployment.
+- **From gene programs to biological language: rethinking single-cell foundation models as modality tran** (`openreview:vT0kJ1qPqM`)
+  - Single-cell gene-expression translation into language is a biological foundation-model application unrelated to WAM actions or quantization.
+- **When Fisher Information Mispredicts Prior Sensitivity: Model Misspecification, Not Noise** (`openreview:BYfFscESp0`)
+  - Prior-sensitivity misspecification in clinical MRI and physical inverse models is not generative diffusion-policy quantization; diffusion MRI is a keyword false positive.
+- **Unified Hierarchical Red-Teaming: Strategy Search and Evidence-Guided Policy Evolution** (`openreview:auL1pYYy7K`)
+  - LLM red-teaming strategy search and attack-program policy evolution use action terminology in a different domain.
+- **Graph Convolutional Attention: A Spectral Perspective on Graph Denoising and Diffusion** (`openreview:K2vcSsNSLa`)
+  - Graph-structured denoising and generative graph diffusion study graph spectra, without robot actions, video WAMs, or numeric quantization.
+- **Learning to Hold: Fleet-Aware and Temporally Augmented Multi-Agent Reinforcement Learning for Bus Co** (`openreview:CfCg1gcECH`)
+  - Multi-agent bus holding and regional coordination distillation are transport scheduling, not action-generating video WAM compression.
+- **ReFiT: Recovering Block-Sparse FFN Quality at No Extra Inference Cost** (`openreview:TmFXtRhdiq`)
+  - Block-sparse LLM prefill FFN refitting studies language-model sparsity, without diffusion actions, WAM topology, or QAT.
+- **Distilling Strong Teachers into Small Models: Teacher-Preferred Distribution Alignment Matters** (`openreview:jvvsy9Wmhv`)
+  - Teacher-preferred token distillation for mathematical LLM reasoning is a language-policy task, without diffusion or embodied action models.
+- **Beyond Independent Candidates: Joint Quantum Reasoning for Ambiguous Structured Generation** (`openreview:GTpggSOC5z`)
+  - Quantum joint reasoning for text-to-SQL and text-to-visualization is unrelated structured generation, not low-bit robot-action learning.
+- **CoTrace: Data Recipes for Training Terminal Agents with Harness-Model Co-Evolution** (`openreview:pG5R1llh27`)
+  - Terminal-agent harness co-evolution and code-task training concern software agents, not embodied WAM quantization.
+- **GVPO++: Group Variance Policy Optimization for LLM Post-Training and On-Policy Distillation** (`arxiv:2609.21432v1`)
+  - GVPO++ optimizes LLM reasoning and on-policy language distillation; no diffusion robot policy or WAM compression setting.
+- **CAVA: Canonical Action Verification and Attestation for Runtime Governance of Agentic AI Systems** (`arxiv:2607.13716v1`)
+  - Canonical action attestation for software-agent governance concerns runtime approval records, not physical action generation or numeric quantization.
+- **EgoAction: Egocentric Action Composition with Reliability-Aware Temporal Fusion for the EPIC-KITCHEN** (`arxiv:2605.24496v2`)
+  - EPIC-KITCHENS verb-noun temporal action detection is recognition of human video events, not executable robot actions, WAM control, or quantization.
+- **Not All Timesteps Matter Equally: Selective Alignment Knowledge Distillation for Spiking Neural Netw** (`arxiv:2605.14252v2`)
+  - Selective timestep distillation for spiking classifiers concerns neural spike-time predictions, not diffusion timesteps, robot actions, or WAM quantization.
+- **Action Motifs: Self-Supervised Hierarchical Representation of Human Body Movements** (`arxiv:2604.28173v3`)
+  - Human-pose action motifs support recognition, interpolation, and human motion prediction; no robot policy, WAM compression, or low-bit training.
+- **Hierarchical GRU with Input-Conditioned Slot Queries for Ball Action Anticipation** (`arxiv:2606.14730v1`)
+  - Football broadcast ball-event anticipation predicts sports labels, not robot control actions or WAM quantization.
+- **Watch Your Step: Information Injection in Diffusion Models via Shadow Timestep Embedding** (`arxiv:2605.00935v1`)
+  - Shadow timestep embeddings study malicious information injection and generative-model provenance; a security task outside robot-action compression or QAT.
+- **A Survey on Diffusion Policy for Robotic Manipulation: Taxonomy, Analysis, and Future Directions** (`openalex:W4409160955`)
+  - Pure survey and taxonomy of diffusion policies for robotics; no original action-QAT or compression method.
+- **Efficient Diffusion-Based Video Super-Resolution: A Survey on Step-Reduction,Token-Reduction, and Qu** (`openalex:W7212380045`)
+  - Title explicitly identifies a survey of video super-resolution efficiency; pure review rather than an original action-QAT method, with no abstract available.
+- **Video Generation Models: A Survey of Post-Training and Alignment** (`openalex:W7131837856`)
+  - Pure survey of video-model post-training and alignment, without an original WAM action-quantization mechanism.
+- **Efficient Diffusion Language Models: A Comprehensive Survey** (`openalex:W7125531142`)
+  - Pure survey of efficient diffusion language models; no original robot-action or WAM quantization method.
+- **Vision-Language-Action Models for Robotics: A Review Towards Real-World Applications** (`openalex:W4414198610`)
+  - Pure review of VLA architectures and real-world deployment; contextual survey rather than original action-QAT prior art.

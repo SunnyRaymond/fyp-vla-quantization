@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N fw_plus_analyze60
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=4gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+OUT="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+finish() {
+  rc=$?
+  printf '%s\n' "$rc" > "$OUT/exit_code.txt"
+  if [[ $rc -eq 0 ]]; then touch "$OUT/PIPELINE_COMPLETE"; fi
+}
+trap finish EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+qstat -f "$PBS_JOBID" > "$OUT/allocation.txt"
+cp "$ROOT/analyze_completed.py" "$ROOT/aggregate.py" "$ROOT/analyze_completed.pbs" "$OUT/"
+cp "$FW_ANALYSIS_SOURCES" "$OUT/sources.json"
+python "$OUT/analyze_completed.py" --sources "$OUT/sources.json" --manifest "$ROOT/manifest.json" --output "$OUT/results"

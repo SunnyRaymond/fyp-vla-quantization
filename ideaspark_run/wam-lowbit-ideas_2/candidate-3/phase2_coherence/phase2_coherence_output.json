@@ -1,0 +1,267 @@
+{
+  "trace_report": {
+    "fatal_step_selection": {
+      "step": "S6",
+      "picked_before_execution": true,
+      "why": "Held-out discrepancy controls stopping, but the method names calibration/development/test splits without binding this term. If it means test data, the final evaluation split has entered model selection."
+    },
+    "t1_audit": {
+      "likely_fatal_step": {
+        "step": "S6",
+        "picked_before_execution": true,
+        "why": "S6 stops on ambiguous 'held-out' data; if it means test, evaluation data guide model selection."
+      },
+      "dataflow": "S1->S7 is acyclic; each typed output is consumed only after production.",
+      "unbound_parameters": [],
+      "parameter_audit": "W4/A8 are bit widths; alpha and preregistered B are named. B is estimated at 2–4 GPU-days. eta=.5 and action values are reviewer-chosen, not candidate parameters.",
+      "dual_readings": [
+        {
+          "id": "R1",
+          "term": "held-out",
+          "reading": "development split",
+          "t2_t3_t5": "dev_R .25->0; unchanged second round stops; static PTQ .25 vs candidate 0; one-pass matches."
+        },
+        {
+          "id": "R2",
+          "term": "held-out",
+          "reading": "test split",
+          "t2_t3_t5": "test_R .16->.01; unchanged second round stops; static PTQ .16 vs candidate .01; one-pass matches; test-driven stopping compromises independence."
+        }
+      ],
+      "estimand_match": {
+        "declared": "Reachable Q-policy observations with matched xi; normalized full-chunk squared action discrepancy to frozen BF16.",
+        "check": "S5 estimates the same quantity over the recorded Dhat_Q sample; no quantity/conditioning mismatch established. Transfer to another split is empirical and needs that split to sample the intended evaluator population.",
+        "result": "S5 matches on sampled Dhat_Q; no mismatch established. Cross-split transfer is empirical."
+      },
+      "occupancy_common_state_caveat": "BF16 is replayed at each observation sampled from D_Q(phi): this is common-state conditional action fidelity. It does not compare quantized/BF16 occupancy distributions, state transitions, executed-prefix commands, or task success."
+    },
+    "formalized_procedure": [
+      {
+        "step": "S1",
+        "consumes": "frozen checkpoint/config/evaluator/controller and calibration/development/test splits",
+        "produces": "frozen experiment context F",
+        "note": "Verbatim: 1. Freeze one released Fast-WAM checkpoint, inference mode, observation preprocessing, denoising schedule, LIBERO-Goal evaluator, controller, execution prefix, and calibration/development/test episode splits.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S2",
+        "consumes": "F and checkpoint Linear weights",
+        "produces": "fixed signed groupwise W4 tensors/scales; W4A8 schema; alpha[l,s,t] table schema",
+        "note": "Verbatim: 2. Quantize every denoiser Linear projection (joint-attention Q/K/V/O, FFN/MoE, conditioning/AdaLN, and action projections) to signed groupwise W4 weights with zero point 0 and signed symmetric A8 activations with zero point 0. Keep W4 group scales fixed; define one A8 clipping limit alpha_{l,s,t} per target layer, stream, and denoising step.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S3",
+        "consumes": "W4A8 schema and reference-policy histories",
+        "produces": "initial alpha table and W4A8 candidate phi_0",
+        "note": "Verbatim: 3. Initialize alpha from ordinary static PTQ calibration on the available reference-policy histories, producing the W4A8 starting candidate; do not update any WAM weights.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S4",
+        "consumes": "phi_t, F and calibration episodes",
+        "produces": "pre-replan observations/cache/action history/seeds; empirical Dhat_Q(phi_t)",
+        "note": "Verbatim: 4. Run that candidate closed-loop on the calibration episodes under the frozen evaluator and record every pre-replan observation, model history/cache needed for inference, executed action history, and denoising seed. The environment produces D_Q(phi); controller and replanning rules remain unchanged.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S5",
+        "consumes": "recorded Q observations, quantized/BF16 checkpoint runs, matched xi and D_a",
+        "produces": "paired full action chunks and empirical normalized squared L_act",
+        "note": "Verbatim: 5. At each recorded observation, replay the candidate and BF16 checkpoint with matched denoising randomness, compare the full generated action chunks after the checkpoint's existing action normalization, and accumulate L_act(phi;D_Q(phi)).",
+        "status": "instantiated"
+      },
+      {
+        "step": "S6",
+        "consumes": "alpha_t, current Q-history loss, named budget B and held-out discrepancy",
+        "produces": "refit alpha_(t+1), refreshed Dhat_Q and stop/continue decision",
+        "note": "Verbatim: 6. Update only alpha_{l,s,t} by minimizing the mean L_act on the collected Q-history observations; W4 weight scales, model parameters, bit allocation, and controller stay fixed. Re-run the quantized policy to refresh D_Q after each update, stopping when held-out action discrepancy ceases to improve or the preregistered pilot compute budget B is reached.",
+        "status": "instantiated"
+      },
+      {
+        "step": "S7",
+        "consumes": "frozen final W4A8 quantizer, separate evaluation episodes and fixed evaluator",
+        "produces": "own-history action discrepancy and separate success outcome",
+        "note": "Verbatim: 7. Freeze the final W4A8 quantizer and evaluate it without BF16 teacher calls on separate LIBERO-Goal episodes; report action discrepancy on its own visited histories and closed-loop success as separate outcomes. No native speed claim is made until a WAM-compatible packed W4A8 kernel is measured.",
+        "status": "instantiated"
+      }
+    ],
+    "negative_control": {
+      "executed": true,
+      "moved_outcome": true,
+      "evidence": "At alpha=.7, BF16-history gradient 1 with eta=.5 gives alpha=.2; dev_R rises 0->.25 and test_R .01->.16 (static baseline). If BF16/Q targets match, gradient is 0: movement is contingent."
+    },
+    "dry_run": {
+      "instance": "S6 was selected as likely fatal before execution. One alpha, one normalized action coordinate D_a=1, BF16 action 0; alpha0=.2 (reference target .2); Q targets .7 for two rounds; dev=.7, test=.6; eta=.5. Outputs are synthetic loss inputs only; no model/simulator. Both held-out readings are run.",
+      "execution": {
+        "mode": "executed",
+        "script": "# Synthetic action-loss fixture; no model, backbone, simulator, or training.\n# One alpha[l,s,t], one normalized action coordinate, BF16 teacher action = (0,).\neta, D_a = 0.5, 1.0\nq_targets = (0.7, 0.7)       # stipulated outputs for current/refreshed Q histories\ndev_target, test_target = 0.7, 0.6\nbf16_history_target = 0.2\nalpha_static = 0.2           # argmin of synthetic reference-history loss (alpha-0.2)^2\ndef loss(alpha, target): return ((alpha-target)/D_a)**2\ndef grad(alpha, target): return 2*(alpha-target)/(D_a*D_a)\ndef step(alpha, target): return alpha-eta*grad(alpha,target)\nalpha = alpha_static\ndev_prev, test_prev = loss(alpha,dev_target), loss(alpha,test_target)\nprint(f\"fixture: alpha0={alpha:.2f}, eta={eta:.2f}, D_a={D_a:.1f}, Q_rows={len(q_targets)}, teacher=(0,)\")\nprint(f\"static_reference_PTQ: alpha={alpha:.2f}, dev_R={dev_prev:.6f}, test_R={test_prev:.6f}, ref_R={loss(alpha,bf16_history_target):.6f}\")\none_pass = None\nfor r,target in enumerate(q_targets,1):\n    before=alpha\n    g=grad(before,target)\n    alpha=step(before,target)\n    dev_now,test_now=loss(alpha,dev_target),loss(alpha,test_target)\n    print(f\"Q_refit_round{r}: target={target:.2f}, alpha_before={before:.2f}, Q_loss_before={loss(before,target):.6f}, g_Q={g:.6f}, alpha_after={alpha:.2f}, Q_loss_after={loss(alpha,target):.6f}, dev_R={dev_now:.6f}, test_R={test_now:.6f}, dev_improved={dev_now<dev_prev}, test_improved={test_now<test_prev}\")\n    if r==1: one_pass=alpha\n    dev_prev,test_prev=dev_now,test_now\nlast_dev_improved=loss(alpha,dev_target)<dev_prev\nlast_test_improved=loss(alpha,test_target)<test_prev\nprint(f\"round2_stop: alpha={alpha:.2f}, no_dev_improvement={not last_dev_improved}, no_test_improvement={not last_test_improved}\")\nprint(f\"one_pass_declared_naive: alpha={one_pass:.2f}, dev_R={loss(one_pass,dev_target):.6f}, test_R={loss(one_pass,test_target):.6f}\")\nprint(f\"multi_round_candidate: alpha={alpha:.2f}, dev_R={loss(alpha,dev_target):.6f}, test_R={loss(alpha,test_target):.6f}, ref_R={loss(alpha,bf16_history_target):.6f}\")\n# T2b: replace Q-history gradient with the matched BF16-reference-history gradient.\nbefore=alpha\ng_ref=grad(before,bf16_history_target)\nalpha_ctrl=step(before,bf16_history_target)\nprint(f\"T2b_control: g_BF16={g_ref:.6f}, alpha={before:.2f}->{alpha_ctrl:.2f}, dev_R={loss(before,dev_target):.6f}->{loss(alpha_ctrl,dev_target):.6f}, test_R={loss(before,test_target):.6f}->{loss(alpha_ctrl,test_target):.6f}, static_test_R={loss(alpha_static,test_target):.6f}\")\nprint(f\"T5_static_naive: alpha={alpha_static:.2f}, test_R={loss(alpha_static,test_target):.6f}; candidate: alpha={before:.2f}, test_R={loss(before,test_target):.6f}; abs_gap={loss(alpha_static,test_target)-loss(before,test_target):.6f}\")\n# Perturbation: if BF16-history target equalled Q target, the control need not move R.\nalpha_same=step(before,q_targets[-1])\nprint(f\"control_same_target_perturbation: alpha={before:.2f}->{alpha_same:.2f}, test_R={loss(before,test_target):.6f}->{loss(alpha_same,test_target):.6f}, moved={loss(before,test_target)!=loss(alpha_same,test_target)}\")\nprint(f\"T3_single_loss={loss(0.2,0.7):.6f}, T3_identical_pair_mean={(loss(0.2,0.7)+loss(0.2,0.7))/2:.6f}, T3_tie_dev={loss(0.7,dev_target):.6f}->{loss(0.7,dev_target):.6f}\")\n",
+        "output": "fixture: alpha0=0.20, eta=0.50, D_a=1.0, Q_rows=2, teacher=(0,)\nstatic_reference_PTQ: alpha=0.20, dev_R=0.250000, test_R=0.160000, ref_R=0.000000\nQ_refit_round1: target=0.70, alpha_before=0.20, Q_loss_before=0.250000, g_Q=-1.000000, alpha_after=0.70, Q_loss_after=0.000000, dev_R=0.000000, test_R=0.010000, dev_improved=True, test_improved=True\nQ_refit_round2: target=0.70, alpha_before=0.70, Q_loss_before=0.000000, g_Q=0.000000, alpha_after=0.70, Q_loss_after=0.000000, dev_R=0.000000, test_R=0.010000, dev_improved=False, test_improved=False\nround2_stop: alpha=0.70, no_dev_improvement=True, no_test_improvement=True\none_pass_declared_naive: alpha=0.70, dev_R=0.000000, test_R=0.010000\nmulti_round_candidate: alpha=0.70, dev_R=0.000000, test_R=0.010000, ref_R=0.250000\nT2b_control: g_BF16=1.000000, alpha=0.70->0.20, dev_R=0.000000->0.250000, test_R=0.010000->0.160000, static_test_R=0.160000\nT5_static_naive: alpha=0.20, test_R=0.160000; candidate: alpha=0.70, test_R=0.010000; abs_gap=0.150000\ncontrol_same_target_perturbation: alpha=0.70->0.70, test_R=0.010000->0.010000, moved=False\nT3_single_loss=0.250000, T3_identical_pair_mean=0.250000, T3_tie_dev=0.000000->0.000000"
+      },
+      "computed_quantities": [
+        {
+          "quantity": "reference PTQ start",
+          "value": "alpha0=.2; dev_R=.25; test_R=.16",
+          "arithmetic": "(.2-.7)^2=.25; (.2-.6)^2=.16"
+        },
+        {
+          "quantity": "Q refit 1",
+          "value": "loss .25; gradient -1; alpha .2->.7; loss 0",
+          "arithmetic": "(.2-.7)^2=.25; 2(.2-.7)=-1; .2-.5*(-1)=.7"
+        },
+        {
+          "quantity": "both held-out readings after refit",
+          "value": "dev 0; test .01",
+          "arithmetic": "(.7-.7)^2=0; (.7-.6)^2=.01"
+        },
+        {
+          "quantity": "Q refit 2",
+          "value": "gradient 0; alpha stays .7; no dev/test improvement",
+          "arithmetic": "2(.7-.7)=0; refreshed target=.7 in this chosen stationary fixture"
+        },
+        {
+          "quantity": "one-pass vs multi-round",
+          "value": "alpha .7 and dev/test R 0/.01 for both",
+          "arithmetic": "the declared one-pass applies the same first update; round 2 is inert on this fixture"
+        },
+        {
+          "quantity": "BF16-history control",
+          "value": "alpha .7->.2; dev 0->.25; test .01->.16",
+          "arithmetic": "g=2(.7-.2)=1; .7-.5*1=.2; final test equals static baseline"
+        },
+        {
+          "quantity": "sensitivity perturbation",
+          "value": "if BF16 target=.7, alpha stays .7 and test_R stays .01",
+          "arithmetic": "gradient 2(.7-.7)=0"
+        }
+      ],
+      "anomalies": []
+    },
+    "degenerate_probes": [
+      {
+        "probe": "empty calibration/D_Q",
+        "behavior": "Undefined only if the available-episode premise is violated; no legal-input finding.",
+        "finding": null
+      },
+      {
+        "probe": "k=0",
+        "behavior": "No k/top-k operation.",
+        "finding": null
+      },
+      {
+        "probe": "all-identical rows",
+        "behavior": "Two losses .25 at alpha=.2 average to .25; update is defined.",
+        "finding": null
+      },
+      {
+        "probe": "ties",
+        "behavior": "No threshold; equal dev/test score at alpha=.7 means no improvement and stops under R1/R2.",
+        "finding": null
+      },
+      {
+        "probe": "single element",
+        "behavior": "One-row mean .25; gradient -1; update .7.",
+        "finding": null
+      },
+      {
+        "probe": "maximum allowed",
+        "behavior": "No max episode/alpha bound is stated; finite preregistered B is the stop condition.",
+        "finding": null
+      }
+    ],
+    "claim_step_map": [
+      {
+        "claim": "Q rollouts define D_Q over visited observations; later terminal visits are censored.",
+        "established_by": "S4",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "S5 pairs full action chunks on the same observations, with matched xi and D_a.",
+        "established_by": "S5",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Only A8 alpha changes; W4 scales, weights, controller, schedule and prefix stay fixed.",
+        "established_by": "S2,S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Refits refresh Q history; neither simulator nor WAM weights are differentiated/updated.",
+        "established_by": "S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Deployment uses frozen alpha and ordinary W4A8 GEMM; teacher is calibration-only.",
+        "established_by": "S7",
+        "strength_grade": "conditional",
+        "assumptions_missing": [
+          "Compatible W4A8 GEMM and clip-table serialization are available on target."
+        ],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "Q-history held-out discrepancy falls more than BF16-history discrepancy.",
+        "established_by": "S4,S5,S6",
+        "strength_grade": "empirical",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      },
+      {
+        "claim": "The mechanism is an incremental DAgger-style quantizer application, not a general PTQ algorithm.",
+        "established_by": "S4,S5,S6",
+        "strength_grade": "established",
+        "assumptions_missing": [],
+        "arbitration": "argument",
+        "measured": null
+      }
+    ],
+    "naive_comparison": {
+      "declared_branch": "ii incremental: candidate says one-pass DAgger may already solve it; stronger claim requires beating it.",
+      "naive_version": "Fit A8 alpha once by the same BF16 full-chunk loss on fixed reference-policy histories; no Q-history refresh.",
+      "naive_fairness": "Same checkpoint, W4A8, teacher/loss, evaluator, deployment limit and compute ceiling; one fixed-history pass, no extra information/budget.",
+      "declared_naive": {
+        "version": "One-pass Q-history DAgger: collect W4A8 visits, query BF16 and refit alpha once.",
+        "instance_behavior": "alpha=.7; dev/test R=0/.01, same outputs as multi-round on this stationary fixture.",
+        "agrees_with_constructed": "No: static PTQ test_R=.16; the stronger declared one-pass baseline matches the candidate."
+      },
+      "instance_behavior": {
+        "naive": "alpha=.2; dev/test R=.25/.16",
+        "mechanism": "alpha=.7; dev/test R=0/.01",
+        "divergence": "alpha=.5; dev_R=.25; test_R=.15",
+        "kind": "instance_contingent"
+      },
+      "naive_kind": "alternative_design",
+      "identity": "differs",
+      "verdict": "confronts_obstacle",
+      "reasoning": "Static PTQ misses the synthetic Q-history target (.16 vs .01). Declared one-pass DAgger also reaches alpha=.7, so no real or multi-round advantage is established."
+    }
+  },
+  "contract_version": 2,
+  "base_candidate_sha256": "2c4af33ea4edcbfc36cb9d803e10e4350a020e2eee5b635a0101ee265867616b",
+  "verdict": "findings",
+  "unrepaired": [],
+  "suggested_repairs": [
+    {
+      "kind": "wording",
+      "op": "append_sentence",
+      "field": "core_mechanism_steps",
+      "value": "For Step 6, define the held-out action-discrepancy set as the frozen development split; do not use the test split for stopping, and reserve the test split for Step 7 evaluation.",
+      "delta_summary": "T1(c): held-out can mean development or test. Specify development so the final test split stays outside stopping."
+    }
+  ],
+  "applied_revisions": []
+}

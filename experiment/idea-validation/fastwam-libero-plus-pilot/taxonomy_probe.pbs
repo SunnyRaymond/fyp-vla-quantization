@@ -1,0 +1,163 @@
+#!/bin/bash
+#PBS -N fw_plus_taxonomy
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+REPO="$ROOT/LIBERO-plus"
+CLASSIFICATION="$REPO/libero/libero/benchmark/task_classification.json"
+ARTIFACTS="$ROOT/artifacts/${PBS_JOBID:-missing-jobid}"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  trap - EXIT
+  printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+
+printf 'TAXONOMY_PROBE_START job=%s time=%s\n' "${PBS_JOBID:-MISSING}" "$(date -Is)"
+test -n "${PBS_JOBID:-}" && test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) printf 'GUARD_FAIL login_host=%s\n' "$HOST"; exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || { printf 'GUARD_FAIL hostname_not_in_nodefile host=%s\n' "$HOST"; exit 64; }
+
+QSTAT_FILE="/tmp/libero-plus-taxonomy-${PBS_JOBID}.txt"
+printf 'ALLOCATION_QSTAT_START job=%s timeout_s=20\n' "$PBS_JOBID"
+set +e
+timeout 20s qstat -f "$PBS_JOBID" > "$QSTAT_FILE" 2>&1
+qstat_rc=$?
+set -e
+printf 'ALLOCATION_QSTAT_COMPLETE job=%s rc=%s\n' "$PBS_JOBID" "$qstat_rc"
+if test "$qstat_rc" -ne 0; then cat "$QSTAT_FILE"; exit 64; fi
+grep -Eq 'job_state = R' "$QSTAT_FILE" || { printf 'GUARD_FAIL allocation_not_running\n'; exit 64; }
+cp "$QSTAT_FILE" "$ARTIFACTS/allocation.txt"
+printf 'ALLOCATION_GUARD_OK job=%s host=%s\n' "$PBS_JOBID" "$HOST"
+
+test -s "$CLASSIFICATION"
+stat -c 'CLASSIFICATION_FILE path=%n bytes=%s' "$CLASSIFICATION"
+module purge
+module load python/3.11.7-gcc11
+printf 'TAXONOMY_READ_START time=%s\n' "$(date -Is)"
+python3 - "$CLASSIFICATION" "$ARTIFACTS/taxonomy_probe.json" <<'PY'
+import collections
+import json
+import re
+import sys
+from pathlib import Path
+
+classification_path = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+suites = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
+known_categories = {
+    "Objects Layout", "Camera Viewpoints", "Robot Initial States",
+    "Language Instructions", "Light Conditions", "Background Textures",
+    "Sensor Noise",
+}
+markers = re.compile(r"_(?:add|table|tb|view|language|light|noise|initstate)_", re.IGNORECASE)
+
+def original_task(name):
+    match = markers.search(name)
+    return name[:match.start()] if match else name
+
+def suffix_for(name, root):
+    return name[len(root):].lstrip("_").lower()
+
+payload = json.loads(classification_path.read_text(encoding="utf-8"))
+report = {
+    "pbs_job_id": __import__("os").environ["PBS_JOBID"],
+    "host": __import__("socket").gethostname(),
+    "classification_path": str(classification_path),
+    "classification_bytes": classification_path.stat().st_size,
+    "existing_original_task_regex": markers.pattern,
+    "known_categories": sorted(known_categories),
+    "suites": {},
+}
+all_categories = set()
+for suite in suites:
+    rows = payload.get(suite)
+    if not isinstance(rows, list):
+        raise RuntimeError("Classification is missing suite list: " + suite)
+    groups = collections.defaultdict(list)
+    for item in rows:
+        category = str(item.get("category"))
+        all_categories.add(category)
+        name = str(item.get("name", ""))
+        root = original_task(name)
+        groups[category].append({
+            "name": name,
+            "id": item.get("id"),
+            "difficulty_level": item.get("difficulty_level"),
+            "inferred_root": root,
+            "inferred_suffix": suffix_for(name, root),
+        })
+    suite_report = {
+        "row_count": len(rows),
+        "task_classification_categories": {},
+    }
+    for category in sorted(groups):
+        samples = groups[category]
+        root_counts = collections.Counter(row["inferred_root"] for row in samples)
+        suffix_counts = collections.Counter(row["inferred_suffix"] for row in samples)
+        sample_rows = [
+            {
+                "name": row["name"],
+                "id": row["id"],
+                "difficulty_level": row["difficulty_level"],
+                "inferred_root": row["inferred_root"],
+                "inferred_suffix": row["inferred_suffix"],
+            }
+            for row in samples[:2]
+        ]
+        suffix_report = [
+            {
+                "suffix": suffix,
+                "count": count,
+            }
+            for suffix, count in sorted(suffix_counts.items())
+        ]
+        suite_report["task_classification_categories"][category] = {
+            "count": len(samples),
+            "inferred_root_unique_count": len(root_counts),
+            "inferred_root_examples": sorted(root_counts)[:4],
+            "samples": sample_rows,
+            "inferred_suffix_unique_count": len(suffix_counts),
+            "inferred_suffixes": suffix_report[:8],
+        }
+    report["suites"][suite] = suite_report
+
+unknown_categories = sorted(all_categories - known_categories)
+unknown_suffixes = {}
+for suite in suites:
+    rows = payload[suite]
+    for item in rows:
+        category = str(item.get("category"))
+        if category not in {"Objects Layout", "Background Textures"}:
+            continue
+        name = str(item.get("name", ""))
+        root = original_task(name)
+        suffix = suffix_for(name, root)
+        if not re.match(r"(add|table|tb)(?:_|$)", suffix):
+            key = category + "::" + suffix
+            entry = unknown_suffixes.setdefault(key, {"category": category, "suffix": suffix, "count": 0, "examples": []})
+            entry["count"] += 1
+            if len(entry["examples"]) < 3:
+                entry["examples"].append({"suite": suite, "name": name, "id": item.get("id"), "difficulty_level": item.get("difficulty_level"), "inferred_root": root})
+
+report["all_official_categories_in_target_suites"] = sorted(all_categories)
+report["unknown_categories"] = unknown_categories
+report["unknown_objects_layout_or_background_suffixes"] = sorted(unknown_suffixes.values(), key=lambda row: (row["category"], row["suffix"]))[:100]
+output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+size = output_path.stat().st_size
+print("TAXONOMY_PROBE_COMPLETE bytes={} categories={} unknown_categories={} unknown_suffixes={}".format(
+    size, report["all_official_categories_in_target_suites"], unknown_categories,
+    len(report["unknown_objects_layout_or_background_suffixes"])), flush=True)
+if size > 262144:
+    raise RuntimeError("Taxonomy receipt exceeds 256 KiB limit")
+PY
+printf 'TAXONOMY_READ_COMPLETE time=%s\n' "$(date -Is)"

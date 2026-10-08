@@ -1,0 +1,132 @@
+{
+  "protocol": "fastwam-smooth-vq-phases12-v1",
+  "model": "Fast-WAM released Optional-IDM clean checkpoint",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+  "calibration_cases": [
+    0,
+    2,
+    4,
+    6,
+    10,
+    12,
+    14,
+    16
+  ],
+  "calibration_seed_indices": [
+    0
+  ],
+  "selection_cases": [
+    1,
+    3,
+    18,
+    20
+  ],
+  "test_cases": [
+    5,
+    7,
+    8,
+    9,
+    11,
+    13,
+    15,
+    17,
+    19,
+    21
+  ],
+  "evaluation_seed_indices": [
+    0,
+    1
+  ],
+  "hadamard_block": 128,
+  "transform_seed": 20261006,
+  "scale_bound": 16,
+  "alphas": [
+    0.5,
+    0.75,
+    1.0
+  ],
+  "phase1_configs": [
+    {
+      "name": "identity",
+      "alpha": null,
+      "hadamard": false
+    },
+    {
+      "name": "hadamard",
+      "alpha": null,
+      "hadamard": true
+    },
+    {
+      "name": "smooth05_hadamard",
+      "alpha": 0.5,
+      "hadamard": true
+    },
+    {
+      "name": "smooth075_hadamard",
+      "alpha": 0.75,
+      "hadamard": true
+    },
+    {
+      "name": "smooth1_hadamard",
+      "alpha": 1.0,
+      "hadamard": true
+    },
+    {
+      "name": "smooth1",
+      "alpha": 1.0,
+      "hadamard": false
+    }
+  ],
+  "phase2_config_names": [
+    "identity",
+    "smooth05_hadamard",
+    "smooth075_hadamard",
+    "smooth1_hadamard"
+  ],
+  "vq": {
+    "dimension": 4,
+    "codebooks": 2,
+    "entries": 256,
+    "samples": 8192,
+    "iterations": 8,
+    "seed": 20261006
+  },
+  "primary_metric": "case mean across two sampler seeds of normalized motor RMSE over first10 x 6 vs own BF16 reference",
+  "secondary_metrics": [
+    "gripper_rmse_first10",
+    "motor_rmse_32",
+    "activation_zero_fraction",
+    "activation_relative_rmse",
+    "weight_reconstruction_rmse",
+    "packed_payload_bytes",
+    "serialized_bank_bytes"
+  ],
+  "selection_rule": "Minimize mean primary metric on selection cases independently for phase1, scalar phase2 and VQ phase2; ties use declared config order; freeze winners before test queries.",
+  "phase2_test_rule": "Evaluate both quantizers at Identity and at the union of their selection-winning transforms, ensuring paired same-transform held-out comparisons.",
+  "numerical_control": "Evaluate each phase1 transformed BF16-weight/BF16-input configuration on selection cases. Report drift from original BF16; compare A4 output with both original and same-transform BF16 control.",
+  "activation_recipe": "dynamic per-row absmax signed symmetric Q4, qmax=7, round and clamp, decoded BF16",
+  "scalar_recipe": "per-output-row input-channel groups of 128, symmetric signed W4, BF16 scales rounded before encoding and packed nibbles; decoded BF16 reference arithmetic",
+  "vq_metric": "candidate-specific empirical per-channel second moment of actual decoded Q4 transformed inputs; diagonal local Linear-output proxy, not final-action sensitivity",
+  "weight_scope": "all selected Linear in video_expert, action_expert and proprio_encoder, identical to previous pilot",
+  "unquantized": "KV cache, bias, normalization, nonlinearities, text encoder, VAE and other non-target modules remain original precision",
+  "sampler": "idm, 10 video + 10 action denoising steps, action chunk [32,7], no action ensembler",
+  "claim_scope": "fixed-observation numerical mechanism validation; zero evaluation episodes and no native VQ latency claim",
+  "preflight": {
+    "calibration_cases": [
+      0
+    ],
+    "selection_cases": [
+      1
+    ],
+    "phase1_config_names": [
+      "identity",
+      "smooth1_hadamard"
+    ],
+    "phase2_config_names": [
+      "identity",
+      "smooth1_hadamard"
+    ],
+    "test_cases": [],
+    "inform_final_selection": false
+  }
+}

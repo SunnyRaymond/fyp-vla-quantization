@@ -1,0 +1,189 @@
+#!/bin/bash
+#PBS -N fw_plus_importprobe
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+REPO="$ROOT/LIBERO-plus"
+DEPS="$ROOT/deps"
+NATIVE_ROOT="$ROOT/native/imagemagick-jammy"
+NATIVE_LIBDIR="$NATIVE_ROOT/usr/lib/x86_64-linux-gnu"
+NATIVE_STATUS="$ROOT/native_status.json"
+CONFIG="$ROOT/libero-config"
+COMPAT="$ROOT/libero-plus-compat"
+ARTIFACTS="$ROOT/artifacts/${PBS_JOBID:-missing-jobid}"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  trap - EXIT
+  printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+
+printf 'IMPORT_PROBE_START job=%s time=%s\n' "${PBS_JOBID:-MISSING}" "$(date -Is)"
+test -n "${PBS_JOBID:-}" && test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) printf 'GUARD_FAIL login_host=%s\n' "$HOST"; exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || { printf 'GUARD_FAIL hostname_not_in_nodefile host=%s\n' "$HOST"; exit 64; }
+
+QSTAT_FILE="/tmp/libero-plus-importprobe-$PBS_JOBID.txt"
+printf 'ALLOCATION_QSTAT_START job=%s timeout_s=20\n' "$PBS_JOBID"
+set +e
+timeout 20s qstat -f "$PBS_JOBID" > "$QSTAT_FILE" 2>&1
+qstat_rc=$?
+set -e
+printf 'ALLOCATION_QSTAT_COMPLETE job=%s rc=%s\n' "$PBS_JOBID" "$qstat_rc"
+if test "$qstat_rc" -ne 0; then
+  cat "$QSTAT_FILE"
+  exit 64
+fi
+grep -Eq 'job_state = R' "$QSTAT_FILE" || { printf 'GUARD_FAIL allocation_not_running\n'; exit 64; }
+cp "$QSTAT_FILE" "$ARTIFACTS/allocation.txt"
+printf 'ALLOCATION_GUARD_OK job=%s host=%s\n' "$PBS_JOBID" "$HOST"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+PYTHON="$BASE/venv/bin/python"
+test -x "$PYTHON" && test -r "$SIF"
+test -d "$DEPS" && test -s "$NATIVE_STATUS"
+test -s "$REPO/libero/libero/benchmark/task_classification.json"
+test -s "$COMPAT/libero/__init__.py" && test -s "$COMPAT/libero/libero/__init__.py"
+
+MAGICK_HOME="$NATIVE_ROOT/usr"
+MAGICK_CONFIGURE_PATH="$NATIVE_ROOT/etc/ImageMagick-6:$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16"
+MAGICK_CODER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders"
+MAGICK_FILTER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/filters"
+export LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+PYTHONPATH="$COMPAT:$REPO:$DEPS:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero"
+
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  fi
+done
+
+printf 'IMPORT_PROBE_APPTAINER_START timeout_s=300 python=%s\n' "$PYTHON"
+set +e
+timeout --signal=TERM --kill-after=10s 300s apptainer exec --cleanenv "${BIND_ARGS[@]}" --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST" --env "ROOT=$ROOT,REPO=$REPO,DEPS=$DEPS,BASE=$BASE,CONFIG=$CONFIG,COMPAT=$COMPAT,PROBE_OUT=$ARTIFACTS/import_probe.json" --env "PYTHONPATH=$PYTHONPATH,LIBERO_CONFIG_PATH=$CONFIG,MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1" --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH,MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR" "$SIF" "$PYTHON" - <<'PY'
+import datetime
+import faulthandler
+import importlib
+import importlib.util
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+faulthandler.dump_traceback_later(30, repeat=True, file=sys.stderr)
+output = Path(os.environ["PROBE_OUT"])
+report = {
+    "pbs_job_id": os.environ["PBS_JOBID"],
+    "host": os.environ["PILOT_ALLOCATION_HOST"],
+    "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "timeout_seconds": 300,
+    "imports": [],
+    "provenance": {},
+}
+
+def save():
+    temp = output.with_suffix(output.suffix + ".tmp")
+    temp.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    temp.replace(output)
+
+def import_one(label, module_name=None, optional=False):
+    module_name = module_name or label
+    item = {
+        "name": label,
+        "module": module_name,
+        "status": "started",
+        "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    report["imports"].append(item)
+    save()
+    started = time.monotonic()
+    print("IMPORT_START name={} module={} time={}".format(label, module_name, item["started_at"]), flush=True)
+    try:
+        if optional and importlib.util.find_spec(module_name) is None:
+            item["status"] = "not_installed"
+            item["elapsed_seconds"] = round(time.monotonic() - started, 3)
+            item["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            save()
+            print("IMPORT_OPTIONAL_MISSING name={} elapsed_s={}".format(label, item["elapsed_seconds"]), flush=True)
+            return None
+        module = importlib.import_module(module_name)
+        item["status"] = "ok"
+        item["version"] = getattr(module, "__version__", None)
+        item["file"] = getattr(module, "__file__", None)
+        item["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        item["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        save()
+        print("IMPORT_OK name={} elapsed_s={} version={}".format(label, item["elapsed_seconds"], item["version"]), flush=True)
+        return module
+    except Exception as exc:
+        item["status"] = "error"
+        item["error"] = "{}: {}".format(type(exc).__name__, exc)
+        item["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        item["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        save()
+        print("IMPORT_ERROR name={} elapsed_s={} error={}".format(label, item["elapsed_seconds"], item["error"]), flush=True)
+        return None
+
+for module_name in ("torch", "triton", "cv2", "wand", "skimage"):
+    import_one(module_name)
+import_one("imagecorruptions", optional=True)
+import_one("mujoco")
+import_one("libero")
+benchmark = import_one("libero_plus_benchmark", "libero.libero.benchmark")
+envs = import_one("libero_plus_envs", "libero.libero.envs")
+
+if benchmark is not None:
+    benchmark_file = Path(benchmark.__file__).resolve()
+    source_package = (Path(os.environ["REPO"]) / "libero" / "libero").resolve()
+    classification = benchmark_file.parent / "task_classification.json"
+    report["provenance"]["benchmark_file"] = str(benchmark_file)
+    report["provenance"]["classification_path"] = str(classification)
+    report["provenance"]["classification_exists"] = classification.is_file()
+    try:
+        benchmark_file.relative_to(source_package)
+        report["provenance"]["benchmark_from_plus"] = True
+    except ValueError:
+        report["provenance"]["benchmark_from_plus"] = False
+    print("LIBERO_PLUS_BENCHMARK " + json.dumps(report["provenance"], sort_keys=True), flush=True)
+
+if envs is not None:
+    env_class = getattr(envs, "OffScreenRenderEnv", None)
+    report["provenance"]["offscreen_env_file"] = str(Path(envs.__file__).resolve()) if getattr(envs, "__file__", None) else None
+    report["provenance"]["offscreen_render_env"] = "{}.{}".format(env_class.__module__, env_class.__name__) if env_class else None
+    if env_class is None:
+        item = {"name": "libero_plus_OffScreenRenderEnv", "status": "error", "error": "OffScreenRenderEnv missing"}
+        report["imports"].append(item)
+        print("IMPORT_ERROR name=libero_plus_OffScreenRenderEnv error=missing", flush=True)
+    else:
+        item = {"name": "libero_plus_OffScreenRenderEnv", "status": "ok", "file": report["provenance"]["offscreen_env_file"]}
+        report["imports"].append(item)
+        print("IMPORT_OK name=libero_plus_OffScreenRenderEnv", flush=True)
+
+report["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+report["failed_imports"] = [item["name"] for item in report["imports"] if item["status"] == "error"]
+save()
+faulthandler.cancel_dump_traceback_later()
+print("IMPORT_PROBE_RESULT " + json.dumps({"failed_imports": report["failed_imports"], "output": str(output)}, sort_keys=True), flush=True)
+sys.exit(1 if report["failed_imports"] else 0)
+PY
+probe_rc=$?
+set -e
+printf 'IMPORT_PROBE_APPTAINER_COMPLETE rc=%s time=%s\n' "$probe_rc" "$(date -Is)"
+exit "$probe_rc"
+

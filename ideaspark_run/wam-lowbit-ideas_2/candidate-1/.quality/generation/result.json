@@ -1,0 +1,98 @@
+{
+  "contract_version": 2,
+  "request_id": "da1c6300-56f1-48de-91b6-4968ceb05735",
+  "artifacts": {
+    "phase2_select/phase2_select_output.json": {
+      "contract_version": 2,
+      "selected_gaps": [
+        {
+          "gap": "[subtractive] Q-WAM、SteerQuant、QuantWAMs 与 PreDE 都在完整 chunk 或固定 execution condition 下定义量化分数；尚无文献检验“完整生成 chunk 足以代表部署 fidelity”这一共享前提，在只执行某个 prefix 并经固定 controller 运算后是否仍成立。Phase 2 的构造交付应是在固定 controller 与 W4A4/W4A8 条件下，提出并检验能保留已执行 command 行为的量化方法，同时界定完整 chunk 分数何时会失真；不预定其内部机制。若高影响误差集中在首段或控制阈值附近，量化配置可能按未执行尾部误差排序而错过已执行 command 偏差；stakes: practitioner 在机器人部署时会接受错误配置并承担任务失败或重复闭环评估成本，intellectual 上会把 full-chunk similarity 错当成控制等价。",
+          "chosen_pattern_id": "assumption_audit_and_pivot",
+          "anchor_alternates": [],
+          "companion_pattern": null,
+          "sibling_dependency": null,
+          "companion_dependency": null,
+          "companion_rationale": "",
+          "selection_rationale": "该 gap 直接挑战本轮 WAM PTQ 共同采用的完整 chunk/fixed execution condition 前提，且 Phase 1 将其列为最重要的部署控制错位。pivot 将量化校准目标改为固定 evaluator 实际执行 prefix 经 controller 后发出的 command，并据此构造 W4A8 PTQ。"
+        }
+      ],
+      "coherence_thread_type": "n_a",
+      "deliverable_coverage": "method — anchor gap → assumption_audit_and_pivot 将固定 controller 后的已执行 command 保真定义为交付目标，并由 command-loss 校准构造可部署 W4A8 quantizer。",
+      "user_direction_disposition": {
+        "verdict": "adopted",
+        "user_wanted": "最好量化层级能到W4A4/W4A8，混合精度或者单一精度都可以",
+        "chosen": "采用 frozen-backbone、统一 W4A8 的权重/激活 PTQ；高精度只留给非 Linear 控制与数值算子。"
+      },
+      "composition_note": "单一 W4A8 frozen-backbone PTQ；c1/c2 collateral 分别用 receding-horizon 与 quantized-feedback 词汇覆盖。直接对 controller command 的 task-aware calibration 属通用原则，单靠 prefix reweighting 不构成新方法；若 branch signature 无额外可验证作用，则应降为应用级增量。",
+      "deferred_gaps": [
+        {
+          "gap": "[additive] 对同时发生于多个 layer、stream 与 denoising step 的低位误差，Q-WAM 明确省略交叉项并依赖零均值/不相关近似，SteerQuant 则以 full-precision 输入单独估计每个区域；因此在 W4A4/W4A8 联合量化时，边际分数是否能预测误差合成后的 action displacement 仍未知，尤其是系统偏移、抵消或同向累积是否改变候选排序。Phase 2 的构造交付应是在固定 WAM 与低位宽下，提出能应对多处残差同时存在的量化方法，并以联合扰动证据检验其 action 误差判断；不预定误差估计或调节机制。stakes: 量化研究者可能把精度预算分给单点敏感却在联合路径中不关键的模块，造成 W4 quality 结论不可复现或无法迁移到不同校准轨迹；intellectual 上会把独立扰动假设当成未经检验的误差几何。",
+          "reason": "Deferred: 本候选只改固定 controller-prefix command 的校准目标；建模多层/多步残差交互需要另一误差机制，不是 anchor 方法的必要组件。"
+        },
+        {
+          "gap": "[additive] Q-WAM 与 SteerQuant 使用离线 calibration probes，QuantWAMs 用 FP16 reference-state replay 提议 schedule 并将 quantized-state profile 作为 shift diagnostic，PreDE 对新配置则查询固定 observation log；这些结果尚未确立当量化动作改变后续 observation history 时，离线分数/阈值对多轮闭环候选排序仍保持校准。Phase 2 的构造交付应是在固定 evaluator 与 W4A4/W4A8 条件下，提出能在候选诱发的新闭环 history 上维持量化质量判断的方法，并通过多轮 evidence 检验迁移；不预定状态适配机制。stakes: 实践者在长序列或接触状态变化时可能遇到离线通过、闭环退化的候选并付出额外仿真或实机成本；intellectual 上，固定输入 evidence 不能支持跨 rollout distribution 的控制保真结论。",
+          "reason": "Deferred: reference-state 上的 command PTQ 不含量化模型诱发的新 observation history；闭环分布适配属于独立后续方法与证据范围。"
+        }
+      ]
+    },
+    "phase2_generate/phase2_generate_output.json": {
+      "contract_version": 2,
+      "title": "Controller-Prefix Command PTQ for W4A8 World Action Models",
+      "intervention_object": {
+        "acts_on": "Fast-WAM first_frame 动作推理路径中所有 Linear 的冻结权重/激活量化 scales、clipping bounds 与激活 zero-points。",
+        "operator": "对每个 Linear 的有限量化参数候选执行全模型 W4A8 前向，并以实际固定 controller 输出的 prefix commands 的词典序失真作坐标更新。",
+        "decision_variables": "每层对称 INT4 权重量化 scale/clipping bounds 与非对称 INT8 激活 scale/clipping bounds/zero-point；仅搜索后端允许且由校准张量范围生成的有限候选集。"
+      },
+      "hook": "提出一个冻结权重 W4A8 PTQ 方法，直接校准固定 evaluator 执行 prefix 经实际 controller 映射后的 command，而不是完整预测 chunk。可证伪的预测是：全 chunk 误差较小的候选，在其误差集中于未执行 suffix 或触发 controller clip/gripper 分支时，仍可能有更大的 executed-command error。",
+      "hook_shape_rationale": "采用 empirical-reveal 形状：指标是固定 observation/controller state 上的 executed-command error，预测方向是在 suffix/分支翻转条件下与 full-chunk 排序分离；这是可测的非显然 regime，而非只换名。结构重述也可行，但现有 WAM 文献未必显式声称 controller 等价，故避免把通用 task-aware PTQ 原则包装成已证实的 tacit-assumption novelty。",
+      "gap_closure": [
+        {
+          "gap": "[subtractive] Q-WAM、SteerQuant、QuantWAMs 与 PreDE 都在完整 chunk 或固定 execution condition 下定义量化分数；尚无文献检验“完整生成 chunk 足以代表部署 fidelity”这一共享前提，在只执行某个 prefix 并经固定 controller 运算后是否仍成立。Phase 2 的构造交付应是在固定 controller 与 W4A4/W4A8 条件下，提出并检验能保留已执行 command 行为的量化方法，同时界定完整 chunk 分数何时会失真；不预定其内部机制。若高影响误差集中在首段或控制阈值附近，量化配置可能按未执行尾部误差排序而错过已执行 command 偏差；stakes: practitioner 在机器人部署时会接受错误配置并承担任务失败或重复闭环评估成本，intellectual 上会把 full-chunk similarity 错当成控制等价。",
+          "main_pattern": "assumption_audit_and_pivot",
+          "sub_pattern_not_applicable_reason": "无子模式能直接指导冻结 WAM quantizer 的 controller-prefix PTQ 构造：已读 pivot clusters 分别偏向安全/来源定位、隐因子识别、预算选择证书或统计/优化理论；强套会夸大 pattern support。",
+          "sub_pattern": null,
+          "companion_pattern": null,
+          "how_closed": "parent-level assumption pivot：用固定 evaluator 的 C(P_h a) command 取代 full-chunk 误差作为 PTQ 目标；该子领域的 pattern exemplar 支持较薄，因此不声称来自某个特定 C## tactic。"
+        }
+      ],
+      "core_mechanism": "机制限定于官方 Fast-WAM Optional IDM checkpoint 的 first_frame 动作推理路径，冻结所有模型参数，仅校准量化器。构造校准记录 d_i=(o_i,c_i,h_i,xi_i)：observation o_i、固定 evaluator 在该时刻的 controller state c_i、实际执行 prefix 长度 h_i，以及匹配的 generation seed xi_i，均由命名的 LIBERO-Goal evaluator 轨迹记录。令 F_theta 为 W4A8 模型，P_h 取 evaluator 将执行的 chunk prefix，C_c 为代码中原封不动的 action denormalization、clipping、gripper/ensemble 等 controller map，则参考 command 是 u_i*=C_c_i(P_h_i F_BF16(o_i;xi_i))，候选 command 是 u_i(theta)=C_c_i(P_h_i F_theta(o_i;xi_i))。从 C 的真实分支/阈值输出定义 branch signature b_i(theta)，从连续 actuator 分量定义 v_i(theta)；最小化目标是词典序对 (branch mismatch rate, 按参考 command 各维标准差归一化的连续 command 平方误差)，从而不把离散分支翻转用任意权重折算成连续误差。theta 以普通 W4A8 局部 PTQ 校准为初始点，在每个 Linear 上枚举后端根据该层校准权重/激活范围生成的有限合法 scale/clipping/zero-point 候选，采用全模型前向的坐标更新，只接受严格降低该词典序目标的候选，直到完整 sweep 无更新；有限候选与严格下降保证过程停止，但不保证全局最优。执行图中的每个 Linear（包括 action、shared 与 conditioning/AdaLN projections）都采用 signed per-output-channel W4 weights 和 per-token A8 activations；不保留 BF16 Linear side branch。Norm、RoPE、Softmax、residual/attention accumulation、scheduler、bias accumulation 与 controller/postprocessing 保持 BF16/FP32，并逐项报告其内存占比；若目标 backend 不能量化某个 Linear，则不计作完整 W4A8 覆盖。部署时只运行已校准的 W4A8 模型和原 controller，不调用 BF16 teacher、不加在线搜索或 correction branch。此处优化的 estimand 是 BF16 reference-trajectory observation/controller-state 分布上的固定输入 executed-command distortion，不等同量化闭环 success、跨 rollout distribution 保真或 native latency；因此该候选目前只是 application-grade/incremental PTQ 方案，branch-aware loss 的额外贡献仍待证伪。",
+      "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger\nobservation-model: 校准样本来自命名的 Fast-WAM first_frame + LIBERO-Goal BF16 evaluator 轨迹；同一 observation、controller state、prefix、seed 成对回放，因此输入是参考策略可达状态的选择性样本，不是量化闭环分布，也不假设 IID 或完整覆盖。\n固定执行语义 premise: Fast-WAM evaluator 的 P_h 和 C_c 可由现有评估代码精确复现；若 temporal ensemble/controller history 未被日志记录，则只对可观测的 stateless map 校准并缩小结论。\nuntested — falsification target: 精确保留 controller 的离散 branch signature 并在 branch 内降低连续 command error，能降低未见参考轨迹上的 executed-command distortion；若实际轨迹没有 clip/gripper branch events，则 branch 项没有额外作用。\nESTIMAND: R_cmd(theta)=E_{(o,c,h,xi)~D_ref}[ lex(1{b_theta != b_BF16}, sum_{j in continuous}((v_theta,j-v_BF16,j)/s_j)^2) ]，其中 D_ref 是固定 evaluator 的 BF16 参考轨迹观测/controller-state/prefix/seed 联合分布，s_j 是校准集参考 command 第 j 连续维标准差（若为零则取 evaluator 原生单位尺度）；估计对象仅为该参考分布上的有限输入失真。\n\nBLOCK 2 — NAIVE-BASELINE AUDIT\n最直接的可运行版本是用同一个 W4A8 backend 做标准 per-layer weight reconstruction / activation-range calibration，并按全 chunk MSE 选 clipping scales。它可以改善层局部或整块重建误差，却不会区分未执行 suffix 与已执行 prefix，也不会显式处理 controller 的 clip/gripper branch；将 task-aware PTQ 套到 C_c(P_h a) 是已有的一般思想，因此这里的应用级新意只可能来自真实 branch-aware lexicographic target 在 WAM controller 上纠正了可重复的 held-out 排序失真，若这一点不成立就应判为 incremental/application-grade。标准工具 follow-up：量化器搜索是通用工具；本域结构是生成模型在 denoising 后只执行固定 prefix，且经过非线性/历史状态 controller 才成为机器人命令，本方案直接查询该冻结映射而非用 full-action Jacobian 近似。\n\nBLOCK 3 — DESIGN RATIONALE\n选择完整 W4A8 前向坐标搜索而不叠加 AOG/ASP，是为了让实际 prefix 和 controller branches 成为唯一校准轴，并避免重述 Q-WAM/SteerQuant 的 action-Jacobian sensitivity 或高精度保护分支。考虑过只按 prefix 长度加权 full-chunk loss，但它仍把未执行维度纳入目标，且容易退化为已有 task-aware PTQ 的权重改写；分支签名只有在匹配时确实降低 held-out executed-command error 才值得保留。",
+      "core_mechanism_steps": "1. 载入 Fast-WAM 官方 Optional IDM checkpoint、first_frame 路径、LIBERO-Goal evaluator 和其固定 controller 配置；冻结所有模型权重、动作归一化、chunk/replan 设置与 generation seed 规则。\n2. 用 BF16 reference rollouts 记录现有 evaluator 会读取的 (observation, controller state, executed prefix length, seed)，按 trajectory 划分 PTQ calibration 与 held-out fixed-input validation，避免相邻帧泄漏。\n3. 缓存 BF16 reference 的完整输出及精确 controller command；从 evaluator 的分支标记构造 branch signature，并用 calibration commands 计算每个连续执行维度的标准差。\n4. 将所有执行图 Linear 转成 W4A8：weights 用 signed per-output-channel INT4，activations 用 per-token INT8；按后端规则保留 non-Linear 的 BF16/FP32 算子，列出任何因 kernel 不支持而未覆盖的 Linear。\n5. 用标准局部重建 PTQ 参数初始化每个 Linear 的 scales、clipping bounds 和 activation zero-point；只允许这些量变化，不训练模型参数，也不增加保护 branch。\n6. 对每层依次枚举从其校准权重/激活范围得到的合法量化候选；每个候选都跑完整量化 WAM，再用同一记录的 prefix 和 controller state 得到 command，计算 branch mismatch rate 与连续 command normalized squared error。\n7. 仅在全 calibration objective 词典序严格下降时接受该层更新；重复 layer sweep，直到一轮无更新，并冻结所得 W4A8 配置。\n8. 在 held-out BF16 reference records 上用原 controller 重放最终 W4A8 模型，报告 full-chunk deviation、branch mismatch、executed-command error、有效 Linear 位宽及精度例外占用；不从这些固定输入指标推出闭环 success 或速度收益。\n9. 部署路径删除 teacher、calibration search 与 BF16 correction；若 backend 没有 Fast-WAM-compatible packed W4A8 kernel，则只报告 quantizer proposal，不声称真实 native low-bit latency。",
+      "falsification_prediction": "在 Fast-WAM first_frame / LIBERO-Goal 的同一固定 evaluator 下，以 trajectory-disjoint BF16 reference logs 作为 paired calibration/held-out inputs，比较本方法与同一 W4A8 backend 的 local-reconstruction calibration 及 SteerQuant W4A8；测量 exact controller-prefix command distortion 和 branch mismatch，不测闭环成功率作替代。若机制成立，本方法在 held-out executed-command error 上低于两种对照，且 full-chunk error 排序在 unexecuted-suffix 主导或 clip/gripper branch 附近出现可观测反转。唯一 load-bearing variable 是 branch/controller pairing；负对照在重新校准时随机置换每条 observation 的 controller state 与 prefix，随后仍在未置换的 held-out records 上评测，预测其 exact executed-command error 高于正确配对校准。若该负对照无影响，或 command error 不优于强 W4A8 baseline，则 branch-aware 机制被否证；即使通过也只建立 reference-state command fidelity，不建立 quantized closed-loop success。",
+      "compute_budget": "GPU-days 未知：目标 GPU、LIBERO log 规模和后端有限候选数均未指定；主要成本为 K_theta 个全模型量化候选各自重放 D_cal 中的完整 WAM 前向，另加一次 BF16 reference 缓存，需在目标设备实测后估算。Paid API cost = $0；PTQ 不更新模型权重，Native W4A8 kernel 适配/真实性能测试另计，当前无 latency 或 memory speedup 数字。",
+      "differentiation_from_lit": [
+        {
+          "paper_id": "arxiv:2609.33269v1",
+          "delta": "Q-WAM 的 AOG/ASP 将扰动映到完整 action chunk 并加入 16-bit 低秩保护分支；本方法直接优化精确固定 evaluator 对实际执行 prefix 产生的 command，并用统一 W4A8 Linear 路径校准。"
+        },
+        {
+          "paper_id": "arxiv:2609.39056v1",
+          "delta": "SteerQuant 以 full-precision 输入上的局部 Jacobian 影响引导 shared scaling 与 stream modulation，目标仍是完整 chunk；本方法以量化模型完整前向后的 controller command loss 更新量化参数。"
+        },
+        {
+          "paper_id": "arxiv:2607.28405v1",
+          "delta": "QuantWAMs 用 fixed-intervention reference-state replay 审核 precision schedule，并明确不把 local profile 当 task gain；本方法不分配 schedule，而直接在冻结参考 trajectory 上校准 W4A8 参数到实际 controller prefix 命令。"
+        },
+        {
+          "paper_id": "arxiv:2609.19441v1",
+          "delta": "PreDE 在固定 observation log 上用整段 action MAE 对新配置做 accept/reject/defer 筛选；本方法把 prefix/controller 后的 command-distortion 作为量化器的训练外校准目标，不输出配置筛选标签。"
+        }
+      ],
+      "almost_prior_paper_id": "arxiv:2609.33269v1",
+      "what_step_was_missed": "Q-WAM 在计算 action-observability sensitivity 前还需把其 endpoint 从完整 generated chunk 换成 evaluator 实际取出的 prefix，并显式经过已冻结的 controller map，从而构造 branch-mismatch-first 的命令失真目标，再据此直接更新统一 W4A8 的 quantizer 参数。",
+      "signature_terms": [
+        "controller-prefix command distortion",
+        "fixed-controller W4A8 calibration",
+        "branch-aware quantizer scale search",
+        "executed action command fidelity"
+      ],
+      "alias_terms": [
+        "receding-horizon command tracking",
+        "quantized-feedback control stability",
+        "actuator saturation-aware command calibration",
+        "hybrid controller mode preservation"
+      ],
+      "composition_note": "单一 W4A8 frozen-backbone PTQ；c1/c2 collateral 分别用 receding-horizon 与 quantized-feedback 词汇覆盖。直接对 controller command 的 task-aware calibration 属通用原则，单靠 prefix reweighting 不构成新方法；若 branch signature 无额外可验证作用，则应降为应用级增量。"
+    }
+  }
+}

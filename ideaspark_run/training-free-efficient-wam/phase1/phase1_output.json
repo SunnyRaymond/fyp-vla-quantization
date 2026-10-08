@@ -1,0 +1,355 @@
+{
+  "intake": {
+    "domain": "Frozen, training-free inference acceleration for joint World Action Models (WAMs) that iteratively generate future visual latents and action chunks.",
+    "venue": "未指定；按FYP方法/系统研究诊断处理，不推断投稿周期。",
+    "time": "未指定；本轮资料截止 2026-10-02，未假设投稿期限。",
+    "data": [
+      "Sparse-WAM paper-reported LIBERO/LIBERO-Plus and RoboLab-120 results; this round performs no new evaluation.",
+      "Potential simulation routes in the feasibility notes: FastWAM/LIBERO and Cosmos3-Edge/RoboLab. Motus/RoboTwin 2.0 is only a conditional simulation fallback if the matching FastWAM-Joint checkpoint is unavailable, not an equivalent baseline.",
+      "Sparse-WAM's physical route is AgileX Cobot Magic with task-specific FastWAM-Joint post-training. Matching checkpoint, demonstrations/data, source implementation, and local hardware access are unconfirmed."
+    ],
+    "compute": "本阶段只做文献与机制诊断；没有GPU/cluster实验授权。不假定GPU-day或美元预算。ASPIRE2A login仅轻量控制；加速方法保持training-free，baseline原有post-training单列。",
+    "expertise": "按FYP研究者有WAM/robotics系统阅读与复现需求处理；具体实现经验、硬件及机器人权限未核实。",
+    "preference": "both",
+    "baseline": "FastWAM-Joint、Cosmos3-Edge-Policy-DROID，以及作为近邻锚点的Sparse-WAM。FastWAM-Joint匹配checkpoint尚未确认；Cosmos3 Edge公开4B checkpoint已记录。Motus/RoboTwin 2.0仅为条件仿真后备，不替代FastWAM-Joint。跨模型比较需各自冻结checkpoint；任务所需baseline post-training另计。",
+    "user_direction": "training free efficient wam",
+    "excluded_direction": "n_a",
+    "limitation": "待检的结构性余量是：future-side token/step reduction后，每个action solver update仍处理哪些observation/future conditioning，以及移除这些交互对动作质量和计算量的实际影响；这些依赖、成本占比与跨骨干转移尚未证实。论文时延与真机deadline口径差异是可行性/评测条件，不单独构成计算机制缺口。",
+    "contribution_type": "method",
+    "_inferred_fields": [
+      "venue",
+      "time",
+      "data",
+      "compute",
+      "expertise",
+      "preference",
+      "limitation",
+      "contribution_type"
+    ]
+  },
+  "bottleneck_statement": "对冻结权重、以迭代flow/diffusion联合生成future video与action chunk的WAM，future侧变稀疏或减少video updates后，当前方法仍在每个运行中的action solver step基于当前observation及保留上下文更新动作：Sparse-WAM保留全部observation/action tokens并逐step重算动作 [arxiv:2609.38984v1]；Efficient-WAM中可单独视为training-free的inference子机制把video压到两步并缓存video K/V，但action仍跑5/10步 [openalex:W7164153965]。现有证据没有区分这些action-conditioned context交互对动作质量的依赖与实际计算贡献，因此无法判断它们是否是可移除且值得加速的对象；FastWAM-Joint的32步action chunk也意味着余量不可由token保留或总时延推断。论文时延与真机deadline口径差异只是评测/部署条件：WAMachine已测observation-to-action latency并利用执行期slack做rebind，RTC/RTI/GlanceWAM等也覆盖相邻的异步或warm-start路线；把deadline改名不能形成新的training-free计算机制。",
+  "closest_adjacent": [
+    {
+      "paper_id": "arxiv:2609.38984v1",
+      "is_anchor": true,
+      "summary_and_residue": "它用action-to-future attention保留逐帧core tokens与共享anchors，跨denoising steps复用选择和省略区域的velocity，同时每步重算action predictions。它仍保留全部observation/action tokens，未分离这些context对动作质量的敏感性或其计算占比；32步action chunk本身不证明该路径重要。"
+    },
+    {
+      "paper_id": "arxiv:2609.34608v1",
+      "is_anchor": false,
+      "summary_and_residue": "它组合trajectory remapping、执行slack中的speculative denoising/observation rebinding，以及probe-gated residual rescaling跳过中间层，并报告仿真中的GPU denoising time和observation-to-action latency。它已覆盖状态复用、异步rebind与RTI-DP/RTC邻域；论文时延与真机deadline口径仍是部署评测差异，不能单独充当新计算机制。"
+    },
+    {
+      "paper_id": "openalex:W7164153965",
+      "is_anchor": false,
+      "summary_and_residue": "其整体模型经过三阶段训练，但inference-only的asymmetric denoising使用两次joint video更新、5/10次action更新，并缓存video K/V。该组件已覆盖不对称denoising/KV复用，却没有建立action-context交互的质量依赖与成本占比；整体模型不能冒充frozen training-free baseline。"
+    },
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "is_anchor": false,
+      "summary_and_residue": "它在action-only Fast-WAM的action expert上跨inference chunks复用denoising residual，并用缓存步区间和refresh间隔控制质量/速度权衡。这个cross-chunk residual reuse不回答joint FastWAM-Joint每个action update需要哪些当前observation/future context，也不能直接证明相同缓存路径适用于joint backbone。"
+    },
+    {
+      "paper_id": "openalex:W7172338867",
+      "is_anchor": false,
+      "summary_and_residue": "FBFM在flow execution期间把新观测编码成state latent约束，以endpoint-Jacobian/pseudoinverse修正velocity并固定已提交action overlap。其JVP/feedback管理增加开销，真实机器人材料是recorded-ball replay诊断而非closed-loop任务，因此既未量化本处context成本，也未证明真机deadline收益。"
+    },
+    {
+      "paper_id": "arxiv:2608.23927v2",
+      "is_anchor": false,
+      "summary_and_residue": "GlanceWAM以异步lookahead生成稀疏future imagination，并训练staleness robustness以便未来生成与执行重叠。它已占据异步future/staleness机制邻域，但包含co-training，不能作为frozen-baseline training-free inference comparator，也未分解每步action-context交互。"
+    }
+  ],
+  "what_phase_0_did_not_address": [
+    "在Sparse-WAM这类future token已稀疏的joint-WAM上，尚未建立action输出对每步所读observation/future context的质量敏感性与对应计算量之间的边界；尤其FastWAM-Joint的action chunk只有32步，保留全部tokens不能说明action侧是主要成本，固定observation latent也不代表hidden states或KV跨timestep固定。 — stakes: 研究者可能把有限实验预算投入占比很小的路径，或删去接触/遮挡相关条件而降低控制质量；没有敏感性边界也使跨backbone加速结果难以解释。",
+    "在joint WAM把future表示稀疏化或缓存后，是否仍必须让每个native action update使用完整可见observation与保留future context，还是该dense conditioning只是继承自joint predictor的默认接口，尚未被检验。 — stakes: 若这一继承假设实际决定了动作质量与计算的取舍，工程师可能把失败误判为backbone限制，研究结论也会局限于共同保留了同一未验证conditioning graph的模型。"
+  ],
+  "method_lineage": {
+    "line": "Observation-conditioned iterative denoising/flow for action chunks, extended to joint future-video and action generation; the diagnostic concerns repeated action-query conditioning compute.",
+    "nodes": [
+      {
+        "node_id": "n0",
+        "method": "Langevin dynamics / score-based sampling",
+        "move": "Root move: use repeated stochastic updates driven by a target-distribution score to obtain samples rather than a one-shot prediction.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": ">16y",
+        "confidence": "high",
+        "residual_problem": "Sampling requires repeated score evaluations; later diffusion methods learn a denoising field but retain iterative inference cost.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n1",
+        "method": "Denoising score matching and noise-conditional score models",
+        "move": "Learns a score/denoising direction from progressively corrupted samples, making the iterative sampling field data-driven.",
+        "parent": "n0",
+        "provenance": "parametric",
+        "age_band": "8-16y",
+        "confidence": "medium",
+        "residual_problem": "A trained denoising field still needs repeated noise-level evaluations to reach a sample.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n2",
+        "method": "DDPM/DDIM-family conditional reverse denoising",
+        "move": "Organizes denoising into a learned noise schedule and reverse transitions that can be conditioned on context.",
+        "parent": "n1",
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "high",
+        "residual_problem": "Multi-step inference repeatedly processes a context-conditioned sample and can be expensive for control latency.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n3",
+        "method": "Diffusion Policy action-chunk generation",
+        "move": "Applies conditional iterative denoising to whole robot action trajectories/chunks, using observation context to generate multimodal actions.",
+        "parent": "n2",
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "medium",
+        "residual_problem": "The action trajectory is revisited across solver steps; later WAMs add a future-video stream and cross-modal conditioning.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n4",
+        "method": "Fast-WAM / FastWAM-Joint",
+        "move": "Adds explicit future-video prediction jointly with action generation, coupling visual and action denoising in a WAM.",
+        "parent": "n3",
+        "provenance": "retrieved:user_ref:arxiv_id:2603.16666",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Joint inference repeats conditioned video/action computation; it does not specify which action-query context interactions are necessary at every active solver step.",
+        "is_frontier_leaf": false,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n5",
+        "method": "Sparse-WAM",
+        "move": "Selects action-relevant future visual tokens and reuses selection/omitted-region predictions across denoising steps.",
+        "parent": "n4",
+        "provenance": "retrieved:arxiv:2609.38984v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "It keeps all observation/action tokens and recomputes action predictions each step; action-context sensitivity and cost share remain unestablished.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n6",
+        "method": "Efficient-WAM (inference-only asymmetric-denoising component)",
+        "move": "Runs a short video schedule, caches video K/V, and continues a longer action schedule; the model as a whole is trained and is not a frozen training-free baseline.",
+        "parent": "n4",
+        "provenance": "retrieved:openalex:W7164153965",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Action updates continue after video updates stop, but their per-step context dependence and share of total compute are not isolated.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n7",
+        "method": "WAMachine",
+        "move": "Reuses/remaps states across replans, speculative observation rebinding during execution, and probe-gated intermediate-layer residuals.",
+        "parent": "n4",
+        "provenance": "retrieved:arxiv:2609.34608v1",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Consistency failures refresh computation; the paper establishes O2A/slack-aware acceleration but not the action-context sensitivity/cost boundary or physical closed-loop result.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n8",
+        "method": "FBFM",
+        "move": "Injects newly observed state constraints and committed action overlap into the active flow update through Jacobian/pseudoinverse feedback.",
+        "parent": "n4",
+        "provenance": "retrieved:openalex:W7172338867",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Feedback/JVP management has cost and the real-robot evidence is replay-only; the action-context computation itself is not isolated.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "n9",
+        "method": "GlanceWAM",
+        "move": "Overlaps sparse future imagination with execution using asynchronous lookahead and staleness-robust training.",
+        "parent": "n4",
+        "provenance": "retrieved:arxiv:2608.23927v2",
+        "age_band": "0-2y",
+        "confidence": "high",
+        "residual_problem": "Staleness boundaries depend on control rate/hardware and the co-trained method is not a frozen-baseline training-free inference comparator.",
+        "is_frontier_leaf": true,
+        "is_collateral": false
+      },
+      {
+        "node_id": "c1",
+        "method": "Reformer-style LSH sparse attention",
+        "move": "Collateral family: reduces generic sequence-attention work through locality-sensitive sparse interactions rather than WAM-specific action conditioning.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "medium",
+        "residual_problem": "It does not establish which observation/future interactions are required to preserve action quality in a joint WAM.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c2",
+        "method": "Performer-style random-feature linear attention",
+        "move": "Collateral family: approximates softmax attention with a linearized feature computation.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "medium",
+        "residual_problem": "Generic attention approximation does not provide the WAM action-quality boundary for changing cross-modal context.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c3",
+        "method": "DynamicViT-style token pruning",
+        "move": "Collateral family: reduces later computation by dropping tokens judged less useful for visual recognition.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "medium",
+        "residual_problem": "Visual recognition token utility does not specify action-conditioned context sufficiency in a denoising WAM.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c4",
+        "method": "A-ViT-style adaptive token halting",
+        "move": "Collateral family: exits selected visual tokens at different depths to spend compute unevenly.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "4-8y",
+        "confidence": "medium",
+        "residual_problem": "Per-token visual halting does not measure control sensitivity to removing context from each WAM action update.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      },
+      {
+        "node_id": "c5",
+        "method": "DeepCache-style diffusion feature reuse",
+        "move": "Collateral family: reuses selected intermediate diffusion features across nearby sampling steps.",
+        "parent": null,
+        "provenance": "parametric",
+        "age_band": "2-4y",
+        "confidence": "low",
+        "residual_problem": "Generic feature similarity/reuse does not establish cross-modal action-context necessity under changing WAM timesteps and masks.",
+        "is_frontier_leaf": false,
+        "is_collateral": true
+      }
+    ],
+    "notes": "Retrieved nodes are the recent frontier; parametric lineage/collateral nodes are awareness-only and do not support prior-art or novelty claims. The Fast-WAM anchor is present in the fulltext index as a user reference; it is used for the ancestry line, not as a closest_adjacent paper-id. Older collateral families recognized for this residual include sparse attention (Reformer), linear attention (Performer), token pruning (DynamicViT), adaptive token halting (A-ViT), and diffusion-feature reuse (DeepCache); none establishes the WAM-specific action-quality/context-cost boundary. Do not infer compute headroom from token retention: the action sequence is short, Amdahl/profile measurements would be required, and a fixed observation latent does not imply fixed hidden states/KV across masks, timestep modulation, or changing future/action conditions. WAMachine already reports O2A and uses execution-period slack; RTC/RTI warm-start or overlap and GlanceWAM asynchronous lookahead occupy adjacent execution-scheduling axes, so paper timing versus physical deadline is an evaluation/feasibility concern, not a new mechanism. Adaptation to FastWAM-Joint and Cosmos3-Edge and matching robot artifacts/checkpoints are feasibility conditions only; no generalization or physical success is claimed, and no GPU experiment is authorized."
+  },
+  "domain_pattern_distribution": {
+    "n_total": 58,
+    "n_on_topic": 47,
+    "patterns": [
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 20,
+        "share": 0.43,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 11,
+        "share": 0.23,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 2,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 5,
+        "share": 0.11,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 3,
+        "share": 0.06,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "algebraic_equivalence_unification",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 15,
+        "share": 0.32,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 2,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "characterize_limit_then_surpass",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      }
+    ],
+    "saturation_threshold_saturated": 0.5,
+    "saturation_threshold_untested_count": 1,
+    "notes": "architectural_operator_substitution is the most-used pattern (20/47, 0.43); adjacent WAM works apply it to distinct compute objects, so no shared limitation is visible."
+  },
+  "state": "proceed",
+  "ood_reasons": [],
+  "remedial_steps": []
+}

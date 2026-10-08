@@ -1,0 +1,2129 @@
+{
+  "title": "Action-Context Source Masking for Frozen Joint WAMs",
+  "title_zh": "冻结联合 WAM 的动作上下文来源掩码",
+  "method_name": "Action-Context Source Masking (ACSM)",
+  "hook": "候选检验一个对控制有实际后果的区分：同样缩短 action-query 的 observation key set 时，首步 attention mass 不如经 output projection 的 source-group action contribution 能预测下游动作价值。若按该贡献选出的 mask 在相同保留边成本下优于 group-permuted control、降低真实端到端推理时延且通过原任务 success gate，才支持它是可省的 action-conditioning 计算；任一条件失败即停止。",
+  "abstract_draft": "Frozen joint World Action Models (WAMs) repeatedly update action chunks while conditioning on observations and retained future tokens, so sparse future prediction does not establish which observation reads each action update needs. Phase 1 identifies this unresolved boundary: Sparse-WAM preserves all observation/action tokens while recomputing actions, and Efficient-WAM's inference-only asymmetric schedule caches video keys and values while continuing action updates; neither establishes action-context sensitivity or its share of end-to-end cost. This proposal tests Action-Context Source Masking (ACSM), which freezes the checkpoint and native solver, scores each observation-source group at the first action evaluation using output-projected contribution, and reuses an epsilon-selected key/value mask for later action updates through a kernel that skips omitted query-key/value edges. On paired episodes, it compares dense inference, ACSM, an equal-edge source-group permutation, and attention-mass, ToPi/VATP, and CAPA-style scoring controls, with epsilon chosen on separate held-out selection episodes. The hypothesis is supported only if ACSM outperforms the matched-cost score controls on task success, the kernel truly skips computation, full latency improves within the original latency gate, and task success passes its frozen gate; otherwise the candidate stops. Any positive result is limited to each tested frozen checkpoint and benchmark and remains unvalidated until those evaluations run.",
+  "motivation": {
+    "problem_framing": "Across frozen joint World Action Models (WAMs), iterative inference updates future visual latents and action chunks through coupled transformer paths. The Phase 1 bottleneck is specific to this model class: even after future-side tokens or video updates are reduced, each active native action solver update may still read the full observation and retained context. Existing evidence does not establish either how much action quality depends on those observation-source interactions or what share of full inference cost they consume, so token retention and total latency cannot answer whether action conditioning is a useful target.\n\nSparse-WAM is the anchor instance: it selects future tokens and reuses omitted-region predictions while retaining all observation/action tokens and recomputing action predictions. Efficient-WAM separately demonstrates an inference-only asymmetric video schedule and video K/V reuse while action updates continue. These works motivate a bounded test of the still-dense action-query-to-observation path. ACSM leaves video-query paths, action-future interactions, the native solver schedule, and frozen weights intact; it tests source-group observation edges only and does not infer that fixed observation latents imply fixed hidden states or K/V.",
+    "why_now": "Recent WAM work makes the residual question concrete: Sparse-WAM (2026-09) reduces future-side computation, WAMachine (2026-09) studies state and residual reuse, and Efficient-WAM (2026-06) separates video and action schedules, yet the Phase 0 summaries leave action-query-to-observation sensitivity and cost unmeasured. This creates a bounded inference-time question that can be addressed without new training by profiling that path and comparing matched-edge masks on frozen models; it does not establish that every required checkpoint, source-provenance interface, or compact kernel is currently available, so those remain start conditions.",
+    "why_prior_stopped": [
+      {
+        "paper_id": "arxiv:2609.38984v1",
+        "venue_year": "arXiv 2026-09",
+        "what_they_did": "Sparse-WAM uses action-guided selection of future visual tokens and reuses selected or omitted-region predictions across denoising steps while recomputing action predictions.",
+        "what_they_did_not_do": "It retains all observation/action tokens and does not test whether action queries can drop observation-source edges while preserving task success and reducing full-path latency.",
+        "structural_reason_they_stopped": "Its intervention targets future tokens, leaving the action-query-to-observation edge set and its task-cost contribution unmeasured."
+      },
+      {
+        "paper_id": "arxiv:2609.34608v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "WAMachine combines trajectory remapping, execution-period observation rebinding, and probe-gated intermediate residual reuse.",
+        "what_they_did_not_do": "It does not isolate the contribution of current observation-source edges read by each native action update.",
+        "structural_reason_they_stopped": "Its mechanism reuses or rebinds intermediate state, rather than ranking and deleting action-query-to-observation edges."
+      },
+      {
+        "paper_id": "openalex:W7164153965",
+        "venue_year": "arXiv (Cornell University) 2026",
+        "what_they_did": "Efficient-WAM uses an inference-only asymmetric schedule with fewer video updates and cached video K/V while continuing action updates.",
+        "what_they_did_not_do": "It does not establish the task sensitivity or full-path cost share of observation conditioning in those continuing action updates.",
+        "structural_reason_they_stopped": "Its compute allocation distinguishes video from action updates, not observation-source edges within the action path."
+      },
+      {
+        "paper_id": "arxiv:2606.08962v1",
+        "venue_year": "arXiv 2026-06",
+        "what_they_did": "C3ache reuses action-expert denoising residuals across inference chunks using cache-step and refresh choices.",
+        "what_they_did_not_do": "It does not test which current observation groups a joint FastWAM-Joint action update needs.",
+        "structural_reason_they_stopped": "Its operator is cross-chunk residual reuse, not within-chunk action-query-to-observation context masking."
+      },
+      {
+        "paper_id": "openalex:W7172338867",
+        "venue_year": "arXiv (Cornell University) 2026",
+        "what_they_did": "FBFM injects newly observed state constraints and committed action overlap into active flow updates through Jacobian/pseudoinverse feedback.",
+        "what_they_did_not_do": "It does not measure the action-query observation-context cost share or remove source-specific conditioning edges.",
+        "structural_reason_they_stopped": "Its intervention corrects the vector field using feedback rather than changing the current action query's observation key set."
+      },
+      {
+        "paper_id": "arxiv:2608.23927v2",
+        "venue_year": "arXiv 2026-08",
+        "what_they_did": "GlanceWAM overlaps sparse future imagination with execution through asynchronous lookahead and staleness-robust training.",
+        "what_they_did_not_do": "It does not isolate or sparsify the observation sources read by native action updates in a frozen joint WAM.",
+        "structural_reason_they_stopped": "Its mechanism changes execution timing and is co-trained for staleness, rather than masking action-conditioning edges at frozen inference."
+      }
+    ],
+    "what_changes_when_gap_closes": "A positive result would identify, for each tested frozen checkpoint, whether observation-source edges in the action branch can be reduced under the original success gate and whether that path has enough measured headroom to improve full inference latency. This would give Sparse-WAM- and Efficient-WAM-style systems a WAM-specific action-conditioning test and a same-edge-budget comparison against prior scoring recipes; a negative result would bound the tested opportunity rather than establish a general impossibility."
+  },
+  "core_claim": "The proposal tests whether first-update output-projected observation-source contributions can select same-cost masks that preserve the frozen task-success gate and improve full inference latency in each tested joint WAM, with WAM-specific score advantage claimed only if paired outcomes beat all matched-cost scoring controls.",
+  "sub_claims": [],
+  "key_equations": [
+    {
+      "id": "e1",
+      "linked_step_id": "S3",
+      "latex": "r_{lg}=\\sum_{q\\in Q_l}\\left\\|\\sum_{h\\in H_l}W^{l}_{O,h}\\left(\\sum_{j\\in g}\\alpha^{l}_{h}(q,j)V^{l}_{h}(j)\\right)\\right\\|_2",
+      "description": "For each layer and observation-source group, r_lg sums the norm of its action-query attention contribution after the native output projection.",
+      "description_zh": "对每层和 observation-source group，将该组经 native output projection 后对 action queries 的 attention contribution 取范数并求和，得到 r_lg。"
+    },
+    {
+      "id": "e2",
+      "linked_step_id": "S3",
+      "latex": "\\rho_{lg}=\\frac{r_{lg}}{\\sum_{g'\\in G_o}r_{lg'}}",
+      "description": "rho_lg normalizes each group contribution within its layer; if the denominator is zero, the rule retains every group.",
+      "description_zh": "ρ_lg 在层内按所有 observation groups 的总贡献归一化；分母为零时按规则保留全部 groups。"
+    },
+    {
+      "id": "e3",
+      "linked_step_id": "S4",
+      "latex": "S_l(\\epsilon)=\\{g_1,\\ldots,g_m\\},\\quad m=\\min\\left\\{t:\\sum_{i=1}^{t}\\rho_{l g_i}\\geq 1-\\epsilon\\right\\}",
+      "description": "The g_i are ordered by descending r_lg with native source order breaking ties; S_l is the shortest prefix meeting the cumulative-share target, with epsilon selected in [0,1).",
+      "description_zh": "g_i 按 r_lg 降序排列，并以 native source order 稳定打破并列；S_l 取累计贡献达到目标的最短前缀，ε 的可选范围为 [0,1)。"
+    },
+    {
+      "id": "e4",
+      "linked_step_id": "S2",
+      "latex": "\\mathrm{speedup}_{\\max}=\\frac{1}{1-\\phi_{\\mathrm{obs}}}",
+      "description": "phi_obs is the measured full-inference time share of action-query-to-observation QK/AV; this ideal Amdahl upper bound excludes scoring, packing, kernel, and other model-path costs.",
+      "description_zh": "φ_obs 是 action-query-to-observation QK/AV 在完整推理中的实测时间占比；该理想 Amdahl 上界尚未扣入评分、压紧、kernel 和其他模型路径的代价。"
+    },
+    {
+      "id": "e5",
+      "linked_step_id": "S6",
+      "latex": "B_l=|Q_l||H_l|\\sum_{g\\in S_l(\\epsilon)}|g|",
+      "description": "B_l is the retained action-query-to-observation edge budget used to match ranked masks and scoring controls.",
+      "description_zh": "B_l 表示保留的 action-query-to-observation edge 数，用于匹配排名 mask 与各评分对照。"
+    }
+  ],
+  "method_flow": {
+    "high_level_pipeline": "Freeze the native checkpoint, solver, task configuration, and backend separately for FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab. Profile the complete inference path and stop early if action-query-to-observation QK/AV has insufficient Amdahl headroom. On a dense first action evaluation, group observation tokens by existing provenance and compute output-projected contribution scores; choose epsilon on held-out selection episodes under the original task-success gate and full-path latency. Run later action updates with the resulting compact key/value sets, then compare paired evaluation episodes against dense inference, equal-edge controls, and the same-cost score baselines.",
+    "steps": [
+      {
+        "step_id": "S1",
+        "title": "Freeze each baseline",
+        "what_changes": "Lock each checkpoint, native solver schedule, task configuration, and backend. Keep FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab as separate primary pairings; record that the FastWAM-Joint matching checkpoint is unconfirmed, and treat Motus/RoboTwin 2.0 only as a conditional simulation fallback.",
+        "why_this_step": "The estimate is defined per frozen checkpoint and native evaluation path, so changing weights, schedule, task, or backend would change the comparison.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "The candidate's named frozen checkpoints, native solver schedules, task configurations, and backend paths.",
+        "output": "A fixed per-backbone inference protocol and an explicit checkpoint-availability condition."
+      },
+      {
+        "step_id": "S2",
+        "title": "Measure action-path headroom",
+        "what_changes": "Profile the native paths in FastWAM's fastwam_joint.py/fastwam.py/mot.py and Cosmos' omni_mot_model.py plus the RoboLab policy-server entry point. Separate action-query-to-observation QK/AV, other attention, QKV, FFN, and mask/packing cost; compute phi_obs and its Amdahl upper bound, and stop if measured savings cannot meet the original latency gate.",
+        "why_this_step": "The action sequence is not enough to infer cost share; this measurement tests whether the proposed edge deletion can affect complete inference latency at all.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "Frozen baseline paths, path-level timing/FLOP profiles, and the pre-existing latency gate.",
+        "output": "phi_obs, the Amdahl headroom estimate, and a continue-or-stop decision."
+      },
+      {
+        "step_id": "S3",
+        "title": "Score source groups",
+        "what_changes": "Use only the token packer's existing camera/view or other source provenance; if it does not expose provenance, stop rather than infer groups. On each chunk's dense first native action evaluation k_ref, read native attention alpha, values V, and output-projection head slices W_O, then compute r_lg and rho_lg; retain all groups if the normalization denominator is zero.",
+        "why_this_step": "The score measures the candidate's proposed output-projected source-group contribution while keeping token values, weights, image, instruction, future/action queries, and training objective fixed.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "The dense k_ref forward, native attention/value/projection outputs, and provenance-backed observation groups.",
+        "output": "A per-layer source-group contribution table for selecting masks."
+      },
+      {
+        "step_id": "S4",
+        "title": "Select and freeze the mask",
+        "what_changes": "On held-out selection episodes D_select, sort groups by descending r_lg with native source order breaking ties, and choose epsilon in [0,1) so S_l(epsilon) is the shortest prefix whose cumulative rho_lg reaches 1-epsilon. Subject to the original frozen task-success gate, select the epsilon with the lowest measured full-path latency; if no pre-existing gate applies, report the success-latency curve without declaring a pass.",
+        "why_this_step": "A declared task gate constrains the retained context; separating D_select from later paired evaluation avoids choosing epsilon from the outcomes used to judge the candidate.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "The S3 score table, D_select episodes, original success gate, and full-path latency measurements.",
+        "output": "A selected epsilon and fixed per-layer S_l mask/key-value indices for paired evaluation."
+      },
+      {
+        "step_id": "S5",
+        "title": "Skip omitted observation edges",
+        "what_changes": "For later native action solver evaluations in the chunk, send action queries and retained observation keys/values to a true variable-length or block-sparse kernel and verify omitted QK/AV is not executed. Recompute softmax over retained keys, feed the resulting attention output through the original residual/transformer blocks, and let the changed action hidden state/velocity update the original flow state; leave video-query paths, future/action interactions, FFN, and solver schedule native.",
+        "why_this_step": "This implements the proposed graph change in the action branch and distinguishes real edge skipping from a dense mask; the recomputed output may change the action trajectory, with no fidelity or control-sensitivity guarantee.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "The fixed S_l mask, retained observation keys/values, native action queries, and solver state.",
+        "output": "A sparse attention result and resulting native flow update, plus evidence that omitted QK/AV edges were skipped."
+      },
+      {
+        "step_id": "S6",
+        "title": "Run matched falsification comparisons",
+        "what_changes": "On paired evaluation episodes D_eval not used to select epsilon, compare dense, rho_lg-ranked, and same-retained-edge-cost source-group-permutation masks, alongside native attention-mass, ToPi/VATP value-norm, and CAPA output-projected score controls. Use the same frozen checkpoint, k_ref dense forward, exact retained edge budget, and compact kernel; record task success, per-path FLOPs, full latency including scoring/packing/kernel launch, action-chunk deviation, and first action divergence, then apply the original frozen gates. Require a legally matched-cost source-group permutation; if existing provenance groups do not permit one, report that control as unavailable rather than substitute an unequal-cost arm.",
+        "why_this_step": "The permutation tests whether source assignment matters at fixed cost, while the prior-score arms test whether rho_lg adds WAM-specific task-action value beyond known contribution-ranking recipes; profiling and task outcomes remain separate evidence.",
+        "linked_component": "engineering",
+        "linked_falsification": "both",
+        "input": "Frozen paired D_eval rollouts, selected masks, same-cost scoring controls, path profiles, and original task-success/latency gates.",
+        "output": "Per-backbone paired quality/cost/divergence results and a stop/retain decision; score advantage is supported only if rho_lg beats every matched-cost score arm under the original gates."
+      },
+      {
+        "step_id": "S7",
+        "title": "Keep robot evaluation conditional",
+        "what_changes": "Discuss a physical-robot phase only after simulation passes the frozen gate and a matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are confirmed. Account for any baseline post-training separately; the mask itself remains training-free and does not update weights.",
+        "why_this_step": "The stated physical prerequisites are unconfirmed, so simulation or recorded evidence cannot stand in for a closed-loop robot result.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "Simulation results against the frozen gate and confirmed policy/data/source/hardware prerequisites.",
+        "output": "A conditional robot evaluation route and a claim boundary that does not imply a completed robot experiment."
+      }
+    ],
+    "design_reasoning_echo": "The design changes the within-chunk action-conditioning graph rather than reusing observation K/V or action residuals across solver states, since fixed input latents do not establish invariant hidden states and adjacent work already occupies cache/reuse routes. It ranks source groups using output-projected action contribution instead of attention mass alone, but ToPi's cumulative contribution selection and CAPA's output-projected scoring mean neither recipe nor projection alone establishes novelty; the revised falsification therefore compares native attention mass, ToPi/VATP value-norm, and CAPA-style scores at the same retained edge budget. The first-update rho_lg is only a model-internal proxy: its ranking may not persist across later solver states, and low-scored groups may hold control-critical contact or occlusion cues. Recomputing softmax after deleting edges may change the action output, but no numeric fidelity or task guarantee follows. The trace also found value-dependent behavior, including assignments where removing a group leaves the numerical output unchanged; this is a parameter-dependent limitation, not a universal failure. Unequal source-group sizes can prevent a distinct equal-cost whole-group permutation, so that control requires a legal grouping under existing provenance and must not be replaced by an unequal-cost comparison. Finally, profiling and real compact-kernel latency are prerequisites: score/packing overhead, other model paths, and limited action-query headroom can erase any theoretical edge savings."
+  },
+  "plain_motivation_en": "In frozen joint World Action Models (WAMs), reducing future-side computation does not tell us whether each action update can stop reading the full observation. WAMs repeatedly update action chunks through coupled transformer paths while conditioning on observations and retained future tokens; each active native action solver update may still read all observation tokens. Existing evidence measures neither how action quality depends on those source interactions nor what share of full-inference time they consume, so token retention and end-to-end latency alone cannot answer whether this path is a useful target.\n\nRecent work makes a bounded inference-time test possible: Sparse-WAM (2026-09) reduces future-side computation, WAMachine (2026-09) studies state and residual reuse, and Efficient-WAM (2026-06) separates video and action schedules. The remaining question is action-query-to-observation sensitivity and cost. This proposal profiles that path and compares masks with equal query-key/attention-value (QK/AV) edge counts on frozen models. It does not establish that the required checkpoints, source-provenance interface, or compact kernels are available.\n\nPrior methods stop at neighboring mechanisms. Sparse-WAM selects future visual tokens and reuses selected or omitted-region predictions, while retaining all observation/action tokens and recomputing actions. WAMachine remaps trajectories, rebinds observations during execution, and reuses intermediate residuals after probes, but does not isolate current observation-source edges used by each action update. Efficient-WAM reduces video updates and caches video keys and values while continuing action updates, but leaves their observation sensitivity and cost unmeasured. C3ache reuses action-expert denoising residuals across chunks; FBFM injects new-state constraints and committed-action overlap through feedback; GlanceWAM overlaps sparse future imagination with execution and trains for staleness. These works do not rank and remove source-specific observation edges during frozen inference.\n\nA positive result would show, for each tested frozen checkpoint, whether observation-source edges can be reduced while meeting the original task-success gate and whether measured headroom remains to lower full-inference latency. It would add a WAM-specific action-conditioning test and a same-edge-budget comparison with earlier scoring recipes. A negative result would bound only the tested opportunity, not prove a general impossibility.",
+  "plain_motivation_zh": "在冻结的联合 World Action Models（WAMs）中，减少 future-side computation 并不能说明每次 action update 是否可以不再读取完整 observation。WAMs 会沿耦合的 transformer 路径反复更新 action chunks，同时使用 observation 和保留的 future tokens。每个 active native action solver update 仍可能读取全部 observation tokens。现有证据既没有测出 action quality 对这些 source interactions 的依赖，也没有测出它们占完整推理耗时的比例；只看保留了多少 tokens 或端到端 latency，无法判断这条路径是否值得优化。\n\n近来的 WAM 研究把问题收窄为一个推理时测试：Sparse-WAM（2026-09）减少 future-side computation，WAMachine（2026-09）研究状态与 residual reuse，Efficient-WAM（2026-06）则区分 video 和 action 的更新计划。仍未回答的问题是 action-query 对 observation 的敏感性及其成本。本方案会 profile 这条路径，并在冻结模型上比较保留 QK/AV（query-key/attention-value）边数相同的 masks。这个计划并未确认所需 checkpoint、source-provenance 接口或 compact kernels 已经可用。\n\n已有方法停在相邻机制上。Sparse-WAM 选择 future visual tokens，并复用已选区域或被省略区域的预测；它仍保留全部 observation/action tokens，并重新计算 actions。WAMachine 会重映射 trajectories、在执行期间重新绑定 observations，并在 probe 后复用中间 residuals；但它没有单独检验每次 action update 会读取哪些当前 observation-source edges。Efficient-WAM 减少 video updates 并缓存 video keys 和 values，同时继续更新 actions；但它没有测量这些 action updates 对 observation 的敏感性和相关成本。C3ache 跨 chunks 复用 action-expert denoising residuals；FBFM 通过 feedback 注入新状态约束和已提交 action 的重叠部分；GlanceWAM 则把稀疏 future imagination 与执行并行，并针对 staleness 训练。这些工作都没有在 frozen inference 中给 observation sources 排序并移除对应 edges。\n\n如果结果为正，它会分别说明：对每个受测 frozen checkpoint，能否在满足原 task-success gate 的同时减少 observation-source edges，以及实测 headroom 是否足以降低完整推理 latency。这会补上一项针对 WAM action conditioning 的测试，并与已有 scoring recipes 做保留边数相同的比较。若结果为负，结论只限定于本次测试的机会，不代表普遍不可能。",
+  "plain_method_steps_en": [
+    {
+      "step_id": "S1",
+      "what_to_do": "Freeze the named checkpoint, native solver schedule, task configuration, and backend separately for FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab. Record that the matching FastWAM-Joint checkpoint is unconfirmed. Treat Motus/RoboTwin 2.0 only as a conditional simulation fallback, not as the matching primary baseline.",
+      "why_this_makes_sense": "The comparison is defined for a particular frozen checkpoint and native evaluation path; changing its weights, schedule, task, or backend changes what is being measured."
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "Profile the named native paths: FastWAM's `fastwam_joint.py`, `fastwam.py`, and `mot.py`; Cosmos' `omni_mot_model.py` and the RoboLab policy-server entry point. Measure time and FLOPs separately for action-query-to-observation query-key/attention-value (QK/AV), other attention, QKV, feed-forward network (FFN), and mask/packing. Compute `φ_obs`, the measured full-inference time share of action-query-to-observation QK/AV, and its ideal Amdahl upper bound. Stop if attainable savings cannot meet the original latency gate.",
+      "why_this_makes_sense": "Action-update count does not reveal the targeted path's share of complete inference time; the profile checks whether deleting its edges could affect full-path latency."
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "Use only existing camera/view or other source provenance from the token packer; stop if none is exposed. At each chunk's dense first native action evaluation, `k_ref`, read native attention weights α, values V, and output-projection head slices `W_O`. For each layer and source group, sum the norms of that group's action-query contribution after the native output projection to obtain `r_lg`, then normalize within the layer to obtain `ρ_lg`. If the normalization denominator is zero, retain every group.",
+      "why_this_makes_sense": "The score measures each observation source's output-projected contribution while keeping the dense reference inputs, weights, image, instruction, future/action queries, and training objective fixed."
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "On held-out selection episodes `D_select`, order groups by descending `r_lg` and break ties by native source order. Choose ε in [0,1) so `S_l(ε)` is the shortest prefix whose cumulative `ρ_lg` reaches 1−ε. Among masks that pass the original frozen task-success gate, select the one with the lowest measured full-path latency. If no pre-existing gate applies, report the success-latency curve without declaring a pass.",
+      "why_this_makes_sense": "The frozen success gate constrains how much context can be removed, and keeping `D_select` separate from paired evaluation prevents choosing ε from the outcomes used to judge the candidate."
+    },
+    {
+      "step_id": "S5",
+      "what_to_do": "For later native action-solver evaluations in the same chunk, send action queries and retained observation keys/values to a true variable-length or block-sparse kernel, and verify omitted QK/AV work is not executed. Recompute softmax over retained keys, pass the attention output through the original residual/transformer blocks, and let the changed action hidden state and velocity update the original flow state. Leave video-query paths, future/action interactions, FFN, and solver schedule native.",
+      "why_this_makes_sense": "This implements edge skipping in the action branch and distinguishes actual saved work from a dense mask. Recomputed attention may change the action trajectory; the method gives no fidelity or task-success guarantee."
+    },
+    {
+      "step_id": "S6",
+      "what_to_do": "On paired evaluation episodes `D_eval` not used to choose ε, compare dense inference, `ρ_lg`-ranked masks, and same-retained-edge-cost source-group-permutation masks. Also compare native attention-mass, ToPi/VATP value-norm, and CAPA output-projected-score controls. Use the same frozen checkpoint, `k_ref` dense forward, exact retained-edge budget `B_l`, and compact kernel. For score controls, sum token scores within existing groups, rank groups with native source order breaking ties, keep whole ranked groups, then add a boundary-group token prefix ordered by the same token score until exactly `B_l` edges are retained; token ties use native token order. Run a permutation only if it is a distinct legal equal-cost mask; otherwise report it unavailable. Record task success, per-path FLOPs, full latency including scoring, packing, kernel launch and remaining model paths, action-chunk deviation, and first action divergence; then apply the original frozen gates.",
+      "why_this_makes_sense": "The permutation tests source assignment at fixed cost; score controls test whether `ρ_lg` adds task-action value beyond prior ranking recipes. Quality and cost remain separate evidence. A WAM-specific score advantage requires `ρ_lg` to beat every matched-cost score arm under the original gates."
+    },
+    {
+      "step_id": "S7",
+      "what_to_do": "Consider a physical-robot phase only after simulation passes the frozen gate and the matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are confirmed. Account for baseline post-training separately; the mask itself remains training-free and does not update weights.",
+      "why_this_makes_sense": "Physical prerequisites are unconfirmed, so simulation or recorded-data results cannot stand in for a closed-loop robot result."
+    }
+  ],
+  "plain_method_steps_zh": [
+    {
+      "step_id": "S1",
+      "what_to_do": "分别冻结 FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 的指定 checkpoint、native solver schedule、task configuration 和 backend。注明匹配的 FastWAM-Joint checkpoint 尚未确认。Motus/RoboTwin 2.0 只能作为有条件的仿真 fallback，不能记作匹配的主 baseline。",
+      "why_this_makes_sense": "比较对象是一个确定的 frozen checkpoint 和 native evaluation path；换 weights、schedule、task 或 backend，测量对象也会改变。"
+    },
+    {
+      "step_id": "S2",
+      "what_to_do": "按计划检查 native paths：FastWAM 的 `fastwam_joint.py`、`fastwam.py`、`mot.py`，以及 Cosmos 的 `omni_mot_model.py` 和 RoboLab policy-server entry point。分别测 action-query 到 observation 的 query-key/attention-value（QK/AV）、其他 attention、QKV、feed-forward network（FFN）和 mask/packing 的耗时与 FLOPs。计算 `φ_obs`（目标 QK/AV 占完整推理耗时的实测比例）及理想 Amdahl 上界。如果可达到的节省无法满足原 latency gate，就停止。",
+      "why_this_makes_sense": "action update 的次数不能说明目标路径占完整推理耗时多少；这项 profile 用来判断删掉这些 edges 是否可能影响完整路径 latency。"
+    },
+    {
+      "step_id": "S3",
+      "what_to_do": "只使用 token packer 已有的 camera/view 或其他 source provenance；如果没有提供，就停止，不自行推断分组。在每个 chunk 首次进行 dense native action evaluation 时，即 `k_ref`，读取 native attention weights α、values V 和 output-projection 的各 head slices `W_O`。对每层每个 source group，把该组对 action queries 的 contribution 经 native output projection 后取范数并求和，得到 `r_lg`；再在层内归一化为 `ρ_lg`。若归一化分母为零，就保留全部 groups。",
+      "why_this_makes_sense": "这个分数衡量每个 observation source 经 output projection 后对 action queries 的贡献；dense reference 的输入、weights、image、instruction、future/action queries 和 training objective 都保持固定。"
+    },
+    {
+      "step_id": "S4",
+      "what_to_do": "在留出的选择 episodes `D_select` 上，按 `r_lg` 降序排列 groups，并用 native source order 打破并列。选择 ε∈[0,1)，使 `S_l(ε)` 成为累计 `ρ_lg` 达到 1−ε 的最短前缀。在通过原 frozen task-success gate 的 masks 中，选实测 full-path latency 最低者。如果没有预先设定的 gate，就报告 success-latency 曲线，不宣称通过。",
+      "why_this_makes_sense": "原 success gate 限定可以删掉多少 context；`D_select` 与后续 paired evaluation 分开，避免用判定候选效果的 outcomes 来选择 ε。"
+    },
+    {
+      "step_id": "S5",
+      "what_to_do": "在同一 chunk 后续的 native action-solver evaluations 中，把 action queries 和保留的 observation keys/values 送入真正的 variable-length 或 block-sparse kernel，并验证被省略的 QK/AV 运算确实没有执行。只对保留的 keys 重新计算 softmax，再把 attention output 送入原 residual/transformer blocks；由变化后的 action hidden state 和 velocity 更新原 flow state。video-query paths、future/action interactions、FFN 和 solver schedule 都保持 native。",
+      "why_this_makes_sense": "这一步在 action branch 中真正跳过 edges，可以区分实际省算和仅加 dense mask。重新计算 attention 可能改变 action trajectory；该方法不保证 fidelity 或 task success。"
+    },
+    {
+      "step_id": "S6",
+      "what_to_do": "在没有用于选择 ε 的配对评估 episodes `D_eval` 上，对比 dense inference、按 `ρ_lg` 排名的 masks，以及保留边成本相同的 source-group-permutation masks。还要比较 native attention-mass、ToPi/VATP value-norm 和 CAPA output-projected-score controls。每组比较使用相同 frozen checkpoint、`k_ref` dense forward、精确保留边预算 `B_l` 和 compact kernel。对评分 controls，先将 token scores 在已有 groups 内求和，再按 group score 排序并以 native source order 打破并列；先保留完整的 ranked groups，再按相同 token score 排序 boundary group 的 tokens 并取前缀，直到恰好保留 `B_l` 条 edges；token 并列按 native token order。只有存在不同且合法的等成本 mask 时才运行 permutation，否则报告 unavailable。记录 task success、逐路径 FLOPs、包含 scoring、packing、kernel launch 和其余 model paths 的完整 latency、action-chunk deviation、first action divergence，再应用原 frozen gates。",
+      "why_this_makes_sense": "Permutation 检验固定成本后 source assignment 是否重要；评分对照检验 `ρ_lg` 是否比已有排序 recipes 带来额外 task-action value。质量与成本是独立证据；只有 `ρ_lg` 在原 gates 下胜过所有同成本评分对照，才支持 WAM-specific score advantage。"
+    },
+    {
+      "step_id": "S7",
+      "what_to_do": "只有仿真通过 frozen gate，而且匹配的 AgileX Cobot Magic policy/checkpoint、demonstrations/data、source implementation 和同类型 hardware 均已确认后，才考虑真机阶段。baseline 原有 post-training 单独核算；mask 本身仍是 training-free，也不更新 weights。",
+      "why_this_makes_sense": "真机前提尚未确认，因此仿真或 recorded-data 结果不能代替 closed-loop robot 结果。"
+    }
+  ],
+  "plain_method_modules_en": [
+    {
+      "module_id": "M0_background",
+      "module_title": "Background",
+      "purpose_oneline": "Fix each baseline and check measured headroom before applying the proposed mask.",
+      "step_ids": [
+        "S1",
+        "S2"
+      ]
+    },
+    {
+      "module_id": "M1_source_scoring",
+      "module_title": "Source scoring and mask choice",
+      "purpose_oneline": "Rank sources by output-projected action contribution and freeze a mask using separate held-out episodes.",
+      "step_ids": [
+        "S3",
+        "S4"
+      ]
+    },
+    {
+      "module_id": "M2_sparse_update",
+      "module_title": "Sparse action updates",
+      "purpose_oneline": "Apply the frozen mask through a kernel that actually skips omitted action-to-observation computation.",
+      "step_ids": [
+        "S5"
+      ]
+    },
+    {
+      "module_id": "M3_validation",
+      "module_title": "Paired evaluation",
+      "purpose_oneline": "Test the mask against dense inference and matched-cost controls; any robot phase remains conditional.",
+      "step_ids": [
+        "S6",
+        "S7"
+      ]
+    }
+  ],
+  "plain_method_modules_zh": [
+    {
+      "module_id": "M0_background",
+      "module_title": "背景",
+      "purpose_oneline": "分别固定各 baseline，并先测量目标路径是否有足够 headroom。",
+      "step_ids": [
+        "S1",
+        "S2"
+      ]
+    },
+    {
+      "module_id": "M1_source_scoring",
+      "module_title": "来源评分与掩码选择",
+      "purpose_oneline": "按 source 对 action 的 output-projected contribution 排序，再用单独留出的 episodes 固定 mask。",
+      "step_ids": [
+        "S3",
+        "S4"
+      ]
+    },
+    {
+      "module_id": "M2_sparse_update",
+      "module_title": "稀疏动作更新",
+      "purpose_oneline": "用真正跳过被删 action-to-observation 运算的 kernel 应用 frozen mask。",
+      "step_ids": [
+        "S5"
+      ]
+    },
+    {
+      "module_id": "M3_validation",
+      "module_title": "配对验证",
+      "purpose_oneline": "将 mask 与 dense inference 和同成本 controls 比较；真机阶段须满足前提后再考虑。",
+      "step_ids": [
+        "S6",
+        "S7"
+      ]
+    }
+  ],
+  "falsification_prediction": "先在可用的 frozen FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 路径做 action-query→observation QK/AV 分项 profile，再在匹配 episodes 上比较 dense、rho-ranked mask、保留边成本相同的 source-group permutation；两种 baseline 分开报告，FastWAM-Joint 权重缺失时不能以 Motus 冒名替代。若完整省略路径的 Amdahl 上限或 compact-kernel 实测 savings 扣掉评分/packing 后无法改善完整 inference latency，或未超过原有 latency gate，立即终止；即使能省算也只有 task success 满足原冻结 gate 才保留。Load-bearing variable 是 rho_lg；置换 rho 对 source groups 的分配但固定保留边成本，预测 downstream LIBERO/RoboLab task success 低于 contribution-ranked mask，若无差别则机制排序不成立。真机闭环需等待 AgileX Cobot Magic 的 matching policy/data/source/hardware 可用，仿真结果不充当该证据。 各评分对照在每个相同 frozen WAM/checkpoint、matched episodes 与 k_ref 的 dense forward 上计算：native attention mass 为 m^l_j=∑_{q∈Q_l,h∈H_l}α^l_h(q,j)，ToPi/VATP value-norm 分别为 v^{l,2}_j=∑_{q,h}α^l_h(q,j)‖V^l_h(j)‖_2 与 v^{l,1}_j=∑_{q,h}α^l_h(q,j)‖V^l_h(j)‖_1，CAPA per-token output-projected contribution 为 c^l_j=∑_{q∈Q_l}‖∑_{h∈H_l}W^l_{O,h}(α^l_h(q,j)V^l_h(j))‖_2（H_l 是 layer l 的 native attention heads）；各 token score 在 G_o 内求和形成 group score，按分数降序并以 native source order 稳定打破并列，完整保留 ranked groups 后由边界 group 中按同一 token score 排序的 token 前缀补足，恰好匹配 B_l=|Q_l||H_l|∑_{g∈S_l(ε)}|g| 个 action-query→observation QK/AV edges，token 并列按 native token order；每个 mask 固定用于同 chunk 后续 native action updates 并走同一 compact kernel；dense、rho_lg-ranked 与 permutation arms、task-success metric、原冻结 success/latency gates 与原 claim 均保持不变；每臂完整 latency 计入对应 scoring、packing、kernel launch 与其余模型路径，只有 rho_lg 在原 gate 下的 paired task-success effect 优于所有同边预算评分臂，才支持 WAM-specific score advantage。",
+  "compute_budget": "本 generation 未运行实验：GPU-days 为 0，external API 为 $0。后续 path profile 与 paired benchmark 的 GPU-days 暂不估算，须先确认 FastWAM-Joint checkpoint、两套 kernel 支持和 Amdahl headroom，再由获批 compute allocation 估算；没有假定 GPU-day 或付费 API 预算。AgileX 路线若需 baseline 原有 task post-training，其成本与本 training-free mask 方法分开核算。",
+  "almost_prior_paper_id": "arxiv:2609.38984v1",
+  "almost_prior_venue_year": "arXiv 2026-09",
+  "what_step_was_missed": "Sparse-WAM 若要已经包含此候选，需要构造由 action-query output-projected contribution 定义的 observation-source edge mask，在 action stream 中压紧 key/value 并证明 kernel 真实减少 action-query QK/AV 成本，同时用等成本 group-permutation 检验下游 task success；其现有方法是选择 future tokens，且保留全部 observation tokens。",
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "unknown",
+      "rationale": "Main drivers are integration and full-path profiling for two separate frozen WAM backends, fused-attention attribution, a compact kernel that really skips QK/AV, and paired benchmark episodes including scoring/packing/launch overhead. The inputs provide no verified checkpoint for the FastWAM-Joint pairing, no kernel support, no measured headroom, hardware/runtime, or episode totals; therefore no defensible order-of-magnitude compute estimate against an authorized ceiling can be made. The recorded GPU-days=0 and external API=$0 describe only the already completed generation, not the future method cost."
+    },
+    "data": {
+      "verdict": "tight",
+      "rationale": "The matching FastWAM-Joint checkpoint is unconfirmed, while the recorded public Cosmos3-Edge/DROID/RoboLab path is a separate baseline and Motus/RoboTwin 2.0 is only a conditional simulation fallback, not an equivalent substitute."
+    },
+    "theoretical": {
+      "verdict": "n/a",
+      "rationale": "The proposal defines a ranking and an empirical falsification test but claims no theorem or proof-based guarantee."
+    },
+    "engineering": {
+      "verdict": "tight",
+      "rationale": "The binding implementation cost is integrating provenance-aware grouping and a compact variable-length or block-sparse kernel that truly skips QK/AV in each frozen backend, with both support paths unconfirmed."
+    },
+    "falsification": {
+      "verdict": "tight",
+      "rationale": "The paired arms, outcomes, controls, frozen gates, and stop rules are concrete, but matching checkpoint, provenance access, legal equal-cost permutation, and compact-kernel support remain prerequisites."
+    },
+    "overall": "unknown"
+  },
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2609.38984v1",
+      "venue_year": "arXiv 2026-09",
+      "delta": "Sparse-WAM 用 action-to-future attention 选择 future tokens 并跨步复用省略区域预测、同时保留 observation/action tokens；本候选只改 action queries 到 observation-source groups 的边，并要求 output-projected contribution 的同成本 permutation control 与真实 sparse QK/AV 省算。"
+    },
+    {
+      "paper_id": "arxiv:2609.34608v1",
+      "venue_year": "arXiv 2026",
+      "delta": "WAMachine 跨 replans remap trajectory、执行期 rebinding 并 probe 后复用中间层 residual；本候选不搬运旧状态，而在当前 native action update 中改 observation conditioning 图。"
+    },
+    {
+      "paper_id": "openalex:W7164153965",
+      "venue_year": "arXiv (Cornell University) 2026",
+      "delta": "Efficient-WAM 的 inference-only asymmetric schedule 停止较早 video updates 并缓存 video K/V；本候选保留原两路 solver schedule，只尝试减少 action-query 读取 observation sources 的计算。"
+    },
+    {
+      "paper_id": "openalex:W7172338867",
+      "venue_year": "arXiv (Cornell University) 2026",
+      "delta": "FBFM 以到达的真实 state 和已提交 action overlap 经 Jacobian/pseudoinverse 修正 active flow；本候选不校正 vector field 或增加反馈，而尝试跳过当前 action attention 的观测源边。"
+    },
+    {
+      "paper_id": "arxiv:2606.08962v1",
+      "venue_year": "arXiv 2026-06",
+      "delta": "C3ache 跨 inference chunks 复用同 denoising step 的 action-expert residual；本候选不缓存 residual 或依赖跨 chunk 相似性，只在单 chunk 内压紧 action-to-observation attention。"
+    },
+    {
+      "paper_id": "arxiv:2608.16354v1",
+      "venue_year": "arXiv 2026",
+      "delta": "DriveCache 用动作/场景运动信号为 diffusion backbone output 安排复用与 refresh；本候选不作 cache schedule、风险阈值或失效判断，而改变当前 action query 实际读取的 observation key set。"
+    },
+    {
+      "paper_id": "arxiv:2608.23927v2",
+      "venue_year": "arXiv 2026-08",
+      "delta": "GlanceWAM 用 co-trained dual-timescale architecture 异步生成 lookahead latent；本候选不新增 action head、训练目标或异步执行路径，仍运行同一冻结 joint predictor。"
+    }
+  ],
+  "reviewer_concerns_and_responses": [
+    {
+      "attack": "Paper-pointed threat: arxiv:2602.01609v1 (n/a). ToPi（supplemental_primary，§4.2–4.3；https://arxiv.org/html/2602.01609v1）在冻结 diffusion transformer 上按 target-to-context 的 attention/value contribution 排序，保留累计贡献达到 τ 的最小 context 子集，在 anchor denoising steps 重评分并在其间复用、压紧该子集；这已覆盖本候选“读出贡献分数→累计阈值选 context→跨 solver steps 复用”的通用 recipe。ToPi 的对象是图像编辑中的 target latents 与 reference tokens，并未检验 WAM action-query→observation-source edges、机器人 task success 或这一 action 路径的完整时延，故它不是同一 WAM 机制的 exact overlap。CAPA（supplemental_primary，§4.1 Eq.(2)；https://arxiv.org/html/2602.00247v1）另已使用经 W_O 投影、取 residual contribution norm 的视觉 token 分数，因此投影本身也不能支撑新颖性；当前候选仍可主张 WAM-specific 边选择，但必须在相同保留边数和任务结果下显示其分数优于这些先前分数。",
+      "severity": "non_blocking",
+      "response": "Phase 3.2's verdict_rationale says the cumulative selection recipe and output projection are prior art but finds no exact WAM overlap, so the candidate does not claim novelty from those ingredients alone. Its revised falsification_prediction adds same-checkpoint, same-k_ref, same-edge-budget controls for native attention mass, ToPi/VATP value-norm, and CAPA-style projected scores using the same compact kernel. A WAM-specific score advantage remains conditional on paired task outcomes beating those controls while passing the original gates; no such result has been measured.",
+      "fields_changed_to_address": [
+        "falsification_prediction"
+      ]
+    }
+  ],
+  "domain_landscape": {
+    "n_papers": 47,
+    "pattern_distribution": [
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 20,
+        "share": 0.43,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 11,
+        "share": 0.23,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 2,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 5,
+        "share": 0.11,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 3,
+        "share": 0.06,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "algebraic_equivalence_unification",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 15,
+        "share": 0.32,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 2,
+        "share": 0.04,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "relax_discrete_search_to_continuous",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "characterize_limit_then_surpass",
+        "count": 0,
+        "share": 0,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 1,
+        "share": 0.02,
+        "saturation_band": "untested"
+      }
+    ],
+    "candidate_uses": [
+      {
+        "pattern_id": "generative_process_redesign",
+        "role": "closes Gap 1",
+        "sub_pattern_id": "C24 (Liberate a Fixed Generative Component)",
+        "saturation_in_domain": "unknown"
+      }
+    ],
+    "position_note": "Among the 47 on-topic papers, generative_process_redesign appears 11 times versus 20 for architectural_operator_substitution; this candidate uses the former C24 pattern to alter action-conditioning edges while the dominant pattern targets operator substitution."
+  },
+  "literature_breakdown": {
+    "summary": {
+      "n_phase0_total": 58,
+      "n_phase0_on_topic": 47,
+      "n_phase0_outside_taxonomy": 11,
+      "n_phase3_collision": 226
+    },
+    "phase0_by_pattern": [
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "pattern_name": "Substitute the Operator or Representation",
+        "papers": [
+          {
+            "paper_id": "openalex:W4414051084",
+            "title": "FAST: Efficient Action Tokenization for Vision-Language-Action Models",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "逐维逐时刻离散化不适合灵巧、高频动作"
+          },
+          {
+            "paper_id": "openalex:W4414050921",
+            "title": "Fine-Tuning Vision-Language-Action Models: Optimizing Speed and Success",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "自回归解码及微调选择限制吞吐与成功率"
+          },
+          {
+            "paper_id": "openalex:W4409365031",
+            "title": "FlowPolicy: Enabling Fast and Robust 3D Flow-Based Policy via Consistency Flow Matching for Robot Manipulation",
+            "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2025",
+            "bottleneck_targeted": "迭代生成造成策略推理延迟"
+          },
+          {
+            "paper_id": "openalex:W4416748811",
+            "title": "PD-VLA: Accelerating Vision-Language-Action Model Integrated with Action Chunking via Parallel Decoding",
+            "venue_year": "arXiv 2025-10",
+            "bottleneck_targeted": "action chunk 增大自回归解码维度并降低控制频率"
+          },
+          {
+            "paper_id": "openalex:W4414197770",
+            "title": "Efficient Task-Specific Conditional Diffusion Policies: Shortcut Model Acceleration and SO(3) Optimization",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "多步 denoising 限制实时策略生成"
+          },
+          {
+            "paper_id": "openalex:W7134039088",
+            "title": "Planning in 8 Tokens: A Compact Discrete Tokenizer for Latent World Model",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "数百 latent tokens 增加决策时规划成本"
+          },
+          {
+            "paper_id": "openalex:W4416749600",
+            "title": "Fast Policy: Accelerating Visuomotor Policies without Re-training",
+            "venue_year": "arXiv 2025-10",
+            "bottleneck_targeted": "反复计算变化较小的 encoder 特征导致推理开销"
+          },
+          {
+            "paper_id": "openalex:W4415108896",
+            "title": "Block-wise Adaptive Caching for Accelerating Diffusion Policy",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "block 与 timestep 间冗余分布不均且误差会跨 block 传播"
+          },
+          {
+            "paper_id": "arxiv:2608.20735v2",
+            "title": "ForeTime-VLA: Causal Future-Token Distillation from a World Action Model for Conveyor-Belt Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "部署视频级 teacher 或生成未来帧成本高"
+          },
+          {
+            "paper_id": "arxiv:2606.08962v1",
+            "title": "C$^3$ache: Accelerating World Action Models with Cross Inference Chunk Cache",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "单 chunk denoising 缓存未利用跨 chunk 残差冗余"
+          },
+          {
+            "paper_id": "arxiv:2609.38984v1",
+            "title": "Sparse-WAM: Accelerating World Action Models via Action-Guided Sparse Imagination",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "denoising 反复处理大量与动作无关的未来帧 tokens"
+          },
+          {
+            "paper_id": "arxiv:2609.32779v1",
+            "title": "Copper-Policy: Focus on the Representation for Robust Robot Manipulation",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "像素或预定义 latent 未来目标成本高且未必适合控制"
+          },
+          {
+            "paper_id": "arxiv:2604.20289v2",
+            "title": "X-Cache: Cross-Chunk Block Caching for Few-Step Autoregressive World Models Inference",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "少步模型缺少跨 denoising 步冗余，交互式 chunk 推理仍昂贵"
+          },
+          {
+            "paper_id": "arxiv:2609.34608v1",
+            "title": "Efficient World Action Model Inference with Adaptive Intermediate States",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "迭代 diffusion/flow 的重复计算，以及跨 replan、denoising 和 Transformer layers 的可复用状态失配"
+          },
+          {
+            "paper_id": "arxiv:2608.16354v1",
+            "title": "DriveCache: Action-Aware Caching for Driving World Model Inference",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "重复 denoising 计算限制吞吐，通用缓存忽略动作引起的场景变化与复用风险"
+          },
+          {
+            "paper_id": "openalex:W7164153965",
+            "title": "Efficient-WAM: A 1B-Parameter World-Action Model with Low-Cost Future Imagination",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "高保真未来视频及与动作相同的采样预算增加推理延迟"
+          }
+        ]
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "pattern_name": "Audit and Pivot an Assumption",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.11521v3",
+            "title": "Keep the Future, Drop the Rollout: RIFT for World Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "迭代视频 rollout 增加延迟，动作是否需要完整演化轨迹存疑"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "pattern_name": "Design a Confound-Isolating Diagnostic",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.27158v1",
+            "title": "Diffusion Policies for Short-Horizon Planning in Robot Crowd Navigation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "常用 crowd benchmark 允许越界绕开密集人群而虚增表现"
+          },
+          {
+            "paper_id": "arxiv:2608.17095v1",
+            "title": "Inference-Time Attention Steering for Vision-Language-Action Driving Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "serving stack 中注意力干预是否影响推理与轨迹的因果路径不明"
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "pattern_name": "Decompose and Delegate to Solvers",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.06476v1",
+            "title": "Thinking with Imagination: Agentic Visual Spatial Reasoning with World Simulators",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "单靠观测图像与文本推理难以补足未观测空间证据"
+          },
+          {
+            "paper_id": "arxiv:2606.19980v2",
+            "title": "ENPIRE: Agentic Robot Policy Self-Improvement in the Real World",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "真实机器人策略改进依赖大量人工监督与工程迭代"
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "pattern_name": "Liberate a Fixed Generative Component",
+        "papers": [
+          {
+            "paper_id": "openalex:W4417097926",
+            "title": "Real-Time Execution of Action Chunking Flow Policies",
+            "venue_year": "arXiv 2025-01",
+            "bottleneck_targeted": "推理延迟使 chunk 边界暂停或产生不平滑动作"
+          },
+          {
+            "paper_id": "openalex:W4407759657",
+            "title": "Responsive Noise-Relaying Diffusion Policy: Responsive and Efficient Visuomotor Control",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "执行已预测动作 chunk 时无法响应新观测"
+          },
+          {
+            "paper_id": "arxiv:2607.19919v1",
+            "title": "Diffusion ReRoll: Revisable Denoising for Robotic Sequential Prediction",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "单调 denoising 不允许已稳定片段利用后续上下文再修订"
+          },
+          {
+            "paper_id": "arxiv:2609.36471v1",
+            "title": "Staircase Policy: Streaming Inference for World-Action Models with Large Action Chunks",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "长 chunk 后段动作受过时观测条件约束且全量重推理昂贵"
+          },
+          {
+            "paper_id": "arxiv:2605.10044v1",
+            "title": "Adaptive Action Chunking via Multi-Chunk Q Value Estimation",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "固定 chunk 长度无法适应状态与任务变化"
+          },
+          {
+            "paper_id": "arxiv:2604.04161v2",
+            "title": "Adaptive Action Chunking at Inference-time for Vision-Language-Action Models",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "固定 chunk 长度无法兼顾响应性与 chunk 间动作一致性"
+          },
+          {
+            "paper_id": "arxiv:2605.25537v1",
+            "title": "Action-Prior Denoising for Smooth Real-Time Chunking",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "binary prefix mask 将非 prefix overlap 全视为无约束"
+          },
+          {
+            "paper_id": "arxiv:2608.23927v2",
+            "title": "GlanceWAM: Sparse Test-Time Imagination for World-Action Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "同步视频生成延迟过高，放弃 imagination 又会损害任务成功率"
+          },
+          {
+            "paper_id": "arxiv:2606.03847v1",
+            "title": "Denoising Tells When to Replan: Denoising-Variance Adaptive Chunking for Flow-Based Robot Policies",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "固定执行 horizon 忽略自由运动与接触阶段所需 replanning 频率不同"
+          },
+          {
+            "paper_id": "openalex:W7172338867",
+            "title": "FBFM: A Training-Free Asynchronous Feedback Mechanism for Flow-Matching in World-Action Models Execution",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "chunk 边界反馈过于粗疏，无法及时纠正 chunk 内逐时刻预测误差"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "pattern_name": "Decompose for Differentiated Treatment",
+        "papers": [
+          {
+            "paper_id": "openalex:W6910475244",
+            "title": "D3P: Dynamic Denoising Diffusion Policy via Reinforcement Learning",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "对所有动作使用固定 denoising 步数造成计算浪费"
+          },
+          {
+            "paper_id": "arxiv:2607.29398v1",
+            "title": "OnlineCache: Learning Dynamic Caching Policies with Error Correction for Efficient Diffusion Inference",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "静态缓存策略忽略样本难度与 timestep 误差敏感度差异"
+          },
+          {
+            "paper_id": "arxiv:2605.15725v1",
+            "title": "DiLA: Disentangled Latent Action World Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "latent action 抽象与视频生成保真度存在权衡"
+          },
+          {
+            "paper_id": "arxiv:2606.12365v1",
+            "title": "Ambient Diffusion Policy: Imitation Learning from Suboptimal Data in Robotics",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "混合低质量示范会同时带入有用与有害特征"
+          },
+          {
+            "paper_id": "arxiv:2608.20114v2",
+            "title": "DECOWAM: Decoupled Whole-Body World-Action Model for Legged Mobile Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "固定底座 WAM 未区分相机自运动与底盘、手臂动作"
+          },
+          {
+            "paper_id": "arxiv:2609.12245v2",
+            "title": "DIA: Denoising Intermediate Advantage for Diffusion Policy Optimization",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "同一环境级 credit 被赋给所有 denoising 决策"
+          },
+          {
+            "paper_id": "arxiv:2609.36250v1",
+            "title": "Action Chunking Proximal Policy Optimization with Feedback Correction",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "长 action chunk 的 Q 函数难学且开环执行缺少反馈"
+          },
+          {
+            "paper_id": "arxiv:2609.27656v1",
+            "title": "InternW0: A Foundational Physical World Model for Efficient Real-World Interactions",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "同步重生成未来与统一高频处理难兼顾延迟和多具身输入"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "pattern_name": "Reframe as a Solvable Object",
+        "papers": [
+          {
+            "paper_id": "openalex:W7102328846",
+            "title": "Two-Steps Diffusion Policy for Robotic Manipulation via Genetic Denoising",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "扩散策略需要多轮 denoising 推理"
+          },
+          {
+            "paper_id": "openalex:W4416748708",
+            "title": "Real-time Iteration Scheme for Diffusion Policy",
+            "venue_year": "arXiv 2025-10",
+            "bottleneck_targeted": "每次 diffusion 推理重复从头迭代计算"
+          },
+          {
+            "paper_id": "arxiv:2606.18589v1",
+            "title": "DREAM-Chunk: Reactive Action Chunking with Latent World Model",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "已提交 chunk 在随机动力学和部分可观测下容易失效"
+          }
+        ]
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "pattern_name": "Design a Property-Targeting Pretext Objective",
+        "papers": [
+          {
+            "paper_id": "arxiv:2609.09630v1",
+            "title": "JEPA Policy: Diffusion-Free Imitation Learning via Paired Action and Future Representation Prediction",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "action-only behavior cloning 未约束动作与示范未来表征的配对"
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "pattern_name": "Unify Heterogeneous Inputs into One Space",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.17046v2",
+            "title": "Geometric Action Model for Robot Policy Learning",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "2D 表征未显式提供接触操作所需的 3D 几何"
+          },
+          {
+            "paper_id": "arxiv:2606.13674v2",
+            "title": "RepWAM: World Action Modeling with Representation Visual-Action Tokenizers",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "重建导向视频 tokenizer 对指令相关控制动力学监督不足"
+          },
+          {
+            "paper_id": "arxiv:2606.15550v1",
+            "title": "Robots as Tokens: Unified Diffusion Transformer for Coordinated Multi-Robot Trajectory Generation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "多机器人规划常为单机器人或顺序生成并需迭代消解冲突"
+          },
+          {
+            "paper_id": "openalex:W4417453644",
+            "title": "Motus: A Unified Latent Action World Model",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "理解、视频生成与动作控制由割裂模型处理，限制异构数据与功能的联合学习"
+          }
+        ]
+      }
+    ],
+    "phase0_outside_taxonomy": [
+      {
+        "paper_id": "openalex:W4414079054",
+        "title": "π₀: A Vision-Language-Action Flow Model for General Robot Control",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "摘要损坏，无法识别具体效率瓶颈"
+      },
+      {
+        "paper_id": "openalex:W4414050734",
+        "title": "DDAT: Diffusion Policies Enforcing Dynamically Admissible Robot Trajectories",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "摘要缺失；标题仅表明约束动力学可行轨迹"
+      },
+      {
+        "paper_id": "openalex:W4414051092",
+        "title": "SpatialVLA: Exploring Spatial Representations for Visual-Language-Action Models",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "摘要残缺，仅提及机器人空间动作网格重离散化"
+      },
+      {
+        "paper_id": "openalex:W7090715279",
+        "title": "Recurrence-Complete Frame-Based Action Models",
+        "venue_year": "arXiv 2025-01",
+        "bottleneck_targeted": "摘要缺失，标题不足以识别具体机制"
+      },
+      {
+        "paper_id": "openalex:W7166863000",
+        "title": "Current Agents Fail to Leverage World Model as Tool for Foresight",
+        "venue_year": "arXiv 2026-01",
+        "bottleneck_targeted": "摘要缺失，标题只陈述现有 agent 的局限"
+      },
+      {
+        "paper_id": "openalex:W4416036041",
+        "title": "ActionStudio: A Lightweight Framework for Data and Training of Large Action Models",
+        "venue_year": "arXiv 2025-01",
+        "bottleneck_targeted": "摘要为书目信息，未描述研究瓶颈或方法"
+      },
+      {
+        "paper_id": "openalex:W4411869006",
+        "title": "Action chunking as conditional policy compression",
+        "venue_year": "Cognition 2025",
+        "bottleneck_targeted": "摘要缺失，标题不足以确认其条件压缩机制"
+      },
+      {
+        "paper_id": "arxiv:2609.37398v1",
+        "title": "Direct Experience World-Model Optimization: Learning the World Beyond Action Imitation",
+        "venue_year": "arXiv 2026-09",
+        "bottleneck_targeted": "部署后行为改进未必同步改善世界预测"
+      },
+      {
+        "paper_id": "arxiv:2606.12403v1",
+        "title": "World Pilot: Steering Vision-Language-Action Models with World-Action Priors",
+        "venue_year": "arXiv 2026-06",
+        "bottleneck_targeted": "静态图文预训练缺少连续接触动力学信息"
+      },
+      {
+        "paper_id": "arxiv:2606.31101v1",
+        "title": "Efficient Sim-to-Real Transfer of World-Action Models from Synthetic Priors",
+        "venue_year": "arXiv 2026-06",
+        "bottleneck_targeted": "真实机器人示范采集成本高，sim-to-real transfer 尚未验证"
+      },
+      {
+        "paper_id": "arxiv:2605.23993v2",
+        "title": "Nano World Models: A Minimalist Implementation of Future Video Prediction",
+        "venue_year": "arXiv 2026-05",
+        "bottleneck_targeted": "研究者缺少可复现的紧凑 world-model 实验 substrate"
+      }
+    ],
+    "phase3_collision": [
+      {
+        "paper_id": "arxiv:2609.38984v1",
+        "title": "Sparse-WAM: Accelerating World Action Models via Action-Guided Sparse Imagination",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.04404v1",
+        "title": "Faster-WAM: Efficient Inference-Time Future Conditioning for Robust World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.30247v1",
+        "title": "Rolling-WAM: World Action Models with Rolling Imagination",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.03602v1",
+        "title": "SV-WAM: An Efficient Surround-View World-Action Model for End-to-End Autonomous Driving",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.26694v2",
+        "title": "Unified 4D World Action Modeling from Video Priors with Asynchronous Denoising",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.04907v2",
+        "title": "WAM-Nav: Asymmetric Latent World-Action Modeling for Unified Visual Navigation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7162640365",
+        "title": "SANTS: A State-Adaptive Scheduler for World Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7161977113",
+        "title": "PulseCol: Periodically Refreshed Column-Sparse Attention for Accelerating Diffusion Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172244345",
+        "title": "ST-WAM: Semantic-Temporal World Action Model for Robust Manipulation under Visual Distribution Shifts",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.13141v1",
+        "title": "SAS: Simple Attention Sparsification via End-to-End Optimization of Context Ranking",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.28927v1",
+        "title": "Streaming-WAM: Action-Conditioned World-Action Model for Asynchronous Robot Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.31281v1",
+        "title": "MA-WAM: Multi-Agent World-Action Model for Test-Time Planning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.22364v1",
+        "title": "WAM-OPD: On-Policy Distillation for World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.00662v1",
+        "title": "TAP-JEPA: Frozen Future-Latent Probing and Two-Stage Score Fusion for EPIC-KITCHENS-100 Action Anticipation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.07799v1",
+        "title": "MWM: Mobile World Models for Action-Conditioned Consistent Prediction",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.05254v1",
+        "title": "Flash-WAM: Modality-Aware Distillation for World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.09185v2",
+        "title": "Causally Debiased Latent Action Model for Embodied Action-Conditioned World Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.12939v1",
+        "title": "Diagnosing JEPA World Models with Action-Conditioned Predictive Consistency",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.20735v2",
+        "title": "ForeTime-VLA: Causal Future-Token Distillation from a World Action Model for Conveyor-Belt Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.26766v1",
+        "title": "MeshPriorDiT: Hierarchical Modeling for Action-Conditioned Cloth Dynamics",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2512.18619v1",
+        "title": "ChronoDreamer: Action-Conditioned World Model as an Online Simulator for Robotic Planning",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2607.26789v1",
+        "title": "CheckVLA: Execution-Time Verification with Action-Conditioned World Model for Long-Horizon Mobile Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.09811v1",
+        "title": "AHA-WAM:Asynchronous Horizon-Adaptive World-Action Modeling with Observation-Guided Context Routing",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.28712v2",
+        "title": "J-LAW: Joint Localization and Action-Conditioned World Modeling via Coupled Latent Factor Graphs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7167712240",
+        "title": "Learning 4D Geometric Priors for Inference-Efficient World Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7158084841",
+        "title": "Where Relevance Emerges: A Layer-Wise Study of Internal Attention for Zero-Shot Re-Ranking",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7117134982",
+        "title": "An efficient reparameterized small object detection transformer for thermal infrared images",
+        "venue_year": "Scientific Reports 2025"
+      },
+      {
+        "paper_id": "openalex:W7134063816",
+        "title": "FPUNet: A Fourier-Enhanced U-Net for Robust 2-D Phase Unwrapping of Noisy InSAR Interferograms",
+        "venue_year": "Remote Sensing 2026"
+      },
+      {
+        "paper_id": "openalex:W7214575570",
+        "title": "InternW0-$Δ$: A World Action Model Bridging Predictive Dynamics and Actions with 20K+ Hours of Open Data",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7204500103",
+        "title": "GaussianWAM: Distilling Geometry and Semantics from 3D Gaussian Fields into World-Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214050568",
+        "title": "AR-WAM: A Visual-Conditioned Agent-Ready World Action Model for Robotic Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160621105",
+        "title": "OA-WAM: Object-Addressable World Action Model for Robust Robot Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7130536843",
+        "title": "PACT-WAM: Predicting Actions and Visual Foresight with Compact Temporal Encoding for Robot Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172420109",
+        "title": "DAVET: Denoising-Aware Visual Evidence Trajectory Allocation for Diffusion Vision-Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172379523",
+        "title": "SG-WAM: Self-Guided World Modeling in Geometry-Aware Policy Space",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.18773v1",
+        "title": "Privileged Lesion-Context Relational Distillation for Mask-Free Skin Lesion Classification",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.14730v1",
+        "title": "Hierarchical GRU with Input-Conditioned Slot Queries for Ball Action Anticipation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.17695v1",
+        "title": "MoE-nD: Per-Layer Mixture-of-Experts Routing for Multi-Axis KV Cache Compression",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.17095v1",
+        "title": "Inference-Time Attention Steering for Vision-Language-Action Driving Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.13515v1",
+        "title": "MaskWAM: Unifying Mask Prompting and Prediction for World-Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.09818v1",
+        "title": "TS-Mask VLA: 2D Temporal-Spatial Masking for Vision-Language-Action Model with Effective Bridging",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2512.11769v1",
+        "title": "BLURR: A Boosted Low-Resource Inference for Vision-Language-Action Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.01936v1",
+        "title": "Sparse Readout Prism: Explaining Logit-Lens Scores in Features Instead of Tokens",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.29360v1",
+        "title": "MiraBench: Evaluating Action-Conditioned Reliability in Robotic World Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.21088v1",
+        "title": "MV-WAM: Manifold-Aware World Action Model with Value Augmentation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2512.07011v2",
+        "title": "Block Sparse Flash Attention",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2606.07304v1",
+        "title": "CAPE: Contrastive Action-conditioned Parallel Encoding for Embodied Planning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.09298v1",
+        "title": "WorldSimProbe: Diagnosing Simulator Faithfulness in Action-Conditioned World Models for Embodied Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.01095v1",
+        "title": "Beyond Task Success: Behavioral and Representational Diagnostics for WAM and VLA",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.08403v3",
+        "title": "SPIRAL: Self-Evolving Action-Conditioned Video Generation via Reflective Planning Agents",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7128802224",
+        "title": "Causal-JEPA: Learning World Models through Object-Level Latent Masking",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7138067574",
+        "title": "MoLe-VLA: Dynamic Layer-skipping Vision Language Action Model via Mixture-of-Layers for Efficient Robot Manipulation",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "openalex:W7138018014",
+        "title": "D3ToM: Decider-Guided Dynamic Token Merging for Accelerating Diffusion MLLMs",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "openalex:W4417502943",
+        "title": "Risk-Aware Privacy-Preserving Federated Learning for Remote Patient Monitoring: A Multi-Layer Adaptive Security Framework",
+        "venue_year": "Applied Sciences 2025"
+      },
+      {
+        "paper_id": "openalex:W7202314960",
+        "title": "Flex-$π$: A Multi-Stream World-Action Model with Compute Flexibility",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7119960048",
+        "title": "INTELLIGENT CONDITION MONITORING AND FAULT DIAGNOSIS OF ELECTRICAL POWER AND CONTROL SYSTEMS USING MACHINE LEARNING–BASED PREDICTIVE ANALYTICS",
+        "venue_year": "American Journal of Interdisciplinary Studies 2026"
+      },
+      {
+        "paper_id": "openalex:W4416697843",
+        "title": "Goal-Conditioned Reinforcement Learning for Data-Driven Maritime Navigation",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7164020090",
+        "title": "Learnable Token Sparsification for Efficient Gigapixel Whole Slide Image Reasoning",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214037125",
+        "title": "DexTacWAM: A Visuo-Tactile World-Action Model for Dexterous Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4415989341",
+        "title": "Efficient Diffusion-Based 3D Human Pose Estimation With Hierarchical Temporal Pruning",
+        "venue_year": "IEEE Transactions on Circuits and Systems for Video Technology 2026"
+      },
+      {
+        "paper_id": "openalex:W7140766095",
+        "title": "When One-Shot Federated Learning Meets Diffusion Models at the Edge: Technological Advances and Applications",
+        "venue_year": "Journal of Intelligent Computing and Networking 2026"
+      },
+      {
+        "paper_id": "openalex:W7126027641",
+        "title": "Metadata driven malicious URL detection using RoBERTa large and multi source network threat intelligence",
+        "venue_year": "Scientific Reports 2026"
+      },
+      {
+        "paper_id": "openalex:W7213907383",
+        "title": "Skel-WAM: A Hand-Skeleton-Conditioned World Action Model for Human-to-Robot Manipulation Transfer",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7127321733",
+        "title": "The Contribution of Sustainability and Governance Signals to Return on Equity Prediction: Evidence from Tree-Based Machine Learning, Bootstrapped Grouped CV and SHAP",
+        "venue_year": "Journal of risk and financial management 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.09951v1",
+        "title": "Hasse Diagrams for Attention: A Partial Order Framework for Designing Transformer Masks",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.14929v1",
+        "title": "A Hardware-Aware, Per-Layer Methodology for Post-Training Quantization of Large Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.09381v1",
+        "title": "JEPA-WAM: Learning Vision-Language-Action Policies with Joint-Embedding World Modeling",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.18029v1",
+        "title": "Engineering Verifiable Modularity in Transformers via Per-Layer Supervision",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.26481v3",
+        "title": "SparseCam4D: Spatio-Temporally Consistent 4D Reconstruction from Sparse Cameras",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.06079v2",
+        "title": "LayerRoute: Action-Conditioned Mixture-of-Layers Routing for Vision-Language-Action Policies",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.01985v2",
+        "title": "World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.08829v1",
+        "title": "Deployable Per-Instance Multi-Layer Activation Steering for Large Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2610.00008v1",
+        "title": "Bounded-Fidelity Sim-as-Demo-Stage: Mocap Handoff for Governance Benchmarks",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.27325v1",
+        "title": "Not All Actions Are Equal: Rethinking Conditioning for Dexterous World Model",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.09418v3",
+        "title": "Valerant: An Automatic Navigable Game Map Generator via Action-Conditioned World Model Exploration",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.24496v2",
+        "title": "EgoAction: Egocentric Action Composition with Reliability-Aware Temporal Fusion for the EPIC-KITCHENS Action Detection Challenge at CVPR 2026",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.03751v1",
+        "title": "Look Before You Leap: Distilling Tree Search into Action Evaluation for Frozen VLA Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.04463v2",
+        "title": "OSCAR: Omni-Embodiment Action-Conditioned World Model for Robotics",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.20904v1",
+        "title": "JFAA: Technical Report for the EPIC-KITCHENS-100 Action Anticipation Challenge at EgoVis 2026",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4417360433",
+        "title": "Edge AI for Smart Cities: Foundations, Challenges, and Opportunities",
+        "venue_year": "Smart Cities 2025"
+      },
+      {
+        "paper_id": "openalex:W7124425475",
+        "title": "APEG: Adaptive Physical Layer Authentication With Channel Extrapolation and Generative AI",
+        "venue_year": "IEEE Transactions on Information Forensics and Security 2026"
+      },
+      {
+        "paper_id": "openalex:W7129237350",
+        "title": "AI-powered open-source infrastructure for accelerating materials discovery and advanced manufacturing",
+        "venue_year": "Communications Materials 2026"
+      },
+      {
+        "paper_id": "openalex:W7134985003",
+        "title": "Digital twin for in – space manufacturing: a comprehensive review from framework to future",
+        "venue_year": "Virtual and Physical Prototyping 2026"
+      },
+      {
+        "paper_id": "openalex:W7162305304",
+        "title": "International university rankings: composite indicators and methodological approaches",
+        "venue_year": "Frontiers in Research Metrics and Analytics 2026"
+      },
+      {
+        "paper_id": "openalex:W7164040202",
+        "title": "Light-WAM: Efficient World Action Models with State-Fusion Action Decoding",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160104938",
+        "title": "STAR: Semantic-Temporal Adaptive Representation Learning for Few-Shot Action Recognition",
+        "venue_year": "IEEE Transactions on Circuits and Systems for Video Technology 2026"
+      },
+      {
+        "paper_id": "openalex:W7138923011",
+        "title": "OPEN SOURCE VS. PROPRIETARY SOFTWARE",
+        "venue_year": "Journal International Review of Research Studies 2026"
+      },
+      {
+        "paper_id": "openalex:W7122666741",
+        "title": "A Custom Transformer-Based Framework for Joint Traffic Flow and Speed Prediction in Autonomous Driving Contexts",
+        "venue_year": "Future Transportation 2026"
+      },
+      {
+        "paper_id": "openalex:W7214145649",
+        "title": "CoRe-WAM: Correspondence-Aligned Temporal Residuals for World Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7127425487",
+        "title": "UncerTrans: uncertainty-aware temporal transformer for early action prediction",
+        "venue_year": "Scientific Reports 2026"
+      },
+      {
+        "paper_id": "openalex:W7129446561",
+        "title": "Detecting Fraudulent Communities in Financial Networks Using Hybrid Classification and Ranking Approaches",
+        "venue_year": "Advances in Artificial Intelligence and Machine Learning 2026"
+      },
+      {
+        "paper_id": "openalex:W7159625477",
+        "title": "Unsupervised Driving Behavior Primitive Inference via Hierarchical Segmentation and Context-Aware Clustering",
+        "venue_year": "Sensors 2026"
+      },
+      {
+        "paper_id": "openalex:W7160122521",
+        "title": "A Unified Metric Architecture for AI Infrastructure: A Cross-Layer Taxonomy Integrating Performance, Efficiency, and Cost",
+        "venue_year": "Information 2026"
+      },
+      {
+        "paper_id": "openalex:W7131079331",
+        "title": "AgentSOC: A Multi-Layer Agentic AI Framework for Security Operations Automation",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7202145834",
+        "title": "Edge Sparsification via Temporal Forman-Ricci Curvature for Dynamic Graph Learning",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172513299",
+        "title": "LiLa-WAM: Lightweight Latent Reasoning World-Action Model for Robotic Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4416782599",
+        "title": "CaFlow: Enhancing Long-Term Action Quality Assessment with Causal Counterfactual Flow",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W7125699578",
+        "title": "Action-Aware Multimodal Wavelet Fusion Network for Quantitative Elbow Motor Function Assessment Using sEMG and Robotic Kinematics",
+        "venue_year": "Sensors 2026"
+      },
+      {
+        "paper_id": "openalex:W7146984946",
+        "title": "An integrated method of advanced optimisation and adaptive ensemble learning for ship fuel consumption prediction",
+        "venue_year": "Transportation Research Part C Emerging Technologies 2026"
+      },
+      {
+        "paper_id": "openalex:W7154840648",
+        "title": "Method of ranking athletes in a decision support system in the process of preliminary selection of players",
+        "venue_year": "RADIOELECTRONIC AND COMPUTER SYSTEMS 2026"
+      },
+      {
+        "paper_id": "openalex:W7203937810",
+        "title": "Clustering and Token Denoising for Faster and More Robust VLMs",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164581309",
+        "title": "Distinct sensorimotor encoding in tuft dendrites and somata associated with action, correction, and learning",
+        "venue_year": "eLife 2026"
+      },
+      {
+        "paper_id": "openalex:W7131134550",
+        "title": "Graph Learning in Bioinformatics: A Survey of Graph Neural Network Architectures, Biological Graph Construction and Bioinformatics Applications",
+        "venue_year": "Biomolecules 2026"
+      },
+      {
+        "paper_id": "openalex:W7202273033",
+        "title": "4D-WAM: 4D Consistent World Modeling for Autonomous Driving",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172390885",
+        "title": "CoWAM: Coordination Contracts for Selective Policy Intervention with WAMs",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7147591629",
+        "title": "A Multi-Graph Attention Fusion Network for Dam Deformation Prediction Under Data Missing Conditions",
+        "venue_year": "Electronics 2026"
+      },
+      {
+        "paper_id": "arxiv:2502.11067v2",
+        "title": "A Survey on Active Feature Acquisition Strategies",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2506.22396v1",
+        "title": "QuickSilver -- Speeding up LLM Inference through Dynamic Token Halting, KV Skipping, Contextual Token Fusion, and Adaptive Matryoshka Quantization",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2606.15615v2",
+        "title": "MoECa: Aligning Feature Reuse with Expert Decomposition in Diffusion Transformers",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.16359v1",
+        "title": "How Many Visual Tokens Do Multimodal Language Models Need? Scaling Visual Token Pruning with F^3A",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.05950v2",
+        "title": "Energy-Driven Adaptive Visual Token Pruning for Efficient Vision-Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4413146710",
+        "title": "TopV: Compatible Token Pruning with Inference Time Optimization for Fast and Low-Memory Multimodal Vision Language Model",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "arxiv:2509.10312v1",
+        "title": "Compute Only 16 Tokens in One Timestep: Accelerating Diffusion Transformers with Cluster-Driven Feature Caching",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2506.19852v2",
+        "title": "Radial Attention: $O(n\\log n)$ Sparse Attention with Energy Decay for Long Video Generation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2607.07953v1",
+        "title": "Linear Attention Architectures: Mechanisms, Trade-offs, and Cross-Layer Routing",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2512.07580v2",
+        "title": "When Token Pruning is Worse than Random: Understanding Visual Token Information in VLLMs",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2605.11733v1",
+        "title": "Position: LLM Inference Should Be Evaluated as Energy-to-Token Production",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2508.05211v2",
+        "title": "VFlowOpt: A Token Pruning Framework for LMMs with Visual Information Flow-Guided Optimization",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2603.03681v1",
+        "title": "EvoPrune: Early-Stage Visual Token Pruning for Efficient MLLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2509.00320v2",
+        "title": "TrimTokenator: Towards Adaptive Visual Token Pruning for Large Multimodal Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2508.00412v2",
+        "title": "Sortblock: Similarity-Aware Feature Reuse for Diffusion Model",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2607.27842v1",
+        "title": "FeatFix: Reuse What You Verify through Local Exact-Feature Correction for Faster Cached Diffusion Inference",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2504.03140v2",
+        "title": "Model Reveals What to Cache: Profiling-Based Feature Reuse for Video Diffusion Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2607.27952v1",
+        "title": "LAST: The Last Query Token Guides Visual Token Pruning for Edge-Cloud Collaborative MLLM Inference",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2501.13528v1",
+        "title": "Diffusion-based Perceptual Neural Video Compression with Temporal Diffusion Information Reuse",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2508.18380v2",
+        "title": "Information Templates: A New Paradigm for Intelligent Active Feature Acquisition",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.06411v2",
+        "title": "Learning to Predict Middle-Layer Attention in MLLMs for Visual Token Pruning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.01004v1",
+        "title": "SinkPruner: Sink-Free Visual Token Pruning for Multimodal Large Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2503.08019v1",
+        "title": "Multi-Cue Adaptive Visual Token Pruning for Large Vision-Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.34861v1",
+        "title": "When Text Matters: Design Principles for Visual Token Pruning in Vision-Language Model",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.01914v2",
+        "title": "AdaPonderLM: Gated Pondering Language Models with Token-Wise Adaptive Depth",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4385768233",
+        "title": "Adaptive Sparse ViT: Towards Learnable Adaptive Token Pruning by Fully Exploiting Self-Attention",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4386159741",
+        "title": "Image Deraining Transformer with Sparsity and Frequency Guidance",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4414820693",
+        "title": "TrimTokenator: Towards Adaptive Visual Token Pruning for Large Multimodal Models",
+        "venue_year": "2026"
+      },
+      {
+        "paper_id": "openalex:W4391401593",
+        "title": "Lightweight transformer image feature extraction network",
+        "venue_year": "PeerJ Computer Science 2024"
+      },
+      {
+        "paper_id": "openalex:W4386758232",
+        "title": "Efficient Spatially Sparse Inference for Conditional GANs and Diffusion Models",
+        "venue_year": "IEEE Transactions on Pattern Analysis and Machine Intelligence 2023"
+      },
+      {
+        "paper_id": "openalex:W4402754149",
+        "title": "MADTP: Multimodal Alignment-Guided Dynamic Token Pruning for Accelerating Vision-Language Transformer",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4407153659",
+        "title": "Cost-sensitive feature selection for multi-label classification: multi-criteria decision-making approach",
+        "venue_year": "Applied Computing and Informatics 2025"
+      },
+      {
+        "paper_id": "openalex:W4404649993",
+        "title": "Principles of Visual Tokens for Efficient Video Understanding",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "arxiv:2504.01690v2",
+        "title": "Token Pruning in Audio Transformers: Optimizing Performance and Decoding Patch Importance",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2507.07995v1",
+        "title": "Single-pass Adaptive Image Tokenization for Minimum Program Search",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2401.04975v1",
+        "title": "HaltingVT: Adaptive Token Halting Transformer for Efficient Video Recognition",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2505.21233v2",
+        "title": "CROP: Contextual Region-Oriented Visual Token Pruning",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2302.13960v1",
+        "title": "Acquisition Conditioned Oracle for Nongreedy Active Feature Acquisition",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2508.04435v2",
+        "title": "Cognitive Effort in the Two-Step Task: An Active Inference Drift-Diffusion Model Approach",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2510.12624v2",
+        "title": "Learning-To-Measure: In-Context Active Feature Acquisition",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.12179v1",
+        "title": "Explanations-Driven Active Feature Acquisition for Algorithmic Recourse",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2412.01818v2",
+        "title": "Beyond Text-Visual Attention: Exploiting Visual Cues for Effective Token Pruning in VLMs",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2609.32325v1",
+        "title": "Active Feature Acquisition With Incomplete Training Data",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2410.03915v1",
+        "title": "Distribution Guided Active Feature Acquisition",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2606.27161v2",
+        "title": "TOPS: First-Principles Visual Token Pruning via Constructing Token Optimal Preservation Sets for Efficient MLLM Inference",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.23892v1",
+        "title": "Good Token Hunting: A Hitchhiker's Guide to Token Selection for Visual Geometry Transformers",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2410.18954v2",
+        "title": "Learning Structured Compressed Sensing with Automatic Resource Allocation",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2605.05511v2",
+        "title": "Non-Myopic Active Feature Acquisition via Pathwise Policy Gradients",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.09982v1",
+        "title": "ERASE: Eliminating Redundant Visual Tokens via Adaptive Two-Stage Token Pruning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.30756v1",
+        "title": "Selective Amortization of Full-Budget Counterfactual Reasoning for Visual Token Communication",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.10441v2",
+        "title": "RAISE: Diagnosing Acquisition Collapse in Costly LLM Signals",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.26355v1",
+        "title": "Energy-Gated Attention and Wavelet Positional Encoding: Complementary Inductive Biases for Transformer Attention",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2508.17243v2",
+        "title": "CoViPAL: Layer-wise Contextualized Visual Token Pruning for Large Vision-Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2605.09429v1",
+        "title": "Evading Visual Aphasia: Contrastive Adaptive Semantic Token Pruning for Vision-Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.07812v1",
+        "title": "HAWK: Head Importance-Aware Visual Token Pruning in Multimodal Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.18260v1",
+        "title": "Geometry-Guided 3D Visual Token Pruning for Video-Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.26806v2",
+        "title": "Multi-Image Visual Token Pruning in Large Visual Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.12035v3",
+        "title": "When Does Visual Token Pruning Improve Calibration? The Role of Evidence Coverage in MLLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.25332v1",
+        "title": "Not All Attention Heads Contribute to Critical Visual Token Selection: Head-Aware Pruning Matters More",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.36916v2",
+        "title": "Representation Dynamics Reveal Semantic Saliency and Similarity for Visual Token Pruning in MLLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4399752883",
+        "title": "Random Projection‐Based Locality‐Sensitive Hashing in a Memristor Crossbar Array with Stochasticity for Sparse Self‐Attention‐Based Transformer",
+        "venue_year": "Advanced Electronic Materials 2024"
+      },
+      {
+        "paper_id": "openalex:W4390872721",
+        "title": "Adaptive and Background-Aware Vision Transformer for Real-Time UAV Tracking",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4393154189",
+        "title": "AdaFormer: Efficient Transformer with Adaptive Token Sparsification for Image Super-resolution",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4393147855",
+        "title": "MDFL: Multi-Domain Diffusion-Driven Feature Learning",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W7138843748",
+        "title": "HiPrune: Training-Free Visual Token Pruning via Hierarchical Attention in Vision-Language Models (Student Abstract)",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2026"
+      },
+      {
+        "paper_id": "openalex:W4366827602",
+        "title": "Denoising Diffusion Probabilistic Feature-Based Network for Cloud Removal in Sentinel-2 Imagery",
+        "venue_year": "Remote Sensing 2023"
+      },
+      {
+        "paper_id": "openalex:W4385541649",
+        "title": "Multi-Objective Gray Wolf Optimizer with Cost-Sensitive Feature Selection for Predicting Students’ Academic Performance in College English",
+        "venue_year": "Mathematics 2023"
+      },
+      {
+        "paper_id": "openalex:W4401202422",
+        "title": "Mixture of Nested Experts: Adaptive Processing of Visual Tokens",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W4312285158",
+        "title": "OTFS—A Mathematical Foundation for Communication and Radar Sensing in the Delay-Doppler Domain",
+        "venue_year": "IEEE BITS the Information Theory Magazine 2022"
+      },
+      {
+        "paper_id": "openalex:W4405953164",
+        "title": "FusionMamba: dynamic feature enhancement for multimodal image fusion with Mamba",
+        "venue_year": "Visual Intelligence 2024"
+      },
+      {
+        "paper_id": "openalex:W4389363332",
+        "title": "Token Fusion: Bridging the Gap between Token Pruning and Token Merging",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4390873032",
+        "title": "Dynamic Token Pruning in Plain Vision Transformers for Semantic Segmentation",
+        "venue_year": "2023"
+      },
+      {
+        "paper_id": "openalex:W4413147849",
+        "title": "PACT: Pruning and Clustering-Based Token Reduction for Faster Visual Language Models",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7123357460",
+        "title": "Toward Real-Time UAV Tracking With Adaptive and Background-Aware Vision Transformers",
+        "venue_year": "IEEE Transactions on Circuits and Systems for Video Technology 2026"
+      },
+      {
+        "paper_id": "openalex:W4413146548",
+        "title": "ATP-LLaVA: Adaptive Token Pruning for Large Vision Language Models",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4403792017",
+        "title": "Enhanced Experts with Uncertainty-Aware Routing for Multimodal Sentiment Analysis",
+        "venue_year": "2024"
+      },
+      {
+        "paper_id": "openalex:W4417357134",
+        "title": "Beyond Attention or Similarity: Maximizing Conditional Diversity for Token Pruning in MLLMs",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4385643961",
+        "title": "Dynamic Token-Pass Transformers for Semantic Segmentation",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4403390854",
+        "title": "DECT: Diffusion-Enhanced CNN–Transformer for Multisource Remote Sensing Data Classification",
+        "venue_year": "IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing 2024"
+      },
+      {
+        "paper_id": "arxiv:2405.15310v5",
+        "title": "Spectraformer: A Unified Random Feature Framework for Transformer",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2603.11114v1",
+        "title": "Task-Conditioned Routing Signatures in Sparse Mixture-of-Experts Transformers",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2505.18757v2",
+        "title": "ToDRE: Effective Visual Token Pruning via Token Diversity and Task Relevance",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2312.12574v1",
+        "title": "Generator Assisted Mixture of Experts For Feature Acquisition in Batch",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2608.07193v2",
+        "title": "An AI4AI Framework for Visual Token Pruning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2309.07524v2",
+        "title": "A Multi-scale Generalized Shrinkage Threshold Network for Image Blind Deblurring in Remote Sensing",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2312.03517v3",
+        "title": "FRDiff : Feature Reuse for Universal Training-free Acceleration of Diffusion Models",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2411.09111v8",
+        "title": "Reducing Reasoning Costs: The Path of Optimization for Chain of Thought via Sparse Attention Mechanism",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2312.01530v4",
+        "title": "Evaluation of Active Feature Acquisition Methods for Time-varying Feature Settings",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2503.15927v1",
+        "title": "BlockDance: Reuse Structurally Similar Spatio-Temporal Features to Accelerate Diffusion Transformers",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2212.08815v1",
+        "title": "FSCNN: A Fast Sparse Convolution Neural Network Inference System",
+        "venue_year": "arXiv 2022"
+      },
+      {
+        "paper_id": "arxiv:2408.11656v1",
+        "title": "Macformer: Transformer with Random Maclaurin Feature Attention",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2508.01957v3",
+        "title": "Stochastic Encodings for Active Feature Acquisition",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2301.02562v1",
+        "title": "Super Sparse 3D Object Detection",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2602.03060v1",
+        "title": "IVC-Prune: Revealing the Implicit Visual Coordinates in LVLMs for Vision Token Pruning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2507.03340v1",
+        "title": "Degrees of Freedom for Linear Attention: Distilling Softmax Attention with Optimal Feature Efficiency",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2312.03619v2",
+        "title": "Evaluation of Active Feature Acquisition Methods for Static Feature Settings",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2602.00110v2",
+        "title": "Observing Health Outcomes Using Remote Sensing Imagery and Geo-Context Guided Visual Transformer",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2508.17807v2",
+        "title": "Attention Debiasing for Token Pruning in Vision Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2410.22710v1",
+        "title": "LoFLAT: Local Feature Matching using Focused Linear Attention Transformer",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2603.11370v3",
+        "title": "Relaxed Efficient Acquisition of Context and Temporal Features",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.31982v1",
+        "title": "ERA: Entropy-Guided Visual Token Pruning with Rectified Attention for Efficient MLLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2505.18227v4",
+        "title": "Token Reduction Should Go Beyond Efficiency in Generative Models -- From Vision, Language to Multimodality",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2603.02227v2",
+        "title": "Routing Absorption in Sparse Attention: Why Random Gates Are Hard to Beat",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2409.10197v2",
+        "title": "Fit and Prune: Fast and Training-free Visual Token Pruning for Multi-modal Large Language Models",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2404.02690v2",
+        "title": "How Sparse Attention Approximates Exact Attention? Your Attention is Naturally $n^C$-Sparse",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2412.16117v1",
+        "title": "PruneVid: Visual Token Pruning for Efficient Video Large Language Models",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2609.03158v1",
+        "title": "Who Speaks for the Pruned? Visual Token Pruning as Coverage Optimization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.23734v1",
+        "title": "UTPTrack: Towards Simple and Unified Token Pruning for Visual Tracking",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.08220v2",
+        "title": "Pretraining with Token-Level Adaptive Latent Chain-of-Thought",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.12358v2",
+        "title": "Why and When Visual Token Pruning Fails? A Study on Relevant Visual Information Shift in MLLMs Decoding",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.19990v1",
+        "title": "QCPruner: Query-Conditioned Population Coverage for Visual Token Pruning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.24293v2",
+        "title": "Keep-or-Drop? Adaptive Tokenizer for Compact Video Representation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2511.16449v5",
+        "title": "Bridging the Semantic-Action Gap in Visual Token Pruning for Efficient VLA Inference",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2508.01548v1",
+        "title": "A Glimpse to Compress: Dynamic Visual Token Pruning for Large Vision-Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.34558v1",
+        "title": "ACPruner: Visual Token Pruning as Biased Attention Coverage Maximization in LVLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.13315v1",
+        "title": "IDPruner: Harmonizing Importance and Diversity in Visual Token Pruning for MLLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W4389326242",
+        "title": "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W4409363282",
+        "title": "Fit and Prune: Fast and Training-free Visual Token Pruning for Multi-modal Large Language Models",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2025"
+      },
+      {
+        "paper_id": "openalex:W4405562834",
+        "title": "Feather the Throttle: Revisiting Visual Token Pruning for Vision-Language Model Acceleration",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W4386729350",
+        "title": "STRec: Sparse Transformer for Sequential Recommendations",
+        "venue_year": "2023"
+      }
+    ]
+  },
+  "contract_version": 2,
+  "plain_falsification_en": "First profile action-query-to-observation QK/AV in available frozen FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab routes, reporting the pairings separately. The matching FastWAM-Joint checkpoint is unconfirmed; if it cannot be confirmed, that route remains unavailable and Motus/RoboTwin is not an equivalent replacement. Stop if the ideal Amdahl upper bound or measured compact-kernel savings after scoring and packing cannot improve full-inference latency or meet the original latency gate. Even with saved computation, retain the method only if task success passes the original frozen success gate.\n\nOn matched episodes, compare dense inference, ρ_lg-ranked masks, and source-group permutations at exactly the same retained-edge cost. Also compare native attention-mass, ToPi/VATP value-norm, and CAPA output-projected-score controls for each same frozen checkpoint and `k_ref` dense forward. Native attention-mass sums each token's attention weights across action queries and native heads. ToPi/VATP weight those contributions by the token's value-vector L2 or L1 norm. CAPA measures each token's attention-weighted value after native output projection and sums across action queries. Sum token scores within existing provenance groups; rank groups by score with native source order breaking ties; keep whole ranked groups, then take a boundary-group token prefix in the same score order until the exact `B_l` edge budget is met, with native token order breaking token ties. Use the same compact kernel for every arm. If existing groups do not allow a distinct legal equal-cost permutation, report it unavailable rather than use an unequal-cost arm.\n\nUse paired `D_eval` episodes that did not select ε, separate from held-out `D_select`. Record task success, per-path FLOPs, full latency including scoring, packing, kernel launch and other model paths, action-chunk deviation, and first action divergence; apply the original frozen gates. The prediction is that permuting ρ_lg across source groups lowers downstream LIBERO/RoboLab task success versus the contribution-ranked mask; no difference means the ranking mechanism is not established. A WAM-specific score advantage requires the paired task-success effect for ρ_lg to beat every matched-cost scoring arm under the original gates. Simulation is not closed-loop robot evidence; a physical AgileX Cobot Magic phase waits for a passing simulation gate and confirmation of the matching policy/checkpoint, demonstrations/data, source implementation, and same-type hardware.\n\nThis is an idea-depth proposal, not an experiment report. The audit records no model, kernel, benchmark, or episode run. A previous synthetic trace checked scoring-rule arithmetic only; coherence or post-review passes are process checks and do not establish tensor access, task success, or latency.",
+  "plain_core_claim_en": "This proposal tests whether output-projected observation-source contributions measured at the first action update can choose same-cost masks that preserve the frozen task-success gate and improve full inference latency in each tested joint WAM. A WAM-specific score advantage is claimed only if paired outcomes beat every matched-cost scoring control.",
+  "plain_resource_summary_en": "Original estimate: this generation used 0 GPU-days and 0 USD external API cost. Future profiling and paired-benchmark GPU-days remain unestimated pending confirmation of the FastWAM-Joint checkpoint, both kernel paths, and Amdahl headroom. Current estimate: unknown for future profiles, paired runs, and external API cost. User ceiling/authorization: no GPU-day or dollar ceiling is assumed; this stage authorizes literature and mechanism diagnosis only, with no GPU/cluster experiments. Feasibility against a compute ceiling is unknown. Main cost drivers are integration and full-path profiling for two frozen backends, fused-attention attribution, a compact kernel that truly skips QK/AV, and paired episodes including scoring/packing/launch overhead. Any AgileX baseline post-training is accounted for separately from the training-free mask.",
+  "plain_open_questions_en": "1. S1 — Exact checkpoint identities, solver schedules, task configurations, backend versions, and joint-model/deployment entry points are not pinned for both pairings. The matching FastWAM-Joint checkpoint is unconfirmed. Motus/RoboTwin cannot be recorded as an equivalent substitute.\n2. S2 — The original latency-gate artifact/value and measured action-query-to-observation QK/AV share φ_obs are absent. Intended hardware and path profiles are also missing, so Amdahl headroom and the stop/continue decision remain unknown.\n3. S3 — The token packer's source-provenance interface is unconfirmed. So is fused-attention attribution for per-head α, V, and W_O at `k_ref`; a separate pass may add cost that must be charged to scoring and full-path latency. Stop if provenance is unavailable.\n4. S4 — The held-out `D_select` split, original frozen success-gate value, and measured full-path latency are not identified; ε cannot yet be selected.\n5. S5 — Neither backend's exact joint entry point/configuration nor a variable-length/block-sparse kernel that truly skips omitted QK/AV is verified. Retained-key softmax, native residual/flow behavior, and proof that work was skipped remain to be established.\n6. S6 — The implementation audit flags a source omission: technical S6 lacks the exact-cost boundary-token rule. The candidate specifies summing token scores within groups, stable native-order ties, and a boundary-group token prefix to reach exactly `B_l`; restore this rule in technical S6. Check whether provenance groups permit a distinct legal equal-cost permutation; if not, report it unavailable. No paired `D_eval` task-success, full-path latency, per-path profile, or action-divergence results exist.\n7. S7 — Matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are unconfirmed; simulation has not passed the frozen gate.\n8. Evidence — This run is idea-depth and unvalidated. The audit records no model, kernel, benchmark, or episode run. Its earlier synthetic trace checks scoring arithmetic only. Coherence and post-review passes are process/rule checks, not experimental evidence.",
+  "plain_falsification_zh": "先在可用的 frozen FastWAM-Joint/LIBERO 与 Cosmos3-Edge-Policy-DROID/RoboLab 路径 profile action-query-to-observation QK/AV，并分开报告两组 baseline。匹配的 FastWAM-Joint checkpoint 尚未确认；若无法确认，该路线保持 unavailable，不能用 Motus/RoboTwin 冒充等价 baseline。如果理想 Amdahl 上界，或扣除 scoring 和 packing 后的 compact-kernel 实测节省，不能降低完整推理 latency 或满足原 latency gate，就停止。即使能省算，也只有 task success 通过原 frozen success gate 才保留方法。\n\n在匹配 episodes 上比较 dense inference、按 ρ_lg 排名的 masks，以及保留边成本完全相同的 source-group permutations。每组还比较 native attention-mass、ToPi/VATP value-norm 与 CAPA output-projected-score controls，并使用相同 frozen checkpoint 和 `k_ref` dense forward。Native attention-mass 把每个 token 在 action queries 和 native heads 上的 attention weights 加总。ToPi/VATP 再分别按 token value vector 的 L2 或 L1 norm 加权。CAPA 先让 token 的 attention-weighted value 经过 native output projection，再对 action queries 求和。将 token scores 在已有 provenance groups 内求和；按 group score 排序，以 native source order 打破并列；先保留完整 groups，再从 boundary group 按同一 token score 顺序取前缀，直到恰好达到 `B_l` 条 edges，token 并列按 native token order。所有 arm 用同一 compact kernel。若现有 groups 无法形成不同且合法的等成本 permutation，就报告 unavailable，不用成本不等的 arm 代替。\n\npaired `D_eval` 不参与 ε 选择，并与留出的 `D_select` 分开。记录 task success、逐路径 FLOPs、包含 scoring、packing、kernel launch 与其他 model paths 的完整 latency、action-chunk deviation、first action divergence，再应用原 frozen gates。预测是：置换 ρ_lg 的 source-group 分配后，LIBERO/RoboLab 下游 task success 会低于按贡献排序的 mask；若没有差别，就没有建立该排序机制。只有 ρ_lg 的 paired task-success effect 在原 gates 下胜过所有同成本评分 arm，才支持 WAM-specific score advantage。仿真不是 closed-loop robot evidence；真机 AgileX Cobot Magic 阶段要等仿真通过 gate，并确认匹配 policy/checkpoint、demonstrations/data、source implementation 与同类型 hardware。\n\n本方案处于 idea-depth，不是实验报告。审计记录没有运行 model、kernel、benchmark 或 episodes。此前的 synthetic trace 只检查评分规则算术；coherence 或 post-review pass 是流程检查，不能证明 tensor 可访问、task success 或 latency 改善。",
+  "plain_core_claim_zh": "本方案检验：第一次 action update 上测得的 observation-source output-projected contributions，能否选出保留边成本相同的 masks，并在每个受测 joint WAM 上满足 frozen task-success gate、降低完整推理 latency。只有 paired outcomes 在同成本下胜过所有评分对照，才主张存在 WAM-specific score advantage。",
+  "plain_resource_summary_zh": "原估算：本轮 generation 使用 0 GPU-days、external API 成本 0 USD。未来 profile 与 paired benchmark 的 GPU-days 尚未估算，须先确认 FastWAM-Joint checkpoint、两套 kernel 路径和 Amdahl headroom。当前估算：未来 profiling、paired runs 和 external API 成本均未知。用户预算与授权：没有假定 GPU-day 或美元上限；本阶段只授权文献与机制诊断，不授权 GPU/cluster 实验，因此无法对照 compute ceiling 判断可行性。主要成本来自两个 frozen backends 的集成与完整路径 profiling、fused-attention attribution、确实跳过 QK/AV 的 compact kernel，以及计入 scoring/packing/launch overhead 的 paired episodes。AgileX baseline 若需 post-training，须与 training-free mask 分开核算。",
+  "plain_open_questions_zh": "1. S1 — 两组 baseline 的 exact checkpoint identities、solver schedules、task configurations、backend versions 和 joint-model/deployment entry points 尚未固定。匹配的 FastWAM-Joint checkpoint 未确认；Motus/RoboTwin 不能登记为等价替代。\n2. S2 — 原 latency gate 的 artifact/value 和 action-query-to-observation QK/AV 实测比例 φ_obs 都缺失。目标硬件和路径 profile 也未确定，因此 Amdahl headroom 及停止/继续判断仍未知。\n3. S3 — token packer 是否提供 source-provenance interface 尚未确认。`k_ref` 上 fused-attention 是否能取得每头 α、V、W_O 也未确认；若需单独 attribution pass，其成本必须计入 scoring 和 full-path latency。没有 provenance 时按方案停止。\n4. S4 — 留出的 `D_select`、原 frozen success-gate 数值和实测 full-path latency 尚未确定，因此目前不能选择 ε。\n5. S5 — 两个 backend 的 exact joint entry point/configuration，以及真正跳过被省略 QK/AV 的 variable-length/block-sparse kernel 都未验证。还需确认 retained-key softmax、native residual/flow 行为，并证明运算确实被跳过。\n6. S6 — 实现审计标出 source omission：技术版 S6 缺少精确匹配边成本的 boundary-token 规则。candidate 已规定组内汇总 token scores、以 native order 稳定打破并列，并从 boundary group 取 token 前缀直到恰好达到 `B_l`；需把规则补回技术版 S6。还要确认 provenance groups 是否允许不同且合法的等成本 permutation；若不允许，就报告 unavailable。目前没有 paired `D_eval` 的 task-success、完整 latency、逐路径 profile 或 action-divergence 结果。\n7. S7 — 匹配的 AgileX Cobot Magic policy/checkpoint、demonstrations/data、source implementation 和同类型 hardware 尚未确认；仿真未通过 frozen gate。\n8. 证据 — 本 run 处于 idea-depth，尚未实验验证。审计记录没有运行 model、kernel、benchmark 或 episodes。此前 synthetic trace 只检查评分算术。Coherence 和 post-review pass 属于流程/规则检查，不是实验依据。",
+  "implementation_notes": [
+    {
+      "step_id": "S1",
+      "kind": "open_question",
+      "hole": "The canonical candidate itself says the matching FastWAM-Joint checkpoint is unconfirmed; the allowed inputs do not identify exact checkpoint revisions or instantiate either baseline configuration. The conditional Motus/RoboTwin fallback cannot stand in for FastWAM-Joint.",
+      "evidence": "This is a baseline-identity prerequisite, not evidence that either pairing was run.",
+      "suggestion": "Resolve and record exact checkpoint, solver, task, backend, and hardware identities for each primary pairing. Keep the pairings separate; if FastWAM-Joint remains unavailable, report that route blocked and keep the named fallback conditional."
+    },
+    {
+      "step_id": "S2",
+      "kind": "open_question",
+      "hole": "No measured profile, verified joint-model entry point, hardware target, or exact original latency-gate value is present in the permitted inputs, so neither headroom nor the stop decision can be instantiated.",
+      "evidence": "The equation is an ideal upper bound only; it excludes attribution, scoring, packing, kernel launch, and the other model paths.",
+      "suggestion": "After the checkpoint and gate are identified, profile the named native paths on the intended evaluation hardware and report every named cost component. Count scoring and packing in the full path; do not infer a latency pass from the Amdahl bound."
+    },
+    {
+      "step_id": "S3",
+      "kind": "implementation_choice",
+      "hole": "Native source-provenance interface",
+      "evidence": "The candidate requires existing camera/view provenance but does not identify the packer API or confirm that the two target paths expose it.",
+      "suggestion": "Inspect the existing token packer for stable source IDs; if it does not expose them, stop as specified rather than infer groups."
+    },
+    {
+      "step_id": "S3",
+      "kind": "implementation_choice",
+      "hole": "Fused-attention attribution path for alpha, V, and W_O",
+      "evidence": "The score requires per-head attention weights, values, and output-projection slices at k_ref; no extraction interface or cost is identified.",
+      "suggestion": "Confirm the native fused path can expose the required tensors without changing its math. If a separate attribution pass is needed, include its full cost in scoring and end-to-end latency."
+    },
+    {
+      "step_id": "S4",
+      "kind": "mechanism_blocking",
+      "hole": "The mask rule is specified, but no held-out episodes, gate values, or measured full-path latencies are available; therefore the epsilon-selection criterion cannot be applied.",
+      "evidence": "The prior synthetic check used epsilon=0.4 illustratively; it did not select epsilon using task success or measured latency.",
+      "suggestion": "Use the existing held-out split and unchanged gate. Evaluate the distinct prefix-change masks induced by the measured cumulative rho values, choose the lowest-latency mask that passes the existing gate, and report a curve without a pass if no pre-existing gate applies."
+    },
+    {
+      "step_id": "S5",
+      "kind": "mechanism_blocking",
+      "hole": "Neither target backend's compact variable-length/block-sparse implementation or joint entry-point integration is verified in the allowed inputs. A dense mask alone would not establish skipped work or latency improvement.",
+      "evidence": "The residual, flow schedule, video-query, future/action, and FFN paths are explicitly held native; the actual sparse kernel and its per-backend support remain the central engineering gap.",
+      "suggestion": "For each frozen backend, identify or implement the compact kernel at the native joint entry point, preserve the specified retained-key softmax and residual path, and verify omitted QK/AV is not executed. Measure the kernel together with attribution, score, packing, and launch overhead."
+    },
+    {
+      "step_id": "S6",
+      "kind": "source_omission",
+      "hole": "The canonical candidate supplies the omitted exact-cost boundary-token rule, but no paired evaluation, task-success result, full-path latency, or legal source-group permutation is established by these inputs. The requested comparison is a planned empirical test, not an observed result.",
+      "evidence": "The expansion says same-cost source-group permutation but omits the canonical candidate's boundary-token rule for exact edge matching; restore that rule from final_candidate. The source also requires the permutation arm be reported unavailable when existing groups cannot provide a legal equal-cost mask.",
+      "suggestion": "Use the canonical candidate's specified token-score/group-sum ordering, native-order tie breaks, and boundary-group token prefix to match the exact retained-edge budget. Check whether a distinct legal source-group permutation exists; if not, report it unavailable. Keep both primary baselines separate and include scoring, packing, and kernel-launch costs in each full-path latency."
+    },
+    {
+      "step_id": "S7",
+      "kind": "open_question",
+      "hole": "The candidate and intake say the matching AgileX policy/checkpoint, demonstrations/data, source implementation, and local same-type hardware are unconfirmed; no simulation gate was run.",
+      "evidence": "No robot result is asserted or implied by the simulation route.",
+      "suggestion": "Keep physical evaluation conditional. Confirm each stated prerequisite and simulation gate before planning a robot run; account for baseline post-training separately."
+    }
+  ],
+  "cost_assessment": {
+    "candidate_sha256": "be82888c2f7737543d6fbcccbe911ba41512f3e504f926b7d582093fa5a4a826",
+    "user_budget": "本阶段只做文献与机制诊断；没有GPU/cluster实验授权。不假定GPU-day或美元预算。ASPIRE2A login仅轻量控制；加速方法保持training-free，baseline原有post-training单列。",
+    "original_estimate": "本 generation 未运行实验：GPU-days 为 0，external API 为 $0。后续 path profile 与 paired benchmark 的 GPU-days 暂不估算，须先确认 FastWAM-Joint checkpoint、两套 kernel 支持和 Amdahl headroom，再由获批 compute allocation 估算；没有假定 GPU-day 或付费 API 预算。AgileX 路线若需 baseline 原有 task post-training，其成本与本 training-free mask 方法分开核算。",
+    "current_estimate": "unknown (future path-profile and paired-benchmark GPU-days and any external API cost are not estimated)",
+    "status": "unknown",
+    "basis": "Main drivers are integration and full-path profiling for two separate frozen WAM backends, fused-attention attribution, a compact kernel that really skips QK/AV, and paired benchmark episodes including scoring/packing/launch overhead. The inputs provide no verified checkpoint for the FastWAM-Joint pairing, no kernel support, no measured headroom, hardware/runtime, or episode totals; therefore no defensible order-of-magnitude compute estimate against an authorized ceiling can be made. The recorded GPU-days=0 and external API=$0 describe only the already completed generation, not the future method cost.",
+    "change_reason": "Unchanged from the candidate's original estimate: future profiling and paired-benchmark cost stays explicitly unestimated pending checkpoint, kernel-support, and Amdahl-headroom confirmation. No budget ceiling or experimental scope was changed.",
+    "parsed": {
+      "estimate_gpu_days": null,
+      "estimate_span": null,
+      "ceiling_gpu_days": null,
+      "ceiling_span": null
+    }
+  },
+  "proposal_status": "Research proposal — not experimentally validated"
+}

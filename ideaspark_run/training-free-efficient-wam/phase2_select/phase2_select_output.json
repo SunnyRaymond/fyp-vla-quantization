@@ -1,0 +1,29 @@
+{
+  "contract_version": 2,
+  "selected_gaps": [
+    {
+      "gap": "在joint WAM把future表示稀疏化或缓存后，是否仍必须让每个native action update使用完整可见observation与保留future context，还是该dense conditioning只是继承自joint predictor的默认接口，尚未被检验。",
+      "chosen_pattern_id": "generative_process_redesign",
+      "anchor_alternates": [],
+      "companion_pattern": null,
+      "sibling_dependency": null,
+      "companion_dependency": null,
+      "companion_rationale": "",
+      "selection_rationale": "该 gap 最能承载 method：它要求把 native action update 的条件接口改造成可运行的 frozen-inference 路径，而不只是报告敏感性与成本。generative_process_redesign 将继承的 flow-conditioning interface 视作可修改变量，直接支持构造 action-query observation-edge mask。"
+    }
+  ],
+  "coherence_thread_type": "n_a",
+  "deliverable_coverage": "method — anchor gap → generative_process_redesign yields a runnable inference-time action-conditioning mask on frozen joint WAMs.",
+  "user_direction_disposition": {
+    "verdict": "adopted",
+    "user_wanted": "training free efficient wam",
+    "chosen": "冻结 joint WAM 的 action-query-to-observation source edge mask；不更新模型权重。"
+  },
+  "composition_note": "单机制候选；观测—动作敏感性与成本占比作为 falsification 和 Amdahl 首停门，不另立 controlled_diagnostic_design 腿。",
+  "deferred_gaps": [
+    {
+      "gap": "在Sparse-WAM这类future token已稀疏的joint-WAM上，尚未建立action输出对每步所读observation/future context的质量敏感性与对应计算量之间的边界；尤其FastWAM-Joint的action chunk只有32步，保留全部tokens不能说明action侧是主要成本，固定observation latent也不代表hidden states或KV跨timestep固定。 — stakes: 研究者可能把有限实验预算投入占比很小的路径，或删去接触/遮挡相关条件而降低控制质量；没有敏感性边界也使跨backbone加速结果难以解释。",
+      "reason": "该 gap 的独立产物是敏感性与成本测量，不是额外 inference capability；把它作为候选的首个 Amdahl/质量 falsification gate，移除它不影响方法本身，故不升格为 method sibling。"
+    }
+  ]
+}

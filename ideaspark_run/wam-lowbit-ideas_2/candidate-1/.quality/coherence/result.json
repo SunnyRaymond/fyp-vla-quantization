@@ -1,0 +1,353 @@
+{
+  "contract_version": 2,
+  "request_id": "bb05ffcb-862a-4b6a-8223-9e81e1fb723b",
+  "artifacts": {
+    "phase2_coherence/phase2_coherence_output.json": {
+      "trace_report": {
+        "likely_fatal_step": {
+          "step": "S6",
+          "why_selected_before_execution": "此步把变量长度 prefix、controller branch signature 与连续误差压成同一 lexicographic score，是从‘实际已执行 command’到可优化目标的唯一连接；若 branch signature/reference 或跨不同 h_i 的聚合不可执行，核心机制就无法评分。",
+          "attack_and_result": "用纯合成全模型输出实际执行 S6–S7 的单坐标有限候选搜索，并以两种可辩护聚合阅读重跑；两者均可计算且都选 B。实际 evaluator 与采样 replay 是否精确匹配仍是 untested premise，不由该合成结果验证。"
+        },
+        "formalized_procedure": [
+          {
+            "step": "S1",
+            "consumes": [
+              "官方 checkpoint F_BF16: 参数张量",
+              "evaluator E: observation->chunk 的调用路径",
+              "controller 配置 C: 状态到分支/动作映射",
+              "seed 规则"
+            ],
+            "produces": [
+              "冻结的 BF16 reference F_BF16",
+              "固定 E、P_h、C_c、动作归一化和 seed 规则"
+            ],
+            "note": "逐字引用：1. 载入 Fast-WAM 官方 Optional IDM checkpoint、first_frame 路径、LIBERO-Goal evaluator 和其固定 controller 配置；冻结所有模型权重、动作归一化、chunk/replan 设置与 generation seed 规则。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S2",
+            "consumes": [
+              "冻结 E/F_BF16",
+              "BF16 evaluator 轨迹"
+            ],
+            "produces": [
+              "两组按 trajectory 不相交的记录 d_i=(o_i tensor, c_i state, h_i integer, xi_i seed)",
+              "h_i 对应当条样本实际执行的 prefix"
+            ],
+            "note": "逐字引用：2. 用 BF16 reference rollouts 记录现有 evaluator 会读取的 (observation, controller state, executed prefix length, seed)，按 trajectory 划分 PTQ calibration 与 held-out fixed-input validation，避免相邻帧泄漏。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S3",
+            "consumes": [
+              "calibration/held-out d_i",
+              "F_BF16 outputs: [L,d]",
+              "固定 P_h 与 C_c"
+            ],
+            "produces": [
+              "reference full chunks a_i*: [L,d]",
+              "reference commands u_i*: [h_i,d]",
+              "reference branch signatures b_i*: branch tuples",
+              "连续维 reference commands v_i*: [h_i,d_cont]",
+              "每维 s_j: 标量标准差；零标准差用 evaluator 原生单位尺度"
+            ],
+            "note": "逐字引用：3. 缓存 BF16 reference 的完整输出及精确 controller command；从 evaluator 的分支标记构造 branch signature，并用 calibration commands 计算每个连续执行维度的标准差。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S4",
+            "consumes": [
+              "BF16 执行图及每个 Linear 的权重/激活张量",
+              "后端 kernel 支持规则"
+            ],
+            "produces": [
+              "量化执行图：各 Linear 为 per-output-channel signed W4 / per-token A8",
+              "BF16/FP32 non-Linear 运算",
+              "unsupported Linear 列表；若非空则不能称完整覆盖"
+            ],
+            "note": "逐字引用：4. 将所有执行图 Linear 转成 W4A8：weights 用 signed per-output-channel INT4，activations 用 per-token INT8；按后端规则保留 non-Linear 的 BF16/FP32 算子，列出任何因 kernel 不支持而未覆盖的 Linear。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S5",
+            "consumes": [
+              "量化执行图",
+              "calibration 权重/激活范围",
+              "标准局部重建 PTQ 规则"
+            ],
+            "produces": [
+              "初始量化参数 theta_0: 每 Linear 的 weight scale/clipping 与 activation scale/clipping/zero-point",
+              "模型参数保持冻结"
+            ],
+            "note": "逐字引用：5. 用标准局部重建 PTQ 参数初始化每个 Linear 的 scales、clipping bounds 和 activation zero-point；只允许这些量变化，不训练模型参数，也不增加保护 branch。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S6",
+            "consumes": [
+              "当前 theta",
+              "每层有限候选集 Theta_l",
+              "calibration d_i",
+              "reference b_i*, v_i*, s_j",
+              "完整 W4A8 前向输出"
+            ],
+            "produces": [
+              "每候选的 u_i(theta), b_i(theta), v_i(theta)",
+              "J_cal(theta)=(branch mismatch rate, normalized continuous command squared error): lexicographic pair"
+            ],
+            "note": "逐字引用：6. 对每层依次枚举从其校准权重/激活范围得到的合法量化候选；每个候选都跑完整量化 WAM，再用同一记录的 prefix 和 controller state 得到 command，计算 branch mismatch rate 与连续 command normalized squared error。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S7",
+            "consumes": [
+              "当前 theta",
+              "各层有限 Theta_l",
+              "固定 J_cal 评分器"
+            ],
+            "produces": [
+              "更新后的 theta 或原 theta",
+              "无更新 sweep 时得到 theta_final"
+            ],
+            "note": "逐字引用：7. 仅在全 calibration objective 词典序严格下降时接受该层更新；重复 layer sweep，直到一轮无更新，并冻结所得 W4A8 配置。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S8",
+            "consumes": [
+              "theta_final",
+              "held-out d_i 与 BF16 reference outputs/commands",
+              "原 P_h/C_c"
+            ],
+            "produces": [
+              "held-out full-chunk deviation、branch mismatch、executed-command error",
+              "有效 Linear 覆盖/精度例外统计"
+            ],
+            "note": "逐字引用：8. 在 held-out BF16 reference records 上用原 controller 重放最终 W4A8 模型，报告 full-chunk deviation、branch mismatch、executed-command error、有效 Linear 位宽及精度例外占用；不从这些固定输入指标推出闭环 success 或速度收益。",
+            "status": "instantiated"
+          },
+          {
+            "step": "S9",
+            "consumes": [
+              "theta_final",
+              "适配的部署 backend/kernel"
+            ],
+            "produces": [
+              "运行期仅 W4A8 模型及原 controller",
+              "无 teacher/search/correction branch",
+              "若无兼容 kernel，则仅有 quantizer proposal"
+            ],
+            "note": "逐字引用：9. 部署路径删除 teacher、calibration search 与 BF16 correction；若 backend 没有 Fast-WAM-compatible packed W4A8 kernel，则只报告 quantizer proposal，不声称真实 native low-bit latency。",
+            "status": "instantiated"
+          }
+        ],
+        "parameter_audit": {
+          "result": "method fields 中未发现未绑定的行为性数字参数。INT4/INT8 是量化定义；h_i 是记录的输入；候选数/样本数没有被作为算法参数硬编码，校准规模属 evaluation scale。每层候选集由 backend 根据 calibration ranges 生成的有限合法集合。",
+          "unbound_parameters": []
+        },
+        "dual_readings": [
+          {
+            "term": "branch mismatch rate",
+            "reading_a": "逐记录比较完整 ordered branch tuple，rate=mean_i 1[b_i(theta) != b_i*]。",
+            "reading_b": "将所有已执行 branch bits 池化，rate=不匹配 bit 数/已执行 branch bit 总数。",
+            "execution": "T2、T3、T5 均在两种 reading 下执行；本合成 T2 的主候选均选 B，负对照后均选 C，T5 full-chunk naive 均选 A。数值 rate 可不同（例如 C 的主集为 0.5 vs 0.3333），本实例排序相同。",
+            "finding_tag": "reading_robust: 文本未确定 rate 的分母/汇总单位这一歧义在两种 reading 下都存在；本实例没有证明两种 reading 对所有输入排序相同。"
+          },
+          {
+            "term": "normalized continuous command squared error",
+            "reading_a": "每记录先对实际执行维度求和，再对记录取均值；符合 R_cmd 中的 sum_j。",
+            "reading_b": "对所有已执行标量维度池化后取均值。",
+            "execution": "T2、T3、T5 均在两种 reading 下执行；主校准都选 B，打乱配对后都选 C，full-chunk baseline 都选 A。A 的主集误差为 0.019025 vs 0.012683。",
+            "finding_tag": "reading_robust: 变量 h_i 下文本未指定跨记录/维度的有限样本聚合。"
+          }
+        ],
+        "estimand_match": {
+          "declared_estimand": "R_cmd(theta)=E_{(o,c,h,xi)~D_ref}[lex(branch mismatch, sum_j normalized continuous command squared error)]。",
+          "constructed_quantity": "S6 在 paired BF16-reference calibration records 上计算同一 controller-prefix branch/continuous command distortion；S8 在 trajectory-disjoint held-out BF16 reference records 上报告同一固定输入 quantity。",
+          "verdict": "quantity/process/conditioning match at record level; held-out empirical mean is not by itself a population-generalization guarantee, which the candidate explicitly disclaims by not assuming IID/full coverage."
+        },
+        "premises_left_untested": [
+          "官方 evaluator/controller 的 P_h、C_c 与记录的 c_i/h_i 可精确重放；若状态历史未记录则退回 stateless map。",
+          "同一 observation/seed 下 BF16 与 W4A8 replay 提供可配对 generation noise。",
+          "LIBERO-Goal reference trajectory 上实际存在足够 clip/gripper branch events，且 branch-aware 目标会降低未见 reference-record distortion。",
+          "目标 backend/kernel 能覆盖所有执行图 Linear 并具备所称 W4A8 部署路径；否则候选自身限定为 proposal。"
+        ],
+        "dry_run": {
+          "instance": "2 条 calibration + 2 条 trajectory-disjoint held-out synthetic records；reference chunks a=[0,0,0], b=[2.9,0,0]；controller c1/c2 对称 clip limit 分别 1/3；prefix h_a=1,h_b=2；三组完整 synthetic WAM 输出 A: a=[0.2,0,0], b=[2.7,0,0]; B: a=[0,4,0], b=[2.9,0,0]; C: a=[0.01,0,0], b=[3.2,0,0]。所有输出仅为量化候选规则的合成输入，非模型输出生成实验。reference s_0=1.45，s_1=0 使用 native scale 1。",
+          "execution": {
+            "mode": "executed",
+            "script": "import json\nfrom statistics import mean, pstdev\n\n# Synthetic full-model outputs are fixed inputs to the candidate's rules;\n# this script does not instantiate or execute any model.\nlimits = {\"c1\": 1.0, \"c2\": 3.0}\nreference = {\"a\": [0.0, 0.0, 0.0], \"b\": [2.9, 0.0, 0.0]}\noutputs = {\n    \"A\": {\"a\": [0.2, 0.0, 0.0], \"b\": [2.7, 0.0, 0.0]},\n    \"B\": {\"a\": [0.0, 4.0, 0.0], \"b\": [2.9, 0.0, 0.0]},\n    \"C\": {\"a\": [0.01, 0.0, 0.0], \"b\": [3.2, 0.0, 0.0]},\n}\ncal = [\n    {\"id\": \"a_cal\", \"signal\": \"a\", \"state\": \"c1\", \"h\": 1},\n    {\"id\": \"b_cal\", \"signal\": \"b\", \"state\": \"c2\", \"h\": 2},\n]\nholdout = [\n    {\"id\": \"a_hold\", \"signal\": \"a\", \"state\": \"c1\", \"h\": 1},\n    {\"id\": \"b_hold\", \"signal\": \"b\", \"state\": \"c2\", \"h\": 2},\n]\n\ndef controller(raw, state, h):\n    lim = limits[state]\n    prefix = raw[:h]\n    command = [min(max(x, -lim), lim) for x in prefix]\n    signature = tuple(x < -lim or x > lim for x in prefix)\n    return command, signature\n\ndef scales(records):\n    by_dim = {}\n    for r in records:\n        cmd, _ = controller(reference[r[\"signal\"]], r[\"state\"], r[\"h\"])\n        for j, x in enumerate(cmd):\n            by_dim.setdefault(j, []).append(x)\n    return {j: (pstdev(xs) if pstdev(xs) > 0 else 1.0)\n            for j, xs in by_dim.items()}\n\ndef evaluate(records, name, dim_scales=None):\n    if not records:\n        return {\"error\": \"empty calibration set: rates and scales undefined\"}\n    dim_scales = scales(records) if dim_scales is None else dim_scales\n    row_sq, flat_sq, row_mismatch, pooled_mismatch, total_branches = [], [], 0, 0, 0\n    raw_row_sq = []\n    for r in records:\n        ref_cmd, ref_sig = controller(reference[r[\"signal\"]], r[\"state\"], r[\"h\"])\n        cmd, sig = controller(outputs[name][r[\"signal\"]], r[\"state\"], r[\"h\"])\n        errs = [((y - x) / dim_scales[j]) ** 2\n                for j, (x, y) in enumerate(zip(ref_cmd, cmd))]\n        row_sq.append(sum(errs))\n        flat_sq.extend(errs)\n        raw_row_sq.append(sum((y - x) ** 2 for x, y in zip(ref_cmd, cmd)))\n        row_mismatch += (sig != ref_sig)\n        pooled_mismatch += sum(a != b for a, b in zip(sig, ref_sig))\n        total_branches += len(ref_sig)\n    return {\n        \"record_branch_rate\": row_mismatch / len(records),\n        \"pooled_branch_rate\": pooled_mismatch / total_branches,\n        \"rowmean_normalized_sq\": mean(row_sq),\n        \"pooled_normalized_sq\": mean(flat_sq),\n        \"raw_rowmean_sq\": mean(raw_row_sq),\n        \"scales\": {str(k): v for k, v in dim_scales.items()},\n    }\n\ndef chunk_mse(records, name):\n    return mean(mean((y - x) ** 2 for x, y in zip(reference[r[\"signal\"]], outputs[name][r[\"signal\"]]))\n                for r in records)\n\ndef coordinate_search(records, branch_key, error_key, start=\"A\"):\n    current = start\n    history = []\n    while True:\n        updated = False\n        for name in outputs:  # one quantizer coordinate; finite legal-candidate list\n            before = evaluate(records, current)\n            after = evaluate(records, name)\n            before_key = (before[branch_key], before[error_key])\n            after_key = (after[branch_key], after[error_key])\n            if after_key < before_key:  # strict lexicographic descent only\n                history.append({\"from\": current, \"to\": name, \"before\": before_key, \"after\": after_key})\n                current, updated = name, True\n        if not updated:\n            return current, history\n\nmain_scores = {n: evaluate(cal, n) for n in outputs}\nchunk_scores = {n: chunk_mse(cal, n) for n in outputs}\nselected, search_history = coordinate_search(cal, \"record_branch_rate\", \"rowmean_normalized_sq\")\nselected_pooled, pooled_history = coordinate_search(cal, \"pooled_branch_rate\", \"pooled_normalized_sq\")\nnaive = min(chunk_scores, key=chunk_scores.get)\n\n# Negative control: one random permutation draw (swap) of controller state and prefix across calibration rows.\nshuffled = [dict(r, state=cal[1-i][\"state\"], h=cal[1-i][\"h\"]) for i, r in enumerate(cal)]\nshuffled_scores = {n: evaluate(shuffled, n) for n in outputs}\nselected_shuffled, shuffled_history = coordinate_search(shuffled, \"record_branch_rate\", \"rowmean_normalized_sq\")\nselected_shuffled_pooled, shuffled_pooled_history = coordinate_search(shuffled, \"pooled_branch_rate\", \"pooled_normalized_sq\")\nholdout_before = evaluate(holdout, selected)\nholdout_after = evaluate(holdout, selected_shuffled, scales(shuffled))\n\none = evaluate(cal[:1], \"B\")\nidentical = [{\"id\": \"a1\", \"signal\": \"a\", \"state\": \"c1\", \"h\": 1},\n             {\"id\": \"a2\", \"signal\": \"a\", \"state\": \"c1\", \"h\": 1}]\nidentical_probe = evaluate(identical, \"A\")\ntie_command, tie_signature = controller([1.0, 0.0, 0.0], \"c1\", 1)\nempty_probe = evaluate([], \"A\")\n\nresult = {\n    \"illustrative_values\": {\"clip_limits\": limits, \"prefix_lengths\": [1, 2], \"configs\": list(outputs)},\n    \"reference_scales\": scales(cal),\n    \"candidate_scores\": main_scores,\n    \"full_chunk_mse\": chunk_scores,\n    \"coordinate_search_history\": search_history,\n    \"selected_candidate\": selected,\n    \"coordinate_search_history_under_pooled_reading\": pooled_history,\n    \"selected_under_pooled_reading\": selected_pooled,\n    \"independent_full_chunk_naive\": naive,\n    \"naive_executed_score\": main_scores[naive],\n    \"permuted_calibration_scores\": shuffled_scores,\n    \"permuted_search_history\": shuffled_history,\n    \"selected_after_permutation\": selected_shuffled,\n    \"permuted_search_history_under_pooled_reading\": shuffled_pooled_history,\n    \"selected_after_permutation_under_pooled_reading\": selected_shuffled_pooled,\n    \"negative_control_holdout_before\": holdout_before,\n    \"negative_control_holdout_after\": holdout_after,\n    \"single_record_probe\": one,\n    \"all_identical_reference_probe\": identical_probe,\n    \"exact_threshold_probe\": {\"command\": tie_command, \"branch_signature\": tie_signature},\n    \"empty_probe\": empty_probe,\n    \"inferences\": {\n        \"strict_descent_tie\": \"equal-score candidates are rejected; the finite one-coordinate configuration set cannot cycle under strict lexicographic decrease\",\n        \"instance_scope\": \"all config outputs and clip limits are illustrative synthetic inputs, not learned WAM outputs or evidence of task benefit\"\n    }\n}\nassert selected == selected_pooled == \"B\"\nassert naive == \"A\"\nassert selected_shuffled == selected_shuffled_pooled == \"C\"\nassert holdout_before[\"raw_rowmean_sq\"] == 0.0\nassert holdout_after[\"raw_rowmean_sq\"] > holdout_before[\"raw_rowmean_sq\"]\nassert coordinate_search(cal, \"record_branch_rate\", \"rowmean_normalized_sq\", start=\"B\")[1] == []\nprint(json.dumps(result, ensure_ascii=False, indent=2))\n",
+            "output": "{\n  \"illustrative_values\": {\n    \"clip_limits\": {\n      \"c1\": 1.0,\n      \"c2\": 3.0\n    },\n    \"prefix_lengths\": [\n      1,\n      2\n    ],\n    \"configs\": [\n      \"A\",\n      \"B\",\n      \"C\"\n    ]\n  },\n  \"reference_scales\": {\n    \"0\": 1.45,\n    \"1\": 1.0\n  },\n  \"candidate_scores\": {\n    \"A\": {\n      \"record_branch_rate\": 0.0,\n      \"pooled_branch_rate\": 0.0,\n      \"rowmean_normalized_sq\": 0.019024970273483925,\n      \"pooled_normalized_sq\": 0.012683313515655948,\n      \"raw_rowmean_sq\": 0.03999999999999995,\n      \"scales\": {\n        \"0\": 1.45,\n        \"1\": 1.0\n      }\n    },\n    \"B\": {\n      \"record_branch_rate\": 0.0,\n      \"pooled_branch_rate\": 0.0,\n      \"rowmean_normalized_sq\": 0.0,\n      \"pooled_normalized_sq\": 0.0,\n      \"raw_rowmean_sq\": 0.0,\n      \"scales\": {\n        \"0\": 1.45,\n        \"1\": 1.0\n      }\n    },\n    \"C\": {\n      \"record_branch_rate\": 0.5,\n      \"pooled_branch_rate\": 0.3333333333333333,\n      \"rowmean_normalized_sq\": 0.002401902497027353,\n      \"pooled_normalized_sq\": 0.0016012683313515687,\n      \"raw_rowmean_sq\": 0.0050500000000000085,\n      \"scales\": {\n        \"0\": 1.45,\n        \"1\": 1.0\n      }\n    }\n  },\n  \"full_chunk_mse\": {\n    \"A\": 0.013333333333333319,\n    \"B\": 2.6666666666666665,\n    \"C\": 0.015016666666666694\n  },\n  \"coordinate_search_history\": [\n    {\n      \"from\": \"A\",\n      \"to\": \"B\",\n      \"before\": [\n        0.0,\n        0.019024970273483925\n      ],\n      \"after\": [\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"selected_candidate\": \"B\",\n  \"coordinate_search_history_under_pooled_reading\": [\n    {\n      \"from\": \"A\",\n      \"to\": \"B\",\n      \"before\": [\n        0.0,\n        0.012683313515655948\n      ],\n      \"after\": [\n        0.0,\n        0.0\n      ]\n    }\n  ],\n  \"selected_under_pooled_reading\": \"B\",\n  \"independent_full_chunk_naive\": \"A\",\n  \"naive_executed_score\": {\n    \"record_branch_rate\": 0.0,\n    \"pooled_branch_rate\": 0.0,\n    \"rowmean_normalized_sq\": 0.019024970273483925,\n    \"pooled_normalized_sq\": 0.012683313515655948,\n    \"raw_rowmean_sq\": 0.03999999999999995,\n    \"scales\": {\n      \"0\": 1.45,\n      \"1\": 1.0\n    }\n  },\n  \"permuted_calibration_scores\": {\n    \"A\": {\n      \"record_branch_rate\": 0.0,\n      \"pooled_branch_rate\": 0.0,\n      \"rowmean_normalized_sq\": 0.08000000000000002,\n      \"pooled_normalized_sq\": 0.053333333333333344,\n      \"raw_rowmean_sq\": 0.020000000000000004,\n      \"scales\": {\n        \"0\": 0.5,\n        \"1\": 1.0\n      }\n    },\n    \"B\": {\n      \"record_branch_rate\": 0.5,\n      \"pooled_branch_rate\": 0.3333333333333333,\n      \"rowmean_normalized_sq\": 4.5,\n      \"pooled_normalized_sq\": 3.0,\n      \"raw_rowmean_sq\": 4.5,\n      \"scales\": {\n        \"0\": 0.5,\n        \"1\": 1.0\n      }\n    },\n    \"C\": {\n      \"record_branch_rate\": 0.0,\n      \"pooled_branch_rate\": 0.0,\n      \"rowmean_normalized_sq\": 0.0002,\n      \"pooled_normalized_sq\": 0.00013333333333333334,\n      \"raw_rowmean_sq\": 5e-05,\n      \"scales\": {\n        \"0\": 0.5,\n        \"1\": 1.0\n      }\n    }\n  },\n  \"permuted_search_history\": [\n    {\n      \"from\": \"A\",\n      \"to\": \"C\",\n      \"before\": [\n        0.0,\n        0.08000000000000002\n      ],\n      \"after\": [\n        0.0,\n        0.0002\n      ]\n    }\n  ],\n  \"selected_after_permutation\": \"C\",\n  \"permuted_search_history_under_pooled_reading\": [\n    {\n      \"from\": \"A\",\n      \"to\": \"C\",\n      \"before\": [\n        0.0,\n        0.053333333333333344\n      ],\n      \"after\": [\n        0.0,\n        0.00013333333333333334\n      ]\n    }\n  ],\n  \"selected_after_permutation_under_pooled_reading\": \"C\",\n  \"negative_control_holdout_before\": {\n    \"record_branch_rate\": 0.0,\n    \"pooled_branch_rate\": 0.0,\n    \"rowmean_normalized_sq\": 0.0,\n    \"pooled_normalized_sq\": 0.0,\n    \"raw_rowmean_sq\": 0.0,\n    \"scales\": {\n      \"0\": 1.45,\n      \"1\": 1.0\n    }\n  },\n  \"negative_control_holdout_after\": {\n    \"record_branch_rate\": 0.5,\n    \"pooled_branch_rate\": 0.3333333333333333,\n    \"rowmean_normalized_sq\": 0.020200000000000034,\n    \"pooled_normalized_sq\": 0.01346666666666669,\n    \"raw_rowmean_sq\": 0.0050500000000000085,\n    \"scales\": {\n      \"0\": 0.5,\n      \"1\": 1.0\n    }\n  },\n  \"single_record_probe\": {\n    \"record_branch_rate\": 0.0,\n    \"pooled_branch_rate\": 0.0,\n    \"rowmean_normalized_sq\": 0.0,\n    \"pooled_normalized_sq\": 0.0,\n    \"raw_rowmean_sq\": 0.0,\n    \"scales\": {\n      \"0\": 1.0\n    }\n  },\n  \"all_identical_reference_probe\": {\n    \"record_branch_rate\": 0.0,\n    \"pooled_branch_rate\": 0.0,\n    \"rowmean_normalized_sq\": 0.04000000000000001,\n    \"pooled_normalized_sq\": 0.04000000000000001,\n    \"raw_rowmean_sq\": 0.04000000000000001,\n    \"scales\": {\n      \"0\": 1.0\n    }\n  },\n  \"exact_threshold_probe\": {\n    \"command\": [\n      1.0\n    ],\n    \"branch_signature\": [\n      false\n    ]\n  },\n  \"empty_probe\": {\n    \"error\": \"empty calibration set: rates and scales undefined\"\n  },\n  \"inferences\": {\n    \"strict_descent_tie\": \"equal-score candidates are rejected; the finite one-coordinate configuration set cannot cycle under strict lexicographic decrease\",\n    \"instance_scope\": \"all config outputs and clip limits are illustrative synthetic inputs, not learned WAM outputs or evidence of task benefit\"\n  }\n}\n"
+          },
+          "computed_quantities": [
+            {
+              "quantity": "reference scales",
+              "value": "s_0=1.45; s_1=1.0 fallback",
+              "arithmetic": "population SD([0,2.9])=1.45; dimension 1 has only reference 0, so the declared zero-SD native-scale fallback is 1."
+            },
+            {
+              "quantity": "main command objective (record-mean reading)",
+              "value": "A=(0,0.01902497); B=(0,0); C=(0.5,0.00240190)",
+              "arithmetic": "A: mean[(0.2/1.45)^2,(−0.2/1.45)^2]=0.01902497; B has zero executed errors; C has one clipped branch among two records and mean normalized squared error 0.00240190."
+            },
+            {
+              "quantity": "main objective (pooled reading)",
+              "value": "A=(0,0.01268331); B=(0,0); C=(0.333333,0.00160127)",
+              "arithmetic": "Pool executed branch bits/scalar command errors; both readings select B."
+            },
+            {
+              "quantity": "full-chunk naive scores",
+              "value": "A=0.0133333; B=2.6666667; C=0.0150167; naive selects A",
+              "arithmetic": "mean over two records and 3 dimensions; B's unexecuted a suffix error contributes 4^2 while h_a=1."
+            },
+            {
+              "quantity": "strict coordinate search",
+              "value": "A→B then no update; final B",
+              "arithmetic": "candidate order A,B,C; J(B)<lex J(A), while C has nonzero first component; next sweep accepts none."
+            },
+            {
+              "quantity": "paired negative control",
+              "value": "swap calibration (c,h): A→C; original selected B, shuffled selected C",
+              "arithmetic": "shuffled calibration s_0=0.5; held-out raw row-mean squared command error 0→0.00505, branch mismatch 0→0.5; shuffled-scale normalized row-mean error 0→0.0202."
+            }
+          ],
+          "anomalies": []
+        },
+        "negative_control": {
+          "executed": true,
+          "moved_outcome": true,
+          "evidence": "按 falsification_prediction 将两个 calibration observation 的 controller state/prefix 作一次 swap，仍在原配对 held-out records 评估。校准选择从 B 切到 C；held-out raw mean squared executed-command error 从 0 变为 0.00505，record branch mismatch 从 0 变为 0.5；用各自 calibration s_j 归一化时 row-mean error 从 0 变为 0.0202。此结果是本合成实例的 instance-contingent 结果，且归一化尺度随置换从 1.45 变为 0.5；raw error 同向上升，不能据此宣称真实 WAM 控制效果。"
+        },
+        "degenerate_probes": [
+          {
+            "probe": "empty calibration set",
+            "behavior": "score undefined: record rate divides by zero and every s_j is absent; script returns an explicit undefined result. No empty-set handling is specified.",
+            "finding": "只在零条校准记录这一参数取值下不可评分；合法实验需有 records，prompt 明令不能因缺少样本数而 fault；parameter note, not blocking."
+          },
+          {
+            "probe": "k=0",
+            "behavior": "candidate declares no k/count parameter or top-k operation; not applicable.",
+            "finding": null
+          },
+          {
+            "probe": "all-identical reference commands",
+            "behavior": "s_j=0 invokes the explicitly stated native-unit fallback; objective remains finite (A error 0.04 on this two-identical-a probe).",
+            "finding": null
+          },
+          {
+            "probe": "ties exactly at controller threshold",
+            "behavior": "illustrative controller uses strict outside-limit branch; x=1 at limit emits command 1 and branch=false; score remains defined. The real evaluator's tie convention is part of the untested exact-C premise.",
+            "finding": null
+          },
+          {
+            "probe": "single calibration record",
+            "behavior": "zero SD uses native scale; score halts with finite result. An independent trajectory-held-out split cannot be demonstrated from a single trajectory, which is an evaluation-size choice, not an algorithm impossibility.",
+            "finding": null
+          },
+          {
+            "probe": "maximum allowed candidate count",
+            "behavior": "spec states no numeric maximum, only a finite backend-generated set. The one-coordinate search terminates for any finite set N; no largest N exists in the written spec to instantiate.",
+            "finding": null
+          }
+        ],
+        "claim_step_map": [
+          {
+            "claim": "将 branch mismatch 与连续 command error 词典序优化，因此不需任意权重折算。",
+            "established_by": "S6",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "有限候选集 + 严格词典序下降保证停止，但不保证 global optimum。",
+            "established_by": "S6-S7",
+            "strength_grade": "conditional",
+            "assumptions_missing": [
+              "候选配置空间固定且有限；同一固定记录/seed 对每个配置给出可重复的 objective。候选集有限和 seed 固定已写，后端分数可重复仍需兑现。"
+            ],
+            "arbitration": "proof-obligations",
+            "measured": null
+          },
+          {
+            "claim": "所有执行图 Linear 用 W4A8 且不保留 BF16 Linear side branch。",
+            "established_by": "S4",
+            "strength_grade": "conditional",
+            "assumptions_missing": [
+              "目标 backend 对所有执行 Linear 均提供合法 W4A8 kernel；候选已声明若未覆盖则不得声称完整覆盖。"
+            ],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "校准/held-out command 是固定 evaluator 的精确 controller-prefix 输出。",
+            "established_by": "S2-S3,S8",
+            "strength_grade": "empirical",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "held-out executed-command error 低于强 W4A8 baseline，且 full-chunk 排序会在 suffix/branch 条件反转。",
+            "established_by": "S6,S8",
+            "strength_grade": "empirical",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "校准 estimand 仅为 BF16 reference-trajectory fixed-input distortion，不推出闭环 success、跨 rollout fidelity 或 native latency。",
+            "established_by": "S2,S8-S9",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          },
+          {
+            "claim": "部署时移除 teacher、search、BF16 correction branch。",
+            "established_by": "S9",
+            "strength_grade": "established",
+            "assumptions_missing": [],
+            "arbitration": "argument",
+            "measured": null
+          }
+        ],
+        "naive_comparison": {
+          "declared_branch": "(i) false-premise (implicit: Block 2 frames full-chunk score as failing to distinguish executed prefix/controller branch from unused suffix; no literal (i) label is present)",
+          "naive_version": "同一 W4A8 backend、冻结权重、相同 reference records 和相同有限候选/前向预算，只按完整 chunk 的 BF16 reconstruction MSE 选候选；不计算 P_h/C_c command 或 branch signature。",
+          "naive_fairness": "Respect W4A8/frozen-backbone deployment, same calibration information, candidate set and full-model candidate evaluations; simpler scoring omits controller mapping and branch-signature composition, so it does not relax budget/information/deployment constraints.",
+          "declared_naive": {
+            "version": "Block 2 的 standard per-layer weight reconstruction / activation-range calibration，以 full-chunk MSE 选择 clipping scales。",
+            "instance_behavior": "在此有限合成候选上，full-chunk objective 选 A (0.0133333)，其 executed objective=(0,0.01902497)。",
+            "agrees_with_constructed": "yes: 两者都按 full-chunk MSE 选 A；该同向结论只对应此 synthetic instance。"
+          },
+          "instance_behavior": {
+            "naive": "A, full-chunk MSE=0.0133333; executed normalized error=0.01902497。",
+            "mechanism": "B, branch rate=0; executed normalized error=0。",
+            "divergence": "A vs B; candidate objective reduces normalized command error 0.01902497→0 on this constructed instance.",
+            "kind": "instance_contingent"
+          },
+          "naive_kind": "alternative_design",
+          "identity": "differs",
+          "verdict": "confronts_obstacle",
+          "reasoning": "On this instance, the same-budget full-chunk baseline spends its score on an unexecuted suffix and selects A, while prefix/controller scoring selects B with zero executed error. This is a constructed ranking reversal, not evidence of real WAM benefit; alternative-design verdicts are instance-contingent."
+        }
+      },
+      "contract_version": 2,
+      "base_candidate_sha256": "1888353c44fef3eae8763a30b89732211b479d117e37f6340af5fadd9fffe3d6",
+      "verdict": "findings",
+      "unrepaired": [],
+      "suggested_repairs": [
+        {
+          "kind": "wording",
+          "op": "append_sentence",
+          "field": "core_mechanism",
+          "value": "For each record, define the reference signature b_i* as the ordered tuple of controller branch flags from C_c_i(P_h_i F_BF16(o_i;xi_i)); define branch mismatch rate as mean_i 1[b_i(theta) != b_i*]. Define the finite-record continuous term as mean_i sum over executed continuous dimensions j of ((v_i(theta),j-v_i*,j)/s_j)^2, with s_j computed over calibration commands that execute dimension j and the stated native-scale fallback when s_j=0.",
+          "delta_summary": "T1 found that branch-mismatch denominator and ragged-prefix continuous-error aggregation admit record-level and pooled readings; the synthetic T2/T5 choices agreed, but the written finite-sample objective is not uniquely specified."
+        }
+      ],
+      "applied_revisions": []
+    }
+  }
+}

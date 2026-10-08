@@ -1,0 +1,2367 @@
+{
+  "title": "Student-Path Suffix QAT for World-Action Models",
+  "title_zh": "<TODO[title_zh]: Chinese translation; keep proper nouns and method acronyms in English>",
+  "method_name": "Student-Path Suffix QAT (SPS-QAT)",
+  "hook": "A W4A8 WAM can match the BF16 action at the original noise-seed endpoint yet lose control quality when its own denoising path reaches states with different suffix responses; the prediction is that student-path suffix QAT improves closed-loop completion preferentially as the measured student-visited suffix-response energy rises.",
+  "abstract_draft": "Action-generating world-action models (WAMs) can lose control quality under low-bit execution, but near-BF16 W4A8 results from SteerQuant and strong frozen-weight post-training quantization (PTQ) make it unjustified to assume quantization already fails. The unresolved question is whether training-time action-weight adaptation adds value over matched PTQ and teacher distillation when bitwidth, module scope, schedule, excluded precision, controller, and deployed kernel are fixed. We propose Student-Path Suffix QAT: for each WAM, a BF16 teacher and fake-quantized student continue the same remaining native solver suffix from the same state reached by the student, and the student suffix is trained against the teacher endpoint after native action denormalization and executed-prefix selection. Training uses a dimensionless, per-channel-scaled continuous pre-threshold command residual; the exact clipped or thresholded command is measured separately. On the public Fast-WAM Base LIBERO pilot, fixed-input action deviation, closed-loop completion, and full native action-query latency remain separate outcomes, with matched controls for original-endpoint KD, teacher-state suffix KD, and student-state per-step OPD. The falsifiable prediction is that completion gains over matched teacher KD rise with a scalar student-visited suffix-response energy, estimated from one fixed pre-QAT matched-PTQ reference. If confirmed, the study would identify when this fixed-scope training signal is worth its measured cost; transfer to shared-backbone WAMs remains a scope-labeled hypothesis.",
+  "motivation": {
+    "problem_framing": "The bottleneck is attribution: a low-bit WAM result cannot establish the value of action-path training unless parameter scope, bitwidth, denoising schedule, excluded precision, and inference accounting are matched. This matters because SteerQuant reports near-BF16 LIBERO success at W4A8 with packed weights fixed, QuantWAMs reports strong weight-frozen PTQ, and Q-WAM obtains near-BF16 control with a protected 16-bit subspace under W4A4. These results make a failure premise untenable; they leave the conditional benefit of training-time adaptation over strong PTQ and matched distillation unidentified.\n\nThe initial Fast-WAM Base instance permits an independently parameterized ActionDiT to be targeted while its approximately 5B video expert and visual cache remain BF16; the stated roughly 1B action expert yields only about 1.14x idealized total core-weight reduction when the larger video expert stays BF16. LingBot-VA and Cosmos Policy instead use shared-backbone action/video computation, so adapting their shared denoiser blocks is action-targeted shared-backbone QAT, not weight-scope action-only QAT. The proposal therefore tests one suffix-response training operator under distinct model contracts and keeps fixed-input command fidelity, closed-loop completion, and native full-query latency as separate evidence.",
+    "why_now": "Recent WAM PTQ work provides strong, concrete matched-scope baselines, while recent diffusion QAT work such as QVGen and EfficientDM shows that low-bit adaptation is technically studied in neighboring generative settings but does not establish robot-action or control fidelity. Public Fast-WAM LIBERO demonstrations, checkpoint and normalization statistics, together with released model interfaces for LingBot-VA and Cosmos Policy, make a bounded first pilot and separately scoped transfer checks formulable now; the available evidence does not establish memory fit, throughput, or a positive result.",
+    "why_prior_stopped": [
+      {
+        "paper_id": "arxiv:2609.39056v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "SteerQuant maps layer, solver-step, and stream quantization errors to downstream action sensitivity, then calibrates shared weight and stream/timestep activation scales while keeping packed weights fixed.",
+        "what_they_did_not_do": "It does not compare training-time action-weight adaptation against matched branch-free W4A8 PTQ and teacher distillation at the same module scope and deployed arithmetic.",
+        "structural_reason_they_stopped": "Its reported mechanism is PTQ calibration with fixed packed weights, so an equal-scope trainable-weight comparison is outside the measured procedure."
+      },
+      {
+        "paper_id": "arxiv:2607.28405v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "QuantWAMs aligns PTQ grouping, objective, calibration distribution, and fixed-intervention rollout auditing with WAM structure while retaining pretrained weights.",
+        "what_they_did_not_do": "It does not identify whether action-path adaptation improves outcomes over an equal-scope, matched-cost training comparison.",
+        "structural_reason_they_stopped": "The method calibrates a frozen pretrained model, so its procedure does not update weights to test the incremental QAT effect."
+      },
+      {
+        "paper_id": "arxiv:2609.33269v1",
+        "venue_year": "arXiv 2026",
+        "what_they_did": "Q-WAM protects an action-sensitive subspace in a 16-bit low-rank branch while quantizing the complement to W4A4.",
+        "what_they_did_not_do": "It does not measure a branch-free W4A8 action-targeted QAT contract against matched PTQ and distillation.",
+        "structural_reason_they_stopped": "Its precision allocation and protected branch define a different mechanism and deployment scope from matched branch-free W4A8 weight adaptation."
+      },
+      {
+        "paper_id": "arxiv:2505.11497v5",
+        "venue_year": "arXiv 2025",
+        "what_they_did": "QVGen uses trainable error-compensation auxiliaries and rank decay to stabilize low-bit video-diffusion generation.",
+        "what_they_did_not_do": "Its reported evidence does not establish denormalized robot-action fidelity or closed-loop WAM control.",
+        "structural_reason_they_stopped": "The evaluated objective and outcomes concern video generation and do not include a WAM controller-facing action map or control measurement."
+      },
+      {
+        "paper_id": "arxiv:2310.03270v4",
+        "venue_year": "arXiv 2023",
+        "what_they_did": "EfficientDM combines quantization-aware low-rank updates with teacher denoising-output matching for low-bit image diffusion.",
+        "what_they_did_not_do": "It does not construct a WAM-native suffix endpoint in denormalized executed-action coordinates or establish closed-loop action fidelity.",
+        "structural_reason_they_stopped": "Its image-diffusion task does not provide the robot action normalization, executed-prefix, and controller outcomes needed to identify this WAM-specific question."
+      }
+    ],
+    "what_changes_when_gap_closes": "A positive, matched result would identify when updating a fixed W4A8 action-targeted parameter scope adds closed-loop value over strong frozen-weight PTQ and teacher-state distillation, rather than attributing the result to a changed precision or inference contract. Separate Fast-WAM and shared-backbone results would show where that conclusion transfers; fixed-input fidelity or lower action-block time alone would not establish the same capability."
+  },
+  "core_claim": "Under a fixed branch-free W4A8 model-specific deployment scope, training a quantized WAM student on a BF16 teacher's full remaining-suffix endpoint from the student's own solver state may improve closed-loop completion over matched teacher-state KD, with any association to visit-energy remaining an empirical prediction.",
+  "sub_claims": [
+    {
+      "id": "c1",
+      "statement": "The proposed comparison fixes each WAM's matched W4A8 module set, native solver schedule, non-target precision, action interface, and kernel contract so the incremental effect of weight adaptation is identifiable against frozen-weight PTQ.",
+      "supports_which_aspect": "The bottleneck is attribution under matched precision, parameter scope, solver, and inference accounting."
+    },
+    {
+      "id": "c2",
+      "statement": "The proposed training target is the BF16 teacher's complete remaining native suffix endpoint from the exact state reached by the quantized student, mapped through native denormalization and executed-prefix selection.",
+      "supports_which_aspect": "The candidate's proposed student-visited full-suffix endpoint operator."
+    },
+    {
+      "id": "c3",
+      "statement": "Fixed-input command deviation, closed-loop completion, and full native action-query latency are separate outcomes; shared-backbone results are action-targeted shared-backbone QAT rather than weight-scope action-only QAT.",
+      "supports_which_aspect": "The evidence hierarchy and architecture-specific parameter-scope boundary."
+    }
+  ],
+  "key_equations": [
+    {
+      "id": "eq1",
+      "linked_step_id": "S3",
+      "latex": "\\delta^{\\mathrm{PTQ-ref}}_{m,k,u,j}=\\left[E_m\\!\\left(D_m\\!\\left(S[Q_{\\mathrm{ref}}|Q_{\\mathrm{ref}},m,k](x_{Q_{\\mathrm{ref}},m,k},c,\\eta_{>k})\\right)\\right)-E_m\\!\\left(D_m\\!\\left(S[\\mathrm{BF16}|Q_{\\mathrm{ref}},m,k](x_{Q_{\\mathrm{ref}},m,k},c,\\eta_{>k})\\right)\\right)\\right]_{u,j}",
+      "description": "The visit-response difference is measured after the native action map and exact executed-prefix selector, using the same remaining innovations from a state reached by a fixed matched W4A8 PTQ reference student.",
+      "description_zh": "在同一学生到达状态和后续 solver innovations 下，分别运行 PTQ student 与 BF16 teacher 的剩余 suffix，再经原生动作映射和 executed-prefix 选择得到逐时刻、逐通道差值。"
+    },
+    {
+      "id": "eq2",
+      "linked_step_id": "S4",
+      "latex": "\\mathcal{L}_{\\mathrm{train},m}=\\mathbb{E}_{c,z,\\eta,k}\\!\\left[\\frac{1}{T_{\\mathrm{exec},m}|J_m|}\\sum_{u=1}^{T_{\\mathrm{exec},m}}\\sum_{j\\in J_m}\\left(\\frac{\\tilde y_{Q|Q,m,k,u,j}-\\tilde y_{\\mathrm{BF16}|Q,m,k,u,j}}{s_{m,j}}\\right)^2\\right]",
+      "description": "The student suffix is trained on the dimensionless mean squared continuous pre-threshold command residual across every native executed-prefix time step and selected action channel; only the student suffix receives gradient.",
+      "description_zh": "训练损失对完整 native executed prefix 的所有时刻和选中动作通道取均值，并按固定的模型/控制器通道尺度归一化；梯度只回传至 student suffix。"
+    },
+    {
+      "id": "eq3",
+      "linked_step_id": "S6",
+      "latex": "\\mathcal{V}^{\\mathrm{PTQ-ref}}_{\\mathrm{visit},m}=\\mathbb{E}_{c\\sim\\mathcal{D}^{\\mathrm{eval}}_m,z,\\eta,k\\sim\\operatorname{Unif}(K_m)}\\!\\left[\\frac{1}{T_{\\mathrm{exec},m}|J_m|}\\sum_{u=1}^{T_{\\mathrm{exec},m}}\\sum_{j\\in J_m}\\left(\\frac{\\delta^{\\mathrm{PTQ-ref}}_{m,k,u,j}}{s_{m,j}}\\right)^2\\right]",
+      "description": "Phase4 supplement: reduce the exact executed-command response over the full native time-by-channel prefix to one scalar, estimated only from a fixed pre-QAT matched-PTQ checkpoint for every arm; this definition is not a passed post_revision gate.",
+      "description_zh": "Phase4 补充定义：将 exact executed-command response 对完整 native 时间步与动作通道前缀求均值，形成标量；所有对照臂都使用同一个 QAT 前 matched-PTQ checkpoint 估计。本定义不代表 post_revision gate 已通过。"
+    }
+  ],
+  "method_flow": {
+    "high_level_pipeline": "First record each model's BF16 reference, exact matched branch-free W4A8 module scope, native solver, action maps, prefix selector, and deployment contract. Generate the fake-quant student path from the model's existing LIBERO training episodes and native noise, then sample a native active solver state and restart both the BF16 teacher and student through the same remaining suffix. Train only the student's declared quantized weights with a dimensionless, per-channel-scaled continuous pre-threshold endpoint residual, while separately reporting exact executed-command differences. Compare against matched PTQ and distillation controls, then report fixed-input deviation, closed-loop completion, and full native action-query latency separately before attempting scope-labeled shared-backbone transfer.",
+    "steps": [
+      {
+        "step_id": "S1",
+        "title": "Record each model contract",
+        "what_changes": "For Fast-WAM Base, released shared-backbone LingBot-VA, and Cosmos Policy's LIBERO model, record the BF16 reference, native schedule, action normalization/denormalization maps D_m, executed-prefix selector E_m, exact matched branch-free W4A8 module set Q_m, and precision/kernel contract; designate only existing trainable weights theta_m in Q_m. Fast-WAM's independent ActionDiT is a weight-scope action-only target, whereas shared denoiser blocks in the other two models must be labeled action-targeted shared-backbone scope.",
+        "why_this_step": "A comparison cannot identify the incremental value of adaptation if module scope, non-target precision, schedule, or deployed arithmetic changes across arms.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "The named BF16 checkpoints, model-specific LIBERO interfaces, native solver and action/controller contracts.",
+        "output": "A model-specific scope manifest, fixed comparison contract, and theta_m subset."
+      },
+      {
+        "step_id": "S2",
+        "title": "Generate the quantized student path",
+        "what_changes": "Split each named LIBERO dataset by episode, sample training contexts c only from its training episodes, draw initial noise z and solver innovations eta from that model's native inference distribution, and run the fake-quant student through its native schedule to record the required evolving states x_Q[m,k] for active indices K_m. The state contains action latents for Fast-WAM and coupled video/action state for shared models.",
+        "why_this_step": "The target is conditioned on states the quantized model itself reaches, while the fixed context/noise protocol preserves paired comparisons and does not claim to model environment observations after executed actions.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Scope manifest, training-episode split, c, z, eta, and fake-quantized model.",
+        "output": "Student-path states x_Q[m,k] over the active native solver indices."
+      },
+      {
+        "step_id": "S3",
+        "title": "Pair the remaining suffixes",
+        "what_changes": "Sample k uniformly from K_m, detach x_Q[m,k], and restart both the BF16 teacher and fake-quant student from that identical state with the same c and remaining native innovations eta_after_k; apply each unchanged full remaining suffix S[b,m,k] and retain both endpoint action chunks.",
+        "why_this_step": "This is the candidate's load-bearing operator: compare suffix response from a state reached by the student, rather than only comparing teacher and student at their original noise-seed endpoints or at teacher-visited states.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Detached x_Q[m,k], c, remaining innovations, BF16 reference, and fake-quant student.",
+        "output": "Paired BF16 and student suffix endpoint action chunks from the same student-visited state."
+      },
+      {
+        "step_id": "S4",
+        "title": "Train on the scaled action endpoint",
+        "what_changes": "Apply D_m and E_m to each endpoint up to any hard clip or gripper threshold to obtain continuous pre-threshold commands; when gripper thresholding exists, use its continuous pre-threshold signal for gradients. Scale every selected channel j in J_m by its existing positive model/controller scale s[m,j], fixed across arms, average the squared residual across all T_exec,m native prefix steps and J_m channels, and backpropagate only through the student suffix into theta_m. Separately report exact clipped/thresholded executed-command deviation per channel in native units; keep quantizer scales, schedule, excluded precision, and action interface fixed. The training residual or any required STE is a gradient-bearing surrogate related to, but not identical to, the exact physical-command metric.",
+        "why_this_step": "Native denormalization and prefix selection place the target in controller-facing coordinates; temporal and per-channel averaging makes the training signal a scalar without pretending the differentiable surrogate equals the executed command.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "Paired suffix outputs, D_m, E_m, J_m, s[m,j], and the differentiable student suffix.",
+        "output": "Scalar L_train,m, student-suffix gradient and updated theta_m, plus separately measured exact command deviations."
+      },
+      {
+        "step_id": "S5",
+        "title": "Match training controls and accounting",
+        "what_changes": "Compare the candidate with ordinary action-only QAT plus teacher KD, matched branch-free W4A8 PTQ, original-noise-seed endpoint KD, teacher-state suffix KD restarted from x_FP[m,k], and student-state per-step OPD at x_Q[m,k]. Count vanilla action-only QAT plus teacher KD and teacher KD at teacher states as one arm whenever targets and objectives are identical. Match total measured training GPU-time or, when matching solver work, total teacher and student NFE; keep model-specific episode splits, scope, contexts, and paired noise/solver-index draws aligned, and report teacher/student NFEs, GPU-time, examples, unique-context and repeated exposure, optimizer updates, and teacher-suffix work. For a shared-backbone per-step OPD comparison, mask loss to controller-selected action channels and native prefix steps with no video-output loss, and label it action-targeted shared-backbone training; any video-plus-action objective is a separately named scope and cost.",
+        "why_this_step": "The matched controls isolate whether the paired full-suffix endpoint target adds value beyond QAT, ordinary endpoint KD, teacher-state suffix KD, and student-state per-step supervision while making teacher-paid work visible.",
+        "linked_component": "engineering",
+        "linked_falsification": "mechanism_distinguisher",
+        "input": "Candidate training signal, fixed data/scope protocol, runnable PTQ comparator, and explicit KD/OPD controls.",
+        "output": "Matched-cost control results with teacher/student work, context exposure, and update counts reported."
+      },
+      {
+        "step_id": "S6",
+        "title": "Separate fidelity, control, and latency outcomes",
+        "what_changes": "On held-out fixed contexts and paired noise, measure exact denormalized executed-action deviation separately from LIBERO closed-loop completion; then measure full native W4A8 action-query latency without a teacher, including video/context prefill. Compute the visit-energy diagnostic over the entire native prefix time-by-channel tensor as a scalar using the same fixed pre-QAT matched-PTQ reference checkpoint in every arm; this Phase4 supplement clarifies estimator definition and provenance only, and is not a passed post_revision gate. Report measured action-time share and use Amdahl's law for any whole-query speed inference; do not turn an action-layer 4x storage reduction into a whole-WAM 4x compression or speed claim.",
+        "why_this_step": "Fixed-input action fidelity, closed-loop success, and deployed latency answer different questions; the association between the visit-energy scalar and completion benefit remains an empirical prediction.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "Held-out contexts, paired noise, evaluation episodes, fixed PTQ reference estimator, and declared native W4A8 kernel.",
+        "output": "Separate action deviation, LIBERO completion, full action-query latency, and scalar visit-energy measurements with scoped claims."
+      },
+      {
+        "step_id": "S7",
+        "title": "Test transfer under shared-backbone contracts",
+        "what_changes": "Attempt separate transfer checks on released shared-backbone LingBot-VA and Cosmos Policy only under their native scope contracts; record that updating shared denoiser blocks changes video and action computation, retain the action-only output mask for action-targeted controls, and do not pool their results with Fast-WAM or call shared weights weight-scope action-only.",
+        "why_this_step": "The user-specified extension tests whether the operator applies beyond Fast-WAM while respecting that the target models do not expose the same independent action-weight subset.",
+        "linked_component": "engineering",
+        "linked_falsification": "metric_specification",
+        "input": "Released shared-backbone checkpoints, model-specific action interfaces, and the scope-labeled transfer protocol.",
+        "output": "Separate transfer outcomes and a bounded statement of which architecture contracts were evaluated."
+      }
+    ],
+    "design_reasoning_echo": "The design tests one unresolved contrast: whether a low-bit WAM needs weight adaptation once the quantized solver leaves the BF16 path, beyond what strong fixed-weight PTQ and matched teacher distillation provide. Its proposed signal compares complete teacher and student suffix responses from the same quantized-student state in controller-facing action coordinates, while keeping the solver and deployment contract fixed. This is incremental method work; fake quantization, on-policy student-state supervision, action masking, channel scaling, and teacher distillation are not claimed as novel by themselves. The full-suffix endpoint remains a plausible structural delta against low-bit on-policy distillation, DiffusionOPD, AnyFlow, and DiffusionOPSD, not an established novelty result. The supplied scalar operator counterexample also shows that reducing suffix loss can worsen original-endpoint error when solver errors compensate, so the method predicts an empirical closed-loop association and retains direct original-endpoint KD and per-step OPD controls rather than treating internal mismatch as a control defect."
+  },
+  "plain_motivation_en": "<TODO[plain_motivation_en]: plain-language English rendering of motivation for a reader outside this subfield. Simplify LANGUAGE only — never drop the load-bearing mechanism. Spell out every abbreviation on first use.>",
+  "plain_motivation_zh": "<TODO[plain_motivation_zh]: Chinese 普通版 counterpart. Same content; keep identifiers/symbols/acronyms in English.>",
+  "plain_method_steps_en": "<TODO[plain_method_steps_en]: list of {step_id, what_to_do, why_this_makes_sense}; SAME step_ids and SAME order as method_flow.steps.>",
+  "plain_method_steps_zh": "<TODO[plain_method_steps_zh]: Chinese 普通版 counterpart; English for identifiers/symbols/acronyms.>",
+  "plain_method_modules_en": "<TODO[plain_method_modules_en]: group the CONTRIBUTION steps into named modules; list of {module_id, purpose_oneline, step_ids}.>",
+  "plain_method_modules_zh": "<TODO[plain_method_modules_zh]: Chinese 普通版 counterpart.>",
+  "falsification_prediction": "On the Fast-WAM Base pilot with public LIBERO-fastwam train/evaluation episodes, compare BF16, matched branch-free W4A8 PTQ, ordinary action-only QAT, teacher KD at teacher states, and student-path suffix QAT while holding model, data split, schedule, chunk, controller, normalization and kernel path fixed. Measure fixed-input denormalized executed-action deviation, LIBERO closed-loop completion, and native full action-query latency as separate outcomes; the candidate predicts its completion gain over matched teacher KD increases with task-level V_visit rank, while low-V_visit tasks show little gain. As a mechanism control, permute BF16 suffix endpoints among quantized student states matched by model and solver index while preserving their marginal endpoint distribution; the predicted downstream effect is loss of the candidate's closed-loop completion gain and disappearance of the V_visit-linked gain pattern, not merely a change in V_visit itself. No teacher is used at evaluation, and transfer to shared-backbone LingBot-VA/Cosmos Policy is a separate scope-labeled falsification rather than a pooled success claim. Add matched-measured-compute controls for explicit vanilla QAT plus teacher KD, ordinary original-noise-seed endpoint KD, teacher-state suffix KD restarted from teacher-visited x_FP[m,k], and student-state per-step OPD at x_Q[m,k], matching measured teacher-query and suffix work across arms under the same contexts and paired noise/solver-index draws; a completion gain beyond these controls is the evidence relevant to the paired full-suffix endpoint target.",
+  "compute_budget": "GPU-days cannot be estimated from the supplied facts because campaign hours, samples per second, and suffix-training throughput are unmeasured; cap is at most 4 separate A100-SXM4-40GB devices, not pooled VRAM. First measure peak memory and per-example throughput for the Fast-WAM suffix pilot, including teacher and student suffixes, then bound any transfer campaign before authorization. No paid API is used (US$0); this formulation submits no job.",
+  "almost_prior_paper_id": "arxiv:2609.26708",
+  "almost_prior_venue_year": "",
+  "what_step_was_missed": "The proposed WAM-specific step is to start a BF16 teacher suffix from the exact quantized student's intermediate solver state and form its target after the model's native action denormalization and executed-prefix selector; the available title-level collision lead does not establish whether the low-bit reasoning method already contains this construction, so this is a provisional missing-step statement, not a novelty verdict.",
+  "feasibility_validation": {
+    "compute": {
+      "verdict": "unknown",
+      "rationale": "Awaiting current-version resource assessment"
+    },
+    "data": {
+      "verdict": "feasible",
+      "rationale": "The initial public Fast-WAM LIBERO demonstrations, checkpoint and paired normalization statistics are identified in the supplied inputs, with public LingBot-VA and Cosmos Policy data/interfaces named for separately scoped transfer."
+    },
+    "theoretical": {
+      "verdict": "n/a",
+      "rationale": "The proposal makes no theorem or proof claim; its contribution is an empirical mechanism and matched falsification comparison."
+    },
+    "engineering": {
+      "verdict": "tight",
+      "rationale": "Suffix QAT needs student and teacher denoising paths, action-context prefill, backward activations, and a deployable native W4A8 kernel; the ceiling is at most four separate A100-SXM4-40GB devices, not pooled VRAM, while QAT peak memory and throughput are unmeasured and shared-backbone transfer may require additional model state, so first bound per-example memory/throughput and report action-time share before any whole-query Amdahl inference."
+    },
+    "falsification": {
+      "verdict": "tight",
+      "rationale": "The Fast-WAM LIBERO controls, paired suffix intervention, exact executed-command metric, separate closed-loop outcome, and native latency measurement are specified, but end-to-end QAT, matched teacher/suffix cost, and native-kernel availability have not been demonstrated."
+    },
+    "overall": "tight"
+  },
+  "differentiation_from_lit": [
+    {
+      "paper_id": "arxiv:2609.39056v1",
+      "venue_year": "arXiv 2026",
+      "delta": "SteerQuant maps downstream action sensitivity to calibration scales with packed weights fixed and a map based on full-precision inputs; this candidate instead updates matched W4A8 weights against teacher suffix endpoints started from quantized-student states."
+    },
+    {
+      "paper_id": "arxiv:2607.28405v1",
+      "venue_year": "arXiv 2026",
+      "delta": "QuantWAMs aligns PTQ calibration and fixed-intervention rollout audits while retaining pretrained weights; this candidate's load-bearing object is a trainable action endpoint suffix target evaluated at a quantized-student state."
+    },
+    {
+      "paper_id": "arxiv:2609.33269v1",
+      "venue_year": "arXiv 2026",
+      "delta": "Q-WAM protects an action-sensitive subspace in a 16-bit branch under W4A4; this candidate proposes no protected branch and holds a branch-free W4A8 scope fixed while adapting existing weights, so their precision regimes are not directly comparable."
+    },
+    {
+      "paper_id": "arxiv:2310.03270v4",
+      "venue_year": "arXiv 2023",
+      "delta": "EfficientDM uses mergeable quantization-aware low-rank updates and teacher denoising-output matching for image diffusion; this candidate constructs teacher/student suffix endpoints in denormalized robot-action coordinates from quantized-student states."
+    },
+    {
+      "paper_id": "arxiv:2505.11497v5",
+      "venue_year": "arXiv 2025",
+      "delta": "QVGen uses trainable video-diffusion error-compensation auxiliaries and rank decay for video quality; this candidate adds no inference auxiliary and targets the WAM's controller-executed action endpoint, without inferring control gains from video quality."
+    },
+    {
+      "paper_id": "arxiv:2608.24646v1",
+      "venue_year": "arXiv 2026-08",
+      "delta": "The Phase 0 table describes image-level reward guidance for diffusion self-distillation; abstract-only evidence does not establish whether its behavior-state clean-endpoint anchors overlap with the candidate's teacher suffix endpoint from a quantized-student state."
+    },
+    {
+      "paper_id": "arxiv:2609.26708",
+      "venue_year": "",
+      "delta": "The supplied title identifies low-bit on-policy distillation for reasoning; the candidate's proposed additional construction is a model-native WAM solver suffix target ending in denormalized executed actions, but the overlap remains open pending method-level comparison."
+    }
+  ],
+  "reviewer_concerns_and_responses": [
+    {
+      "attack": "Paper-pointed threat: arxiv:2609.26708v1 (collision_hits). Train Where the Quantized Model Goes establishes that low-bit students can need frozen-teacher supervision on their own quantized prefixes, so student-visited supervision itself is not novel. It does not use a WAM solver's full remaining suffix endpoint in executed-action coordinates; the candidate's narrow paired suffix-response operator remains an open hypothesis. DiffusionOPD (arxiv:2605.15055v2) uses per-step same-state transition KL (direct L2 in its deterministic regime); AnyFlow (arxiv:2605.13724v1) uses flow-map backward simulation with DMD; DiffusionOPSD (arxiv:2608.24646v1) fits reward-derived clean-output anchors at behavior-policy query states. Their operators and targets are adjacent, not identical. The suffix rebase is an on-policy state choice, fake quantization is standard QAT, and controller-prefix masking and physical-unit scaling are task adaptation; only the full-suffix endpoint operator is a plausible structural delta. If D_m or E_m contains hard gripper thresholding/clipping, train with a per-channel-scaled continuous pre-threshold command residual (and a continuous gripper signal) for gradients, while separately reporting the exact executed-command metric; that surrogate, including STE, is not the identical physical-command objective. DiffusionOPSD is already in Phase 0. Collision retrieval returned arXiv, OpenAlex and OpenReview results, but no Semantic Scholar files after its bounded window, so this is not exhaustive novelty coverage.",
+      "severity": "non_blocking",
+      "response": "The core_mechanism and S3–S4 define only the paired full-remaining-suffix endpoint from an exact student-visited state as a plausible structural delta: Train Where the Quantized Model Goes already covers low-bit on-policy teacher guidance, DiffusionOPD uses student-state per-step transition supervision, AnyFlow uses on-policy flow-map backward simulation/DMD, and DiffusionOPSD anchors reward-derived clean outputs at behavior-policy query states; generic QAT, suffix rebasing, controller masking, and channel scaling are not presented as novelty. The Phase 3.2 verdict_rationale's scalar example shows suffix loss can decrease while original-endpoint error increases, so the falsification_prediction retains matched original-endpoint KD, teacher-state suffix KD, and student-state per-step OPD controls, and neither novelty nor a control gain is established. The Phase4 supplement defines V_visit as a full-prefix time-by-channel scalar from one fixed pre-QAT matched-PTQ reference across arms, but this authoring clarification does not pass the recorded post_revision F1 gate or change the needs_work / FAILED VALIDATION lineage.",
+      "fields_changed_to_address": [
+        "core_mechanism",
+        "core_mechanism_steps"
+      ]
+    }
+  ],
+  "domain_landscape": {
+    "n_papers": 86,
+    "pattern_distribution": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "count": 2,
+        "share": 0.02,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "count": 18,
+        "share": 0.21,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "count": 7,
+        "share": 0.08,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "count": 16,
+        "share": 0.19,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "count": 26,
+        "share": 0.3,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "count": 4,
+        "share": 0.05,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "count": 5,
+        "share": 0.06,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "count": 12,
+        "share": 0.14,
+        "saturation_band": "mid_frequency"
+      },
+      {
+        "pattern_id": "targeted_self_supervised_objective",
+        "count": 1,
+        "share": 0.01,
+        "saturation_band": "untested"
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "count": 23,
+        "share": 0.27,
+        "saturation_band": "mid_frequency"
+      }
+    ],
+    "candidate_uses": [
+      {
+        "pattern_id": "generative_process_redesign",
+        "role": "closes Gap 1",
+        "sub_pattern_id": "C24 (Liberate a Fixed Generative Component)",
+        "saturation_in_domain": "unknown"
+      }
+    ],
+    "position_note": "The candidate uses generative_process_redesign, a mid-frequency pattern in the Phase 0 landscape, by changing the operating state for teacher suffix supervision; it does not claim that the pattern or student-state supervision is novel, and the hypothesized full-suffix endpoint difference remains to be tested."
+  },
+  "literature_breakdown": {
+    "summary": {
+      "n_phase0_total": 100,
+      "n_phase0_on_topic": 86,
+      "n_phase0_outside_taxonomy": 14,
+      "n_phase3_collision": 240
+    },
+    "phase0_by_pattern": [
+      {
+        "pattern_id": "adapt_via_conditioning",
+        "pattern_name": "Adapt by Conditioning, Not Retraining",
+        "papers": [
+          {
+            "paper_id": "openalex:W7134987129",
+            "title": "See, Plan, Rewind: Progress-Aware Vision-Language-Action Models for Robust Robotic Manipulation",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Robust manipulation requires explicit progress tracking, verifiable milestones, and recovery when progress stalls."
+          }
+        ]
+      },
+      {
+        "pattern_id": "adapt_via_conditioning, decompose_and_delegate",
+        "pattern_name": "adapt_via_conditioning, decompose_and_delegate",
+        "papers": [
+          {
+            "paper_id": "arxiv:2606.22729v1",
+            "title": "Temporal Logic Guidance for Action-Only Diffusion Policies with World Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Action-only diffusion policy 在推理时缺少按用户意图选择行为模式的能力。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution",
+        "pattern_name": "Substitute the Operator or Representation",
+        "papers": [
+          {
+            "paper_id": "openalex:W4416353988",
+            "title": "Freeze, Share, Shrink: Rethinking the Action Backbone in Diffusion Policies",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Large diffusion-policy backbones incur high compute despite short, low-dimensional action targets."
+          },
+          {
+            "paper_id": "openalex:W4416891949",
+            "title": "VQ-VLA: Improving Vision-Language-Action Models via Scaling Vector-Quantized Action Tokenizers",
+            "venue_year": "arXiv 2025-10",
+            "bottleneck_targeted": "Action tokenization must capture spatiotemporal dynamics while enabling efficient inference and coherent outputs."
+          },
+          {
+            "paper_id": "arxiv:2310.03270v4",
+            "title": "EfficientDM: Efficient Quantization-Aware Fine-Tuning of Low-Bit Diffusion Models",
+            "venue_year": "arXiv 2023",
+            "bottleneck_targeted": "Low-bit PTQ can degrade quality, while QAT demands substantial compute and data."
+          },
+          {
+            "paper_id": "arxiv:2505.11497v5",
+            "title": "QVGen: Pushing the Limit of Quantized Video Generative Models",
+            "venue_year": "arXiv 2025",
+            "bottleneck_targeted": "Direct quantization of video diffusion models remains ineffective at very low bit widths."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, controlled_diagnostic_design",
+        "pattern_name": "architectural_operator_substitution, controlled_diagnostic_design",
+        "papers": [
+          {
+            "paper_id": "arxiv:2603.16666v2",
+            "title": "Fast-WAM: Do World Action Models Need Test-time Future Imagination?",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Iterative video denoising adds substantial test-time WAM latency."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, generative_process_redesign",
+        "pattern_name": "architectural_operator_substitution, generative_process_redesign",
+        "papers": [
+          {
+            "paper_id": "openalex:W7133232670",
+            "title": "SenCache: Accelerating Diffusion Model Inference via Sensitivity-Aware Caching",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Sequential denoising is costly, while heuristic caching rules require extensive tuning."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, heterogeneous_decomposition",
+        "pattern_name": "architectural_operator_substitution, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "openalex:W7131410930",
+            "title": "QuantVLA: Scale-Calibrated Post-Training Quantization for Vision-Language-Action Models",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "VLA deployment is constrained by growing compute and memory demands."
+          },
+          {
+            "paper_id": "openalex:W7133338605",
+            "title": "LAD-Drive: Bridging Language and Trajectory with Action-Aware Diffusion Transformers",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Discrete language semantics must be translated into continuous trajectories without losing multimodal intent uncertainty."
+          },
+          {
+            "paper_id": "openalex:W4417129616",
+            "title": "BitVLA: 1-bit Vision-Language-Action Models for Robotics Manipulation",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Large VLA model size limits deployment on edge devices with constrained memory."
+          },
+          {
+            "paper_id": "arxiv:2606.05254v1",
+            "title": "Flash-WAM: Modality-Aware Distillation for World Action Models",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Tens of denoising steps hinder real-time control, while single-modality distillation mismatches video and action noise regimes."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, reframe_as_solvable_object",
+        "pattern_name": "architectural_operator_substitution, reframe_as_solvable_object",
+        "papers": [
+          {
+            "paper_id": "openalex:W4415978432",
+            "title": "Diffusion policies for offline reinforcement learning",
+            "venue_year": "arXiv 2025-01",
+            "bottleneck_targeted": "Offline data is suboptimal and sparse, making out-of-distribution action values overoptimistic while simple policies miss multimodal behavior."
+          }
+        ]
+      },
+      {
+        "pattern_id": "architectural_operator_substitution, structural_prior_encoding",
+        "pattern_name": "architectural_operator_substitution, structural_prior_encoding",
+        "papers": [
+          {
+            "paper_id": "openalex:W4417063360",
+            "title": "LLaDA-VLA: Vision Language Diffusion Action Models",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Adapting pretrained diffusion language models to robot policy learning remains underexplored and difficult."
+          }
+        ]
+      },
+      {
+        "pattern_id": "assumption_audit_and_pivot",
+        "pattern_name": "Audit and Pivot an Assumption",
+        "papers": [
+          {
+            "paper_id": "openalex:W7197040356",
+            "title": "Information Theoretic Learning for Diffusion Models with Warm Start",
+            "venue_year": "arXiv 2025-01",
+            "bottleneck_targeted": "噪声驱动生成模型的似然学习收敛慢且理论刻画有限，既有 KL–Fisher 关系通常依赖 Gaussian 噪声。"
+          },
+          {
+            "paper_id": "arxiv:2606.00798v2",
+            "title": "DASH: Dual-Branch Score Distillation for Guidance-Calibrated Compact Diffusion Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "仅监督 CFG 合成输出无法识别 conditional 与 unconditional 两个分支，可能使 guidance 失效。"
+          },
+          {
+            "paper_id": "arxiv:2607.07763v1",
+            "title": "Unlocking Temporal Generalization in Hamiltonian Video Dynamics Models",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "HGN 在训练范围外的时间步长及受迫耗散环境中会因动作力映射和积分误差失稳。"
+          },
+          {
+            "paper_id": "arxiv:2606.20416v2",
+            "title": "On the Redundancy of Timestep Embeddings in Diffusion Models",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "Diffusion 模型通常显式使用 timestep embedding，但该信号在特定条件下可能冗余。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "controlled_diagnostic_design",
+        "pattern_name": "Design a Confound-Isolating Diagnostic",
+        "papers": [
+          {
+            "paper_id": "arxiv:2609.07470v1",
+            "title": "Measuring Language Transfer in Robot Policies: Adding Greek to a Cosmos3 Vision-Language-Action Policy",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "单一目标、表面度量、训练损失和单次运行可能把噪声误判为低资源语言迁移。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate",
+        "pattern_name": "Decompose and Delegate to Solvers",
+        "papers": [
+          {
+            "paper_id": "openalex:W7139932704",
+            "title": "Action Draft and Verify: A Self-Verifying Framework for Vision-Language-Action Model",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Diffusion action experts generate quickly but autoregressive models provide complementary priors for robustness and generalization."
+          },
+          {
+            "paper_id": "arxiv:2606.19980v2",
+            "title": "ENPIRE: Agentic Robot Policy Self-Improvement in the Real World",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "真实机器人策略改进依赖大量人工监督和算法工程，难以自动化迭代。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate, heterogeneous_decomposition",
+        "pattern_name": "decompose_and_delegate, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "openalex:W7134810179",
+            "title": "HybridStitch: Pixel and Timestep Level Model Stitching for Diffusion Acceleration",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Large text-to-image diffusion models incur substantial compute, and existing small-model replacement methods ignore within-timestep variation."
+          }
+        ]
+      },
+      {
+        "pattern_id": "decompose_and_delegate, self_supervised_signal_engineering",
+        "pattern_name": "decompose_and_delegate, self_supervised_signal_engineering",
+        "papers": [
+          {
+            "paper_id": "openalex:W7134836873",
+            "title": "SPIRAL: Self-Evolving Action-Conditioned Video Generation via Reflective Planning Agents",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Open-loop single-shot generation can omit actions, hallucinate motion, and drift over long horizons."
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign",
+        "pattern_name": "Liberate a Fixed Generative Component",
+        "papers": [
+          {
+            "paper_id": "openalex:W4404717804",
+            "title": "AVID: Adapting Video Diffusion Models to World Models",
+            "venue_year": "Qeios 2024",
+            "bottleneck_targeted": "Action-labelled data is scarce, and pretrained video models are not action-conditioned or may be closed-source and unmodifiable."
+          },
+          {
+            "paper_id": "openalex:W4415023877",
+            "title": "Vid2World: Crafting Video Diffusion Models to Interactive World Models",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "World models often require extensive domain-specific training and produce coarse, low-fidelity predictions."
+          },
+          {
+            "paper_id": "arxiv:2606.15389v1",
+            "title": "Timestep Rescheduling in Diffusion Inversion",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "固定 timestep 选择会影响 DDIM inversion 误差，但既有方法较少利用这种依赖。"
+          },
+          {
+            "paper_id": "arxiv:2605.12236v2",
+            "title": "TMRL: Diffusion Timestep-Modulated Pretraining Enables Exploration for Efficient Policy Finetuning",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "BC 预训练产生过窄动作分布，限制下游强化学习探索。"
+          },
+          {
+            "paper_id": "arxiv:2606.00537v3",
+            "title": "PACE: Phase-Aware Chunk Execution for Robot Policies with Action Chunking",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "单一固定动作执行时长无法应对不同任务中随相位变化且非单调的成功率。"
+          },
+          {
+            "paper_id": "arxiv:2608.16887v1",
+            "title": "An Empirical Study of Training Pixel-Space Text-to-Image Diffusion Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "从头进行大规模 pixel-space 预训练比 latent-space 收敛更慢，缺乏实用训练方案。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign, architectural_operator_substitution",
+        "pattern_name": "generative_process_redesign, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "openalex:W7134853408",
+            "title": "MWM: Mobile World Models for Action-Conditioned Consistent Prediction",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Action-conditioned rollouts can drift across steps, and few-step distillation may fail to preserve rollout consistency."
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign, heterogeneous_decomposition",
+        "pattern_name": "generative_process_redesign, heterogeneous_decomposition",
+        "papers": [
+          {
+            "paper_id": "openalex:W7139013557",
+            "title": "GigaWorld-Policy: An Efficient Action-Centered World--Action Model",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Joint video-action reasoning adds inference overhead and entangles motion accuracy with future-video forecasts."
+          },
+          {
+            "paper_id": "arxiv:2607.29398v1",
+            "title": "OnlineCache: Learning Dynamic Caching Policies with Error Correction for Efficient Diffusion Inference",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "静态、样本无关的缓存调度忽略了输入难度和各 timestep 的误差敏感度变化。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "generative_process_redesign, structural_prior_encoding, architectural_operator_substitution",
+        "pattern_name": "generative_process_redesign, structural_prior_encoding, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "openalex:W4414896377",
+            "title": "Playing with Transformer at 30+ FPS via Next-Frame Diffusion",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Autoregressive diffusion video generation remains slow because of costly sampling and hardware inefficiency."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition",
+        "pattern_name": "Decompose for Differentiated Treatment",
+        "papers": [
+          {
+            "paper_id": "openalex:W7129735311",
+            "title": "HBVLA: Pushing 1-Bit Post-Training Quantization for Vision-Language-Action Models",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Quantization error accumulates during long-horizon closed-loop execution and degrades actions."
+          },
+          {
+            "paper_id": "openalex:W7126208853",
+            "title": "Past- and Future-Informed KV Cache Policy with Salience Estimation in Autoregressive Video Diffusion",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Heuristic KV-cache policies ignore token importance, causing loss of critical spatiotemporal information and redundant cache."
+          },
+          {
+            "paper_id": "openalex:W7123340428",
+            "title": "PointVLA: Injecting the 3D World Into Vision-Language-Action Models",
+            "venue_year": "IEEE Robotics and Automation Letters 2026",
+            "bottleneck_targeted": "RGB-only VLA models have limited spatial reasoning, while retraining with 3D data is costly."
+          },
+          {
+            "paper_id": "openreview:5dXWURaVCm",
+            "title": "DS-Flow: Dual-Stream Dynamical System Correction for Few-Step Diffusion Sampling",
+            "venue_year": "ICLR 2027 (in review)",
+            "bottleneck_targeted": "极少 NFE 下 ODE 粗步长产生较大截断误差，单一低维校正子空间无法覆盖空间残差。"
+          },
+          {
+            "paper_id": "openreview:N3DesjnN82",
+            "title": "Privacy-Aware Post-Training Quantization for Mitigating Membership Inference in Diffusion Models",
+            "venue_year": "ICLR 2027 (in review)",
+            "bottleneck_targeted": "现有量化没有针对 diffusion 模型成员泄漏优化，而隐私训练会增加成本并损害生成质量。"
+          },
+          {
+            "paper_id": "arxiv:2606.12365v1",
+            "title": "Ambient Diffusion Policy: Imitation Learning from Suboptimal Data in Robotics",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "直接混合优质与次优数据可能引入有害特征，且次优数据质量和分布差异较大。"
+          },
+          {
+            "paper_id": "arxiv:2605.15725v1",
+            "title": "DiLA: Disentangled Latent Action World Models",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "潜在动作抽象与视频生成保真度之间存在权衡。"
+          },
+          {
+            "paper_id": "arxiv:2608.20114v2",
+            "title": "DECOWAM: Decoupled Whole-Body World-Action Model for Legged Mobile Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "固定基座 WAM 未区分相机 ego-motion 与移动底盘、机械臂动作。"
+          },
+          {
+            "paper_id": "arxiv:2607.10797v1",
+            "title": "Compositional Context Fine-Tuning Vision-Language Model for Complex Assembly Action Understanding from Videos",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "多元素装配动作识别在有限数据下易受跨任务干扰，难以输出可解释元素预测。"
+          },
+          {
+            "paper_id": "arxiv:2606.12403v1",
+            "title": "World Pilot: Steering Vision-Language-Action Models with World-Action Priors",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "静态图文预训练缺少接触操作所需的动态信息，限制 VLA 在分布外场景的决策。"
+          },
+          {
+            "paper_id": "arxiv:2607.24159v1",
+            "title": "DeVA: Decoupled Video-Action Model with physical guidance for robot policy learning",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "视频与动作共享骨干可能难以优化，而视频信息也可能未充分传递到动作分支。"
+          },
+          {
+            "paper_id": "arxiv:2609.39056v1",
+            "title": "SteerQuant: Steering Quantization Error with Action-Guided Scaling in World-Action Models",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Comparable quantization errors in video, proprioceptive, and action streams have unequal effects on final actions."
+          },
+          {
+            "paper_id": "arxiv:2609.33269v1",
+            "title": "Q-WAM: 4-Bit Quantization of World Action Models with Action-Subspace Protection",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Existing PTQ smoothing and rotation do not preserve action-generation precision sufficiently."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, architectural_operator_substitution",
+        "pattern_name": "heterogeneous_decomposition, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.12239v1",
+            "title": "HAMP-LIC: Hessian-Aware Mixed-Precision Post-Training Quantization for Learned Image Compression",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "统一低比特精度忽视层间敏感度差异，导致压缩后率失真质量下降。"
+          },
+          {
+            "paper_id": "arxiv:2605.27003v1",
+            "title": "Timestep-Aware SVDQuant-GPTQ for W4A4 Quantization of Wan2.2-I2V",
+            "venue_year": "arXiv 2026-05",
+            "bottleneck_targeted": "激活离群值、跨 timestep 分布变化及 MoE 专家敏感度差异共同阻碍 W4A4 量化。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, generative_process_redesign",
+        "pattern_name": "heterogeneous_decomposition, generative_process_redesign",
+        "papers": [
+          {
+            "paper_id": "openalex:W7134046971",
+            "title": "Frequency-Aware Error-Bounded Caching for Accelerating Diffusion Transformers",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Uniform timestep caching overlooks temporal, depth, and feature variation and can accumulate approximation error."
+          },
+          {
+            "paper_id": "arxiv:2607.28405v1",
+            "title": "QuantWAMs: Calibrating at the Right Granularity for World Action Models",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Open-loop, homogeneous PTQ calibration mismatches WAM structure, rollout distribution, and task objective."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, structural_prior_encoding",
+        "pattern_name": "heterogeneous_decomposition, structural_prior_encoding",
+        "papers": [
+          {
+            "paper_id": "openalex:W4415346794",
+            "title": "DreamVLA: A Vision-Language-Action Model Dreamed with Comprehensive World Knowledge",
+            "venue_year": "arXiv 2025-01",
+            "bottleneck_targeted": "Image-based forecasting is redundant and can omit dynamic, spatial, and semantic world knowledge needed for action planning."
+          }
+        ]
+      },
+      {
+        "pattern_id": "heterogeneous_decomposition, unify_into_shared_representation",
+        "pattern_name": "heterogeneous_decomposition, unify_into_shared_representation",
+        "papers": [
+          {
+            "paper_id": "arxiv:2604.23586v2",
+            "title": "Talker-T2AV: Joint Talking Audio-Video Generation with Autoregressive Diffusion Modeling",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "音频与面部运动的高层语义相关，但低层声学和视觉纹理生成过程不同。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object",
+        "pattern_name": "Reframe as a Solvable Object",
+        "papers": [
+          {
+            "paper_id": "openreview:98ZbeyiX7Q",
+            "title": "What Your Policy Cannot See: Robot Data Curation via Observability Estimation",
+            "venue_year": "ICLR 2027 (in review)",
+            "bottleneck_targeted": "成功演示也可能缺少由视觉决定动作所需的信息，现有筛选未充分衡量这种可观测性。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object, decompose_and_delegate",
+        "pattern_name": "reframe_as_solvable_object, decompose_and_delegate",
+        "papers": [
+          {
+            "paper_id": "openalex:W7123371704",
+            "title": "CHDP: Cooperative Hybrid Diffusion Policies for Reinforcement Learning in Parameterized Action Space",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Hybrid discrete-continuous action spaces are difficult to model expressively and scale to high dimensions."
+          }
+        ]
+      },
+      {
+        "pattern_id": "reframe_as_solvable_object, unify_into_shared_representation",
+        "pattern_name": "reframe_as_solvable_object, unify_into_shared_representation",
+        "papers": [
+          {
+            "paper_id": "openalex:W4415159542",
+            "title": "Joint Action Language Modelling for Transparent Policy Execution",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Embodied-policy intentions are hidden by black-box execution, while action prediction can be separated from language generation."
+          }
+        ]
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering",
+        "pattern_name": "Manufacture the Supervisory Signal",
+        "papers": [
+          {
+            "paper_id": "arxiv:2608.20735v2",
+            "title": "ForeTime-VLA: Causal Future-Token Distillation from a World Action Model for Conveyor-Belt Manipulation",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "部署时运行视频级 WAM 或生成未来帧的成本较高，VLA 仅凭当前观测难以预判接触。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering, controlled_diagnostic_design",
+        "pattern_name": "self_supervised_signal_engineering, controlled_diagnostic_design",
+        "papers": [
+          {
+            "paper_id": "arxiv:2609.09630v1",
+            "title": "JEPA Policy: Diffusion-Free Imitation Learning via Paired Action and Future Representation Prediction",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "行为克隆只监督动作，未约束动作片段与其实际未来表征之间的配对关系。"
+          },
+          {
+            "paper_id": "arxiv:2608.24646v1",
+            "title": "On-Policy Self-Distillation in Diffusion Models",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "图像级奖励无法直接指定中间 denoising prediction 应如何变化。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "self_supervised_signal_engineering, targeted_self_supervised_objective",
+        "pattern_name": "self_supervised_signal_engineering, targeted_self_supervised_objective",
+        "papers": [
+          {
+            "paper_id": "openalex:W4416189451",
+            "title": "ViPRA: Video Prediction for Robot Actions",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Most human and teleoperated videos lack action labels, limiting their use for robot learning."
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding",
+        "pattern_name": "Encode Structure by Construction",
+        "papers": [
+          {
+            "paper_id": "openalex:W4417287013",
+            "title": "Constraint-Aware Diffusion Guidance for Robotics: Real-Time Obstacle Avoidance for Autonomous Racing",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Diffusion models lack constraint awareness needed for safety-critical robotics."
+          },
+          {
+            "paper_id": "openalex:W4417252773",
+            "title": "STAR: Learning Diverse Robot Skill Abstractions through Rotation-Augmented Vector Quantization",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Learned skill codebooks can collapse and fail to represent causal dependencies between skills."
+          },
+          {
+            "paper_id": "openalex:W7151535125",
+            "title": "CRAFT: Video Diffusion for Bimanual Robot Data Generation",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Bimanual demonstration data is costly to collect and has limited visual diversity."
+          },
+          {
+            "paper_id": "openreview:Z7JKlRfoZ1",
+            "title": "Hamiltonian JEPA: Symplectic Latent Dynamics for World Models",
+            "venue_year": "ICLR 2027 (in review)",
+            "bottleneck_targeted": "无约束自回归预测器可能在长 rollout 中收缩潜变量分布。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding, architectural_operator_substitution",
+        "pattern_name": "structural_prior_encoding, architectural_operator_substitution",
+        "papers": [
+          {
+            "paper_id": "openalex:W4415036488",
+            "title": "Revisiting Multi-Agent World Modeling from a Diffusion-Inspired Perspective",
+            "venue_year": "arXiv 2025-01",
+            "bottleneck_targeted": "Joint state-action transition modeling faces an exponentially large action space and uncertain multi-agent dynamics."
+          },
+          {
+            "paper_id": "arxiv:2608.25495v1",
+            "title": "Pose-Anchored Optical Flow for Low-Latency Human Action Anticipation in Human-Robot Teaming",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "稀疏骨架表示缺少细粒度运动线索，而全帧 optical flow 对低延迟感知开销较高。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding, generative_process_redesign, unify_into_shared_representation",
+        "pattern_name": "structural_prior_encoding, generative_process_redesign, unify_into_shared_representation",
+        "papers": [
+          {
+            "paper_id": "openalex:W7123354920",
+            "title": "PI-VLA: A Symmetry-Aware Predictive and Interactive Vision--Language--Action Framework for Robust Robotic Manipulation",
+            "venue_year": "Preprints.org 2026",
+            "bottleneck_targeted": "Long-horizon VLA manipulation can be brittle when structural symmetries are unused and execution does not adapt to symmetry violations."
+          }
+        ]
+      },
+      {
+        "pattern_id": "structural_prior_encoding, unify_into_shared_representation",
+        "pattern_name": "structural_prior_encoding, unify_into_shared_representation",
+        "papers": [
+          {
+            "paper_id": "openalex:W4417182546",
+            "title": "Geometry-aware 4D Video Generation for Robot Manipulation",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Generated videos can lack temporal coherence and geometric consistency across camera views."
+          },
+          {
+            "paper_id": "openreview:0jaKFrEuE7",
+            "title": "PhysWAM: Physically Consistent World--Action Modeling for Autonomous Driving",
+            "venue_year": "ICLR 2027 (in review)",
+            "bottleneck_targeted": "联合生成世界与动作本身不保证二者满足共同的场景几何约束。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation",
+        "pattern_name": "Unify Heterogeneous Inputs into One Space",
+        "papers": [
+          {
+            "paper_id": "openalex:W4415927688",
+            "title": "Dual-Stream Diffusion for World-Model Augmented Vision-Language-Action Model",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Jointly predicting visual states and actions is hindered by the modality gap."
+          },
+          {
+            "paper_id": "openalex:W7135125976",
+            "title": "DiT4DiT: Jointly Modeling Video Dynamics and Actions for Generalizable Robot Control",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Physical dynamics must be learned from limited action data despite rich spatiotemporal information in video models."
+          },
+          {
+            "paper_id": "openalex:W4404990717",
+            "title": "Prediction with Action: Visual Policy Learning via Joint Denoising Process",
+            "venue_year": "arXiv (Cornell University) 2024",
+            "bottleneck_targeted": "Image prediction and action generation are treated as distinct tasks despite sharing underlying physical dynamics."
+          },
+          {
+            "paper_id": "openalex:W7130552073",
+            "title": "World Action Models are Zero-shot Policies",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "VLAs struggle to generalize to unseen physical motions in novel environments."
+          },
+          {
+            "paper_id": "openalex:W7147336522",
+            "title": "Enhancing Policy Learning with World-Action Model",
+            "venue_year": "arXiv (Cornell University) 2026",
+            "bottleneck_targeted": "Image-only world models may omit action-relevant structure needed for downstream control."
+          },
+          {
+            "paper_id": "openalex:W7106821853",
+            "title": "Reinforcing Action Policies by Prophesying",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Imitation-trained VLAs overfit demonstrations, while real-robot interaction is costly and conventional simulators are difficult to build and transfer."
+          },
+          {
+            "paper_id": "openalex:W4415310600",
+            "title": "VITA: Vision-to-Action Flow Matching Policy",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "通过迭代去噪和反复视觉条件注入生成动作带来推理开销，动作与视觉表示的维度及结构也不一致。"
+          },
+          {
+            "paper_id": "openalex:W4414581539",
+            "title": "ProphetDWM: A Driving World Model for Rolling Out Future Actions and Videos",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "既有驾驶世界模型依赖给定动作的视频生成，未建模动作预测与动作动力学。"
+          },
+          {
+            "paper_id": "openreview:tEwr6dq6X9",
+            "title": "World Tokens: Enhancing Embodied Policies with Training-Time World Modeling",
+            "venue_year": "ICLR 2027 (in review)",
+            "bottleneck_targeted": "VLA 缺少显式动态建模，而部署时保留视频生成分支或大型视频骨干代价较高。"
+          },
+          {
+            "paper_id": "arxiv:2604.06168v2",
+            "title": "Action Images: End-to-End Policy Learning via Multiview Video Generation",
+            "venue_year": "arXiv 2026-04",
+            "bottleneck_targeted": "低维 action token 与非像素化动作表示限制视频骨干知识利用及跨视角迁移。"
+          },
+          {
+            "paper_id": "arxiv:2606.03868v1",
+            "title": "Unified Video-Action Joint Denoising for Dexterous Action and Data Generation",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "常见 video-action 对齐将生成分布收窄为观测条件策略，限制联合生成与数据合成用途。"
+          },
+          {
+            "paper_id": "arxiv:2606.17046v2",
+            "title": "Geometric Action Model for Robot Policy Learning",
+            "venue_year": "arXiv 2026-06",
+            "bottleneck_targeted": "现有 VLA/WAM 主要使用 2D 表示，未显式表达接触操作所需的 3D 几何。"
+          },
+          {
+            "paper_id": "arxiv:2608.09381v1",
+            "title": "JEPA-WAM: Learning Vision-Language-Action Policies with Joint-Embedding World Modeling",
+            "venue_year": "arXiv 2026-08",
+            "bottleneck_targeted": "视频生成型 WAM 部署成本高，且分离的预测表示未必服务于动作生成。"
+          },
+          {
+            "paper_id": "arxiv:2607.05133v1",
+            "title": "UNIVERSE: Unified Video Action Models for Autonomous Driving with Flexible Mask-Modulated Modality Generation",
+            "venue_year": "arXiv 2026-07",
+            "bottleneck_targeted": "级联或双 DiT 分离视频想象和轨迹预测，削弱视频动态知识向动作分支的传递。"
+          },
+          {
+            "paper_id": "arxiv:2601.16163v1",
+            "title": "Cosmos Policy: Fine-Tuning Video Models for Visuomotor Control and Planning",
+            "venue_year": "arXiv 2026",
+            "bottleneck_targeted": "Video-model adaptation for robot policies can require multiple post-training stages and added action-generation components."
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation, decompose_and_delegate",
+        "pattern_name": "unify_into_shared_representation, decompose_and_delegate",
+        "papers": [
+          {
+            "paper_id": "arxiv:2609.40153v1",
+            "title": "Dream4ACT: A Shared Visual Action Interface for Multi-Embodiment Video-Action Modeling",
+            "venue_year": "arXiv 2026-09",
+            "bottleneck_targeted": "关节动作在 embodiment 间维度和语义不同，且普通末端可视化不保留完整关节构型。"
+          }
+        ]
+      },
+      {
+        "pattern_id": "unify_into_shared_representation, generative_process_redesign",
+        "pattern_name": "unify_into_shared_representation, generative_process_redesign",
+        "papers": [
+          {
+            "paper_id": "openalex:W4414050443",
+            "title": "Unified World Models: Coupling Video and Action Diffusion for Pretraining on Large Robotic Datasets",
+            "venue_year": "arXiv 2025-06",
+            "bottleneck_targeted": "High-quality robot demonstrations are scarce and most video lacks action annotations."
+          },
+          {
+            "paper_id": "openalex:W4415945872",
+            "title": "Unified Diffusion VLA: Vision-Language-Action Model via Joint Discrete Denoising Diffusion Process",
+            "venue_year": "arXiv (Cornell University) 2025",
+            "bottleneck_targeted": "Existing unified VLAs use external experts or separate image-generation and action-prediction processes, limiting direct synergy."
+          }
+        ]
+      }
+    ],
+    "phase0_outside_taxonomy": [
+      {
+        "paper_id": "openalex:W4414050417",
+        "title": "Dynamic Rank Adjustment in Diffusion Policies for Efficient and Flexible Training",
+        "venue_year": "arXiv 2025-06",
+        "bottleneck_targeted": "Large trainable diffusion policies make online interactive imitation learning impractical because of training cost."
+      },
+      {
+        "paper_id": "openalex:W7166661505",
+        "title": "MUSE: Unlocking Timestep as Native Task Steering for One-Step Dense Prediction",
+        "venue_year": "Lecture notes in computer science 2026",
+        "bottleneck_targeted": "Not established from abstract."
+      },
+      {
+        "paper_id": "openalex:W4406810917",
+        "title": "Improving Video Generation with Human Feedback",
+        "venue_year": "arXiv 2025-01",
+        "bottleneck_targeted": "Video generation can produce unsmooth motion and misalignment with prompts."
+      },
+      {
+        "paper_id": "openalex:W7166648824",
+        "title": "Learning Transferable Dynamics Priors from Action to World Modeling",
+        "venue_year": "Lecture notes in computer science 2026",
+        "bottleneck_targeted": "Not established from abstract."
+      },
+      {
+        "paper_id": "openalex:W7160755792",
+        "title": "Value-Guided Diffusion Policy with Candidate Action Selection",
+        "venue_year": "Lecture notes in electrical engineering 2026",
+        "bottleneck_targeted": "Not established from abstract."
+      },
+      {
+        "paper_id": "openalex:W7204246715",
+        "title": "Trajectory-Level Continuous Action Representation for Robotic Manipulation",
+        "venue_year": "Lecture notes in computer science 2026",
+        "bottleneck_targeted": "Not established from abstract."
+      },
+      {
+        "paper_id": "openreview:U72H3DEjLP",
+        "title": "Training expressive diffusion world models from scratch in under 50 GPU hours",
+        "venue_year": "ICLR 2027 (in review)",
+        "bottleneck_targeted": "视频扩散世界模型训练成本高，限制从头训练和灵活研究。"
+      },
+      {
+        "paper_id": "openreview:JKm5Xti5fA",
+        "title": "Identifiable World Models from Pretrained Diffusion Representations",
+        "venue_year": "ICLR 2027 (in review)",
+        "bottleneck_targeted": "高预测精度本身不能说明潜变量恢复真实状态或因果关系。"
+      },
+      {
+        "paper_id": "openreview:OKIFOUrhbD",
+        "title": "TARA: Temporal Action-Reasoning Alignment for Steerable Vision-Language-Action Policies",
+        "venue_year": "ICLR 2027 (in review)",
+        "bottleneck_targeted": "VLA 执行动作时容易忽略中间推理，并且低数据场景下的信息密集型表示效果有限。"
+      },
+      {
+        "paper_id": "openreview:7CPeybXNyC",
+        "title": "WorldAuditBench: Interactive 3D World Auditing with Multimodal Agents",
+        "venue_year": "ICLR 2027 (in review)",
+        "bottleneck_targeted": "交互式 3D 世界审计需要结合行动搜索和视觉异常判断，当前模型表现低于人类。"
+      },
+      {
+        "paper_id": "arxiv:2609.37398v1",
+        "title": "Direct Experience World-Model Optimization: Learning the World Beyond Action Imitation",
+        "venue_year": "arXiv 2026-09",
+        "bottleneck_targeted": "部署后行为改进未必同步改善世界预测，动作误差可能累积并超出训练分布。"
+      },
+      {
+        "paper_id": "arxiv:2606.31101v1",
+        "title": "Efficient Sim-to-Real Transfer of World-Action Models from Synthetic Priors",
+        "venue_year": "arXiv 2026-06",
+        "bottleneck_targeted": "世界动作模型此前缺少仅以合成先验训练并零样本迁移到真实机器人操作的证据。"
+      },
+      {
+        "paper_id": "arxiv:2601.22709v5",
+        "title": "Gated Relational Alignment via Confidence-based Distillation for Efficient VLMs",
+        "venue_year": "arXiv 2026",
+        "bottleneck_targeted": "VLM deployment cost and PTQ accuracy loss motivate the framework."
+      },
+      {
+        "paper_id": "openalex:W7126180855",
+        "title": "Causal World Modeling for Robot Control",
+        "venue_year": "2026",
+        "bottleneck_targeted": "Fast inference from intermediate denoised videos is referenced in the abstract fragment."
+      }
+    ],
+    "phase3_collision": [
+      {
+        "paper_id": "arxiv:2608.22364v1",
+        "title": "WAM-OPD: On-Policy Distillation for World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7202284925",
+        "title": "TRACE-GS: On-Policy Trajectory Distillation with Privileged Geometric Conditioning for Sparse-View 3DGS Restoration",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.20761v2",
+        "title": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7163551003",
+        "title": "The Hydrogen Cosmos: Quantization, Resonance, and the Universal φ⁷ Symmetry",
+        "venue_year": "Zenodo (CERN European Organization for Nuclear Research) 2026"
+      },
+      {
+        "paper_id": "openalex:W7212076977",
+        "title": "SimpleMemVLA: A Simple but Effective Native-Video Memory for Vision-Language-Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214023967",
+        "title": "Q-DEQ: Discrete Solving and Quantization for Deep Equilibrium Models in Time Series Forecasting under Edge Deployment Coding Constraints",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openreview:qlasgfPyOZ",
+        "title": "Memory for Late Evidence: A Delay–Resolution Phase Law",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:k0lGEf1plv",
+        "title": "Flash On-Policy Distillation",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2606.14730v1",
+        "title": "Hierarchical GRU with Input-Conditioned Slot Queries for Ball Action Anticipation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.09381v1",
+        "title": "JEPA-WAM: Learning Vision-Language-Action Policies with Joint-Embedding World Modeling",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.06247v1",
+        "title": "CKT-WAM: Parameter-Efficient Context Knowledge Transfer Between World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7167924415",
+        "title": "FabriVLA: A Lightweight Vision-Language-Action Model with Conformal Action Chunk Uncertainty",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162662321",
+        "title": "Semantic Flow Regularization: Teaching LLMs to Generate Diverse Yet Coherent Responses",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162789515",
+        "title": "LFQ: Logit-aware Final-block Quantization for Boosting the Generation Quality of Low-Bit Quantized LLMs",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7163033160",
+        "title": "Polyphony: Diffusion-based Dual-Hand Action Segmentation with Alternating Vision Transformer and Semantic Conditioning",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7210273552",
+        "title": "Reproducibility materials for \"Precision, Memory, and Reuse in Equilibrium Solvers: Certified Budgets and Solver-Level Simulation\"",
+        "venue_year": "Zenodo (CERN European Organization for Nuclear Research) 2026"
+      },
+      {
+        "paper_id": "openreview:4TbO57oz3P",
+        "title": "What Should I Try Next? Decision-Relevant Counterfactual Information Gain for Active World Models",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:16CgXjtlgL",
+        "title": "RPO-MAS: RECEIVER PREFERENCE OPTIMIZATION FOR SELECTIVE MULTI-AGENT COMMUNICATION",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:tHbB13ghLu",
+        "title": "Defect Responses in Visual World Models: Long-Horizon Propagation, Gradient Interaction, and Planning Outcomes",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:pRmmj8CNc0",
+        "title": "GA-NAR: Geometry-Adaptive Nonlinearity Allocation and Representation for Complex Physical Systems",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:nZw3ZyG6Eh",
+        "title": "CryptoDojo: A Framework for Safety and Security Evaluation of Crypto Agents",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:ig13XeveLQ",
+        "title": "Causal Transfer of Scene Information in Robot Policies",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:7m9v0tDC4r",
+        "title": "Compact Closed-Loop Response Representations for Controller--Task Matching",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:Xixdkpg3K7",
+        "title": "When Pairwise Counterfactual Bounds Are Exact: Conflict Certificates and Temporal Compression",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2609.37793v1",
+        "title": "MVG-WAM: Multiple View Geometry-Aware World-Action Modeling for Robotic Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.17046v2",
+        "title": "Geometric Action Model for Robot Policy Learning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.25798v2",
+        "title": "TacForcing: Streaming Action Generation with Execution-Time Tactile Feedback",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.02365v1",
+        "title": "Faster-WAM: Do World Action Models Need Deep Action Modules?",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.04609v1",
+        "title": "SEAM: Smooth Execution of Action-Chunked Motion for Vision-Language-Action Policies",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.05903v2",
+        "title": "Robust-WAM: Bridging Generative Pretraining and Semantic Foresight in World-Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.06481v1",
+        "title": "OA-WAM: Object-Addressable World Action Model for Robust Robot Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.10107v1",
+        "title": "4D-WAM: 4D Consistent World Modeling for Autonomous Driving",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.28993v1",
+        "title": "ST-WAM: Semantic-Temporal World Action Model for Robust Manipulation under Visual Distribution Shifts",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.27314v1",
+        "title": "CoRe-WAM: Correspondence-Aligned Temporal Residuals for World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7204855176",
+        "title": "Quantized Low-Rank Quantum State Tomography: Hyperbolic Quantization and Riemannian Least-Squares Recovery",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7158506380",
+        "title": "PAINT: Partial-Solution Adaptive Interpolated Training for Self-Distilled Reasoners",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7134036019",
+        "title": "Unified Integer and Fractional Quantum Hall Effects from Boundary-Induced Edge-State Quantization",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7204606889",
+        "title": "Socialized Detector Learning: Trajectory-Guided and Reciprocal Distillation for Heterogeneous Object Detectors",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7166537193",
+        "title": "ToolPrivacyBench: Benchmarking Purpose-Bound Privacy in Tool-Using LLM Agents",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164072420",
+        "title": "RunAgent SuperBrowser: A Theory of Autonomous Web Navigation Grounded in Human Browsing Behaviour",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4417292624",
+        "title": "Baseline: Operation-Based Evolution and Versioning of Data",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openreview:bCjfnDnvJI",
+        "title": "Loss-Level Connectivity Across Optimization Trajectories",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:jA6DsjW60P",
+        "title": "Do-JEPA: From Masking to Intervention in Latent World Models",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:TvqsIaE2Lm",
+        "title": "Evidence-Guided Action World Model for Time-Series Forecasting",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:rnttCOgzRE",
+        "title": "Beyond Uniform Lipschitzness: Pathwise Jacobian Stability for Flow Matching Samplers",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:R5trgSDrJp",
+        "title": "Bag Design for Model Evaluation from Aggregate Labels",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:EOyudF7xKU",
+        "title": "ActCI-Bench: Evaluating Selective Decisions in CI Maintenance Agents",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:tyAJldRpPG",
+        "title": "Scale-Local Information Governs Sample Synthesis from Noisy Smoothed Scores",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:wO7Bph04Ga",
+        "title": "Can We Check Whether a World Model Follows Actions Without a Simulator?",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:DReSwYwieE",
+        "title": "Evaluating OOD Actions in Offline RL via Quantile Advantage",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:MQYHO0Hxwz",
+        "title": "Beyond Refusal: Policy-Grounded On-Policy Distillation for Safety Decisions and Recovery",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:yCaCODHKwp",
+        "title": "FlowWeaver: Weaving Reasoning Paths with Cross-Trajectory Flow for Fine-Grained Credit Assignment",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:YNoiyB0LXB",
+        "title": "Beyond Forecasting: World Models for Coupled Radio Network Control",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:Ya6azgvULv",
+        "title": "AlphaCUA: Scaling Safety Benchmarks for Computer-Use Agents by Discovering and Validating Risk Factors",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:Qdlvd9F19R",
+        "title": "Beyond Matching Stability: Solution Selection in Large Language Models",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2603.14040v1",
+        "title": "Pyroclast: A Modular High-Performance Python Solver for Geodynamics",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.15136v1",
+        "title": "New Bounds for Integer Flows and Verma Modules, via Denormalized Lorentzian Laurent Series",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.11061v2",
+        "title": "Endpoint Logarithms in the NLO Mueller-Navelet Jet Vertex: Threshold Matching and BLM/MOM Prescription Sensitivity",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.13716v1",
+        "title": "CAVA: Canonical Action Verification and Attestation for Runtime Governance of Agentic AI Systems",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.19123v1",
+        "title": "Constant-Time Inverse Suffix Array Queries in Compact Space and Sublinear-Time Construction of Suffix Array Indexes",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.22275v1",
+        "title": "Deep Accurate Solver for the Geodesic Problem",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.26961v2",
+        "title": "Alignment Matters Inside and Out in Equivariant Graph Flow Matching",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.17171v2",
+        "title": "Black hole equations of state and response functions",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.10531v3",
+        "title": "LC-QAT: Data-Efficient 2-Bit QAT for LLMs via Linear-Constrained Vector Quantization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2601.20130v1",
+        "title": "Real-Time Robot Execution with Masked Action Chunking",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.06838v1",
+        "title": "A Shared-Backbone Approach for Multi-Task MedMNIST Classification",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.17047v1",
+        "title": "Solver-Hard Is Not Model-Hard: A Hardness-Controlled Diagnostic for LLM Constraint Reasoning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.02330v2",
+        "title": "ActionParty: Multi-Subject Action Binding in Generative Video Games",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.25918v1",
+        "title": "DC-WAM: Dynamic-Centric Visual Supervision and Reasoning for World-Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2604.01985v2",
+        "title": "World Action Verifier: Self-Improving World Models via Forward-Inverse Asymmetry",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.04404v1",
+        "title": "Faster-WAM: Efficient Inference-Time Future Conditioning for Robust World Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.38057v1",
+        "title": "EVO-WAM: Evolving World Action Models through Video-Action Verification",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.16666v2",
+        "title": "Fast-WAM: Do World Action Models Need Test-time Future Imagination?",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.10363v1",
+        "title": "HiMem-WAM: Hierarchical Memory-Gated World Action Models for Robotic Manipulation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.38984v1",
+        "title": "Sparse-WAM: Accelerating World Action Models via Action-Guided Sparse Imagination",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.17999v1",
+        "title": "Shared Backbone PPO for Multi-UAV Communication Coverage with Connection Preservation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.00805v2",
+        "title": "Optimizing Retrieval Components for a Shared Backbone via Component-Wise Multi-Stage Training",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.30247v1",
+        "title": "Rolling-WAM: World Action Models with Rolling Imagination",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7202213136",
+        "title": "Matching Supervision to the Student's Learning Capacity: A Unified Framework for On-Policy Self-Distillation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7212112179",
+        "title": "Field quantization in rotating frames: coordinate covariance and the circular-detector response",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7202158814",
+        "title": "Quantized Stabilizer-Rényi Boundary Response across Fermionic SPT Transitions",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214330635",
+        "title": "Direction-Scale Decomposition in Action Representation: Rethinking What to Tokenize for Vision-Language-Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164036006",
+        "title": "vla.cpp: A Unified Inference Runtime for Vision-Language-Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160248635",
+        "title": "MAD-OPD: Breaking the Ceiling in On-Policy Distillation via Multi-Agent Debate",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172404281",
+        "title": "Causal Inference with Unstructured Treatments",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7127677111",
+        "title": "Quantized Evolution Strategies: High-precision Fine-tuning of Quantized LLMs at Low-precision Cost",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214734357",
+        "title": "Revision, Not Restart: Revisable Visual Plans for Closed-Loop World-Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162458495",
+        "title": "Fermi-Dirac machines as quantizations of neurons",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7172444877",
+        "title": "Grounded Semantic Re-Binding for Robust Instruction Generalization in Vision-Language-Action Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164895593",
+        "title": "Effect of Conceptual Transfer on Mandarin-English Bilinguals’ Sensitivity to and Processing Difficulty of Perfective Aspects in Both Languages",
+        "venue_year": "UNSWorks (University of New South Wales, Sydney, Australia) 2026"
+      },
+      {
+        "paper_id": "openalex:W7213026218",
+        "title": "Quantized IRS Phase Control under Limited Observation with Short-History State Stacking",
+        "venue_year": "Research Square 2026"
+      },
+      {
+        "paper_id": "openalex:W7203880014",
+        "title": "HiTac-WAM: A Hierarchical Tactile World Action Model for Contact-Rich Robot Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7164834588",
+        "title": "Quantum dynamics and spectrum of a group: VI. dichalcogenide sheet with a one-dimensional quantum well in a quantizing magnetic field",
+        "venue_year": "Physica Scripta 2026"
+      },
+      {
+        "paper_id": "openalex:W7160598615",
+        "title": "Hypotaxis with subordinating conjunctions in Avestan",
+        "venue_year": "SOAS Research Online (SOAS University of London) 2026"
+      },
+      {
+        "paper_id": "openalex:W7168155212",
+        "title": "CoDiMAD: Diffusion-Based Privileged Distillation for Communication-Free Multi-Robot Coordination",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7212227744",
+        "title": "Why Does Post-Training Quantization Work?",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7127359856",
+        "title": "OD-Gear: Online Decomposition and Group Sampling for Expert-Guided Adversarial Routing in Scalable Capacitated Vehicle Routing",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214103693",
+        "title": "Disaggregated Quantization: Specializing LLM Prefill and Decode",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openreview:tUYDnsZ34t",
+        "title": "LLM Agent Refusal Can be Harmful: An Availability Attack through MITM Tampering on Remote MCP Services",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:RbNUj9eyH9",
+        "title": "FireMark: A Benchmark Dataset for Data-Driven Forecasting of Laminar Flame Dynamics",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:iNiv99l1jY",
+        "title": "Subspace Learning During Population-Loss Plateaus",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:ozDcCNMX45",
+        "title": "The Stable Discriminant and Adaptive Guards for Auditing Stable Matchings",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:0OwVrEh7sU",
+        "title": "Logical Equivariance in Diffusion Language Models",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:ZE56HeqJxT",
+        "title": "PhysioDyT: Physiologically Directed Dynamic Transport for ECG–PPG Representation Learning",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:GXCiD3ENSJ",
+        "title": "Safe Executions Can Hide Policy Failure: A Proposal-Level Audit of Hybrid Control in Synthetic Interviews",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:umT7r9NgxM",
+        "title": "Forecast the Envelope, Reconstruct the Details: Learning Dynamic Spectral Priors for Precipitation Nowcasting",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:Cgqb9cQ6Fc",
+        "title": "Over-Personalization Is a Decision Failure: Generation-Induced Apply Bias in LLMs",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:4pM6vv1w7H",
+        "title": "CCQ: Compensation-Conditioned Quadratic Selection for Absorbing Skipped Experts in MoE LLMs",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:eQHdBbF1EI",
+        "title": "Equivariant Counterfactual Supervision for Hidden-Dynamics Representation Learning",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:zc99CgRy2Z",
+        "title": "Latent Jacobian Steer: Eliciting Complex Contact-Rich Behaviors from Pretrained Humanoid Controllers",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:c5XrmmJPDS",
+        "title": "Interaction-Conditioned Navigation for End-to-End Autonomous Driving",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:CcMKe6sPYE",
+        "title": "Learning to Compose Evidence with Counterfactual Con- tinuation Values",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:Ta2WxQVUhI",
+        "title": "Read Less, Recall More in Document VLMs",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:6KIMVSXTbA",
+        "title": "Answer Interfaces Change the Measured Cost of Early Stopping",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:z8quNgpYRt",
+        "title": "Closed-Form Node Classification with Exact Graph Unlearning",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:IFjyXrDmQc",
+        "title": "Bgent: A Multi-Task Blockchain Investigation Agent with Executable Claim Checks",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:R4mxdyixnH",
+        "title": "Predicting Reasoning Errors Before They Occur: A Prompt-Side  Activation Direction Anticipates Correctness in a  Large Language Model",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2607.08883v1",
+        "title": "Optimizing Against Safety Representations: Activation-Guided Adversarial Suffixes and the Geometry of Refusal",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.35958v1",
+        "title": "Solver Agent: an Agentic AI Framework for Theoretical Physics Computations Applied to F-theory Uplifts of O3-planes and S-folds",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.26103v2",
+        "title": "Zero-WAM: In-Context World-Action Modeling from Human Videos for Open-Ended Task Generalization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2510.00627v1",
+        "title": "Collaborative-Distilled Diffusion Models (CDDM) for Accelerated and Lightweight Trajectory Prediction",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2605.13724v1",
+        "title": "AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7211172722",
+        "title": "Integration of Quantization Strategies within DARTS for Photonic-Aware Training of Deep Neural Networks",
+        "venue_year": "Electronic Theses and Dissertations Repository (University of Pisa) 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.19565v1",
+        "title": "Mix-QVLA: Task-Evidence-Aware Mixed-Precision Quantization of Vision-Language-Action Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2511.20410v1",
+        "title": "Image-Free Timestep Distillation via Continuous-Time Consistency with Trajectory-Sampled Pairs",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2412.08871v1",
+        "title": "Inference-Time Diffusion Model Distillation",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "openalex:W4405354562",
+        "title": "Inference-Time Diffusion Model Distillation",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7164923003",
+        "title": "SPARK: Spatial Policy-driven Adaptive Reinforcement learning for Knowledge distillation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7140166301",
+        "title": "FRMD: fast robot motion diffusion via trajectory-level consistency distillation",
+        "venue_year": "Frontiers in Robotics and AI 2026"
+      },
+      {
+        "paper_id": "openalex:W7214701361",
+        "title": "When Does Backpropagating Through Policy Memory Matter? Physical Credit, Optimizer Updates, and Observability",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160838488",
+        "title": "Flow-OPD: On-Policy Distillation for Flow Matching Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4399655852",
+        "title": "Motion Consistency Model: Accelerating Video Diffusion with Disentangled Motion-Appearance Distillation",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W7167714486",
+        "title": "x-Prediction Is All You Need:Training-Free Accelerated Generation via Endpoint Decodability",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "arxiv:2606.00658v1",
+        "title": "Collaborative Few-Step Distillation and Low-Bit Quantization for Wan2.2 Dual-Expert Video Diffusion Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2504.14307v2",
+        "title": "Learning from Stochastic Teacher Representations Using Student-Guided Knowledge Distillation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2506.07822v3",
+        "title": "Accelerating Diffusion Planners in Offline RL via Reward-Aware Consistency Trajectory Distillation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "openalex:W4409535226",
+        "title": "A KWS System for Edge-Computing Applications with Analog-Based Feature Extraction and Learned Step Size Quantized Classifier",
+        "venue_year": "Sensors 2025"
+      },
+      {
+        "paper_id": "openalex:W7126158292",
+        "title": "OVD: On-policy Verbal Distillation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162562660",
+        "title": "Adversarial Dual On-Policy Distillation from Expressive Teacher",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160948534",
+        "title": "Reasoning Compression with Mixed-Policy Distillation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4416052786",
+        "title": "Autoregressive Distillation of Diffusion Transformers",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W7161136446",
+        "title": "Revisiting DAgger in the Era of LLM-Agents",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7161769688",
+        "title": "Distribution Matching Distillation without Fake Score Network",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7212247805",
+        "title": "Efficient Edge-Based Object Detection via Multi-Signal Teacher–Student Knowledge Distillation",
+        "venue_year": "IIUM Engineering Journal 2026"
+      },
+      {
+        "paper_id": "openalex:W4412879023",
+        "title": "Reimagining Efficiency in Vision-Language Models Through Low-Precision Training Across Modalities and Architectures",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7204248978",
+        "title": "On-Policy Self-Distillation in Diffusion Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7163391783",
+        "title": "A Quantitative Approximation Framework for Flow Distillation in Diffusion Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4409445839",
+        "title": "Mixed precision quantization based on information entropy",
+        "venue_year": "Scientific Reports 2025"
+      },
+      {
+        "paper_id": "openalex:W4396817243",
+        "title": "Imagine Flash: Accelerating Emu Diffusion Models with Backward Distillation",
+        "venue_year": "arXiv (Cornell University) 2024"
+      },
+      {
+        "paper_id": "openalex:W7154329776",
+        "title": "Device-Conditioned Neural Architecture Search for Efficient Robotic Manipulation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7213777896",
+        "title": "Joint entropy-aware quantization for energy-efficient TinyML human activity recognition on IoT edge devices",
+        "venue_year": "Scientific Reports 2026"
+      },
+      {
+        "paper_id": "openalex:W7160902371",
+        "title": "TAD: Temporal-Aware Trajectory Self-Distillation for Fast and Accurate Diffusion LLM",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7171561350",
+        "title": "FlowCTS: On-policy Continuous Trajectory Supervision of Flow Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openreview:AveJIcObsQ",
+        "title": "Turning the TIDE: Cross-Architecture Distillation for Diffusion Large Language Models",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2609.22238v2",
+        "title": "Task-Aware QUBO Allocation for Mixed-Precision Quantization",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2605.18475v2",
+        "title": "GAMMA: Global Bit Allocation for Mixed-Precision Models under Arbitrary Budgets",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.25916v1",
+        "title": "Beyond Scalar Sensitivity: Activation-Aware Mixed-Precision LLM Quantization with Cross-Layer Refinement",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2408.15991v3",
+        "title": "Distribution Backtracking Builds A Faster Convergence Trajectory for Diffusion Distillation",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2402.14866v2",
+        "title": "APTQ: Attention-aware Post-Training Mixed-Precision Quantization for Large Language Models",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2510.25107v2",
+        "title": "Learning Hamiltonian Flow Maps from Numerical-Scheme Residuals for Long-Time Multiscale Simulation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2603.04308v1",
+        "title": "Activation Outliers in Transformer Quantization: Reproduction, Statistical Analysis, and Deployment Tradeoffs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2505.16024v2",
+        "title": "Toward Theoretical Insights into Diffusion Trajectory Distillation via Operator Merging",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2406.08155v2",
+        "title": "QuantMoE-Bench: Examining Post-Training Quantization for Mixture-of-Experts",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2304.06745v1",
+        "title": "End-to-end codesign of Hessian-aware quantized neural networks for FPGAs and ASICs",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2304.05057v1",
+        "title": "SFT-KD-Recon: Learning a Student-friendly Teacher for Knowledge Distillation in Magnetic Resonance Image Reconstruction",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2410.11325v3",
+        "title": "Speculative Knowledge Distillation: Bridging the Teacher-Student Gap Through Interleaved Sampling",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2605.16826v1",
+        "title": "Decoupling KL and Trajectories: A Unified Perspective for SFT, DAgger, Offline RL, and OPD in LLM Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2509.20253v2",
+        "title": "AnchDrive: Bootstrapping Diffusion Policies with Hybrid Trajectory Anchors for End-to-End Driving",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2507.04290v1",
+        "title": "MPQ-DMv2: Flexible Residual Mixed Precision Quantization for Low-Bit Diffusion Models with Temporal Distillation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.37170v1",
+        "title": "Interpolated Policy Distillation: A Controllable Continuum Between Off-Policy and On-Policy Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2502.01993v2",
+        "title": "One Diffusion Step to Real-World Super-Resolution via Flow Trajectory Distillation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2311.06798v2",
+        "title": "MetaMix: Meta-state Precision Searcher for Mixed-precision Activation Quantization",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "openalex:W7164152560",
+        "title": "Mean Flow Distillation: Robust and Stable Distillation for Flow Matching Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7167617612",
+        "title": "Multi-Turn On-Policy Distillation with Prefix Replay",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4408345950",
+        "title": "DDA: Distillation-Driven Acceleration of the Reverse Diffusion Process for Stochastic Multi-Ship Trajectory Prediction",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7138927646",
+        "title": "RAMP: Reinforcement Adaptive Mixed Precision Quantization for Efficient On Device LLM Inference",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214375918",
+        "title": "Coupled State-Space Modelling, Control, and Policy Distillation for Hybrid Rigid-Pneumatic Manipulators",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4379539434",
+        "title": "Temporal Dynamic Quantization for Diffusion Models",
+        "venue_year": "arXiv (Cornell University) 2023"
+      },
+      {
+        "paper_id": "openalex:W7154307834",
+        "title": "Robust Neural Policy Distillation of Long-Horizon FCS-MPC for Flying-Capacitor Three-Level Boost Converters",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7165391885",
+        "title": "Deep Climate Model Distillation for Localized Flood Forecasting in Low-Resource Areas",
+        "venue_year": "Meteorology 2026"
+      },
+      {
+        "paper_id": "openreview:Ac3YNhrexT",
+        "title": "Few Step Variable Length Sampling with Branching Flow Maps",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2609.26708v1",
+        "title": "Train Where the Quantized Model Goes: On-Policy Distillation for Low-Bit Reasoning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.12239v1",
+        "title": "HAMP-LIC: Hessian-Aware Mixed-Precision Post-Training Quantization for Learned Image Compression",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2402.17768v2",
+        "title": "Diffusion Meets DAgger: Supercharging Eye-in-hand Imitation Learning",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2505.14302v1",
+        "title": "Scaling Law for Quantization-Aware Training",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2405.02041v1",
+        "title": "Stabilizing Backpropagation Through Time to Learn Complex Physics",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2501.14513v2",
+        "title": "ABPT: Amended Backpropagation through Time with Partially Differentiable Rewards",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2307.00331v2",
+        "title": "Quantization Variation: A New Perspective on Training Transformers with Low-Bit Precision",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2605.14716v3",
+        "title": "SCAMP: Sparse-anchor Control is One Small Projection",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2508.09444v1",
+        "title": "DAgger Diffusion Navigation: DAgger Boosted Diffusion Policy for Vision-Language Navigation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2505.13377v2",
+        "title": "Score Distillation Beyond Acceleration: Generative Modeling from Corrupted Data",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.16333v1",
+        "title": "Step-Level On-Policy Distillation: Interpolating Between On-Policy Distillation and Supervised Fine-Tuning",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.03159v1",
+        "title": "Accelerating Human-Aware Robot Trajectory Generation via Diffusion and Consistency Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2603.11137v1",
+        "title": "Scaling Reasoning Efficiently via Relaxed On-Policy Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.01027v2",
+        "title": "SFMP: Fine-Grained, Hardware-Friendly and Search-Free Mixed-Precision Quantization for Large Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2602.12275v2",
+        "title": "On-Policy Context Distillation for Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2608.01263v2",
+        "title": "Distill What the Student Can See: Fisher-Projected On-Policy Distillation for Vision-Language Models",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2510.16805v1",
+        "title": "Mixed-Precision Quantization for Language Models: Techniques and Prospects",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.30864v1",
+        "title": "Persistent Negatives for Adversarial Black-Box On-Policy Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2405.18373v3",
+        "title": "A Hessian-Aware Stochastic Differential Equation for Modelling SGD",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2502.03724v2",
+        "title": "Seeing in the Dark: A Teacher-Student Framework for Dark Video Action Recognition via Knowledge Distillation and Contrastive Learning",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2609.14193v2",
+        "title": "Data-free On-policy Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "openalex:W7208707360",
+        "title": "Coordinated Plaque Remodeling Modalities: A Falsifiable Synthesis from Material-Specific Plaque Remodeling to Sleep-Anchored, Low-Cost State-Setting",
+        "venue_year": "Zenodo (CERN European Organization for Nuclear Research) 2026"
+      },
+      {
+        "paper_id": "openalex:W4416800632",
+        "title": "Designing a Teacher—Student Knowledge Distillation Framework for Accurate and Efficient Epilepsy Prediction on Edge Devices",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7163550992",
+        "title": "dMX: Differentiable Mixed-Precision Assignment for Low-Precision Floating-Point Formats",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7162503198",
+        "title": "WINDQuant: Weight-Informed Neural Decision-Making for Global Mixed-Precision LLM Quantization",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7167577630",
+        "title": "dOPSD: On-Policy Self-Distillation for Diffusion Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7214042684",
+        "title": "Stochastic Flow Map for Count Data",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7110871118",
+        "title": "Towards Training-free Automatic Proxy Discovery via Large Language Models for Mixed Precision Quantization",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openalex:W4382318854",
+        "title": "Quantized Feature Distillation for Network Quantization",
+        "venue_year": "Proceedings of the AAAI Conference on Artificial Intelligence 2023"
+      },
+      {
+        "paper_id": "openalex:W7162471721",
+        "title": "JacQuant: STE-Free Quantization-Aware Training via Learned Jacobian Surrogates",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7197036350",
+        "title": "Not Every Divergence Should Be Suppressed: Counterfactual Recoverability in On-Policy Distillation",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7160664940",
+        "title": "Near-Policy: Accelerating On-Policy Distillation via Asynchronous Generation and Selective Packing",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4311251020",
+        "title": "Genie: Show Me the Data for Quantization",
+        "venue_year": "arXiv (Cornell University) 2022"
+      },
+      {
+        "paper_id": "openalex:W7207702602",
+        "title": "SCULPT: Training Edge Vision Models for Post-Training Quantization Readiness",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7208794457",
+        "title": "CA-OPD: Confidence-Aware On-Policy Distillation for Structured Visual Prediction",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4416748605",
+        "title": "Distillation-PPO: A Novel Two-Stage Reinforcement Learning Framework for Humanoid Robot Perceptive Locomotion",
+        "venue_year": "2025"
+      },
+      {
+        "paper_id": "openalex:W7167932679",
+        "title": "Closing the Null Space: Guidance-Aware Quantization for Classifier-Free Diffusion",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W7169878852",
+        "title": "Trace-Based On-Policy Distillation for Masked Diffusion Language Models",
+        "venue_year": "arXiv (Cornell University) 2026"
+      },
+      {
+        "paper_id": "openalex:W4415307021",
+        "title": "Precision Neural Network Quantization via Learnable Adaptive Modules",
+        "venue_year": "arXiv (Cornell University) 2025"
+      },
+      {
+        "paper_id": "openreview:sn5vHNe5kE",
+        "title": "Beyond Endpoint Sufficiency: Inner-Time Trajectory as a Representation Channel in Iterative Systems",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:yJlnObHSlG",
+        "title": "Revisiting Score Distillation for Video Generation: A Temporal-Frequency Perspective",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "openreview:DjbUzShZX2",
+        "title": "When Does an Edit Become Unsafe? Tracing Safety Emergence Along the Generative Trajectory of Image Editing Models",
+        "venue_year": "ICLR 2027 (in review)"
+      },
+      {
+        "paper_id": "arxiv:2310.05773v2",
+        "title": "Towards Lossless Dataset Distillation via Difficulty-Aligned Trajectory Matching",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2302.07215v1",
+        "title": "Multi-teacher knowledge distillation as an effective method for compressing ensembles of neural networks",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2511.09180v1",
+        "title": "FSampler: Training Free Acceleration of Diffusion Sampling via Epsilon Extrapolation",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2602.02107v1",
+        "title": "Teacher-Guided Student Self-Knowledge Distillation Using Diffusion Model",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.01532v2",
+        "title": "Knowledge Distillation During Mid-Training Favors Reasoning over Factual Recall",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2407.16040v2",
+        "title": "Generalizing Teacher Networks for Effective Knowledge Distillation Across Student Architectures",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2609.22254v1",
+        "title": "Teacher Should Think Ahead: Adaptive Continuations for Reliable On-Policy Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.00535v2",
+        "title": "Flow-Map GRPO: Reinforcement Learning for Few-Step Flow-Map Generators via Anchored Stochastic Composition",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2609.13199v1",
+        "title": "Discovering and Preserving Category Correlation Knowledge via Adaptive Reciprocal Knowledge Distillation",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2509.16989v3",
+        "title": "PTQTP: Post-Training Quantization to Trit-Planes for Large Language Models",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2402.17706v1",
+        "title": "Adaptive quantization with mixed-precision based on low-cost proxy",
+        "venue_year": "arXiv 2024"
+      },
+      {
+        "paper_id": "arxiv:2307.07483v2",
+        "title": "Multimodal Distillation for Egocentric Action Recognition",
+        "venue_year": "arXiv 2023"
+      },
+      {
+        "paper_id": "arxiv:2602.17698v1",
+        "title": "ScaleBITS: Scalable Bitwidth Search for Hardware-Aligned Mixed-Precision LLMs",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2607.28589v1",
+        "title": "MixFrag: Fragility-Guided Mixed-Precision Post-Training Quantization for Vision Transformers",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2511.05476v5",
+        "title": "A Metamorphic Testing Perspective on Knowledge Distillation for Language Models of Code: Does the Student Deeply Mimic the Teacher?",
+        "venue_year": "arXiv 2025"
+      },
+      {
+        "paper_id": "arxiv:2608.10709v1",
+        "title": "SQuaT: Self-Supervised Knowledge Distillation via Student-Aware Quantized Teacher Features",
+        "venue_year": "arXiv 2026"
+      },
+      {
+        "paper_id": "arxiv:2308.00513v2",
+        "title": "UVIO: An UWB-Aided Visual-Inertial Odometry Framework with Bias-Compensated Anchors Initialization",
+        "venue_year": "arXiv 2023"
+      }
+    ]
+  },
+  "contract_version": 2,
+  "plain_falsification_en": "<TODO[plain_falsification_en]: same experiment, metric, controls and failure conditions>",
+  "plain_core_claim_en": "<TODO[plain_core_claim_en]: main contribution explained without changing its strength>",
+  "plain_resource_summary_en": "<TODO[plain_resource_summary_en]: current cost, user ceiling, uncertainty and feasibility>",
+  "plain_open_questions_en": "<TODO[plain_open_questions_en]: implementation choices and unresolved proof obligations; explicit none if none>",
+  "plain_falsification_zh": "<TODO[plain_falsification_zh]: same experiment, metric, controls and failure conditions>",
+  "plain_core_claim_zh": "<TODO[plain_core_claim_zh]: main contribution explained without changing its strength>",
+  "plain_resource_summary_zh": "<TODO[plain_resource_summary_zh]: current cost, user ceiling, uncertainty and feasibility>",
+  "plain_open_questions_zh": "<TODO[plain_open_questions_zh]: implementation choices and unresolved proof obligations; explicit none if none>"
+}

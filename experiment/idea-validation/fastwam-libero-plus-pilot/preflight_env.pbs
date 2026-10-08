@@ -1,0 +1,260 @@
+#!/bin/bash
+#PBS -N libero_plus_envcheck
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:45:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || exit 64
+test -n "${PBS_NODEFILE:-}" && test -r "$PBS_NODEFILE" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+awk -v host="$HOST" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+qstat -f "$PBS_JOBID" > "/tmp/libero-plus-preflight-$PBS_JOBID.txt"
+grep -Eq 'job_state = R' "/tmp/libero-plus-preflight-$PBS_JOBID.txt" || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+REPO="$ROOT/LIBERO-plus"
+DEPS="$ROOT/deps"
+NATIVE_ROOT="$ROOT/native/imagemagick-jammy"
+NATIVE_LIBDIR="$NATIVE_ROOT/usr/lib/x86_64-linux-gnu"
+CONFIG="$ROOT/libero-config"
+LIBERO_COMPAT="$ROOT/libero-plus-compat"
+OUT="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$OUT"
+exec > >(tee -a "$OUT/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf 'exit_code=%s finished=%s\n' "$rc" "$(date -Is)" > "$OUT/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+cp "/tmp/libero-plus-preflight-$PBS_JOBID.txt" "$OUT/allocation.txt"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+MAGICK_HOME="$NATIVE_ROOT/usr"
+MAGICK_CONFIGURE_PATH="$NATIVE_ROOT/etc/ImageMagick-6:$NATIVE_LIBDIR/ImageMagick-6.9.11/config-Q16"
+MAGICK_CODER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/coders"
+MAGICK_FILTER_MODULE_PATH="$NATIVE_LIBDIR/ImageMagick-6.9.11/modules-Q16/filters"
+export MAGICK_HOME MAGICK_CONFIGURE_PATH MAGICK_CODER_MODULE_PATH MAGICK_FILTER_MODULE_PATH
+export LD_LIBRARY_PATH="$NATIVE_LIBDIR:$NATIVE_ROOT/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}"
+PYTHON="$BASE/venv/bin/python"
+test -x "$PYTHON" && test -r "$SIF"
+test -s "$ROOT/env_status.json" && test -s "$ROOT/manifest.json"
+test -s "$ROOT/manifest_summary.json"
+
+allocation_guard() {
+  test -n "${PBS_JOBID:-}" && test -r "${PBS_NODEFILE:-}" || return 64
+  local node
+  node=$(hostname -s)
+  case "$node" in *login*) return 64;; esac
+  awk -v host="$node" '{split($1,a,"."); if(a[1]==host) found=1} END {exit !found}' "$PBS_NODEFILE" || return 64
+  qstat -f "$PBS_JOBID" > "/tmp/libero-plus-preflight-$PBS_JOBID.txt" || return 64
+  grep -Eq 'job_state = R' "/tmp/libero-plus-preflight-$PBS_JOBID.txt" || return 64
+}
+BIND_ARGS=(--bind /scratch --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro")
+if test -d /scratch/GPFS/app/apps; then BIND_ARGS+=(--bind /scratch/GPFS/app/apps:/app/apps); fi
+for host_lib in /usr/lib64/libffi.so.6 /usr/lib64/libssl.so.1.1 /usr/lib64/libcrypto.so.1.1; do
+  if test -r "$host_lib"; then
+    base=$(basename "$host_lib")
+    BIND_ARGS+=(--bind "$host_lib:/usr/lib/x86_64-linux-gnu/$base")
+  fi
+done
+container_exec() {
+  allocation_guard
+  apptainer exec --cleanenv "${BIND_ARGS[@]}" \
+    --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PILOT_ALLOCATION_HOST=$HOST,LD_LIBRARY_PATH=$LD_LIBRARY_PATH,MAGICK_HOME=$MAGICK_HOME,MAGICK_CONFIGURE_PATH=$MAGICK_CONFIGURE_PATH,MAGICK_CODER_MODULE_PATH=$MAGICK_CODER_MODULE_PATH,MAGICK_FILTER_MODULE_PATH=$MAGICK_FILTER_MODULE_PATH,NATIVE_ROOT=$NATIVE_ROOT,NATIVE_LIBDIR=$NATIVE_LIBDIR" \
+    "$@"
+}
+
+PYTHONPATH="$ROOT:$LIBERO_COMPAT:$REPO:$DEPS:$BASE/FastWAM:$BASE/FastWAM/src:$BASE/FastWAM/experiments/libero"
+container_exec \
+  --env "ROOT=$ROOT,REPO=$REPO,DEPS=$DEPS,CONFIG=$CONFIG,COMPAT=$LIBERO_COMPAT,BASE=$BASE,OUT=$OUT,PYTHONPATH=$PYTHONPATH,LIBERO_CONFIG_PATH=$CONFIG,MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1" \
+  "$SIF" "$PYTHON" - <<'PY'
+import ctypes
+import ctypes.util
+import importlib
+import json
+import os
+import socket
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+status = json.loads((root / "env_status.json").read_text(encoding="utf-8"))
+manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+summary = json.loads((root / "manifest_summary.json").read_text(encoding="utf-8"))
+if status.get("checks", {}).get("ready") is not True or summary.get("variant_count") != 1400:
+    raise RuntimeError("LIBERO-Plus prepare gate is not ready")
+for key, env_key in (("magick_home", "MAGICK_HOME"),
+                     ("native_library_dir", "NATIVE_LIBDIR"),
+                     ("magick_configure_path", "MAGICK_CONFIGURE_PATH"),
+                     ("magick_coder_module_path", "MAGICK_CODER_MODULE_PATH"),
+                     ("magick_filter_module_path", "MAGICK_FILTER_MODULE_PATH")):
+    expected = os.environ.get(env_key)
+    if key == "native_library_dir":
+        expected = os.environ["NATIVE_ROOT"] + "/usr/lib/x86_64-linux-gnu"
+    if status.get("paths", {}).get(key) != expected:
+        raise RuntimeError(f"Runtime ImageMagick path differs from prepared env_status: {key}")
+native_status = json.loads((root / "native_status.json").read_text(encoding="utf-8"))
+if native_status.get("ready") is not True:
+    raise RuntimeError("Task-local native Wand setup receipt is not ready")
+
+import numpy as np
+import cv2
+import wand
+from wand.api import library, libmagick
+if len(manifest.get("variants", [])) != 1400:
+    raise RuntimeError("Frozen manifest does not contain 1,400 variants")
+asset_root = Path(status["assets"]["path"])
+for name in ("articulated_objects", "new_objects", "scenes", "stable_hope_objects",
+             "stable_scanned_objects", "textures", "turbosquid_objects"):
+    if not (asset_root / name).is_dir():
+        raise RuntimeError(f"Prepared Plus asset directory is missing: {asset_root / name}")
+for name in ("serving_region.xml", "wall_frames.stl", "wall.xml"):
+    if not (asset_root / name).is_file():
+        raise RuntimeError(f"Prepared Plus asset file is missing: {asset_root / name}")
+asset_commit = status["assets"]["commit"]
+asset_marker = root / f"assets-{asset_commit}.complete"
+if not asset_marker.is_file() or asset_marker.read_text(encoding="ascii").strip() != asset_commit:
+    raise RuntimeError(f"Asset completion marker is missing or mismatched: {asset_marker}")
+
+# Some Plus arenas use a package-relative assets path instead of config.yaml.
+runtime_assets = Path(os.environ["REPO"]) / "libero" / "libero" / "assets"
+if not (asset_root / "scenes" / "libero_tabletop_base_style.xml").is_file():
+    raise RuntimeError("Official Plus tabletop scene XML is unavailable")
+alias_created = False
+if not runtime_assets.exists() and not runtime_assets.is_symlink():
+    runtime_assets.symlink_to(asset_root, target_is_directory=True)
+    alias_created = True
+if runtime_assets.resolve() != asset_root.resolve():
+    raise RuntimeError(f"Runtime assets do not resolve to the official Plus assets: {runtime_assets}")
+asset_alias = {"path": str(runtime_assets), "target": str(asset_root),
+               "created": alias_created, "asset_commit": asset_commit}
+print("RUNTIME_ASSETS_ALIAS " + json.dumps(asset_alias, sort_keys=True), flush=True)
+
+library.MagickWandGenesis()
+try:
+    from PIL import Image
+    from wand.image import Image as WandImage
+    with WandImage(width=8, height=8, background="white") as image:
+        image.noise("gaussian", attenuate=0.01)
+        image.format = "png"
+        encoded = image.make_blob()
+    if not encoded:
+        raise RuntimeError("Wand noise smoke produced no image bytes")
+    wand_image = np.asarray(Image.open(__import__("io").BytesIO(encoded)).convert("RGB"))
+    cv_image = cv2.GaussianBlur(wand_image, (3, 3), 0)
+    if cv_image.shape != (8, 8, 3):
+        raise RuntimeError(f"OpenCV image path returned {cv_image.shape}")
+finally:
+    library.MagickWandTerminus()
+
+osmesa = ctypes.util.find_library("OSMesa")
+if not osmesa:
+    raise RuntimeError("OSMesa could not be resolved")
+ctypes.CDLL(osmesa)
+
+from libero.libero import benchmark
+from libero.libero.envs import OffScreenRenderEnv
+from libero_state_loader import load_task_init_states
+
+variants = manifest["variants"]
+source_package = (Path(os.environ["REPO"]) / "libero" / "libero").resolve()
+envs_module = importlib.import_module("libero.libero.envs")
+classification_path = Path(benchmark.__file__).resolve().parent / "task_classification.json"
+provenance = {
+    "benchmark_file": str(Path(benchmark.__file__).resolve()),
+    "offscreen_env_file": str(Path(envs_module.__file__).resolve()),
+    "classification_path": str(classification_path),
+    "libero_compat": os.environ["COMPAT"],
+}
+print("LIBERO_PREFLIGHT_PROVENANCE " + json.dumps(provenance, sort_keys=True), flush=True)
+if status.get("paths", {}).get("libero_compat") != os.environ["COMPAT"]:
+    raise RuntimeError("Environment status and runner compatibility path disagree")
+for label, source in (("benchmark", benchmark.__file__), ("OffScreenRenderEnv", envs_module.__file__)):
+    try:
+        Path(source).resolve().relative_to(source_package)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} imported outside the frozen Plus package root: {source}") from exc
+if not classification_path.is_file():
+    raise RuntimeError(f"Plus task classification file is missing: {classification_path}")
+if str(classification_path) != status.get("checks", {}).get("classification_path"):
+    raise RuntimeError("Plus task classification source differs from prepared env_status")
+dimensions = list(dict.fromkeys(row["dimension"] for row in variants))
+selected = []
+for dimension in dimensions:
+    row = next((item for item in variants if item["dimension"] == dimension), None)
+    if row is None:
+        raise RuntimeError(f"No frozen variant for dimension {dimension}")
+    selected.append(row)
+if len(selected) != 7 or len({row["dimension"] for row in selected}) != 7:
+    raise RuntimeError(f"Expected one variant per each of 7 dimensions, got {len(selected)}")
+
+results = []
+classes = benchmark.get_benchmark_dict()
+for row in selected:
+    if int(row["state_id"]) != 0:
+        raise RuntimeError(f"Unexpected state_id for {row['variant_id']}")
+    suite = classes[row["suite"]]()
+    task = suite.get_task(int(row["task_id"]))
+    if task.name != row["task_name"]:
+        raise RuntimeError(f"Task identity mismatch: {row['task_name']} vs {task.name}")
+    env = OffScreenRenderEnv(
+        bddl_file_name=str(suite.get_task_bddl_file_path(int(row["task_id"]))),
+        camera_heights=256,
+        camera_widths=256,
+    )
+    try:
+        env.seed(20261005 + len(results))
+        env.reset()
+        states, state_path = load_task_init_states(suite, row["task_id"])
+        if not len(states):
+            raise RuntimeError(f"No initial states for {row['variant_id']}")
+        obs = env.set_init_state(states[0])
+        obs, _, _, _ = env.step([0, 0, 0, 0, 0, 0, -1])
+        image = np.asarray(obs["agentview_image"])
+        if image.shape != (256, 256, 3) or not np.isfinite(image).all():
+            raise RuntimeError(f"Invalid agentview image for {row['variant_id']}: {image.shape}")
+        if "robot0_eye_in_hand_image" in obs:
+            wrist = np.asarray(obs["robot0_eye_in_hand_image"])
+            if wrist.shape != (256, 256, 3) or not np.isfinite(wrist).all():
+                raise RuntimeError(f"Invalid wrist image for {row['variant_id']}: {wrist.shape}")
+        results.append({
+            "variant_id": row["variant_id"], "suite": row["suite"], "task_id": row["task_id"],
+            "dimension": row["dimension"], "subtype": row["subtype"], "task_name": task.name,
+            "state_id": 0, "noop_steps": 1, "agentview_shape": list(image.shape),
+            "initial_state_path": state_path,
+        })
+        print(f"ENV_VARIANT_OK id={row['variant_id']} dimension={row['dimension']} task={task.name}", flush=True)
+    finally:
+        env.close()
+
+result = {
+    "pbs_job_id": os.environ["PBS_JOBID"], "host": socket.gethostname(),
+    "source_commit": status["source_commit"], "asset_commit": status["assets"]["commit"],
+    "gpu_loaded": False, "variant_count": len(results), "wand_noise": "passed",
+    "wand_library": str(Path(library._name).resolve()),
+    "magick_core_library": str(Path(libmagick._name).resolve()),
+    "wand_native_package_version": native_status["package_version"],
+    "wand_noise_png_roundtrip": native_status["gaussian_noise_png_roundtrip"],
+    "opencv_gaussian_blur": "passed", "osmesa": osmesa, "variants": results,
+    "runtime_assets": asset_alias,
+    "initial_state_loader": "official Plus path/reshape logic; weights_only=False restricted to frozen init_files",
+}
+target = Path(os.environ["OUT"]) / "env_preflight.json"
+temp = target.with_suffix(".json.tmp")
+temp.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+temp.replace(target)
+status["paths"]["runtime_assets"] = str(runtime_assets)
+status["checks"]["render_preflight_ready"] = True
+status["checks"]["render_preflight_job"] = os.environ["PBS_JOBID"]
+status_target = root / "env_status.json"
+status_temp = status_target.with_suffix(".json.tmp")
+status_temp.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+status_temp.replace(status_target)
+print("ENV_PREFLIGHT_READY " + json.dumps({"variant_count": len(results), "dimensions": dimensions}), flush=True)
+PY
+
+touch "$OUT/SUCCESS"
+printf 'PREFLIGHT_COMPLETE job=%s variants=7 gpu_loaded=false\n' "$PBS_JOBID"

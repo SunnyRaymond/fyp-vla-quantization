@@ -1,0 +1,18 @@
+{
+  "contract_version": 2,
+  "stage": "post_revision (dataflow)",
+  "candidate": "phase3_revise/final_candidate.json",
+  "reason": "F2 is repaired. L_train is now an executable scalar mean over every native prefix step and selected channel. F1 remains open for V_visit: its diagnostic formula lacks temporal reduction and does not identify whether values come from a fixed pre-QAT/PTQ reference or each arm after training.",
+  "findings": [
+    {
+      "validator": "semantic_review",
+      "severity": "fail",
+      "message": "dataflow: L_train is defined as (1/(T_exec,m*|J_m|))*sum_u sum_j[((y_tilde[Q|Q,u,j]-y_tilde[BF16|Q,u,j])/s[m,j])^2]; s[m,j]>0 keeps each channel scaled dimensionlessly, and all u=1..T_exec,m remain included. By contrast, V_visit still sums over j without a time index/reduction although E_m returns the native executed prefix, so its task-level diagnostic is not explicitly scalar. Its pre-QAT/PTQ versus per-arm post-training provenance is also unstated; this is the remaining F1 scope/interpretation gap."
+    },
+    {
+      "validator": "semantic_review",
+      "severity": "fail",
+      "message": "F2 is repaired. L_train is now an executable scalar mean over every native prefix step and selected channel. F1 remains open for V_visit: its diagnostic formula lacks temporal reduction and does not identify whether values come from a fixed pre-QAT/PTQ reference or each arm after training."
+    }
+  ]
+}

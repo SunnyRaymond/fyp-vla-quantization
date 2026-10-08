@@ -1,0 +1,65 @@
+{
+  "protocol": "fastwam-a4-phases12-v1",
+  "authorized_steps": [
+    1,
+    2
+  ],
+  "inputs": {
+    "original_spatial_controls": 10,
+    "plus_per_dimension": 2,
+    "plus_dimensions": [
+      "camera_viewpoints",
+      "light_conditions",
+      "background_textures",
+      "objects_layout",
+      "robot_initial_states",
+      "language_instructions"
+    ],
+    "total": 22,
+    "official_state_id": 0,
+    "settling_steps": 30
+  },
+  "sampler_seeds_per_input": 2,
+  "contexts": 44,
+  "phase1_labels": [
+    "bf16",
+    "w4a8",
+    "w4a4_native",
+    "independent_reference"
+  ],
+  "phase1_full_queries": 176,
+  "phase2_factors": [
+    "video_activation_bits",
+    "action_activation_bits",
+    "proprio_activation_bits"
+  ],
+  "phase2_levels": [
+    4,
+    8
+  ],
+  "phase2_factorial_cells": 8,
+  "phase2_reused_endpoints": 88,
+  "phase2_new_full_queries": 264,
+  "total_new_full_queries": 440,
+  "evaluation_episodes": 0,
+  "query_post_env_steps": 0,
+  "weights": "shared native packed W4 G128",
+  "kv": "BF16, no KV4",
+  "reference_boundary": "Independent FP32 dequantized Linear GEMM; Linear outputs BF16; diagnostic-only",
+  "metrics": "Per-real-layer same-input error and activation distribution; outputs32x7 and controller commands; tracing query wallseconds not formal latency",
+  "checkpoint": "released Optional-IDM clean checkpoint",
+  "mode": "idm",
+  "video_denoising_steps": 10,
+  "action_denoising_steps": 10,
+  "selection_seed": 2026100612,
+  "stages3_4_authorized": false,
+  "full5600_campaign_submission_allowed": false,
+  "monitor_automation_status": "PAUSED",
+  "primary_action_error": "RMSE of first10 normalized motor actions, columns0:6, versus same-case same-seed BF16",
+  "secondary_action_errors": [
+    "first10 gripper RMSE",
+    "full32x7 action RMSE",
+    "native allA4 versus independent reference action RMSE"
+  ],
+  "factorial_response": "first10 motor RMSE versus BF16; descriptive paired within context"
+}

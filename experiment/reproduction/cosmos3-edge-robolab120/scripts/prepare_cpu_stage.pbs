@@ -1,0 +1,76 @@
+#!/bin/bash -l
+#PBS -N cos3edge_stage
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+
+[[ -n "${PBS_JOBID:-}" ]] || { echo "FAIL_CLOSED: PBS_JOBID is missing"; exit 90; }
+[[ -n "${PBS_NODEFILE:-}" && -r "$PBS_NODEFILE" ]] || { echo "FAIL_CLOSED: PBS_NODEFILE is missing or unreadable"; exit 91; }
+HOST_SHORT="$(hostname -s)"
+case "$HOST_SHORT" in asp2a-login*|*login*) echo "FAIL_CLOSED: login node $HOST_SHORT"; exit 92;; esac
+awk -v h="$HOST_SHORT" '$1 == h || index($1, h ".") == 1 { found=1 } END { exit !found }' "$PBS_NODEFILE" || {
+  echo "FAIL_CLOSED: current host is not in PBS_NODEFILE"; exit 93;
+}
+
+TASK_ROOT="/scratch/users/ntu/yguo017/cosmos3-edge-robolab120"
+CONTROL_DIR="${PBS_O_WORKDIR:?PBS_O_WORKDIR is missing}"
+mkdir -p "$TASK_ROOT/logs"
+exec > >(tee -a "$TASK_ROOT/logs/job.log") 2>&1
+RECEIPT="$TASK_ROOT/logs/cpu_stage_receipt.env"
+record_stage_exit() {
+  local status="$?" tmp="$RECEIPT.tmp.$$"
+  trap - EXIT
+  if [[ -f "$RECEIPT" ]]; then
+    { grep -Ev '^(EXIT_STATUS|FINISHED)=' "$RECEIPT" || true; } > "$tmp"
+    printf 'EXIT_STATUS=%s\nFINISHED=%s\n' "$status" "$(date -Is)" >> "$tmp"
+    mv -f -- "$tmp" "$RECEIPT"
+  fi
+  exit "$status"
+}
+trap record_stage_exit EXIT
+printf 'PBS_JOBID=%s\nHOST=%s\nSTARTED=%s\nTASK_ROOT=%s\n' "$PBS_JOBID" "$(hostname -f)" "$(date -Is)" "$TASK_ROOT"
+printf 'ALLOCATED_HOST_ENTRIES=%s\n' "$(wc -l < "$PBS_NODEFILE")"
+df -h "$TASK_ROOT" | tail -n 1
+cat > "$RECEIPT" <<EOF
+PBS_JOBID=$PBS_JOBID
+REPOSITORIES_STATUS=NOT_STARTED
+ROBOLAB_ASSETS_STATUS=NOT_STARTED
+ROBOLAB_SIM_ENV_STATUS=SKIPPED_USER_SCOPE_A100_NON_RTX
+POLICY_CHECKPOINT_STATUS=NOT_STARTED
+WAN_VAE_STATUS=NOT_STARTED
+ROBOLAB_DEPENDENCIES_STATUS=SKIPPED_USER_SCOPE_A100_NON_RTX
+COSMOS_DEPENDENCIES_STATUS=NOT_STARTED
+RESOURCES_STATUS=IN_PROGRESS
+DEPENDENCIES_STATUS=IN_PROGRESS
+EOF
+
+if ! command -v apptainer >/dev/null 2>&1 && type module >/dev/null 2>&1; then
+  module load apptainer/1.5.0 >/dev/null 2>&1 || module load apptainer >/dev/null 2>&1 || module load singularity >/dev/null 2>&1 || true
+fi
+CONTAINER_IMAGE="/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif"
+[[ -r "$CONTAINER_IMAGE" ]] || { echo "FAIL: reusable Ubuntu SIF unavailable: $CONTAINER_IMAGE"; exit 97; }
+[[ -r "$CONTROL_DIR/install_runtime_ubuntu22.sh" ]] || { echo "FAIL: installer missing under $CONTROL_DIR"; exit 98; }
+mkdir -p "$TASK_ROOT/tools"
+PBS_NODEFILE_COPY="$TASK_ROOT/logs/pbs_nodefile_${PBS_JOBID}.txt"
+cp "$PBS_NODEFILE" "$PBS_NODEFILE_COPY"
+cp "$CONTROL_DIR/install_runtime_ubuntu22.sh" "$TASK_ROOT/tools/install_runtime_ubuntu22.sh"
+chmod 700 "$TASK_ROOT/tools/install_runtime_ubuntu22.sh"
+apptainer exec \
+  --bind "$TASK_ROOT:$TASK_ROOT" \
+  --env TASK_ROOT="$TASK_ROOT" \
+  --env PBS_NODEFILE="$PBS_NODEFILE_COPY" \
+  --env HF_HOME="$TASK_ROOT/cache/huggingface" \
+  --env HUGGINGFACE_HUB_CACHE="$TASK_ROOT/cache/huggingface/hub" \
+  --env PBS_JOBID="$PBS_JOBID" \
+  "$CONTAINER_IMAGE" /bin/bash "$TASK_ROOT/tools/install_runtime_ubuntu22.sh"
+
+grep -q '^ROBOLAB_ASSETS_STATUS=PASS$' "$RECEIPT"
+grep -q '^POLICY_CHECKPOINT_STATUS=PASS$' "$RECEIPT"
+grep -q '^WAN_VAE_STATUS=PASS$' "$RECEIPT"
+grep -q '^ROBOLAB_SIM_ENV_STATUS=SKIPPED_USER_SCOPE_A100_NON_RTX$' "$RECEIPT"
+grep -q '^COSMOS_DEPENDENCIES_STATUS=PASS$' "$RECEIPT"
+grep -q '^RESOURCES_STATUS=PASS$' "$RECEIPT"
+grep -q '^DEPENDENCIES_STATUS=PASS$' "$RECEIPT"
+echo "STAGE_STATUS=PASS_RESOURCES_AND_A100_POLICY_SERVER_DEPENDENCIES"

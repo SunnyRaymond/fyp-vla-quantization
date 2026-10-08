@@ -1,0 +1,66 @@
+{
+  "contract_version": 2,
+  "source": "needs_work",
+  "reason": "[P1] Step 6/7 的 dev/test 分离已修好，但冻结 test 上的主要 held-out action discrepancy 仍无可执行 reference 来源：reasoning 把 BF16 teacher queries 限为 calibration，Step 7 又禁止 test teacher calls，而 R_act 定义要求 a_BF16(o,xi)。需一次 bounded re-revision 明确允许独立 Q-policy test rollouts 完成后、在冻结 observations 上仅作 post-hoc BF16 replay 来计分；teacher 不参与动作、更新或选择，teacher 评估时间单列，不改 falsification 或 compute_budget。",
+  "checks": {
+    "dataflow": {
+      "status": "fail",
+      "executed": true,
+      "evidence": "候选 core_mechanism_reasoning 写明 “teacher queries are made only during calibration”；Step 7 写明 “evaluate it without BF16 teacher calls on the independent frozen test split”，但报告 test action discrepancy。该 discrepancy 在 estimand 中定义为 D_a^{-1}(a_phi(o,xi)−a_BF16(o,xi)) 的平方，因此每个 test observation 都需 BF16 reference 输出；没有 test reference replay 或预缓存来源的步骤。"
+    },
+    "dry_run": {
+      "status": "fail",
+      "executed": true,
+      "evidence": "手工实例化 C={c1}、D={d1}、T={t1}：Step 6 可在 C 上更新 alpha、在 D 上按量化候选停止；冻结后 Step 7 可在 T 上运行 Q policy 并取得 success，但依照“无 BF16 teacher calls”没有 a_BF16(t1,xi)，故无法算候选所称 test R_act。加入 post-hoc teacher replay 或测试 reference cache 才闭合该输出路径；这不是模型实验。"
+    },
+    "degenerate_probes": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "按修订后的控制流检查两个边界：若 development discrepancy 首轮不再改善，Step 6 在 D 上停止；若预算 B 先到，Step 6 也停止。两者都不访问 T 作停止依据，符合 test split 保留条件。"
+    },
+    "claim_step_map": {
+      "status": "fail",
+      "executed": true,
+      "evidence": "Step 4–6 将 alpha 更新映射到 calibration Q-histories、teacher action loss 与 dev stopping；Step 7 将 closed-loop success 映射到无 teacher 的 test rollout。但 hook/falsification 所称 held-out full-action discrepancy / R_act 需要 BF16 action reference，当前 Step 7 不提供该值。"
+    },
+    "falsification": {
+      "status": "conditional",
+      "executed": true,
+      "evidence": "falsification_prediction 与 budget 均未修改，故无需授权 rewrite diff。原文本仍命名固定 Fast-WAM/LIBERO-Goal 比较、held-out R_act 及其下降方向、唯一变量 g_Qhist、以 BF16-history gradient 替代后令 outcome 回到 baseline 的负控；没有 numeric outcome bar。结构有效，但 R_act 在 test split 上的数据来源受 P1 限制，且本轮未运行实验。"
+    },
+    "novelty": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "signature_terms 与 alias_terms 均逐项确认未变；top-level diff 只有 core_mechanism_steps。Step 6/7 仅澄清 frozen development/test split 的职责，没有新增算法或 novelty claim，因此既有 supplied collision pool 与 critique 的 bounded novelty判断仍适用，无需扩展检索。"
+    },
+    "target_resolution": {
+      "status": "pass",
+      "executed": true,
+      "evidence": "R1 已精确落实：Step 6 将停止集指定为 frozen development split，并排除 test split；Step 7 将 independent frozen test split 留作最终评估。W1 已被该重写覆盖。P1 是当前评估输出来源问题，不是原 R1 split 指派的残留。"
+    }
+  },
+  "prune": [],
+  "targets": [
+    {
+      "target_id": "F1",
+      "scope": "tactical",
+      "check": "dataflow",
+      "kind": "failed_check",
+      "instruction": "候选 core_mechanism_reasoning 写明 “teacher queries are made only during calibration”；Step 7 写明 “evaluate it without BF16 teacher calls on the independent frozen test split”，但报告 test action discrepancy。该 discrepancy 在 estimand 中定义为 D_a^{-1}(a_phi(o,xi)−a_BF16(o,xi)) 的平方，因此每个 test observation 都需 BF16 reference 输出；没有 test reference replay 或预缓存来源的步骤。"
+    },
+    {
+      "target_id": "F2",
+      "scope": "tactical",
+      "check": "dry_run",
+      "kind": "failed_check",
+      "instruction": "手工实例化 C={c1}、D={d1}、T={t1}：Step 6 可在 C 上更新 alpha、在 D 上按量化候选停止；冻结后 Step 7 可在 T 上运行 Q policy 并取得 success，但依照“无 BF16 teacher calls”没有 a_BF16(t1,xi)，故无法算候选所称 test R_act。加入 post-hoc teacher replay 或测试 reference cache 才闭合该输出路径；这不是模型实验。"
+    },
+    {
+      "target_id": "F3",
+      "scope": "tactical",
+      "check": "claim_step_map",
+      "kind": "failed_check",
+      "instruction": "Step 4–6 将 alpha 更新映射到 calibration Q-histories、teacher action loss 与 dev stopping；Step 7 将 closed-loop success 映射到无 teacher 的 test rollout。但 hook/falsification 所称 held-out full-action discrepancy / R_act 需要 BF16 action reference，当前 Step 7 不提供该值。"
+    }
+  ]
+}

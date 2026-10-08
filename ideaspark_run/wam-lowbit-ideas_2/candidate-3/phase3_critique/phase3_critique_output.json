@@ -1,0 +1,32 @@
+{
+  "paper_pointed_threat": {
+    "threat_paper_id": "no_threat_found",
+    "threat_source": "n/a",
+    "threat_channel": null,
+    "subsumption_argument": null,
+    "addressable_via": null,
+    "parametric_family_concern": "On-policy post-training quantization calibrated on student-generated trajectories; a focused scoop-check should query: \"student-generated calibration trajectories\" and \"self-induced quantization-distribution refresh\"."
+  },
+  "falsification_structure_check": {
+    "minimal_experiment_named": "yes",
+    "outcome_metric_named": "yes",
+    "load_bearing_variable": "g_Qhist = the gradient of L_act with respect to alpha estimated on observations from the current candidate's own quantized rollouts",
+    "negative_control_target": "outcome_metric",
+    "numeric_bar_provenance": "none",
+    "verdict": "sound",
+    "reasoning": "The prediction names a fixed Fast-WAM and LIBERO-Goal comparison, four calibration baselines, and held-out R_act with a predicted decrease. Its negative control replaces the quantized-history gradient with the matched BF16-history gradient and predicts held-out Q-history R_act back toward baseline; this tests the claimed action-fidelity outcome, while task success remains explicitly separate."
+  },
+  "blocking_findings_disposition": [],
+  "verdict": "revise",
+  "verdict_layer": "soft_judgment",
+  "verdict_rationale": "No exact WAM-level mechanism subsumption appears in the supplied literature table and collision hits; the adjacent QuantWAMs result diagnoses quantized-state shift and schedules protection but does not refit A8 clipping from the current W4A8 policy's own histories, so the candidate's application/incremental scope remains supported. The falsification structure is sound for its stated R_act claim, but Step 6 says only \"held-out\" for the stopping set while Step 7 reserves separate evaluation episodes, leaving development-versus-test use ambiguous; revise that field to keep the final test split outside stopping.",
+  "revision_targets": [
+    {
+      "target_id": "R1",
+      "scope": "tactical",
+      "field": "core_mechanism_steps",
+      "issue": "Step 6's held-out action-discrepancy stopping set is not assigned to the frozen development or test split; the supplied non-blocking wording suggestion W1 identifies this ambiguity.",
+      "fix_direction": "In Step 6, state that the stopping discrepancy is measured on the frozen development split, and reserve the separate test split for Step 7 evaluation."
+    }
+  ]
+}

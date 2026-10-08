@@ -1,0 +1,164 @@
+{
+  "contract_version": 2,
+  "base_candidate_sha256": "db94e92cdfc46da3eef8304f359288d9985cac42e869c6c5d965c8b9a8b28f4d",
+  "candidate_id": null,
+  "applied_revisions": [
+    {
+      "target_id": "R1",
+      "scope": "tactical",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "For any activation row with max_j|x_bp,j|=0, define its quantized activation x_tilde_bp=0 and skip computing Δ_bp, the x/Δ division, activation quantization, and dither correction for that row, while keeping the ordinary Linear bias/epilogue path active.",
+      "outcome": "applied",
+      "delta_summary": "定义全零 activation row 的零输出与旁路规则，同时保留普通 Linear bias/epilogue。"
+    },
+    {
+      "target_id": "R1",
+      "scope": "tactical",
+      "op": "replace",
+      "field": "core_mechanism_steps",
+      "value": "1. 下载/加载 Fast-WAM 官方 released Optional IDM checkpoint 与 yuanty/LIBERO-fastwam 的现有 observation/goal logs；冻结 first_frame mode、scheduler、normalization 和 action parameterization，输出固定 BF16 reference path。\n2. 将所有指定 denoiser Linear 权重打包成 signed symmetric groupwise W4，固定 G、zero point=0 与 group clipping/scale；其余明示的非 Linear 运算保留 BF16/FP32，输出唯一 W4 bank。\n3. 在当前完整量化路径上逐 token row 计算 m_bp=max_j|x_bp,j|；若 m_bp=0，直接输出零 A8 activation row，并跳过该 row 的 Δ 计算与除法；否则设 Δ_bp=m_bp/126。抽样轨迹标识确定的 per-sample base draw u_b；输出 live row scales 和真实 full-path activation rows，不用 FP 输入代替。\n4. 在每次 Linear activation quantizer 设置 φ_r；对 nonzero rows 计算 d_br=frac(u_b+φ_r)，将同一 scalar 对齐广播到该调用的 nonzero token rows 与 hidden columns，再执行 round/dequant；zero rows 保持零 A8 activation，不进入除法或 activation quantization。输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。\n5. 从每个 packed/dequantized W4 Linear 权重计算 per-output column sum c_j；对 nonzero rows 将 -Δ_bp d_br c_j 加入同一 GEMM 的 FP32 epilogue。zero rows 跳过 dither correction，但仍经过普通 Linear bias/epilogue 路径；输出 BF16 hidden state，不增设高精度权重分支。\n6. 仅在 calibration trajectories 上，以完整 W4A8 action-chunk MSE 做 Φ 周期坐标搜索；同时用当前 full-path VJP J_r 记录线性化的 cross-term 诊断，phase 更新后重放路径并刷新 J_r。\n7. 在 trajectory-disjoint held-out observations 与配对 scheduler draws 上，对照同 scale/clip RTN、独立 dither、site-label phase permutation 和同预算 direct endpoint PTQ；报告精确 action-chunk MSE、饱和计数、路径中 J_r cross-term 诊断，若 endpoint 不改善即否证。",
+      "outcome": "applied",
+      "delta_summary": "Step 3 至 Step 5 对零 row 跳过 scale、activation quantization 与 correction，并保留 bias/epilogue。"
+    },
+    {
+      "target_id": "R1",
+      "scope": "tactical",
+      "op": "append_sentence",
+      "field": "core_mechanism_reasoning",
+      "value": "P6 zero-row rule: when max_j|x_bp,j|=0, the activation output is zero and scale division, activation quantization, and dither correction are skipped for that row; the ordinary Linear bias/epilogue remains active.",
+      "outcome": "applied",
+      "delta_summary": "在 premises 中记录全零 row 的定义域边界及保留的 Linear 路径。"
+    },
+    {
+      "target_id": "R1",
+      "scope": "tactical",
+      "op": "append_sentence",
+      "field": "gap_closure[0].how_closed",
+      "value": "The quantizer also defines an all-zero activation row as a zero output, bypasses its scale division and dither correction, and retains the ordinary Linear bias/epilogue path.",
+      "outcome": "applied",
+      "delta_summary": "说明联合量化方法在全零 activation row 上有定义且保留标准 epilogue。"
+    },
+    {
+      "target_id": "W1",
+      "scope": "tactical",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "",
+      "outcome": "skipped_already_satisfied",
+      "delta_summary": "R1 的显式零 row 定义已完整覆盖 W1；重复追加相同 guard 会造成冗余。"
+    },
+    {
+      "target_id": "W2",
+      "scope": "tactical",
+      "op": "append_sentence",
+      "field": "core_mechanism",
+      "value": "Here round means round-to-nearest, ties-to-even, with the same implementation used in calibration and evaluation.",
+      "outcome": "applied",
+      "delta_summary": "明确 round 的 ties-to-even 规则并固定 calibration 与 evaluation 的实现一致性。"
+    },
+    {
+      "target_id": "W3",
+      "scope": "tactical",
+      "op": "append_sentence",
+      "field": "core_mechanism_steps",
+      "value": "Step 4 forwards the phase-dependent tensor; final action changes with φ only when its downstream projection is nonzero.",
+      "outcome": "applied",
+      "delta_summary": "将 phase 对最终 action 的影响限定为 downstream projection 非零的情形。"
+    }
+  ],
+  "final_candidate": {
+    "contract_version": 2,
+    "title": "相位控制抖动量化：WAM W4A8 联合残差",
+    "intervention_object": {
+      "acts_on": "每次 WAM Linear 调用的 activation quantizer，按 module、stream、denoising step 区分调用点 r。",
+      "operator": "以同一 per-sample uniform base draw 加 site-specific phase 构造 subtractive dither，并在实际 packed-W4 GEMM epilogue 融合 column-sum correction。",
+      "decision_variables": "相位表 Φ={φ_r∈[0,1)}；每个 φ_r 由 calibration full-path action MSE 的周期坐标搜索选取，其他量化配置在各 arm 间固定。"
+    },
+    "hook": "在冻结的 W4A8 WAM 中，校准各 Linear 调用的 subtractive-dither phase 可能降低完整量化路径的最终 action-chunk MSE，即使所有 site 的位宽、权重码本和 A8 scale 规则不变。它是待否证的机制假设：共享 draw 与不同 site phase 可能改变重复 denoising/stream residual 的联合项，direct endpoint PTQ 仍可能更好。",
+    "hook_shape_rationale": "选择 (a) empirical reveal：Q-WAM 的 action-observability 目标省略跨点 residual 交叉项，而 SteerQuant 的局部 map 用 full-precision 上游输入；本候选以完整 W4A8 路径的 action-chunk MSE 直接检验这一差距。 (b) 新稳定性定理也可成立，但没有全路径边际不变或控制保真保证，故不把条件性量化性质包装成理论贡献。",
+    "gap_closure": [
+      {
+        "gap": "[additive] 对同时发生于多个 layer、stream 与 denoising step 的低位误差，Q-WAM 明确省略交叉项并依赖零均值/不相关近似，SteerQuant 则以 full-precision 输入单独估计每个区域；因此在 W4A4/W4A8 联合量化时，边际分数是否能预测误差合成后的 action displacement 仍未知，尤其是系统偏移、抵消或同向累积是否改变候选排序。Phase 2 的构造交付应是在固定 WAM 与低位宽下，提出能应对多处残差同时存在的量化方法，并以联合扰动证据检验其 action 误差判断；不预定误差估计或调节机制。stakes: 量化研究者可能把精度预算分给单点敏感却在联合路径中不关键的模块，造成 W4 quality 结论不可复现或无法迁移到不同校准轨迹；intellectual 上会把独立扰动假设当成未经检验的误差几何。",
+        "main_pattern": "generative_process_redesign",
+        "sub_pattern_not_applicable_reason": "",
+        "sub_pattern": "C23 (Liberate a Fixed Generative Component)",
+        "companion_pattern": null,
+        "how_closed": "释放固定生成链中每个 Linear activation quantizer 的 phase 自由度；共享 base draw 与 site phase 改变同时量化 residual 的联合分布，融合 column-sum correction 后在完整低位 denoising 路径上最小化 action endpoint MSE。 The quantizer also defines an all-zero activation row as a zero output, bypasses its scale division and dither correction, and retains the ordinary Linear bias/epilogue path."
+      }
+    ],
+    "core_mechanism": "C23 (Liberate a Fixed Generative Component) 把固定 WAM denoising 链中通常不变的 quantizer phase 变为每个 Linear 调用 r=(module, stream, denoising step) 的可校准变量 φ_r。冻结 Fast-WAM 官方 Optional IDM checkpoint 的 first_frame mode、scheduler 与 action parameterization；所有 denoiser Linear（attention Q/K/V/O、FFN、stream/action 与 time/AdaLN-conditioned projections、action heads）采用 signed symmetric groupwise INT4 权重，zero point=0、码本[-7,7]，group size G 从所用 kernel 支持集合选择并在所有 arms 固定，组尺度/clip 由同一常规 PTQ 校准流程固定。激活采用 signed symmetric INT8、zero point=0、per-token-row 动态尺度 Δ_bp=max_j|x_bp,j|/126；每个样本 b 抽一个 u_b~Uniform[0,1)，每个 site 令 d_br=frac(u_b+φ_r)，并将该标量广播至该调用的 token rows 与 hidden-width 坐标，执行 q=round(x/Δ+d)、x_tilde=Δ(q-d)。对固定且独立于当前 u_b 的 site 输入、固定 Δ 且不发生有限码本饱和时，经典 subtractive-dither 条件性质可适用；共享 draw 使后续输入和 row scale 依赖先前量化，因此整条路径不主张边际不变或无偏，INT8 饱和及 W4 有限 clip 也会破坏该条件。每个实际 dequantized packed W4 Linear 预存其输入列和 c_j=Σ_i W_hat_ij；GEMM epilogue 对每一 token row 加入 -Δ_bp d_br c_j，使用 FP32 accumulation 后 cast 至 BF16，故只需一个 W4 weight bank、每个 Linear 一个 FP16 column-sum vector 与每个调用一个 FP16 phase/RNG state，无 BF16 weight branch；随机数广播、动态 A8 scale 和 correction arithmetic 是额外运行成本，是否能融合与延迟收益待实测。以 calibration observation o 和配对 scheduler draw ζ 定义 E_a(Φ)=E_{o,u,ζ}||a_W4A8,Φ(o;u,ζ)-a_BF16(o;ζ)||²，在完整真实 W4A8 trajectory 上周期搜索 Φ；当前轨迹的 J_r=∂a/∂y_r（通过下游量化路径的 STE diagnostic）把该 site 的输出扰动 W_hat_r e_r 映到 action，c_r=J_r(W_hat_r e_r)，并观察 2Σ_{r<s}E[c_rᵀc_s] 是否随 phase 变化，但每次 sweep 后必须重跑路径与 J，且这些局部项不替代精确 endpoint estimand。LayerNorm/RMSNorm、softmax、RoPE/time embedding、GELU/SiLU、residual adds、sampler/scheduler、bias/epilogue accumulation 与 action unnormalization/clipping/controller 保留 BF16/FP32；没有 BF16 GEMM、没有 A8-only Linear 例外，也不声称 W4A4。 For any activation row with max_j|x_bp,j|=0, define its quantized activation x_tilde_bp=0 and skip computing Δ_bp, the x/Δ division, activation quantization, and dither correction for that row, while keeping the ordinary Linear bias/epilogue path active. Here round means round-to-nearest, ties-to-even, with the same implementation used in calibration and evaluation.",
+    "core_mechanism_reasoning": "BLOCK 1 — PREMISES ledger\nP1 observation-model: calibration 与评估输入取自现有 yuanty/LIBERO-fastwam observation/goal logs，按 trajectory 留出；这只代表冻结 first_frame evaluator 的 fixed-observation 分布，不代表候选诱发的闭环 history。\nP2: Fast-WAM released Optional IDM checkpoint 提供 first_frame mode 与可访问权重，允许 frozen-backbone PTQ；官方工程锚点确认 LIBERO-fastwam 是现有数据源。\nP3: Q-WAM 以零均值/不相关近似省略 residual cross terms，SteerQuant 用 FP 输入隔离上游误差；因此全路径联合项是待测而非已知收益。\nP4 untested — falsification target: per-site phase Φ 在共享 draw 下能改变 full-path action error；同一 draw 会令后续 site 输入及动态 row scale 依赖上游扰动，普通 subtractive-dither 固定独立输入性质不能跨路径传递。\nP5: 经典 subtractive-dither 的条件无偏/相位不变性质要求当前输入独立于当前 draw 且不触及有限量化边界；有限 INT8 saturation 或 W4 clipping 会破坏该条件，本方案不声称其对完整模型成立。\nESTIMAND: E_a(Φ)=E_{o∼D_eval,u∼Uniform[0,1),ζ}||a_W4A8,Φ(o;u,ζ)-a_BF16(o;ζ)||²，其中 D_eval 是 yuanty/LIBERO-fastwam trajectory-disjoint held-out fixed-observation 分布，ζ 是配对的冻结 sampler randomness；终点为反归一化前完整 action chunk。\nBLOCK 2 — NAIVE-BASELINE AUDIT\n最直观实现是给每个 Linear 调用独立抽 subtractive-dither、用局部 reconstruction error 选 scale，再把各层的局部误差当作独立量化噪声。\n这依赖“各 site residual 在最终 action 投影下可按独立/零均值相加”的前提；fresh independent dither 只有在当前输入固定且无 clipping 时才有熟知的 conditional 性质，而有限 INT8/W4 饱和与依赖上游路径的 row scale 可产生条件偏移。共享 draw 的相位表又使下游输入依赖同一 u，因此它能否把 2ΣJ_r residual 的 action-projected cross terms 调向抵消、并压低 endpoint MSE 是待测问题；若不能则独立 dither 或 direct PTQ 胜出。Subtractive dither 本身是标准工具，本实例的结构是重复调用的共享 WAM 投影、draw-coupled 下游输入、有限码本及经 action Jacobian J_r 汇聚的终点；故只按 application-grade/incremental 主张，需由同预算 RTN/direct endpoint PTQ 对照验证。\nBLOCK 3 — DESIGN RATIONALE\n只有 anchor gap 要求一种联合 residual 方法，phase table 与 correction 是同一 activation quantizer 的必要两部分：去掉 phase 就失去跨 site covariance 控制，去掉 correction 就不是标准 subtractive reconstruction。\n我考虑了追加 cross-step compensation、joint block reconstruction 或一个 BF16 correction branch，但它们会增加新模型模块/权重并更接近已知 timestep-compensation 路线；这里只改变现有 quantizer 的 draw coupling 与 phase。历史 V100 reference-branch coupling 只构成指定 recipe 的风险信号，不据此判定不同 activation-quantizer 干预已失败。 P6 zero-row rule: when max_j|x_bp,j|=0, the activation output is zero and scale division, activation quantization, and dither correction are skipped for that row; the ordinary Linear bias/epilogue remains active.",
+    "core_mechanism_steps": "1. 下载/加载 Fast-WAM 官方 released Optional IDM checkpoint 与 yuanty/LIBERO-fastwam 的现有 observation/goal logs；冻结 first_frame mode、scheduler、normalization 和 action parameterization，输出固定 BF16 reference path。\n2. 将所有指定 denoiser Linear 权重打包成 signed symmetric groupwise W4，固定 G、zero point=0 与 group clipping/scale；其余明示的非 Linear 运算保留 BF16/FP32，输出唯一 W4 bank。\n3. 在当前完整量化路径上逐 token row 计算 m_bp=max_j|x_bp,j|；若 m_bp=0，直接输出零 A8 activation row，并跳过该 row 的 Δ 计算与除法；否则设 Δ_bp=m_bp/126。抽样轨迹标识确定的 per-sample base draw u_b；输出 live row scales 和真实 full-path activation rows，不用 FP 输入代替。\n4. 在每次 Linear activation quantizer 设置 φ_r；对 nonzero rows 计算 d_br=frac(u_b+φ_r)，将同一 scalar 对齐广播到该调用的 nonzero token rows 与 hidden columns，再执行 round/dequant；zero rows 保持零 A8 activation，不进入除法或 activation quantization。输出实际传至下一 denoising 操作的 A8 tensor，因而确实改变后续 action path。\n5. 从每个 packed/dequantized W4 Linear 权重计算 per-output column sum c_j；对 nonzero rows 将 -Δ_bp d_br c_j 加入同一 GEMM 的 FP32 epilogue。zero rows 跳过 dither correction，但仍经过普通 Linear bias/epilogue 路径；输出 BF16 hidden state，不增设高精度权重分支。\n6. 仅在 calibration trajectories 上，以完整 W4A8 action-chunk MSE 做 Φ 周期坐标搜索；同时用当前 full-path VJP J_r 记录线性化的 cross-term 诊断，phase 更新后重放路径并刷新 J_r。\n7. 在 trajectory-disjoint held-out observations 与配对 scheduler draws 上，对照同 scale/clip RTN、独立 dither、site-label phase permutation 和同预算 direct endpoint PTQ；报告精确 action-chunk MSE、饱和计数、路径中 J_r cross-term 诊断，若 endpoint 不改善即否证。 Step 4 forwards the phase-dependent tensor; final action changes with φ only when its downstream projection is nonzero.",
+    "falsification_prediction": "先用 Fast-WAM 官方 Optional IDM checkpoint 的 first_frame mode 和 yuanty/LIBERO-fastwam observation/goal logs 做冻结 predictor-level pilot，校准只见训练 trajectory、评估使用 held-out trajectory；逐样本配对 scheduler randomness 与 base draws，比对 learned Φ、同 scale/clip RTN、独立 dither、phase-site permutation，以及在相同 W4A8 预算和校准 forward budget 下调 scale/clip 的 direct endpoint PTQ。若机制成立，主指标 held-out 完整 action-chunk MSE 应低于这些 arm；首个 pilot 只判断 phase 是否能改变真实全量化路径的 endpoint error，不据此作 latency/闭环结论。唯一 load-bearing variable 是 site phase table Φ：保持其取值集合不变而随机置换 site 对应关系，预测 held-out endpoint MSE 上升；若只改变局部残差或 J_r 诊断、却不改善精确全路径 action MSE，或被 direct endpoint PTQ 匹配/击败，则否证机制。",
+    "compute_budget": "建议 pilot 估计 0.5–1 张 80GB-class GPU-day；不调用付费 API（$0）；仅计冻结 observation full-path 校准/验证，不含 WAM kernel 适配或 closed-loop campaign，尚未实测。",
+    "differentiation_from_lit": [
+      {
+        "paper_id": "arxiv:2609.33269v1",
+        "delta": "Q-WAM 用 action observability 和独立零均值近似筛选敏感方向并保留 16-bit branch；本候选构造单一 W4A8 bank 上由共享 draw 与 per-site phase 控制真实多点量化 residual 联合项，并以完整低位 action path 检验。"
+      },
+      {
+        "paper_id": "arxiv:2609.39056v1",
+        "delta": "SteerQuant 在 full-precision 上游输入下局部评分并调 channel/stream scales；本候选把每个 Linear 的实际 A8 subtractive quantizer 改为共享随机相位操作，使全部上游量化后的 downstream inputs 参与 endpoint 优化。"
+      },
+      {
+        "paper_id": "openalex:W4409347102",
+        "delta": "该 cross-timestep correction 工作的本地证据仅为 abstract-level，描述以 distillation 学习跨步 error correction；本候选不训练校正器或重建 denoising blocks，而是在原有 GEMM 输入量化器内控制 dither phases 与 column-sum subtraction。"
+      }
+    ],
+    "almost_prior_paper_id": "arxiv:2609.39056v1",
+    "what_step_was_missed": "SteerQuant 若要包含本贡献，还需实现一个实际有限码本的 A8 activation quantizer：把同一 per-sample base draw 与不同 module/stream/step 的 phase 接入每次真实低位 Linear 调用，融合由该权重列和确定的 subtractive correction，并在 upstream 已量化、下游输入依赖 draw 的完整 W4A8 trajectory 上估计最终 action error；它现有的 FP-input local map 没有构造这项部署原语。",
+    "signature_terms": [
+      "shared base-draw phase schedule",
+      "subtractive activation dither",
+      "joint denoising residual action error",
+      "Fast-WAM W4A8 full-path calibration"
+    ],
+    "alias_terms": [
+      "receding horizon control action prefixes",
+      "quantized feedback stabilization in control",
+      "dithered quantization error shaping",
+      "stochastic rounding covariance control"
+    ],
+    "composition_note": "本候选暂按 application-grade/incremental 保留：WAM 中跨 layer/stream/denoising-step correlated subtractive-dither 的先例仍待后续 collision 核实。历史 V100 reference-branch coupling 的 NO-GO 限于 H=1、balanced 3×3 的那条 recipe；它提高方向风险，但不等于本 activation-quantizer intervention 已失败。"
+  },
+  "falsification_rewritten": false,
+  "change_scope": {
+    "changed_fields": [
+      "core_mechanism",
+      "core_mechanism_reasoning",
+      "core_mechanism_steps",
+      "gap_closure"
+    ],
+    "mechanism": true,
+    "novelty": true,
+    "falsification": false,
+    "required_checks": [
+      "dataflow",
+      "dry_run",
+      "degenerate_probes",
+      "claim_step_map",
+      "falsification",
+      "novelty"
+    ]
+  },
+  "word_counts": {
+    "core_mechanism": {
+      "before": 179,
+      "after": 227
+    },
+    "core_mechanism_reasoning": {
+      "before": 208,
+      "after": 237
+    },
+    "core_mechanism_steps": {
+      "before": 148,
+      "after": 193
+    },
+    "gap_closure": {
+      "before": 65,
+      "after": 91
+    }
+  },
+  "word_count_metric": "whitespace tokens of each top-level field serialized as text; diagnostic only"
+}

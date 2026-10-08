@@ -1,0 +1,154 @@
+{
+  "request_id": "fd1603d6-15d8-447f-922e-c7b3344bd520",
+  "artifacts": {
+    "phase4/work/fill_map.json": {
+      "method_name": "Action-Context Source Masking (ACSM)",
+      "abstract_draft": "Frozen joint World Action Models (WAMs) repeatedly update action chunks while conditioning on observations and retained future tokens, so sparse future prediction does not establish which observation reads each action update needs. Phase 1 identifies this unresolved boundary: Sparse-WAM preserves all observation/action tokens while recomputing actions, and Efficient-WAM's inference-only asymmetric schedule caches video keys and values while continuing action updates; neither establishes action-context sensitivity or its share of end-to-end cost. This proposal tests Action-Context Source Masking (ACSM), which freezes the checkpoint and native solver, scores each observation-source group at the first action evaluation using output-projected contribution, and reuses an epsilon-selected key/value mask for later action updates through a kernel that skips omitted query-key/value edges. On paired episodes, it compares dense inference, ACSM, an equal-edge source-group permutation, and attention-mass, ToPi/VATP, and CAPA-style scoring controls, with epsilon chosen on separate held-out selection episodes. The hypothesis is supported only if ACSM outperforms the matched-cost score controls on task success, the kernel truly skips computation, full latency improves within the original latency gate, and task success passes its frozen gate; otherwise the candidate stops. Any positive result is limited to each tested frozen checkpoint and benchmark and remains unvalidated until those evaluations run.",
+      "motivation.problem_framing": "Across frozen joint World Action Models (WAMs), iterative inference updates future visual latents and action chunks through coupled transformer paths. The Phase 1 bottleneck is specific to this model class: even after future-side tokens or video updates are reduced, each active native action solver update may still read the full observation and retained context. Existing evidence does not establish either how much action quality depends on those observation-source interactions or what share of full inference cost they consume, so token retention and total latency cannot answer whether action conditioning is a useful target.\n\nSparse-WAM is the anchor instance: it selects future tokens and reuses omitted-region predictions while retaining all observation/action tokens and recomputing action predictions. Efficient-WAM separately demonstrates an inference-only asymmetric video schedule and video K/V reuse while action updates continue. These works motivate a bounded test of the still-dense action-query-to-observation path. ACSM leaves video-query paths, action-future interactions, the native solver schedule, and frozen weights intact; it tests source-group observation edges only and does not infer that fixed observation latents imply fixed hidden states or K/V.",
+      "motivation.why_now": "Recent WAM work makes the residual question concrete: Sparse-WAM (2026-09) reduces future-side computation, WAMachine (2026-09) studies state and residual reuse, and Efficient-WAM (2026-06) separates video and action schedules, yet the Phase 0 summaries leave action-query-to-observation sensitivity and cost unmeasured. This creates a bounded inference-time question that can be addressed without new training by profiling that path and comparing matched-edge masks on frozen models; it does not establish that every required checkpoint, source-provenance interface, or compact kernel is currently available, so those remain start conditions.",
+      "motivation.why_prior_stopped[0].what_they_did": "Sparse-WAM uses action-guided selection of future visual tokens and reuses selected or omitted-region predictions across denoising steps while recomputing action predictions.",
+      "motivation.why_prior_stopped[0].what_they_did_not_do": "It retains all observation/action tokens and does not test whether action queries can drop observation-source edges while preserving task success and reducing full-path latency.",
+      "motivation.why_prior_stopped[0].structural_reason_they_stopped": "Its intervention targets future tokens, leaving the action-query-to-observation edge set and its task-cost contribution unmeasured.",
+      "motivation.why_prior_stopped[1].what_they_did": "WAMachine combines trajectory remapping, execution-period observation rebinding, and probe-gated intermediate residual reuse.",
+      "motivation.why_prior_stopped[1].what_they_did_not_do": "It does not isolate the contribution of current observation-source edges read by each native action update.",
+      "motivation.why_prior_stopped[1].structural_reason_they_stopped": "Its mechanism reuses or rebinds intermediate state, rather than ranking and deleting action-query-to-observation edges.",
+      "motivation.why_prior_stopped[2].what_they_did": "Efficient-WAM uses an inference-only asymmetric schedule with fewer video updates and cached video K/V while continuing action updates.",
+      "motivation.why_prior_stopped[2].what_they_did_not_do": "It does not establish the task sensitivity or full-path cost share of observation conditioning in those continuing action updates.",
+      "motivation.why_prior_stopped[2].structural_reason_they_stopped": "Its compute allocation distinguishes video from action updates, not observation-source edges within the action path.",
+      "motivation.why_prior_stopped[3].what_they_did": "C3ache reuses action-expert denoising residuals across inference chunks using cache-step and refresh choices.",
+      "motivation.why_prior_stopped[3].what_they_did_not_do": "It does not test which current observation groups a joint FastWAM-Joint action update needs.",
+      "motivation.why_prior_stopped[3].structural_reason_they_stopped": "Its operator is cross-chunk residual reuse, not within-chunk action-query-to-observation context masking.",
+      "motivation.why_prior_stopped[4].what_they_did": "FBFM injects newly observed state constraints and committed action overlap into active flow updates through Jacobian/pseudoinverse feedback.",
+      "motivation.why_prior_stopped[4].what_they_did_not_do": "It does not measure the action-query observation-context cost share or remove source-specific conditioning edges.",
+      "motivation.why_prior_stopped[4].structural_reason_they_stopped": "Its intervention corrects the vector field using feedback rather than changing the current action query's observation key set.",
+      "motivation.why_prior_stopped[5].what_they_did": "GlanceWAM overlaps sparse future imagination with execution through asynchronous lookahead and staleness-robust training.",
+      "motivation.why_prior_stopped[5].what_they_did_not_do": "It does not isolate or sparsify the observation sources read by native action updates in a frozen joint WAM.",
+      "motivation.why_prior_stopped[5].structural_reason_they_stopped": "Its mechanism changes execution timing and is co-trained for staleness, rather than masking action-conditioning edges at frozen inference.",
+      "motivation.what_changes_when_gap_closes": "A positive result would identify, for each tested frozen checkpoint, whether observation-source edges in the action branch can be reduced under the original success gate and whether that path has enough measured headroom to improve full inference latency. This would give Sparse-WAM- and Efficient-WAM-style systems a WAM-specific action-conditioning test and a same-edge-budget comparison against prior scoring recipes; a negative result would bound the tested opportunity rather than establish a general impossibility.",
+      "core_claim": "The proposal tests whether first-update output-projected observation-source contributions can select same-cost masks that preserve the frozen task-success gate and improve full inference latency in each tested joint WAM, with WAM-specific score advantage claimed only if paired outcomes beat all matched-cost scoring controls.",
+      "sub_claims": [],
+      "key_equations": [
+        {
+          "id": "e1",
+          "linked_step_id": "S3",
+          "latex": "r_{lg}=\\sum_{q\\in Q_l}\\left\\|\\sum_{h\\in H_l}W^{l}_{O,h}\\left(\\sum_{j\\in g}\\alpha^{l}_{h}(q,j)V^{l}_{h}(j)\\right)\\right\\|_2",
+          "description": "For each layer and observation-source group, `r_lg` sums the norm of its action-query attention contribution after the native output projection.",
+          "description_zh": "对每层和 observation-source group，将该组经 native output projection 后对 action queries 的 attention contribution 取范数并求和，得到 `r_lg`。"
+        },
+        {
+          "id": "e2",
+          "linked_step_id": "S3",
+          "latex": "\\rho_{lg}=\\frac{r_{lg}}{\\sum_{g'\\in G_o}r_{lg'}}",
+          "description": "`rho_lg` normalizes each group contribution within its layer; if the denominator is zero, the rule retains every group.",
+          "description_zh": "ρ_lg 在层内按所有 observation groups 的总贡献归一化；分母为零时按规则保留全部 groups。"
+        },
+        {
+          "id": "e3",
+          "linked_step_id": "S4",
+          "latex": "S_l(\\epsilon)=\\{g_1,\\ldots,g_m\\},\\quad m=\\min\\left\\{t:\\sum_{i=1}^{t}\\rho_{l g_i}\\geq 1-\\epsilon\\right\\}",
+          "description": "The g_i are ordered by descending `r_lg` with native source order breaking ties; S_l is the shortest prefix meeting the cumulative-share target, with epsilon selected in [0,1).",
+          "description_zh": "g_i 按 `r_lg` 降序排列，并以 native source order 稳定打破并列；S_l 取累计贡献达到目标的最短前缀，ε 的可选范围为 [0,1)。"
+        },
+        {
+          "id": "e4",
+          "linked_step_id": "S2",
+          "latex": "\\mathrm{speedup}_{\\max}=\\frac{1}{1-\\phi_{\\mathrm{obs}}}",
+          "description": "`phi_obs` is the measured full-inference time share of action-query-to-observation QK/AV; this ideal Amdahl upper bound excludes scoring, packing, kernel, and other model-path costs.",
+          "description_zh": "φ_obs 是 action-query-to-observation QK/AV 在完整推理中的实测时间占比；该理想 Amdahl 上界尚未扣入评分、压紧、kernel 和其他模型路径的代价。"
+        },
+        {
+          "id": "e5",
+          "linked_step_id": "S6",
+          "latex": "B_l=|Q_l||H_l|\\sum_{g\\in S_l(\\epsilon)}|g|",
+          "description": "B_l is the retained action-query-to-observation edge budget used to match ranked masks and scoring controls.",
+          "description_zh": "B_l 表示保留的 action-query-to-observation edge 数，用于匹配排名 mask 与各评分对照。"
+        }
+      ],
+      "method_flow.high_level_pipeline": "Freeze the native checkpoint, solver, task configuration, and backend separately for FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab. Profile the complete inference path and stop early if action-query-to-observation QK/AV has insufficient Amdahl headroom. On a dense first action evaluation, group observation tokens by existing provenance and compute output-projected contribution scores; choose epsilon on held-out selection episodes under the original task-success gate and full-path latency. Run later action updates with the resulting compact key/value sets, then compare paired evaluation episodes against dense inference, equal-edge controls, and the same-cost score baselines.",
+      "method_flow.steps": [
+        {
+          "step_id": "S1",
+          "title": "Freeze each baseline",
+          "what_changes": "Lock each checkpoint, native solver schedule, task configuration, and backend. Keep FastWAM-Joint/LIBERO and Cosmos3-Edge-Policy-DROID/RoboLab as separate primary pairings; record that the FastWAM-Joint matching checkpoint is unconfirmed, and treat Motus/RoboTwin 2.0 only as a conditional simulation fallback.",
+          "why_this_step": "The estimate is defined per frozen checkpoint and native evaluation path, so changing weights, schedule, task, or backend would change the comparison.",
+          "linked_component": "engineering",
+          "linked_falsification": "metric_specification",
+          "input": "The candidate's named frozen checkpoints, native solver schedules, task configurations, and backend paths.",
+          "output": "A fixed per-backbone inference protocol and an explicit checkpoint-availability condition."
+        },
+        {
+          "step_id": "S2",
+          "title": "Measure action-path headroom",
+          "what_changes": "Profile the native paths in FastWAM's `src/fastwam/models/wan22/fastwam_joint.py`, `src/fastwam/models/wan22/fastwam.py`, and `src/fastwam/models/wan22/mot.py`, Cosmos' `cosmos_framework/model/generator/omni_mot_model.py`, and the RoboLab policy-server entry point. Separate action-query-to-observation QK/AV, other attention, QKV, FFN, and mask/packing cost; compute `phi_obs` and its Amdahl upper bound, and stop if measured savings cannot meet the original latency gate.",
+          "why_this_step": "The action sequence is not enough to infer cost share; this measurement tests whether the proposed edge deletion can affect complete inference latency at all.",
+          "linked_component": "engineering",
+          "linked_falsification": "metric_specification",
+          "input": "Frozen baseline paths, path-level timing/FLOP profiles, and the pre-existing latency gate.",
+          "output": "`phi_obs`, the Amdahl headroom estimate, and a continue-or-stop decision."
+        },
+        {
+          "step_id": "S3",
+          "title": "Score source groups",
+          "what_changes": "Use only the token packer's existing camera/view or other source provenance; if it does not expose provenance, stop rather than infer groups. On each chunk's dense first native action evaluation `k_ref`, read native attention alpha, values V, and output-projection head slices `W_O`, then compute `r_lg` and `rho_lg`; retain all groups if the normalization denominator is zero.",
+          "why_this_step": "The score measures the candidate's proposed output-projected source-group contribution while keeping token values, weights, image, instruction, future/action queries, and training objective fixed.",
+          "linked_component": "engineering",
+          "linked_falsification": "mechanism_distinguisher",
+          "input": "The dense `k_ref` forward, native attention/value/projection outputs, and provenance-backed observation groups.",
+          "output": "A per-layer source-group contribution table for selecting masks."
+        },
+        {
+          "step_id": "S4",
+          "title": "Select and freeze the mask",
+          "what_changes": "On held-out selection episodes `D_select`, sort groups by descending `r_lg` with native source order breaking ties, and choose epsilon in [0,1) so `S_l(epsilon)` is the shortest prefix whose cumulative `rho_lg` reaches 1-epsilon. Subject to the original frozen task-success gate, select the epsilon with the lowest measured full-path latency; if no pre-existing gate applies, report the success-latency curve without declaring a pass.",
+          "why_this_step": "A declared task gate constrains the retained context; separating `D_select` from later paired evaluation avoids choosing epsilon from the outcomes used to judge the candidate.",
+          "linked_component": "engineering",
+          "linked_falsification": "metric_specification",
+          "input": "The S3 score table, `D_select` episodes, original success gate, and full-path latency measurements.",
+          "output": "A selected epsilon and fixed per-layer S_l mask/key-value indices for paired evaluation."
+        },
+        {
+          "step_id": "S5",
+          "title": "Skip omitted observation edges",
+          "what_changes": "For later native action solver evaluations in the chunk, send action queries and retained observation keys/values to a true variable-length or block-sparse kernel and verify omitted QK/AV is not executed. Recompute softmax over retained keys, feed the resulting attention output through the original residual/transformer blocks, and let the changed action hidden state/velocity update the original flow state; leave video-query paths, future/action interactions, FFN, and solver schedule native.",
+          "why_this_step": "This implements the proposed graph change in the action branch and distinguishes real edge skipping from a dense mask; the recomputed output may change the action trajectory, with no fidelity or control-sensitivity guarantee.",
+          "linked_component": "engineering",
+          "linked_falsification": "mechanism_distinguisher",
+          "input": "The fixed S_l mask, retained observation keys/values, native action queries, and solver state.",
+          "output": "A sparse attention result and resulting native flow update, plus evidence that omitted QK/AV edges were skipped."
+        },
+        {
+          "step_id": "S6",
+          "title": "Run matched falsification comparisons",
+          "what_changes": "On paired evaluation episodes `D_eval` not used to select epsilon, compare dense, `rho_lg`-ranked, and same-retained-edge-cost source-group-permutation masks, alongside native attention-mass, ToPi/VATP value-norm, and CAPA output-projected score controls. Use the same frozen checkpoint, `k_ref` dense forward, exact retained edge budget, and compact kernel; record task success, per-path FLOPs, full latency including scoring/packing/kernel launch, action-chunk deviation, and first action divergence, then apply the original frozen gates. Require a legally matched-cost source-group permutation; if existing provenance groups do not permit one, report that control as unavailable rather than substitute an unequal-cost arm.",
+          "why_this_step": "The permutation tests whether source assignment matters at fixed cost, while the prior-score arms test whether `rho_lg` adds WAM-specific task-action value beyond known contribution-ranking recipes; profiling and task outcomes remain separate evidence.",
+          "linked_component": "engineering",
+          "linked_falsification": "both",
+          "input": "Frozen paired `D_eval` rollouts, selected masks, same-cost scoring controls, path profiles, and original task-success/latency gates.",
+          "output": "Per-backbone paired quality/cost/divergence results and a stop/retain decision; score advantage is supported only if `rho_lg` beats every matched-cost score arm under the original gates."
+        },
+        {
+          "step_id": "S7",
+          "title": "Keep robot evaluation conditional",
+          "what_changes": "Discuss a physical-robot phase only after simulation passes the frozen gate and a matching AgileX Cobot Magic policy/checkpoint, demonstrations/data, source implementation, and same-type hardware are confirmed. Account for any baseline post-training separately; the mask itself remains training-free and does not update weights.",
+          "why_this_step": "The stated physical prerequisites are unconfirmed, so simulation or recorded evidence cannot stand in for a closed-loop robot result.",
+          "linked_component": "engineering",
+          "linked_falsification": "metric_specification",
+          "input": "Simulation results against the frozen gate and confirmed policy/data/source/hardware prerequisites.",
+          "output": "A conditional robot evaluation route and a claim boundary that does not imply a completed robot experiment."
+        }
+      ],
+      "method_flow.design_reasoning_echo": "The design changes the within-chunk action-conditioning graph rather than reusing observation K/V or action residuals across solver states, since fixed input latents do not establish invariant hidden states and adjacent work already occupies cache/reuse routes. It ranks source groups using output-projected action contribution instead of attention mass alone, but ToPi's cumulative contribution selection and CAPA's output-projected scoring mean neither recipe nor projection alone establishes novelty; the revised falsification therefore compares native attention mass, ToPi/VATP value-norm, and CAPA-style scores at the same retained edge budget. The first-update `rho_lg` is only a model-internal proxy: its ranking may not persist across later solver states, and low-scored groups may hold control-critical contact or occlusion cues. Recomputing softmax after deleting edges may change the action output, but no numeric fidelity or task guarantee follows. The trace also found value-dependent behavior, including assignments where removing a group leaves the numerical output unchanged; this is a parameter-dependent limitation, not a universal failure. Unequal source-group sizes can prevent a distinct equal-cost whole-group permutation, so that control requires a legal grouping under existing provenance and must not be replaced by an unequal-cost comparison. Finally, profiling and real compact-kernel latency are prerequisites: score/packing overhead, other model paths, and limited action-query headroom can erase any theoretical edge savings.",
+      "feasibility_validation.data.verdict": "tight",
+      "feasibility_validation.data.rationale": "The matching FastWAM-Joint checkpoint is unconfirmed, while the recorded public Cosmos3-Edge/DROID/RoboLab path is a separate baseline and Motus/RoboTwin 2.0 is only a conditional simulation fallback, not an equivalent substitute.",
+      "feasibility_validation.theoretical.verdict": "n/a",
+      "feasibility_validation.theoretical.rationale": "The proposal defines a ranking and an empirical falsification test but claims no theorem or proof-based guarantee.",
+      "feasibility_validation.engineering.verdict": "tight",
+      "feasibility_validation.engineering.rationale": "The binding implementation cost is integrating provenance-aware grouping and a compact variable-length or block-sparse kernel that truly skips QK/AV in each frozen backend, with both support paths unconfirmed.",
+      "feasibility_validation.falsification.verdict": "tight",
+      "feasibility_validation.falsification.rationale": "The paired arms, outcomes, controls, frozen gates, and stop rules are concrete, but matching checkpoint, provenance access, legal equal-cost permutation, and compact-kernel support remain prerequisites.",
+      "feasibility_validation.overall": "tight",
+      "reviewer_concerns_and_responses[0].response": "Phase 3.2's verdict_rationale says the cumulative selection recipe and output projection are prior art but finds no exact WAM overlap, so the candidate does not claim novelty from those ingredients alone. Its revised `falsification_prediction` adds same-checkpoint, same-`k_ref`, same-edge-budget controls for native attention mass, ToPi/VATP value-norm, and CAPA-style projected scores using the same compact kernel. A WAM-specific score advantage remains conditional on paired task outcomes beating those controls while passing the original gates; no such result has been measured.",
+      "domain_landscape.position_note": "Among the 47 on-topic papers, generative_process_redesign appears 11 times versus 20 for architectural_operator_substitution; this candidate uses the former C24 pattern to alter action-conditioning edges while the dominant pattern targets operator substitution."
+    }
+  }
+}
