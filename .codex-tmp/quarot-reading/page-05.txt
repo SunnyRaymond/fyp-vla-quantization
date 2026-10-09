@@ -1,0 +1,53 @@
+                             Figure 3: QuaRot applied to a LLaMa-style FFN. The RMSNorm scaling (α) has been absorbed
+                             into the weight matrices ((α) is a diagonal matrix with RMSNorm parameters). The hidden state
+                             XhasbeenrotatedbyQ, whichiscanceledoutbytheabsorptionofQ⊤ intotheﬁrsttwoweight
+                             matrices. All weights are stored in INT4, and all activations immediately before the weights are
+                             also quantized to INT4. The result of the matmul between the INT4 weights and activations on a
+                             TensorCoreisINT32,whichweimmediatelycast(andscale)toFP16whichisthedefaultprecision
+                             ofthemodel. WhilstthesignalisstillinFP16,weperformasingleon-the-ﬂyHadamardtransform
+                             beforequantizingandcomputinga(modiﬁed)down-proj,whichresultsinarotatedoutput YQ.
+
+
+                             subsequentweightmatrices. WeselectarandomizedHadamardmatrixwithsizethatmatchesthe
+                             hiddendimensionofthemodelandpre-orpost-multiplyeachweightmatrix. InFigures3and6this
+                             matrixisdenotedQ. Forexamplethekey-projectionweightmatrixWk ismodiﬁedas
+                                                                       Wk←Q⊤diag(α)Wk,                                                    (4)
+                             and similarly for other weight matrices.  Matrices that appear on the output side of a block are
+                             post-multipledbyQ.
+                             This weight modiﬁcation does not affect the output of the model (assuming sufﬁcient precision)
+                             as per the computational invariance theorem [Ashkboos et al., 2024]. We note that the modiﬁed
+                             weights resemble the modiﬁcations used in QuIP# [  Tseng et al., 2024], reducing the incoherence
+                             of the weights, though our modiﬁcation does not require any additional processing at run-time.
+                             Additionally, the activation matrix passed between blocks of the transformer is also incoherence
+                             processed, becomingX ← XQ.  Figure 1 shows the result of this processing: we see that the
+                             processedactivationsnolongercontainanyoutliers.
+
+                             Stage 1b:  Rotate FFN activations.   With the above weight-modiﬁcations in place, we have
+                             multipliedmanyweightmatricesononesidebyaHadamardmatrixandtheactivationshavebeen
+                             changed. It remains to improve the quantization of the activations within each block, which we
+                             achievebyinsertingon-lineHadamardoperations.
+                             We ﬁrst insert a Hadamard operation into the feed-forward network, before the down-projection
+                             matrix. Thisoperationisperformedinfullprecision,andimplementedusingafastkernelfollowing
+                             Tseng et al. [2024].  This operation is implicitly reversed by fusing a Hadamard matrix into the
+                             down-projectionmatrixofthenetwork:Wdown←HWdown. CombinedwiththeglobalmatrixQ,
+                             thismeansthatthedown-projectionmatrixnowbecomesHWdownQ(seeFigure3).
+
+                             Stage1c: AttentionValueProjection.   Next,weapplyanadditionalHadamardoperationtoeach
+                             attentionblock. Thismodiﬁcationispartiallyon-line,andpartiallyfusedintotheweightmatricesas
+                             wewillnowdetail.
+                             First,notethatinthecomputationofattention,theWv andWout matricesareimplicitlymultiplied
+                             togetherwithineachhead. Toseethis,notethattheattentioncomputationconsistsof
+                                                              Y = concat[(P1V1)...(PnhVnh)]Wout                                       (5)
+                                                                     H∑
+                                                    FFN          =       PhXW(h)v W(h)out                                                               (6)
+                                 INT4                               h=1
+                             wherePh isasequence-lengthsizedsquarematrixcomputedbysoftmaxingkeysandvalues,and
+         RMSNorm             Vh =XW(h)v   isthevaluematrixforonehead. ThispresentsanopportunitytoperformadditionalQ⊤(α)WgateFP16σINT4
+
+FP16                                                              INT4               FP16
+
+         x          INT4                              ×                 HWdownQ      YQ
+XQ       ∥x∥                     INT4                                                5
+
+
+                              Q⊤(α)Wup      FP16

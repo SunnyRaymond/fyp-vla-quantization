@@ -1,0 +1,60 @@
+                             matrix, aswellastheHessian, whichisusedinminimizingtheweight-quantizationobjective. Xi
+                             etal.[2023]usesasimilarideaduringtraining,usingexactHadamardtransformationsforeachlinear
+                             layerintheforwardpass.
+                             Finally, KV cache quantization is another line of research that aims to compress the cached keys
+                             andvaluesduringthegenerationphase. Thisiscrucialforlargebatchsizeandlong-contextlength
+                             generationastheKVcachewillbethemainmemorybottleneckinsuchproblems. Shengetal.[2023]
+                             quantizestheKVcacheusing4-bitgroup-wisequantization. KVQuant[Hooperetal.,2024]pushes
+                             thislimitto3-bitquantizationandKIVI[Liuetal.,2024]showspromisingresultson2-bitKVcache
+                             quantization. Suchmethodsshowthatoutliersalsoexistinthekeys,andapplyasetofcomplexideas
+                             (likefeature-wisequantization,non-uniformrepresentation,andkeepinghighprecisionoutliers)to
+                             recovertheaccuracyofaquantizedKVcache.
+                             In this work we also adopt the Hadamard transform to improve quantization of weights through
+                             incoherence processing. Instead of undoing the Hadamard transform during the forward pass, we
+                             adopt the computational invariance theorem from SliceGPT [Ashkboos et al., 2024] to fuse the
+                             transformationsintotheweightswherepossible. InsteadofrequiringtwoHadamardtransformsper
+                             weight-matrixintheforwardpass,QuaRotrequiresjust 112 Hadamardtransformspertransformer
+                             layer. Computationalinvariancealsomeansthatthe activationsareincoherence-processed,enabling
+                             themtobeeffectivelyquantized. Wealsoapplyasimilartechniquetotheattentionblockandquantize
+                             theKVcachein4bitswithminimalaccuracyloss.
+
+                             3   Background
+
+                             HereweintroducesomemathematicalconceptsandnotationthatarenecessaryforQuaRot.
+                             3.1   Orthogonal,RotationandHadamardMatrices
+                             AnorthogonalmatrixQisasquarematrixsuchthatQQ⊤ =I. Inthiswork,weconsideronlyreal
+                             orthogonalmatrices. Arotationmatrixisanorthogonalmatrix. AHadamardmatrixisanorthogonal
+                             matrix with entries drawing from{+1,−1}. A Walsh-Hadamard matrix is a square matrix of size
+                             d = 2n,with                      [  1     1  ]
+
+                                                   H2 =   1√2    1  −1           and    H2n =H2⊗H2n−1.                          (1)
+
+                             These identities give rise to the Walsh-Hadamard transform, which computes the matrix-vector
+                             productHxinO(dlog2(d))operations.
+                             Formatrixsizesthatarenot2n,theexistenceofaHadamardmatrixisnotguaranteed. Ausefullistof
+                             knownHadamardmatricesismadeavailablebySloane[2024]. WherewerequireaHadamardmatrix
+                             ofsized̸= 2n,wefactorized = 2nm,wheremisthesizeofaknownHadamardmatrix. Thenwe
+                             useaKroneckerconstructionHd =H2n⊗Hm. ThisallowscomputationofHdxinO(d(m+n))
+                             operations.
+                             Following Tseng et al. [2024] we make use of randomized Hadamard matrices where convenient.
+                             Letsbeavectorcontainingrandomdrawsfrom{+1,−1},and ˜H =Hdiag(s). Itisstraightforward
+                             toseethat ˜Hisalsoanorthogonalmatrix.
+                             3.2   IncoherenceProcessing
+                             Theideaof incoherence processingwasintroducedby[Cheeetal.,2024]inthecontextofweight
+                             normalizationforweight-onlyLLMquantization. Wedeﬁneaweightmatrix Wtobeµ-incoherentif
+                                                                   max( W)  ≤ µ∥W∥F/√mn                                                 (2)
+                             wheremaxistheelement-wisemaxofthematrix,andmnisthenumberofelements. Aweightmatrix
+                             thathashighincoherenceishardtoquantize: thelargestelementisanoutlierrelativetothemagnitude
+                             oftheaverageelement. Cheeetal.[2024]showedthatmultiplyingaweightmatrixontheleftand
+                             rightbyanorthogonalmatrixcanreducetheincoherence,makingmatriceseasiertoquantize. Inthis
+                             workweadoptasimilartechnique,multiplyingweightmatricesbyorthogonalmatricestoimprove
+                             incoherence,thoughweaddfeweroperationstotheforwardpass. Importantly,weadditionallyapply
+                             incoherence processing to the activations, enabling improved weight and activation quantization.
+                             Figure1showstheeffectofapplyingincoherenceprocessingtotheactivationsof LLAMA-                        .
+
+
+                                                                                  3
+
+
+
+2

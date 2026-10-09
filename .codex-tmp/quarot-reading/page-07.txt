@@ -1,0 +1,63 @@
+                            Stage2b: OnlineQuantizationOperations.   Withtheweightsquantized,wearereadytoapply
+                            operationstotheforwardpassthatquantizetheactivations. FollowingPyTorchimplementation,we
+                            leavethecomputationofRMSNorm(withoutscaling)inFP32. Wequantizetheinputofthelinear
+                            layersusingsymmetricper-token(rowsoftheinputmatrix). Duringsymmetricquantization,therow
+                            scalesarecomputedbydividingthemaximumabsolutevalueofeachtokenby7(largestrepresentable
+                            number in INT4). We then divide each row to its corresponding scale and round the result to its
+                            nearestinteger. ThedequantizationisalsodonebycastingtheINT32outputofGEMMintoFP16,
+                            multiplythecorrespondingscalefortherow(frominputscales)andcolumn(fromweightscales).
+
+                            Stage2c: QuantizedAttention.   Attention is signiﬁcantly memory bound for longer sequences
+                            andlargerbatchsizes. Havingrotatedbothkeysandvalues,wecansuccessfullyquantizethecache
+                            intolowbit-width. ThisreducesthenumberofIOoperationsneeded. WekeepthequeriesinFP16
+                            anduseonlinesoftmaxcalculationsimilartoFlashAttention[Daoetal.,2022]. Afterasegmentof
+                            theKVvectorsareloadedfromthememory,wedequantizeandcomputethedotproductinFP16.
+
+                            5   ExperimentalValidation
+                            Setup.   We implement QuaRot using Hugging Face [Wolf et al., 2019] on top of the PyTorch
+                            framework[Paszkeetal.,2019]. Toquantizetheinputs,weuseper-tokensymmetricquantization(a
+                            singlescaleforeveryrow)withaconstantclippingratioof0.9inallourexperiments. Wequantize
+                            theKVcachesusingasymmetricquantizationwithagroupsize128withaconstantclippingratio
+                            of0.95. Forweightquantization,weuseround-to-nearest(RTN)andGPTQ[Frantaretal.,2022]
+                            withper-column(alsoknownasper-channel)symmetricquantization,whereweextracttheclipping
+                            ratiousingalinearsearchoverthesquarederror. Weuse128samplesfromWikiText-2[Merityetal.,
+                            2016]trainingsetwith2048sequencelengthasthecalibrationsetduringGPTQquantization. Ona
+                            singleNVIDIAA100GPU,modifying LLAMA                       withQuaRottakes5minutesandquantizing
+                            themodelwithGPTQtakesafurther2hours. Wepresent LLAMA-                    resultsinAppendixA.8.
+
+                            Models,Tasks,andGPUs.   WeevaluateQuaRotonthe LLAMA-                    family[Touvronetal.,2023]on
+                            bothlanguagegenerationandzero-shottasks. Weimplementourlow-levelCUDAkerneltoperform
+                            4-bitmatrix-multiplicationusingtheCUTLASS[NVIDIA,2023]library. WeusetheFlashInfer[Ye,
+                            2023]libraryforimplementingourKVcachequantization. Aswetargetconsumer-typeGPUs,we
+                            evaluatealltheperformanceexperimentsonNVIDIARTX3090GPUs.
+                            5.1   AccuracyResults
+                            LanguageGenerationTasks.   First,weevaluatetheaccuracyofQuaRotonthelanguagegeneration
+                            task. Table1showstheperplexityof LLAMA-           modelsonWikiText-2whenwequantizetheweights
+                            using GPTQ. We compare against 4-bit SmoothQuant [Xiao et al., 2023] and OmniQuant [Shao
+                            etal.,2023]. WealsoincludetheQUIK[Ashkboosetal.,2023]resultswhentheykeepallthelayers
+                            (including down-projection) in 4 bits.  QuaRot outperforms all previous work with at most 0.63
+                            perplexityloss(0.47on LLAMA              model)withoutanyre-training(asinOmniQuant)norhigher
+                            precision outlier features and asymmetric quantization (as in QUIK). We also apply group-wise
+                            quantizationtocompareagainstAtom[Zhaoetal.,2023]onthesamenumberofgroupsforweight
+                            andactivations. Inthissetting,QuaRotdoesn’tneedtokeepanyhigherprecisionfeaturesandrelated
+                            operations(likere-ordering). QuaRotoutperformsAtomwith0.1perplexitypointsinthe7Bmodel.
+                            Onthe13Bmodel,wegetthesameperplexitynumberasAtom.
+
+                            Zero-ShotTasks.   Next,wefocusonevaluatingQuaRotonsiximportantzero-shottasks: PIQA
+                            [Bisketal.,2020],WinoGrande[Sakaguchietal.,2021],HellaSwag[Zellersetal.,2019],LAMBADA
+                            (OpenAI)[Radfordetal.,2019],andArc(EasyandChallenge)[Clarketal.,2018]. WeusetheLM
+                            EvaluationHarness[Gaoetal.,2021]withdefaultparametersforourexperiments. Table2shows
+                            theaccuracyofour scheme onthe abovetasks as wellas theaveragescore. On LLAMA-                     family,
+                            QuaRotpreservestheaccuracywithatmost4.18%averagescoreloss(1.09%for70Bmodel).
+                            5.2   PerformanceAnalysis
+                            WeimplementQuaRotusingCUDA/12.1ontopofPyTorchanduseCUTLASSforperformingINT-4
+                            matrix multiplication on TensorCore (where the results will be saved in an INT32 accumulator).
+                            In this section, we evaluate the performance of our kernels for both preﬁll and decoding steps on
+                            NVIDIARTX3090GPU.Weprovideallourexperimentsonasingletransformerblockasthewhole
+
+
+                                                                                7
+
+
+
+2-70B2-70B2232

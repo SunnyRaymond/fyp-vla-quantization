@@ -1,0 +1,70 @@
+                               Table11: WikiText-2perplexityresultson4-bitquantizationofLLAMA-                       modelswith2048sequence
+                               length. 128Gshowsthegroup-wisequantizationwithgroupsize128.
+
+
+
+
+
+
+
+
+
+
+
+                               Table12: Zero-shotaccuracyof LLAMA-                 modelswith4-bitQuaRotonPIQA(PQ),WinoGrande
+                               (WG),HellaSwag(HS),Arc-Easy(A-e),Arc-Challenge(A-c),andLAMBADA(LA).
+
+
+
+
+
+
+
+
+                               A.9   Phi-3-mini-4k-instructResults
+                               Inthissection,weshowtheaccuracyofapplyingQuaRotforquantizingthePhi-3-mini-4k-instruct
+                               model[Abdinetal.,2024]. Table13showstheaccuracyresultsofthemodelintermsofperplexity
+                               andonzero-shottasks.
+
+                               Table 13: WikiText-2 Perplexity and zero-shot accuracy of QuaRot on the Phi-3-mini-4k-instruct
+                               model(revision=ff07dc01)using4,6and8-bitswithGPTQandRTNweightquantizationandRTN
+                               activationquantization. Forzero-shottasks,weusePIQA(PQ),WinoGrande(WG),HellaSwag(HS),
+                               Arc-Easy(A-e),Arc-Challenge(A-c),andLAMBADA(LA).
+
+
+
+
+
+
+
+
+
+
+
+
+                               A.10   PerformanceAnalysis
+                               Weimplementtheattentionmechanismusingthreeroutines: 1)Init: Duringthepreﬁllstage,this
+                               routine initializes the cache from all the key and value vectors in the preﬁll. The attention output
+                               during preﬁll is computed directly using Flash Attention [  Dao et al., 2022] since we already have
+                               accesstodequantizedkeysandvalues. 2)Append: Duringdecoding,thisroutineiscalledﬁrstto
+                               quantizethecurrentkeysandvaluesandappendthemtothecache. 3)Decode: Finally,thisroutine
+                               iscalledduringdecodingwiththecurrentqueryvector. Theroutinecomputestheattentionoutput
+                               usingaquantizedimplementationofﬂashattentionwhichcanloadthequantizedcacheandcompute
+                               theﬁnalvaluevector.
+
+                               4-bit Linear and Attention Layers.   We benchmark our 4-bit linear layer which involves 4-bit
+                               matrix multiplication.  For a given input of FP16, the layer optionally computes the Hadamard
+                               operation,thencallsthequantizationkerneltoquantizeandsavetheinputinasub-byteformat. Inthe
+                               nextstep,thequantizedweightsandinputarepassedtotheCUTLASS4-bitGEMMkernel. Finally,
+                               theoutputisdequantizedandcastbacktoFP16. Figure7showsthespeedupofour4-bitlayerfor
+                               different layer sizes where the layer sizes match the FFN linear layer sizes in LLAMA-                       models.
+
+
+   Model          Method         Precision    PPL↓     PQ↑    WG↑    HS↑    A-e↑    A-c↑    LA↑    Avg. ↑17
+     MethodModel  BaselineMethodWeightPQ      WG      HS       A-e       A-c       LAFP16#Outlier6.35LLAMA-80.47     73.72     78.45    80.13    57.51    68.37     73.113Avg.
+                     QuantizationINT4Features11.69     8B      70B68.39     58.64     60.60    65.87    39.25    43.99     56.12
+332LLAMABaseline3-8BQuaRot-RTNFP16-80.74    72.77    79.06    77.82    53.33    75.63INT6-6.786.14     2.8679.54     73.01     77.46    79.21    55.12    67.53     71.9873.22
+ Phi-3-mini         QuaRot      75.14    65.82    72.94    68.01    43.34    65.81INT86.5879.71     74.11     78.63    80.47    56.66    68.56     73.0265.18
+  LLAMAQuaRot3-70B   FP16GPTQ84.66    80.51    84.89    85.86    64.25    79.47INT407.858.16     6.6675.35     67.88     72.95    72.98    48.12    60.78     66.3479.94
+  QuaRot-128GQuaRot-GPTQQuaRotGPTQ-128G78.07    69.30    77.33    73.44    47.53    69.57INT606.637.36     5.5179.54     72.69     78.50    79.42    56.74    68.85     72.6769.21
+                                   INT8        6.58    80.25     74.19     78.54    80.35    57.08    68.64     73.18

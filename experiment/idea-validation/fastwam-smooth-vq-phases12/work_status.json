@@ -1,45 +1,76 @@
 {
   "updated_utc": "2026-10-08T02:24:48.013114+00:00",
-  "goal_status": "paused",
-  "scope": "Finish Fast-WAM phases1/2 first, then extend other baselines",
-  "implementation": "complete; preflight numerical and full model checks passed",
+  "goal_status": "complete",
+  "scope": "Fast-WAM phases1/2 numerical validation; other baselines architecture applicability only",
+  "implementation": "complete; frozen full runner unchanged; CPU aggregation complete",
   "checks_completed": [
-    "Python AST syntax",
-    "Bash syntax",
-    "disjoint22casepartition",
-    "outside-allocation selfcheck refuses before importing torch",
-    "PBS 25721014.pbs101: smooth_vq numerical self-checks passed",
-    "PBS 25721014.pbs101: successful terminal gates, 21 model queries, 614/614 Linear coverage",
-    "PBS 25722477.pbs101: full startup confirmed, MODEL_READY, completed model queries and phase1_identity entered"
+    "Python and Bash syntax; disjoint 22-case partition; allocation guard",
+    "Preflight numerical self-checks and successful terminal gates",
+    "Full terminal gates: F, Exit_status=0, pipeline marker, exit_code.txt=0, nonempty summary",
+    "444 model queries completed; 614/614 calibrated and observed target Linears",
+    "Phase1/scalar/VQ winners frozen before test; test_queries_before_freeze=0",
+    "CPU analysis terminal gates passed inside approved PBS allocation",
+    "Raw queries reproduce primary means; every declared context present exactly once",
+    "4912 module bank statistics paired; payload totals agree",
+    "Packed scalar and VQ storage recorded; 1023 GPU utilization/memory samples",
+    "Chinese result report; Cosmos Policy and LingBot-VA architecture applicability notes"
   ],
   "checks_not_run": [
-    "completed full phase1/phase2 comparisons",
-    "held-out results"
+    "W4A8; QAT; KV quantization",
+    "Phase3 final-action Jacobian sensitivity/protection",
+    "Other baseline numerical experiments",
+    "Native low-bit kernel; deployed low-bit GPU memory; end-to-end latency; closed-loop success"
   ],
   "new_pbs_jobs_submitted": true,
-  "pending_dependency": "full job 25722477.pbs101; wait for user notification",
-  "next_actions": [
-    "wait for user notification before further status checks",
-    "after explicit resume, verify full terminal gates and inspect selection/held-out results"
-  ],
+  "pending_dependency": null,
+  "next_actions": [],
   "preflight_job_id": "25721014.pbs101",
   "preflight_scheduler_state": "F",
   "preflight_stage": "successful complete, Exit_status=0, 21 queries",
   "future_run_diagnostics": "Full run records bank progress and periodic 10min stack snapshots; snapshots alone are not failures.",
-  "monitoring": "stopped; no scheduled continuation created",
-  "current_user_request": "Submit full after verified preflight; confirm real model queries then pause goal and monitoring.",
+  "monitoring": "off; all experiment jobs completed; no scheduled continuation",
+  "current_user_request": "Experiment task finished; continue",
   "full_job_id": "25722477.pbs101",
-  "full_scheduler_state": "R",
-  "pause_reason": "User requested pause after confirmed full-model startup; criterion satisfied.",
-  "full_startup_evidence": {
-    "pbs_job_id": "25722477.pbs101",
-    "scheduler_state_observed": "R",
-    "core_self_checks": "passed",
-    "MODEL_READY": true,
-    "queries_completed": 40,
-    "stage": "phase1_hadamard",
-    "gpu_utilization_observed_percent": 43,
-    "progress_source": "results/full/progress.json",
-    "log_source": "artifacts/25722477.pbs101/job.log"
-  }
+  "full_scheduler_state": "F",
+  "updated_date_local": "2026-10-08",
+  "result_report": "RESULTS.zh.md",
+  "preflight_exit_status": 0,
+  "full_exit_status": 0,
+  "full_walltime": "04:18:12",
+  "full_queries_completed": 444,
+  "analysis_job_id": "25725256.pbs101",
+  "analysis_scheduler_state": "F",
+  "analysis_exit_status": 0,
+  "analysis_walltime": "00:00:03",
+  "frozen_winners": {
+    "phase1": "smooth05_hadamard",
+    "scalar": "smooth05_hadamard",
+    "vq": "smooth1_hadamard"
+  },
+  "held_out_motor_rmse": {
+    "identity_bf16w_a4": 0.3372421234846115,
+    "smooth05_hadamard_bf16w_a4": 0.0452886426821351,
+    "smooth05_hadamard_scalar_a4": 0.05744669251143932,
+    "smooth05_hadamard_vq_a4_paired_diagnostic": 0.07831049375236035,
+    "smooth1_hadamard_vq_a4_frozen_winner": 0.10409151762723923
+  },
+  "future_proposals_not_submitted": [
+    "Freeze moderate transform; add per-output-row BF16 scale to VQ as one bounded change",
+    "Compare identical activation-weighted objective plus action RMSE and actual bits/weight",
+    "Use fresh independent held-out cases for method changes",
+    "Then evaluate final-action sensitivity and additional baseline numerical transfer"
+  ],
+  "architecture_transfer_notes": [
+    "Cosmos Policy arXiv 2601.16163v1",
+    "LingBot-VA arXiv 2601.21998v2"
+  ],
+  "evidence_files": [
+    "full_terminal_evidence.json",
+    "analysis_terminal_evidence.json",
+    "results/full/summary.json",
+    "results/full/frozen_winners.json",
+    "results/analysis/summary.json",
+    "results/analysis/full_log_tail.txt"
+  ],
+  "completed_scope": "Fast-WAM phases1/2 numerical validation and result interpretation"
 }

@@ -1,0 +1,221 @@
+#!/bin/bash
+#PBS -N fw_rotation_eval
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=4
+#PBS -l walltime=24:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing to run on a login node' >&2; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008
+DIAG_ROOT=$NEW_ROOT
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RESULTS="$NEW_ROOT/results"
+ARTIFACTS="$NEW_ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ARTIFACTS" "$RESULTS"
+rm -f "$ARTIFACTS/PIPELINE_COMPLETE" "$ARTIFACTS/exit_code.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+GPU_MONITOR_PID=
+WORKER_PIDS=()
+PIPELINE_READY=0
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKER_PIDS[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+    for pid in "${WORKER_PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if (( rc == 0 && PIPELINE_READY == 1 )); then
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  else
+    rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+    (( rc != 0 )) || rc=65
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+terminate() { trap - TERM INT; exit 143; }
+trap terminate TERM INT
+
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+test -s "$ROOT/env_status.json" -a -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
+test -s "$DIAG_ROOT/run.pbs" -a -s "$DIAG_ROOT/environment.sh" -a -s "$DIAG_ROOT/evaluate.py" -a -s "$DIAG_ROOT/aggregate.py"
+test -s "$DIAG_ROOT/rotation.py" -a -s "$RESULTS/protocol.json" -a -s "$RESULTS/manifest.json" -a -s "$RESULTS/PREPARED.json"
+cp "$DIAG_ROOT/run.pbs" "$DIAG_ROOT/environment.sh" "$DIAG_ROOT/evaluate.py" "$DIAG_ROOT/aggregate.py" "$DIAG_ROOT/rotation.py" "$ARTIFACTS/"
+cp "$RESULTS/protocol.json" "$ARTIFACTS/protocol.json"
+cp "$ROOT/runner.py" "$ROOT/quantization.py" "$ROOT/libero_state_loader.py" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+cp "$NATIVE_RECEIPT" "$ARTIFACTS/native_status.json"
+
+run_python - "$RESULTS" <<'PY_PREPARED'
+import json, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+protocol = json.loads((root / 'protocol.json').read_text())
+prepared = json.loads((root / 'PREPARED.json').read_text())
+assert protocol.get('protocol') == 'fastwam-rotation-baselines-v1', 'Frozen protocol is missing or mismatched'
+assert prepared.get('protocol') == protocol['protocol'], 'PREPARED protocol mismatch'
+prep_job = str(prepared.get('pbs_jobid', '')).strip()
+assert prep_job, 'PREPARED does not identify its preparation PBS job'
+prep_marker = root.parent / 'artifacts' / prep_job / 'PREPARATION_COMPLETE'
+assert prepared.get('ready') is True, 'PREPARED ready gate failed'
+assert prepared.get('numeric_check', {}).get('passed') is True, 'PREPARED numeric gate failed'
+authorization = prepared.get('user_authorized_native_gate_waiver', {})
+if authorization.get('approved') is True:
+    assert authorization.get('source_job_id') == prep_job == '25727738.pbs101', 'Waiver source mismatch'
+    assert authorization.get('scope') == 'four_gpu_full_evaluation', 'Waiver scope mismatch'
+    assert protocol.get('native_gate_waiver') == authorization, 'Protocol waiver mismatch'
+    assert prepared.get('native_int4_check', {}).get('passed') is False, 'Waived failure must remain a recorded failure'
+    assert prepared.get('training', {}).get('reused_existing_rotation') is True
+    assert prepared.get('training', {}).get('new_learning_steps') == 0
+    assert prepared.get('training', {}).get('selected_step') == 200
+    print('USER_AUTHORIZED_NATIVE_GATE_WAIVER', authorization, flush=True)
+else:
+    assert prep_marker.is_file(), f'Preparation completion marker is missing: {prep_marker}'
+    assert prepared.get('native_int4_check', {}).get('passed') is True, 'PREPARED native INT4 gate failed'
+for arm in ('quarot_adapted_w4a4', 'spinquant_adapted_w4a4'):
+    bank = Path(prepared.get('banks', {}).get(arm, ''))
+    if not bank.is_absolute():
+        bank = root / bank
+    manifest = bank / 'manifest.json'
+    rotation = bank / 'rotation.pt'
+    assert bank.is_dir() and manifest.is_file() and rotation.is_file(), f'Prepared bank is incomplete: {arm} {bank}'
+    bank_doc = json.loads(manifest.read_text())
+    assert bank_doc.get('arm') == arm, f'Prepared bank arm mismatch: {arm}'
+    assert bank_doc.get('format') == 'fastwam-rotation-native-bank-v1', f'Unexpected native bank format: {arm}'
+    module_files = list(bank.glob('linear_*.pt'))
+    assert len(module_files) == bank_doc.get('module_count') and module_files, f'Prepared bank linear files are incomplete: {arm}'
+print('PREPARED_EVALUATION_AUTHORIZED; formal evaluation may start', flush=True)
+PY_PREPARED
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'CUDA_VISIBLE_DEVICES missing' >&2; exit 65; }
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 4 || { echo "Expected four allocated GPUs, got $CUDA_VISIBLE_DEVICES" >&2; exit 65; }
+[[ "${GPU_IDS[0]}" != "${GPU_IDS[1]}" && "${GPU_IDS[0]}" != "${GPU_IDS[2]}" && "${GPU_IDS[0]}" != "${GPU_IDS[3]}" \
+   && "${GPU_IDS[1]}" != "${GPU_IDS[2]}" && "${GPU_IDS[1]}" != "${GPU_IDS[3]}" && "${GPU_IDS[2]}" != "${GPU_IDS[3]}" ]] \
+  || { echo 'PBS exposed duplicate GPU identifiers' >&2; exit 65; }
+
+(
+  while :; do
+    stamp=$(date -Is)
+    for gpu in "${GPU_IDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s gpu=%s ' "$stamp" "$gpu"
+      nvidia-smi -i "$gpu" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+for gpu in "${GPU_IDS[@]}"; do
+  CUDA_VISIBLE_DEVICES="$gpu" run_python - "$gpu" <<'PY_GPU'
+import sys, torch
+mask=sys.argv[1]
+assert mask.startswith('GPU-'), mask
+assert torch.cuda.device_count() == 1, torch.cuda.device_count()
+props=torch.cuda.get_device_properties(0)
+actual=str(props.uuid)
+assert actual.removeprefix('GPU-').lower() == mask.removeprefix('GPU-').lower(), (mask, actual)
+cap=torch.cuda.get_device_capability(0)
+assert cap[0] >= 8, f'native INT4 Tensor Core requires SM80+, got SM{cap[0]}{cap[1]}'
+print('Allocated GPU verified:', props.name, actual, f'SM{cap[0]}{cap[1]}', flush=True)
+PY_GPU
+done
+
+FW_CPU_THREADS=8
+printf 'phase=evaluation protocol=fastwam-rotation-baselines-v1 PBS_JOBID=%s CUDA_VISIBLE_DEVICES=%s\n' \
+  "$PBS_JOBID" "$CUDA_VISIBLE_DEVICES" | tee -a "$ARTIFACTS/launch.txt"
+
+for worker in 0 1 2 3; do
+  gpu=${GPU_IDS[$worker]}
+  rc_path="$ARTIFACTS/worker_${worker}.rc"
+  rm -f "$rc_path" "$rc_path.tmp"
+  (
+    child_pid=
+    stop_worker() {
+      if [[ -n "$child_pid" ]]; then kill "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; fi
+      printf '143\n' > "$rc_path.tmp"
+      mv "$rc_path.tmp" "$rc_path"
+      exit 143
+    }
+    trap stop_worker TERM INT
+    CUDA_VISIBLE_DEVICES="$gpu" run_python "$ARTIFACTS/evaluate.py" \
+      --worker-id "$worker" --manifest "$RESULTS/manifest.json" --out "$RESULTS/worker_$worker" &
+    child_pid=$!
+    set +e
+    wait "$child_pid"
+    rc=$?
+    set -e
+    printf '%s\n' "$rc" > "$rc_path.tmp"
+    mv "$rc_path.tmp" "$rc_path"
+    exit "$rc"
+  ) &
+  WORKER_PIDS+=("$!")
+  echo "WORKER_STARTED worker=$worker gpu=$gpu pid=$!"
+done
+
+declare -A WORKER_DONE=()
+while (( ${#WORKER_DONE[@]} < 4 )); do
+  failed_worker=
+  failed_rc=0
+  for worker in 0 1 2 3; do
+    [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+    rc_path="$ARTIFACTS/worker_${worker}.rc"
+    if [[ -s "$rc_path" ]]; then
+      rc=$(<"$rc_path")
+      WORKER_DONE[$worker]=1
+      if (( rc != 0 )); then failed_worker=$worker; failed_rc=$rc; break; fi
+    fi
+  done
+  if [[ -n "$failed_worker" ]]; then
+    echo "WORKER_FAILED worker=$failed_worker exit_code=$failed_rc; stopping remaining workers" >&2
+    for worker in 0 1 2 3; do
+      [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+      pid=${WORKER_PIDS[$worker]}
+      kill "$pid" 2>/dev/null || true
+    done
+    for pid in "${WORKER_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+    exit "$failed_rc"
+  fi
+  (( ${#WORKER_DONE[@]} == 4 )) || sleep 2
+done
+for pid in "${WORKER_PIDS[@]}"; do wait "$pid"; done
+
+run_python "$ARTIFACTS/aggregate.py" --manifest "$RESULTS/manifest.json" \
+  --results "$RESULTS" --out "$RESULTS/summary.json"
+cp "$RESULTS/summary.json" "$ARTIFACTS/summary.json"
+run_python - "$RESULTS/summary.json" <<'PY_COMPLETE'
+import json, sys
+from pathlib import Path
+
+summary = json.loads(Path(sys.argv[1]).read_text())
+assert summary.get('complete') is True and summary.get('episode_slots') == 840
+assert summary.get('manifest_variants') == 280
+for arm in ('bf16', 'quarot_adapted_w4a4', 'spinquant_adapted_w4a4'):
+    assert summary.get('overall', {}).get('arms', {}).get(arm, {}).get('episodes') == 280, arm
+assert len(summary.get('cells', {})) == 28
+assert all(cell['arms'][arm]['episodes'] == 10
+           for cell in summary['cells'].values()
+           for arm in ('bf16', 'quarot_adapted_w4a4', 'spinquant_adapted_w4a4'))
+print('AGGREGATE_GATE_PASSED slots=840 arms=3 cells=28', flush=True)
+PY_COMPLETE
+PIPELINE_READY=1
+echo FASTWAM_ROTATION_BASELINES_COMPLETE

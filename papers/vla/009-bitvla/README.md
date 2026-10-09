@@ -85,7 +85,7 @@ LLaVA 的作用是先建立 stable multimodal interface，避免一开始就把 
 
 `full-precision checkpoint → bitsandbytes INT8/“INT4” backbone loading → LIBERO evaluation`
 
-BitVLA 自身并不走 bitsandbytes；native W1.58A8 inference 用 BitBLAS custom kernel。BitVLA citation `[9]` 对应 [LLM.int8()](../013-llm-int8-bitsandbytes/README.md)：该 algorithm 用 vector-wise INT8 处理 regular features，并把少量 outlier feature dimensions 留给 FP16 matmul。因此 `INT8` baseline 也不是所有 operation 都是 pure INT8。
+BitVLA 自身并不走 bitsandbytes；native W1.58A8 inference 用 BitBLAS custom kernel。BitVLA citation `[9]` 对应 [LLM.int8()](../../llm/013-llm-int8-bitsandbytes/README.md)：该 algorithm 用 vector-wise INT8 处理 regular features，并把少量 outlier feature dimensions 留给 FP16 matmul。因此 `INT8` baseline 也不是所有 operation 都是 pure INT8。
 
 更重要的是，paper 的 `INT4` row 没有给出 `FP4 vs NF4`、group size、compute dtype、double quantization、skipped modules 或 software version。Current bitsandbytes 4-bit path 暴露 FP4/NF4 options，所以 Table II 的 “INT4” 不是一个 fully specified reproducible format；不能仅从 paper 判断它究竟用了哪组 config。
 
@@ -276,7 +276,7 @@ Real-world section 只在 Franka 上评估 3 base tasks 与 OOD variants，主�
 4. 对照 Tables I/II：区分 native low-bit 与 PTQ comparison，列出不 matched 的 variables。
 5. 对照 Table III：为什么 VQA preservation 是 downstream VLA 的必要但非充分证据？
 6. 解析 Fig. 6：分别定义 latency、throughput、chunk size、control loop；写出 edge-device 复现实验清单。
-7. 补读 [LLaVA](../011-llava/README.md)、[OpenVLA-OFT](../012-openvla-oft/README.md)、[LLM.int8/bitsandbytes](../013-llm-int8-bitsandbytes/README.md) 与 [Apprentice](../010-apprentice-quantization-distillation/README.md)，把 inherited components 与 BitVLA contribution 分开。
+7. 补读 [LLaVA](../011-llava/README.md)、[OpenVLA-OFT](../012-openvla-oft/README.md)、[LLM.int8/bitsandbytes](../../llm/013-llm-int8-bitsandbytes/README.md) 与 [Apprentice](../010-apprentice-quantization-distillation/README.md)，把 inherited components 与 BitVLA contribution 分开。
 
 ## 10. Reading questions and answers
 

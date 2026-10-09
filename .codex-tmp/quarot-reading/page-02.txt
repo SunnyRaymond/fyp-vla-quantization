@@ -1,0 +1,52 @@
+                                     Figure1:  ThedistributionsofactivationsattheinputtotheFFNblockin LLAMA                          model,inthe
+                                     tenth layer. Left: using the default conﬁguration as downloaded from Hugging Face. Right: after
+                                     processingusingQuaRot. Theprocesseddistributionhasnooutliers,leadingtosuperiorquantization.
+
+
+                                     Inthiswork,weaddresstheissueofoutlierfeaturesbyrotatingtheinputsofthemodelusingrandom-
+                                     izedHadamardtransformations. Wedothisusingthecomputationalinvarianceidea[Ashkboosetal.,
+                                     2024]andfuseHadamardtransformationsintotheweightmatrices,resultinginanequivalentnetwork
+                                     withoutoutlierfeatures. Thisenablestheweights,activations,andKVcachestobequantizedto4
+                                     bitswithminimalaccuracydrop. Ourmaincontributionsare:
+
+                                             •   WeshowthatrandomizedHadamardtransformationscanbeappliedtotheweightmatrices
+                                               withoutadditionalmodelmodiﬁcations. Inturn,thiscompletelyeliminatesoutlierfeatures
+                                               andmakestheactivationseasytoquantize,withoutchangingtheoutputofthemodel. This
+                                               can be seen as an extension of the computational invariance idea, proposed in SliceGPT
+                                               [Ashkboosetal.,2024]inthecontextofstructuredpruning.
+                                             •   Weextendthisapproachtoapply onlineHadamardtransformationstotheattentionmodule
+                                               toremoveoutlierfeaturesinkeysandvalues,enablingtheKVcachetobequantized.
+                                             •   Using the above modiﬁcations, QuaRot enables 4-bit LLM inference by quantizing all
+                                               weights,activations,andKVcachesusingintegerquantization. Weprovideefﬁcientkernel
+                                               support for QuaRot:  on a LLAMA                 model, QuaRot achieves up to 3.33× preﬁll
+                                               speedups(onabatchsize64with2048sequencelength),and3.89×memorysavingduring
+                                               thedecodingstage,withatmost0.47WikiText-2perplexityloss. QuaRotpreserves99%
+                                               oftheaccuracyofzero-shottasksandweshowthatour6and8-bitquantizationislossless
+                                               withsimpleround-to-nearestquantization.
+
+                                     2   RelatedWork
+
+                                     ThemajorityofquantizationschemesfocusoncompressingLLMsbyusingweight-onlyquantization,
+                                     [Frantaretal.,2022,Dettmersetal.,2023,Linetal.,2023,Egiazarianetal.,2024,Tsengetal.,2024].
+                                     These methods downcast each weight into a low-precision representation and upcast it before the
+                                     actualcomputation. Themaincomputationisstillperformedinhighprecision. Severalworksshow
+                                     that,unlikeweights,quantizingtheactivationsishardduetotheoutlierfeatures[Weietal.,2022,
+                                     Dettmersetal.,2022,Xiaoetal.,2023]. For8-bitcase,LLM.int8()[Dettmersetal.,2022]identiﬁes
+                                     the outlier features during inference and keeps them in 16 bits which results in poor performance.
+                                     SmoothQuant[Xiaoetal.,2023]normalizesthefeaturesusingsomescalingfactorsfromacalibration
+                                     set,solvingtheissueforthe8-bitcaseatthecostofintroducingextrahyper-parameters. For4-bit
+                                     quantization, recent studies identify the outlier features ofﬂine and keep them in high precision.
+                                     Atom[Zhaoetal.,2023]developedacomplexkernelformixed-precisionMatMulinthepresenceof
+                    BeforeQuaRotWithQuaRotoutlierswhileQUIK[Ashkboosetal.,2023]keepsthedown-projectionlayerin8bits.
+                                     Twoweight-onlyquantizationmethods,QuIP[Cheeetal.,2024]andQuIP#[Tsengetal.,2024]have
+  0.4          Min/Max               previouslyconsideredimprovingquantizationbyapplyingrotations. Cheeetal.[2024]introduced
+               1/99Percentile        theideaofincoherenceprocessingwhichappliesrotationmatricestotheleftandrightofeachweight
+  0.2          25/75Percentile
+
+    0                                                                                      2
+−0.2
+
+−0.4   2-7B2-70B
+
+         00     1,0001,0002,0002,0003,0003,0004,0004,000
+               HiddendimensionindexHiddendimensionindex

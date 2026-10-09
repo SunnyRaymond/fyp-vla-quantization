@@ -1,0 +1,68 @@
+                              Table3: WikiText-2Perplexityandzero-shotaccuracyofQuaRotonthe LLAMA-                            familyusing4-
+                              and8-bitswithRound-to-Nearest(RTN)weightsandactivationquantization. Forzero-shottasks,we
+                              use PIQA (PQ), WinoGrande (WG), HellaSwag (HS), Arc-Easy (A-e), Arc-Challenge (A-c), and
+                              LAMBADA(LA).Wequantizeallweights,activations,andcaches.
+
+
+
+
+
+
+
+
+
+
+
+                              Table4: WikiText-2perplexityof4-bitQuaRotwithvariousgroup-sizeson LLAMA-                           models. We
+                              use GPTQ during the weight quantization. In all cases, we keep the KV cache group-size to 128
+                              (sameastheheaddimension). 128Gshowsthegroup-wisequantizationwith128groupsize.
+
+
+
+
+
+
+
+
+
+
+
+
+                              here)sinceasthenumberoflayersincreasestheeffectofconstantsizeobjectsinmemorybecomes
+                              muchlesssigniﬁcant.
+                              5.3   AblationStudies
+                              ToevaluatedifferentaspectsofQuaRot,weevaluatetheuseofRound-to-NearestWeightQuanti-
+                              zation,Group-wiseQuantization(withdifferentgroupsizes),andKVcacheQuantizationwith
+                              different bit-width combinations (Appendix A.3). In addition, we investigate the role of applying
+                              Hadamard transformation on the Weight-only Quantization schemes (Appendix A.4) as well as
+                              usingRandomOrthogonalMatrices(AppendixA.5)insteadofHadamardmatrices. Finally,we
+                              evaluatetheaccuracyofourquantizedmodelswhenweapplyFP16HadamardTransformation
+                              (AppendixA.7).
+
+                              Round-to-NearestWeightQuantization.   GPTQisourdefaultchoiceforweightquantizationin
+                              QuaRot. Here,westudytheroleofquantizingtheweightsusingRound-to-Nearest(RTN).Table3
+                              shows that applying RTN weight quantization fully maintains the FP16 model accuracy in 8 bits.
+                              We note that RTN does not need any calibration set or hyper-parameter during the quantization.
+                              Comparing Table 3 and 2, we conclude that in 4 bits, the gap between QuaRot-RTN and QuaRot-
+                              GPTQdecreaseswhenthemodelsizeisincreased(2.27on LLAMA                            and0.34on LLAMA                )
+                              showingthatGPTQisabetteroptioninsmallermodels. FormoredetailedresultsseeAppendixA.6.
+
+                              Group-wise Quantization.   Table 4 shows the accuracy of applying QuaRot with various
+                              group-sizesfortheactivationsandweights. Theresultsshowacleartrade-offbetweentheaccuracy
+                              andthegroup-sizes: smallergroup-sizesgivebetteraccuracy(butrequiremorebitstostorescalesfor
+                              eachgroupandmorecomplexmatrix-multiplicationkernels).
+                              6   Conclusion
+
+                              WeintroduceQuaRot: amethodwhichusesHadamardmatricestoeliminateoutliersintheactivations
+                              and KV cache of pre-trained LLMs, enabling end-to-end 4-bit quantization for the ﬁrst time (to
+                              thebestofourknowledge). Quantizing LLAMA                       to4bitswithQuaRotmaintains99%ofthe
+
+
+ Model        Method      LLAMA-Precision2PPL↓    PQ↑    WG↑    HS↑    A-e↑    A-c↑    LA↑    Avg. ↑9
+     Method           7B      13B     70B
+             Baseline         FP16       5.47     79.11     69.06     75.99    74.58    46.25    73.90     69.82
+   7BBaseline        5.47     4.88     3.32INT48.3772.09     60.69     65.40    58.88    35.24    57.27     58.26
+2-7B2-70B2-70B22QuaRotQuaRot-RTN6.10     5.40     3.79INT85.5078.94     68.67     75.80    74.79    45.39    74.33     69.65
+  QuaRot-256GBaseline5.98     5.28     3.63FP163.3282.70     77.98     83.84    80.98    57.34    79.58     77.07
+  QuaRot-128G70B     5.93     5.26     3.61INT44.1480.69     75.14     79.63    77.57    51.71    77.02     73.63
+   QuaRot-64GQuaRot-RTN5.88     5.25     3.58INT83.3382.97     77.98     83.67    80.77    58.11    79.53     77.17

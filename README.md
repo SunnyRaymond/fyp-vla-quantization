@@ -4,13 +4,14 @@
 
 ## 内容入口
 
-- [VLA papers](papers/vla/README.md)、[WAM papers](papers/wam/README.md)、[WM papers](papers/wm/README.md)：每个分类下直接按编号进入单篇 paper。
+- [VLA papers](papers/vla/README.md)、[LLM papers](papers/llm/README.md)、[WAM papers](papers/wam/README.md)、[WM papers](papers/wm/README.md)：每个分类下直接按编号进入单篇 paper。
 
 - `idea/`：现有 research ideas、IdeaSpark pipeline、prior-art review 和 idea briefs；明确的验证运行放在 `experiment/idea-validation/`。
 - `experiment/idea-validation/`：对现有 ideas 的 screen、pilot、verification 和运行产物。
 - [Week ending 2026-10-04 实验索引](experiment/idea-validation/WEEK_ENDING_2026-10-04.zh.md)：本周周报实验、结果与整理范围。
 - `experiment/reproduction/`：paper/code audits、quantization reproduction、VLA evaluation 和 benchmark 运行。
 - `papers/vla/`：VLA、VLA quantization、simulation evaluation 及其单篇 paper 文件夹。
+- `papers/llm/`：LLM quantization、KV-cache quantization、低精度训练与共享数值格式基础。
 - `papers/wam/`：World Action Model papers 的单篇文件夹。
 - `papers/wm/`：World Model papers 的单篇文件夹。
 - `ASPIRE2A_README.md`、`nscc-access/`：集群使用说明与脚本。

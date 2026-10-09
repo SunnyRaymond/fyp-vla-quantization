@@ -1,0 +1,51 @@
+                                Figure7:  Performanceof16-bitand4-bitlinearlayerfor2048sequencelengthswithandwithout
+                                onlineHadamardtransformationonaNVIDIARTX3090GPU,averagedover1000runs. Thematrix
+                                sizescorrespondtothelinearlayersizesin LLAMA-            FFNblocks(i.e.Wdown). Herethebatchsize
+                                is1,buttheperformanceratioholdsforlargerbatches(seeTable14).
+
+
+                                Our4-bitlinearlayergets3.2xspeeduprelativetoFP16inthe LLAMA                      model,and4.3xonthe
+                                LLAMA           model. Thesenumbersareforabatchsizeof1,weﬁndthatscalingisapproximately
+                                linearwithbatchsize: moreresultsinTable14. WeincludetheruntimewithandwithoutHadamard
+                                operations,asWup andWgate donotrequireHadamardtransforms,whilstWdown does. Weseethat
+                                theHadamardtransformaddsverylittleoverheadtotheforwardpassatmost7%overhead.
+                                We also compare the speed of performing append and decode routines for a single token given a
+                                cacheofsize2047. Thisisequivalenttothecostofdecodingthe2048-thtokeninasequence. The
+                                comparisonbetweenthespeedofFP16andINT4fordifferentbatchsizesandlayersizesisreported
+                                in Table 15. For the layer size used in LLAMA             , our 4-bit implementation gets up to 1.72x
+                                improvementinspeedforthelargerbatchsizes(e.g. from16onwards). The4-bitcacheisslower
+                                thanFP16forsmallerbatchsizes(e.g. upto8). Notethatthisisintuitiveasthemainbeneﬁtofthe
+                                4-bitcacheisreducingtheI/Ocost. Aspeedupisonlyvisibleifthisreductionismoresigniﬁcant
+                                thanthequantizationoverheadwhichhappensforeitherlargerbatchsizesorlongersequences.
+                                Table 14 shows the results of benchmarking our 4-bit linear layer. The layer sizes are extracted
+                                basedonthelinearlayersizesin LLAMA-            models(forout-projectionanddown-projections). We
+                                applybothFP16andFP32HadamardtransformationsandshowtheruntimeonNVIDIARTXGPU
+                                using2048sequencelengths. Table15showstheresultsofdecodingasingletokenintheattention
+                                layerwhenweapplyKV-cachequantization. Weextractthesizeoftheattentionlayerbasedonthe
+                                LLAMA-     models.
+
+
+
+
+
+
+
+
+
+
+
+
+
+              FP16                               12.45
+              INT4
+10        INT4+Had.
+
+
+
+
+ 5                          3.98                                                   18
+       2.57                                           2.88 2.91
+
+            0.75 0.8             1.061.14
+ 0 2-70B2-7B2-7B222
+            7B                   13B                  70B

@@ -1,0 +1,66 @@
+                              Table7: Weight-onlyquantizationresultsonWikiText-2on LLAMA-                      models. Weuseasymmetric
+                              per-columnquantizationandkeeptheinputsandKVcacheinFP16. Weshowtheperplexityresults
+                              >100byInf. WeshowthefailedGPTQexperimentsusingNaN.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              A.5   RandomOrthogonalMatricesAblation
+                              QuaRotfusesHadamardtransformationsintoweightmatricestoeliminateoutliers. However,dueto
+                              thecomputationalinvariancepropertyinLLMs,anyorthogonalmatrixcanbefusedtothemodeland
+                              weonlyneedtoapplyanonline 112 Hadamardtransformationsineachlayer(seeSection4). Here,
+                              westudytheuseofrandomorthogonalmatricesinQuaRot. Westartwithauniformlyrandommatrix
+                              andapplyQRdecompositiontomakeitorthogonalbeforefusingitintotheweights.
+
+
+                              Table 8: WikiText-2 perplexity of 4-bit QuaRot on LLAMA-                  models with different orthogonal
+                              matrices.
+
+                                                                      Method                 LLAMA-
+                                                                                         7B      13B     70B
+                                                                      Baseline           5.47     4.88     3.32
+                                                                 QuaRot(Random)          7.45     5.84     4.07
+                                                                QuaRot(Hadamard)         6.10     5.40     3.79
+
+
+
+
+
+                              Table8showstheresultsofapplyingrandomorthogonalmatriceson LLAMA-                             models. Random
+                              orthogonal matrices are not as good as random Hadamard transformations and we have up 1.35
+                              perplexitygapon LLAMA               . However,asthemodelsizeincreases,thegapdecreases,resulting
+                              inaperplexitychangeof0.28inthe LLAMA                       model. Notethatusingtheabovematricesdoes
+                              not change the computation as we still use a fast Hadamard kernel for the down-projection and
+                              out-projectionlayers.
+                              A.6   Round-to-NearestWeightQuantization: DetailedResults
+                              Table9showsthedetailedresultsofQuaRotwithGPTQandround-to-nearest(RTN)weightquanti-
+                              zationforboth6and8bitsonvarioustasksfor LLAMA-                     models.
+                              A.7   FP16HadamardTransformationAblation
+                              WeuseFP32onlineHadamardtransformationacrossallourexperiments. Table10showstheresults
+                              ofusingFP16Hadamardtransformationduringtheinference(fordown-projectionandout-projection
+                              layers). On LLAMA            model,theresultsshow<0.1perplexitychangeonWikiText-2and<0.6%
+                              averaged accuracy change on the zero-shot tasks, which we consider as noise. On LLAMA
+                              model, different Hadamard precisions have the same perplexities with 0.07% difference in the
+                              averagedzero-shotresults. WeconcludethatthemodelwillnotbechangedusingdifferentHadamard
+                              precision.
+
+
+    Method                                                 LLAMA-2                   15
+                               7B                                   13B                                   70B
+    Baseline                   5.47                           4.88                            3.32
+22-13B2-7B2-70B2-7B2222A16W4   A16W3   A16W2      A16W4   A16W3   A16W2           A16W4   A16W3   A16W2
+      RTN           6.99         Inf          Inf   6.32         Inf          Inf  4.45       42.11        Inf
+     GPTQ           8.25        NaN        NaN      5.65        9.51         Inf   3.87        5.91       25.30
+  QuaRot-RTN        6.76         Inf          Inf   5.48       48.89        Inf    3.66        5.25         Inf
+ QuaRot-GPTQ        5.60        6.09       22.07    5.00        5.37       10.41   3.41        3.72        5.60

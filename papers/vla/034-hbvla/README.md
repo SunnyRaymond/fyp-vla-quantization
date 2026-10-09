@@ -2,7 +2,7 @@
 
 > **在本指南中的角色：** 李老师新增指定阅读，active core `#20`；当前核心里最直接的 `VLA × 1-bit PTQ × closed-loop evaluation` 论文。  
 > **本地论文：** [paper-arxiv-v2.pdf](paper-arxiv-v2.pdf)  
-> **建议先修：** [OpenVLA](../001-openvla/README.md)、[BitVLA](../009-bitvla/README.md)、[OPTQ/GPTQ](../018-gptq-optq/README.md)，以及 `binary quantization`、`Hessian-aware PTQ`、`Haar transform`。  
+> **建议先修：** [OpenVLA](../001-openvla/README.md)、[BitVLA](../009-bitvla/README.md)、[OPTQ/GPTQ](../../llm/018-gptq-optq/README.md)，以及 `binary quantization`、`Hessian-aware PTQ`、`Haar transform`。  
 > **阅读状态：** `verified-full-text`；表示本地全文与来源已核对，不表示已独立复现。
 
 ## 1. Paper identity 与 version boundary
@@ -171,7 +171,7 @@ Locator: Figure 3 / real-world paragraph, local PDF pp. 6–7。Pick-and-Place �
 
 ### 90-minute route
 
-1. 回顾 [OPTQ/GPTQ](../018-gptq-optq/README.md) 的 `H = 2XX^T` 与 error compensation。
+1. 回顾 [OPTQ/GPTQ](../../llm/018-gptq-optq/README.md) 的 `H = 2XX^T` 与 error compensation。
 2. 逐式阅读 equations (3)–(7)，标出 action loss、gradient、`S` 与 `ρ_j` 的来源。
 3. 重画 salient/non-salient 两条 Haar path。
 4. 审计 Tables 1–3 的 component sensitivity。

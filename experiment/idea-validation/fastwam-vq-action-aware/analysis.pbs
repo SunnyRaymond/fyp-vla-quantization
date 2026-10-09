@@ -1,0 +1,48 @@
+#!/bin/bash
+#PBS -N fwva1009a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:15:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ROOT/artifacts"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; }
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+FULL_JOB=${FW_FULL_JOB:-}
+[[ "$FULL_JOB" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || exit 64
+test -f "$ROOT/artifacts/$FULL_JOB/PIPELINE_COMPLETE"
+test "$(cat "$ROOT/artifacts/$FULL_JOB/exit_code.txt")" = 0
+test -s "$ROOT/artifacts/$FULL_JOB/summary.json"
+test ! -e "$ROOT/results/analysis" || { echo "Refusing existing analysis result path" >&2; exit 73; }
+PROTOCOL_SOURCE="$ROOT/protocol.json"
+if [[ -s "$ROOT/experiment_protocol.json" ]]; then
+  PROTOCOL_SOURCE="$ROOT/experiment_protocol.json"
+fi
+cp "$PROTOCOL_SOURCE" "$ARTIFACTS/protocol.json"
+cp "$ROOT/protocol.json" "$ARTIFACTS/roots_protocol.json"
+cp "$ROOT/analysis.pbs" "$ROOT/analysis.py" "$ARTIFACTS/"
+cp "$ROOT/artifacts/$FULL_JOB/summary.json" "$ARTIFACTS/full_summary.json"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+python3 "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json" --out "$ROOT/results/analysis" --source "$ROOT/results/full"
+test -s "$ROOT/results/analysis/summary.json"
+python3 - "$ROOT/results/analysis/summary.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d.get("status") == "complete", d
+PY
+cp "$ROOT/results/analysis/summary.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo ANALYSIS_SUMMARY_COMPLETE

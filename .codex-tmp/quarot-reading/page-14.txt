@@ -1,0 +1,64 @@
+                              columnoftheweightmatrix. However,thisisnotpossibleaswequantizetheinputsontheﬂyduring
+                              theinferenceandweneedtouseaconstantclippingratioforsuchquantization. Weconcludethat
+                              using0.95and0.9aresuitableduringasymmetric(KVcache)andsymmetric(inputs)quantization
+                              whichmatchestheﬁndingfrom[  Zhaoetal.,2023].
+
+
+
+                              Table 5: WikiText perplexity of LLAMA               with different clipping ratio. To study the effect of
+                              variousclippingratios,wekeeptherestofthemodelinfullprecision.
+
+                                                                                   1.0      0.95       0.9      0.85
+                                                       InputQuantization          5.938     5.910    5.828     5.850
+                                                    KVCacheQuantization           5.513     5.510    5.517     5.532
+
+
+
+                              A.3   KVCacheQuantizationAblation
+                             We keep the rest of the model (including weights and activations) in high precision and apply our
+                              group-wiseasymmetricquantization(withgroup-size128)withvariousprecisiontokeysandvalues.
+                              Table6showstheresultsofusingvariousprecisionduringKVcachequantization. Theresultsshowa
+                              negligible(atmost0.21)perplexitydegradationupto3-bitKVcache(0.07for LLAMA                             model).
+                              Inaddition,bycomparingthe3and4-bitquantization,wecanseethatcomparedtothevalues,keys
+                              aremoresensitivetoquantizationaskeepingthekeysin4-bitsandvaluesin3-bitshas0.03perplexity
+                              loss (0.18 for 3-bit keys and 4-bit values) on the LLAMA               model. This matches the previous
+                              studyonKVcachequantization[Hooperetal.,2024,Liuetal.,2024]. Theresultsshowthatusing
+                              3-bitKV-cachesresultsinabetteraccuracy(5.68on LLAMA                       model)comparedtokeepingthe
+                              keysin4-bitsandquantizingthevaluesusing2-bits(with5.75perplexityon LLAMA                             model).
+
+
+
+                                         Table6: WikiText-2perplexitywithvariousKVcacheprecisionusingQuaRot.
+
+                                                                 Kbits     Vbits         LLAMA-
+                                                                                     7B      13B     70B
+                                                                   16        16      5.47     4.88     3.32
+                                                                   4         4       5.51     4.91     3.33
+                                                                   4         3       5.54     4.93     3.35
+                                                                   4         2       5.75     5.09     3.43
+                                                                   3         4       5.65     5.01     3.38
+                                                                   3         3       5.68     5.02     3.39
+                                                                   3         2       5.93     5.21     3.48
+                                                                   2         4       8.06     6.42     3.89
+                                                                   2         3       8.18     6.50     3.92
+                                                                   2         2       9.23     7.07     4.13
+
+
+
+
+                              A.4   Weight-onlyQuantizationAblation
+                              QuaRot improves the quality of quantized models by removing the outlier features during the
+                              Hadamardtransformations. AswefusetheHadamardmatricesintotheweights,westudytheroleof
+                              thesetransformationsforweight-onlyquantization(wekeeptherestofthedata-typesinFP16). Table
+                              7showstheWikiText-2perplexityresultswithasymmetricquantization. UsingGPTQquantization,
+                              QuaRotimprovestheperplexitybyupto2.65in4bits. Inaddition,applyingQuaRotimprovesthe
+                              qualitymoreinlowerprecision(2-3bits)inallmodels. QuaRotalsoimprovestheRTNquantization
+                              upto0.24perplexitypoints. GPTQstillhasalowerperplexityin2-3bits. However,applyingQuaRot
+                              improvesthequalityofGPTQin2bitstoanon-trivialvalue(5.6onthe LLAMA                                model).
+
+
+                                                                                    14
+
+
+
+22-7B2-70B2-7B2-7B2-7B2-70B

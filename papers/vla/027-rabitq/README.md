@@ -1,6 +1,6 @@
 # RaBitQ: original paper, multi-bit extension, and neural-network integration map
 
-> **Reading-list role**: Foundational companion to [TurboQuant](../025-turboquant/README.md) and its [symmetric-comparison note](../026-rabitq-turboquant-comparison/README.md)  
+> **Reading-list role**: Foundational companion to [TurboQuant](../../llm/025-turboquant/README.md) and its [symmetric-comparison note](../../llm/026-rabitq-turboquant-comparison/README.md)  
 > **Main paper**: *RaBitQ: Quantizing High-Dimensional Vectors with a Theoretical Error Bound for Approximate Nearest Neighbor Search*  
 > **Recommended effort**: 20 minutes for the original mechanism; 60–90 minutes for the proof/implementation boundary and the `RaBitQ × neural-network quantization` synthesis  
 > **My status**: unread | 20-min skim | 90-min read | deep-read | presented
@@ -173,7 +173,7 @@ Do not stop at model size or vector MSE. Report:
 
 1. Original PDF pp. 4–8 and Appendix proofs relevant to `Theorem 3.2/3.3`.
 2. Extension PDF pp. 3–7 and Appendix B.
-3. Compare the transform/code/kernel split with [QuaRot](../023-quarot/README.md), [SpinQuant](../022-spinquant/README.md), [GPTQ](../018-gptq-optq/README.md), and [TurboQuant](../025-turboquant/README.md).
+3. Compare the transform/code/kernel split with [QuaRot](../../llm/023-quarot/README.md), [SpinQuant](../../llm/022-spinquant/README.md), [GPTQ](../../llm/018-gptq-optq/README.md), and [TurboQuant](../../llm/025-turboquant/README.md).
 4. Write one proposed dataflow for `W x` or `qKᵀ`, including exactly where packed codes are consumed.
 5. Define one matched-hardware benchmark and one falsification threshold before implementing.
 
@@ -191,6 +191,6 @@ Do not stop at model size or vector MSE. Report:
 ## 11. Evidence boundary
 
 - **Authors' claim**: original and extended `RaBitQ` provide the stated estimators, theoretical bounds, and ANN results under their respective assumptions.
-- **Direct comparison**: the later [symmetric-comparison paper](../026-rabitq-turboquant-comparison/README.md) reports matched `RaBitQ`/`TurboQuant` experiments, but those experiments were not rerun in this reading packet.
+- **Direct comparison**: the later [symmetric-comparison paper](../../llm/026-rabitq-turboquant-comparison/README.md) reports matched `RaBitQ`/`TurboQuant` experiments, but those experiments were not rerun in this reading packet.
 - **Synthesis**: Sections 5–8 are a research-design inference grounded in the vector interface and neighboring PTQ literature. Neither `RaBitQ` paper proves end-to-end Transformer or VLA acceleration.
 

@@ -1,0 +1,99 @@
+#!/bin/bash
+#PBS -N fwva1009g
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+PHASE=${FW_PHASE:-preflight}
+[[ "$PHASE" == preflight || "$PHASE" == full ]] || exit 64
+mkdir -p "$ROOT/artifacts"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+if [[ "$PHASE" == preflight ]]; then
+  test -s "$ROOT/prepare_summary.json"
+  python3 - "$ROOT/prepare_summary.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d.get("status") == "complete" and d.get("cases") == 26
+assert d.get("selection_cases") == 4 and d.get("test_cases") == 22
+assert d.get("old_variant_exclusion_passed") is True
+PY
+else
+  test -s "$ROOT/results/preflight/summary.json"
+  python3 - "$ROOT/results/preflight/summary.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d.get("status") == "complete"
+PY
+fi
+test ! -e "$ROOT/results/$PHASE" || { echo "Refusing existing result path: $ROOT/results/$PHASE" >&2; exit 73; }
+
+PROTOCOL_SOURCE="$ROOT/protocol.json"
+if [[ -s "$ROOT/experiment_protocol.json" ]]; then
+  PROTOCOL_SOURCE="$ROOT/experiment_protocol.json"
+fi
+cp "$PROTOCOL_SOURCE" "$ARTIFACTS/protocol.json"
+cp "$ROOT/protocol.json" "$ARTIFACTS/roots_protocol.json"
+cp "$ROOT/environment.sh" "$ROOT/run.pbs" "$ROOT/run_experiment.py" "$ROOT/codebook.py" "$ROOT/sensitivity.py" "$ARTIFACTS/"
+for name in test_codebook.py sensitivity_adapter.py analysis.py; do
+  [[ ! -f "$ROOT/$name" ]] || cp "$ROOT/$name" "$ARTIFACTS/"
+done
+cp "$ROOT/plan.json" "$ROOT/prepare_summary.json" "$ARTIFACTS/"
+SOURCE_ROOT=$(python3 - "$ROOT/protocol.json" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["roots"]["old_inputs"])
+PY
+)
+cp "$SOURCE_ROOT/plan.json" "$ARTIFACTS/old_plan.json"
+cp "$SOURCE_ROOT/prepare_inputs.py" "$ARTIFACTS/old_prepare_inputs.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+cp "$PILOT_ROOT/runner.py" "$PILOT_ROOT/quantization.py" "$PILOT_ROOT/libero_state_loader.py" "$ARTIFACTS/"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+run_python - "$CUDA_VISIBLE_DEVICES" <<'PY_GPU'
+import sys, torch
+mask = sys.argv[1]
+assert mask.startswith("GPU-") and "," not in mask, mask
+assert torch.cuda.device_count() == 1, torch.cuda.device_count()
+props = torch.cuda.get_device_properties(0)
+assert str(props.uuid).removeprefix("GPU-").lower() == mask.removeprefix("GPU-").lower()
+print("Allocated GPU verified:", props.name, str(props.uuid), flush=True)
+PY_GPU
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python "$ARTIFACTS/run_experiment.py" --phase "$PHASE" --protocol "$ARTIFACTS/protocol.json" --out "$ROOT/results/$PHASE"
+SUMMARY="$ROOT/results/$PHASE/summary.json"
+test -s "$SUMMARY"
+python3 - "$SUMMARY" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d.get("status") == "complete", d
+PY
+cp "$SUMMARY" "$ARTIFACTS/summary.json"
+echo RUN_SUMMARY_COMPLETE phase="$PHASE"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

@@ -1,0 +1,110 @@
+#!/bin/bash
+#PBS -N fwscalar1009
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=2
+#PBS -l walltime=12:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || { echo 'Host outside approved allocation' >&2; exit 64; }
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009
+DIAG_ROOT=$NEW_ROOT
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+REFERENCE_ROOT=/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008
+REFERENCE_ARTIFACTS=$REFERENCE_ROOT/artifacts/25728285.pbs101
+BANK=$SMOOTH_ROOT/results/full/banks/smooth05_hadamard_scalar
+RESULTS=$NEW_ROOT/results
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+WORKER_PIDS=()
+PIPELINE_READY=0
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKER_PIDS[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+    for pid in "${WORKER_PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  if (( rc == 0 && PIPELINE_READY == 1 )); then touch "$ARTIFACTS/PIPELINE_COMPLETE"; else (( rc != 0 )) || rc=65; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+test -f "$REFERENCE_ARTIFACTS/PIPELINE_COMPLETE"
+test "$(<"$REFERENCE_ARTIFACTS/exit_code.txt")" = 0
+test -s "$BANK/receipt.json" -a -s "$REFERENCE_ROOT/results/manifest.json"
+cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$NEW_ROOT/scalar_native.py" "$ARTIFACTS/"
+cp "$REFERENCE_ARTIFACTS/runner.py" "$REFERENCE_ARTIFACTS/quantization.py" "$REFERENCE_ARTIFACTS/libero_state_loader.py" "$REFERENCE_ARTIFACTS/environment.sh" "$ARTIFACTS/"
+cp "$SMOOTH_ROOT/smooth_vq.py" "$BANK/receipt.json" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifiers' >&2; exit 65; }
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 2 -a "${GPU_IDS[0]}" != "${GPU_IDS[1]}" || { echo 'Two distinct allocated GPUs required' >&2; exit 65; }
+(
+  while :; do
+    stamp=$(date -Is)
+    for gpu in "${GPU_IDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s gpu=%s ' "$stamp" "$gpu"
+      nvidia-smi -i "$gpu" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+FW_CPU_THREADS=8
+for worker in 0 1; do
+  gpu=${GPU_IDS[$worker]}
+  rc_path="$ARTIFACTS/worker_${worker}.rc"
+  (
+    child_pid=
+    stop_worker() {
+      if [[ -n "$child_pid" ]]; then kill "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; fi
+      printf '143\n' > "$rc_path.tmp"; mv "$rc_path.tmp" "$rc_path"; exit 143
+    }
+    trap stop_worker TERM INT
+    CUDA_VISIBLE_DEVICES="$gpu" run_python "$ARTIFACTS/evaluate.py" --worker-id "$worker" \
+      --manifest "$REFERENCE_ROOT/results/manifest.json" --bank "$BANK" --out "$RESULTS/worker_$worker" &
+    child_pid=$!
+    set +e; wait "$child_pid"; rc=$?; set -e
+    printf '%s\n' "$rc" > "$rc_path.tmp"; mv "$rc_path.tmp" "$rc_path"; exit "$rc"
+  ) &
+  WORKER_PIDS+=("$!")
+  echo "WORKER_STARTED worker=$worker gpu=$gpu pid=$!"
+done
+declare -A WORKER_DONE=()
+while (( ${#WORKER_DONE[@]} < 2 )); do
+  for worker in 0 1; do
+    [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+    rc_path="$ARTIFACTS/worker_${worker}.rc"
+    if [[ -s "$rc_path" ]]; then
+      rc=$(<"$rc_path"); WORKER_DONE[$worker]=1
+      if (( rc != 0 )); then echo "WORKER_FAILED worker=$worker exit_code=$rc" >&2; exit "$rc"; fi
+    fi
+  done
+  (( ${#WORKER_DONE[@]} == 2 )) || sleep 2
+done
+for pid in "${WORKER_PIDS[@]}"; do wait "$pid"; done
+run_python "$ARTIFACTS/aggregate.py" --manifest "$REFERENCE_ROOT/results/manifest.json" \
+  --results "$RESULTS" --reference-results "$REFERENCE_ROOT/results" --out "$RESULTS/summary.json"
+cp "$RESULTS/summary.json" "$ARTIFACTS/summary.json"
+run_python - "$RESULTS/summary.json" <<'PY_COMPLETE'
+import json,sys
+doc=json.load(open(sys.argv[1]))
+assert doc['complete'] is True and doc['episode_slots']==280 and doc['reference_episode_slots']==840
+print('SCALAR_PLUS_AGGREGATE_GATE_PASSED slots=280 reference_slots=840',flush=True)
+PY_COMPLETE
+PIPELINE_READY=1
+echo SMOOTH_SCALAR_PLUS_COMPLETE

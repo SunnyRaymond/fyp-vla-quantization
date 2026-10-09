@@ -1,0 +1,56 @@
+                             Figure2: Thegatedfeed-forwardnetworkusedinmostLMs,includingthepre-positionedRMSNorm.
+                             The input signal is divided by its norm, and re-scaled by parameters α. Two linear blocks, Wup
+                             andWgate areapplied. Theactivationfunctionσ isappliedtothegatedsignal,andthetwosignalsare
+                             element-wisemultipliedtogether. Theﬁnallinearblock Wdown producestheoutputsignalY. Before
+                             quantization,differentoperationsareperformedeitherinsingle(32bit)orhalf(16bit)precision.
+
+
+                             3.3   Transformerstructures
+                             Large Language Models are neural networks with repeating attention and feed-forward layers.
+                             We introduce our notation through Figures 2 and 5, which show the construction of these blocks.
+                             We assume that the construction of the network is “pre-norm”, in that each block is preceded
+                             by a LayerNorm or RMSNorm operation. We also assume that the feed-forward network uses a
+                             gatedarchitecture,asin LLAMA-         ,thoughourmethodologyisstraightforwardlyappliedtoMLP
+                             architecturesalso.
+                             3.4   ComputationalInvariance
+                             Thecomputationalinvariancetheorem[Ashkboosetal.,2024,Theorem1]statesthattheweightsand
+                             between-blockactivationsinatransformercanbetransformedusinganorthogonalmatrixwithno
+                             changetothemodeloutput. Herewesketchthemainidea. IfWin isaweightmatrixthatappears
+                             ontheleftofatransformerblock(i.e.,Wgate,Wup inFigure2,orWk,Wq,Wv inFigure5)then
+                             wecanmultiplyontheleftbyanorthogonalmatrixQ,andcanceloutthiseffectbymultiplyingthe
+                             outputmatrix(Wdown,Wout)byQ⊤. ThisappliesdespitethefactthatRMSNormisappliedbetween
+                             thetwoblocks,solongasnore-scalinghappensintheRMSNormblock(andinpractice,weabsorb
+                             anyre-scalingintoadjacentweightmatricesﬁrst). Conceptually,thisisbecauseRMSNormdivides
+                             theactivationsbytheirnorm,andapplyingarotationQtotheactivationsdoesnotaffectthenorm.
+                             Wehavethecommutationproperty
+
+                                                             RMSNorm(X) = RMSNorm(XQ⊤)Q,                                        (3)
+                             whereweassumeherethatRMSNormappliedtoeachrowoftheactivationsXasxi←xi/∥xi∥.
+                             ThismeansthatmultiplyinganoutputmatrixbyQ⊤ makesthelinearlayeroutputXQ⊤,whichis
+                             normalizedandthenpassedintothenextblockwhoseinputweightmatrixisnowQW,andso this
+                             linearlayeroutputstheoriginalactivationswithoutmodiﬁcation.
+
+                             4   Method
+
+                             QuaRotconsistsoftwostages. Intheﬁrststage,themodelweightsaremanipulated(infullprecision),
+                             andtwoadditionalHadamardoperationsareinsertedintothemodel’sforwardpass. Inthesecond
+                             stage,theweightsarequantizedusingsomeexistingmethod,andquantizationoperationsareadded
+                             totheforwardpasstoenableon-linequantizationoftheactivations(andcaches). Bydefault,weuse
+                             GPTQ[Frantaretal.,2022]forquantizingweights,whilstactivationsarequantizedon-the-ﬂyusing
+                             asimpleround-to-nearestscheme. Figures3and6showupdatedblockdiagramsfortheforwardpass
+                             withQuaRotmodiﬁcations,includingupdatedweightmatrices,insertedblocksandthebit-widthof
+                             weightsandactivations.
+                             Stage1a: WeightModiﬁcation.   WeﬁrstmakeuseofcomputationalinvariancetomultiplyeachFFN
+                             weightmatrixbyanorthogonalmatrix. Toenablethis,thelinearpartsofLayerNormorRMSNorm
+                             arefusedintoadjacentweightmatrices. Figure3showshowthefeed-forwardblockofatransformer
+          RMSNorm            is modiﬁed by removing the scaling operation from RMSNorm (  diag(α)) and absorbing into theWgateσ
+
+
+
+       x                                          ×       Wdown      Y
+X      ∥x∥     diag(α)                                                            4
+
+
+                                 Wup
+
+2

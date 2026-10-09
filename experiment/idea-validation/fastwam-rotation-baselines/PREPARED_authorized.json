@@ -1,0 +1,174 @@
+{
+  "protocol": "fastwam-rotation-baselines-v1",
+  "ready": true,
+  "validation_mode": "human_authorized_native_gate_waiver",
+  "pbs_jobid": "25727738.pbs101",
+  "banks": {
+    "quarot_adapted_w4a4": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/banks/quarot_adapted_w4a4",
+    "spinquant_adapted_w4a4": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/banks/spinquant_adapted_w4a4"
+  },
+  "numeric_check": {
+    "passed": true,
+    "evidence": "all eight transformed-BF16 full-query checks completed in original preparation job log",
+    "completed_queries": [
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 411.9638207037933,
+        "arm": "quarot_adapted_w4a4",
+        "quantized": false,
+        "case_id": 2
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 414.88952397787943,
+        "arm": "quarot_adapted_w4a4",
+        "quantized": false,
+        "case_id": 5
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 417.8036280591041,
+        "arm": "quarot_adapted_w4a4",
+        "quantized": false,
+        "case_id": 8
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 420.7279398618266,
+        "arm": "quarot_adapted_w4a4",
+        "quantized": false,
+        "case_id": 11
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 615.472051480785,
+        "arm": "spinquant_adapted_w4a4",
+        "quantized": false,
+        "case_id": 2
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 618.3455166760832,
+        "arm": "spinquant_adapted_w4a4",
+        "quantized": false,
+        "case_id": 5
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 621.1987613691017,
+        "arm": "spinquant_adapted_w4a4",
+        "quantized": false,
+        "case_id": 8
+      },
+      {
+        "protocol": "fastwam-rotation-baselines-v1",
+        "status": "running",
+        "stage": "full_query_checks",
+        "pbs_jobid": "25727738.pbs101",
+        "elapsed_seconds": 624.0698161590844,
+        "arm": "spinquant_adapted_w4a4",
+        "quantized": false,
+        "case_id": 11
+      }
+    ],
+    "per_query_numeric_metrics_not_saved": true
+  },
+  "native_int4_check": {
+    "passed": false,
+    "waived": true,
+    "observed_failed_query": {
+      "arm": "quarot_adapted_w4a4",
+      "case_id": 2,
+      "errors": {
+        "motor_rmse_first10": 0.048926450312137604,
+        "gripper_rmse_first10": 0.01702694781124592,
+        "action_rmse_32": 0.054394520819187164
+      },
+      "native_int4_tensorcore": true,
+      "native_int4_ptx_verified": true,
+      "native_int4_gemm_calls": 6436,
+      "bf16_target_weights_absent": true,
+      "kv4": false
+    },
+    "remaining_queries_not_run": true
+  },
+  "training": {
+    "protocol": "fastwam-rotation-baselines-v1",
+    "completed_steps": 200,
+    "selected_step": 200,
+    "initial_selection": {
+      "mean": 0.06765000661835074,
+      "streams": {
+        "video": 0.08705649757757783,
+        "action": 0.04824351565912366
+      },
+      "packets": 32
+    },
+    "selected_selection": {
+      "step": 200,
+      "mean": 0.06591787294019014,
+      "streams": {
+        "video": 0.08398157311603427,
+        "action": 0.047854172764346004
+      },
+      "packets": 32
+    },
+    "gradient_nonzero_steps": {
+      "video": 100,
+      "action": 100
+    },
+    "max_abs_change": {
+      "video": 0.13241493701934814,
+      "action": 0.18917584419250488
+    },
+    "calibration_packets": 64,
+    "selection_packets": 32,
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "loss": "equal-weight mean normalized MSE at full video/action denoiser outputs versus frozen BF16 teacher on sampled fixed-input timesteps; original text context and recomputed proprio token; action packets use fixed teacher BF16 video KV",
+    "test_queries_used": 0,
+    "base_weights_frozen": true,
+    "reused_existing_rotation": true,
+    "source_rotation": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/rotation_training/learned_rotation.pt",
+    "new_learning_steps": 0,
+    "selection_recomputed": false,
+    "training_ste_arithmetic": "legacy BF16 dequantized operands and BF16 F.linear; final BF16 output",
+    "validation_ste_arithmetic": "FP32 dequantized operands/bias/GEMM; final BF16 output; no TF32"
+  },
+  "user_authorized_native_gate_waiver": {
+    "approved": true,
+    "approved_by": "human_user",
+    "source_job_id": "25727738.pbs101",
+    "scope": "four_gpu_full_evaluation",
+    "approved_utc": "2026-10-08T12:40:42.430939+00:00",
+    "instruction": "差不多得了，这点小误差不会影响最终结果，直接跑四卡完整评测实验即可",
+    "failed_metric": "native_vs_dense_fp32_ste_action_rmse_32",
+    "observed_value": 0.054394520819187164,
+    "original_threshold": 0.05,
+    "remaining_native_queries_not_run": true,
+    "new_validation_or_training_requested": false
+  },
+  "evaluation_episodes": 0,
+  "pipeline_initializations": 1
+}

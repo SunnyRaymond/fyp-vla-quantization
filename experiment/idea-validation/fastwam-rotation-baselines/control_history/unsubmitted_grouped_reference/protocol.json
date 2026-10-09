@@ -1,0 +1,174 @@
+{
+  "protocol": "fastwam-rotation-baselines-v1",
+  "arms": [
+    "bf16",
+    "quarot_adapted_w4a4",
+    "spinquant_adapted_w4a4"
+  ],
+  "checkpoint": "libero_optional_idm_2cam224.clean.pt",
+  "inference": {
+    "mode": "idm",
+    "video_steps": 10,
+    "action_steps": 10,
+    "sigma_shift": 1.0,
+    "action_horizon": 32,
+    "execute_per_replan": 10,
+    "action_ensembler": false
+  },
+  "cohort": {
+    "seed": 20261008,
+    "suites": 4,
+    "dimensions": 7,
+    "variants_per_cell": 10,
+    "variants_per_arm": 280,
+    "total_episodes": 840,
+    "state_id": 0,
+    "settling_steps": 30,
+    "max_steps_normal": 400,
+    "max_steps_long": 700,
+    "source": "frozen official LIBERO-Plus pilot manifest; outcome-independent balanced subset"
+  },
+  "quantization": {
+    "weight_bits": 4,
+    "activation_bits": 4,
+    "group_size": 128,
+    "weight": "symmetric signed RTN [-7,7], scales rounded to BF16 before encoding, packed nibbles",
+    "activation": "dynamic symmetric signed per-row absmax/7, FP32 scales, RTN [-7,7], native packed S4",
+    "kv_cache": "bf16",
+    "scope": "all canonical unique target Linear modules in video_expert/action_expert/proprio_encoder",
+    "outside_scope": "T5, VAE, norms, modulation nonlinearities, attention arithmetic, scheduler, bias and non-target parameters remain floating point"
+  },
+  "rotation": {
+    "seed": 20261008,
+    "block_size": 128,
+    "placement": "matched local Linear-input right rotations xR and WR, after upstream normalization/modulation/nonlinearity",
+    "sharing": "one R128 per video/action/proprio stream; incomplete blocks use static signed-Hadamard power-of-two tails",
+    "quarot": "fixed randomized signed block-Hadamard",
+    "spinquant": "same initialization, learned R128 = R0 @ Cayley(raw - raw.T); frozen original weights",
+    "adaptation_boundary": "local R128 adaptation, not the published LLaMA global residual-R1 or full R1/R2/R3/R4 recipe; both arms use the same RTN quantizer"
+  },
+  "calibration": {
+    "source": "original LIBERO, independent of Plus evaluation observations",
+    "suites": [
+      "libero_spatial",
+      "libero_object",
+      "libero_goal",
+      "libero_10"
+    ],
+    "training_task_ids": [
+      0,
+      1
+    ],
+    "selection_task_ids": [
+      2
+    ],
+    "training_cases": 8,
+    "selection_cases": 4,
+    "state_id": 0,
+    "settling_steps": 30,
+    "denoising_indices": [
+      0,
+      3,
+      6,
+      9
+    ]
+  },
+  "optimization": {
+    "ste_arithmetic": "The grouped fixed-input gate reference uses independent S8 x S8 int32 dot products per G128 group and FP32 scale/partial-sum accumulation; only Linear output is cast to input BF16 dtype; no TF32. The legacy dense FP32-dequantized STE result remains diagnostic and is not the native arithmetic reference.",
+    "seed": 20261008,
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "steps": 200,
+    "selection_interval": 40,
+    "gradient_clip_norm": 1.0,
+    "packet_order": "alternate video/action, seeded balanced permutations within each stream",
+    "loss": "equal-weight mean normalized MSE at full video/action denoiser outputs versus frozen BF16 teacher on sampled fixed-input timesteps; original text context and recomputed proprio token; action packets use fixed teacher BF16 video KV",
+    "selection": "minimum mean packet normalized MSE on four original selection cases among trained steps 40,80,120,160,200; earlier step breaks ties; step0 is diagnostic only",
+    "boundary": "teacher-output distillation, not local Linear reconstruction, task-success tuning, full sampler unroll, or QAT of underlying weights"
+  },
+  "gates": {
+    "orthogonality_max_abs_error": 2e-05,
+    "transformed_bf16_max_motor_rmse_first10": 0.02,
+    "transformed_bf16_max_gripper_rmse_first10": 0.05,
+    "native_vs_grouped_reference_max_action_rmse_32": 0.05,
+    "finite_nonzero_rotation_gradients": true,
+    "rotation_changed": true,
+    "native_int4_ptx_and_calls": true
+  },
+  "validation_reference": {
+    "version": "preparation_validation_v2",
+    "scope": "preparation gate only; not installed in the closed-loop evaluation runtime and does not add to native counters",
+    "bank_coherence": "On the allocated GPU, apply each original bank's online rotation and quantization to the BF16 target weights and require bitwise equality with the bank's packed values before the full-query comparison.",
+    "numeric_reference": "For the same full-query inputs, compare real native S4 MMA with an independent S8 x S8 int32 dot reference computed per G128 group and accumulated using FP32 scales and partial sums.",
+    "legacy_dense_diagnostic": "PBS job 25727738.pbs101 measured native-versus-dense-FP32-dequant-STE action RMSE 0.05439452, above 0.05. Dense dequantization followed by a whole-K FP32 reduction has different rounding from grouped integer dots and scale accumulation; this discrepancy alone is not evidence of a native kernel bug.",
+    "checkpoint_policy": "Reuse the original selected step-200 rotation and both original banks; no retraining, reselection, or bank overwrite."
+  },
+  "allocation": {
+    "jobs": 2,
+    "sequence": [
+      "prepare.pbs",
+      "run.pbs after PREPARATION_COMPLETE and PREPARED gates pass"
+    ],
+    "queue": "normal",
+    "route": "preparation: normal to gdev; formal evaluation: normal to g3",
+    "gpu_monitor_seconds": 15,
+    "preparation": {
+      "purpose": "preparation_validation_v2",
+      "gpus": 1,
+      "ncpus": 8,
+      "memory_gb": 55,
+      "walltime": "01:55:00",
+      "route": "normal to gdev (confirmed for 25727738.pbs101)",
+      "training_steps_this_job": 0,
+      "loads_full_pipeline_once": true,
+      "checks": [
+        "CPU rotation selfcheck",
+        "native quantization and STE fixtures",
+        "online rotation and packed-bank bitwise coherence for both original banks",
+        "same-input grouped S8 int32 reference versus native S4 full-query gate",
+        "native INT4 gates"
+      ],
+      "pbs_effective_ncpus": 16,
+      "pbs_effective_memory_gb": 110
+    },
+    "evaluation": {
+      "purpose": "paired_closed_loop_evaluation",
+      "gpus": 4,
+      "ncpus": 32,
+      "memory_gb": 220,
+      "walltime": "24:00:00",
+      "route": "normal to g3",
+      "starts_only_after_prepared_gates": true,
+      "worker_variants": 70,
+      "worker_episodes": 210,
+      "worker_arm_order": [
+        "bf16",
+        "quarot_adapted_w4a4",
+        "spinquant_adapted_w4a4"
+      ],
+      "evaluation_arm_installations": 12
+    },
+    "pipeline_loads": {
+      "preparation": 1,
+      "evaluation": 4,
+      "total_without_retry": 5
+    }
+  },
+  "reporting": {
+    "primary": "paired closed-loop success counts/rates across the same 280 variants",
+    "breakdowns": [
+      "suite (70 per arm)",
+      "dimension (40 per arm)",
+      "suite x dimension (10 per arm)",
+      "paired discordant successes vs BF16 and fixed rotation"
+    ],
+    "latency": [
+      "continuous denoising GPU interval",
+      "full action-query wall time",
+      "episode wall time including environment"
+    ],
+    "first_query": "report first-query and subsequent-query timing separately",
+    "infrastructure_failures": "missing slots, never counted as policy failures",
+    "completion": "Preparation must pass PREPARED ready/numeric/native gates and PREPARATION_COMPLETE before evaluation submission; final completion requires 840 unique valid episode slots, each arm 280, each cell 10, aggregation complete, PBS Exit_status=0, and PIPELINE_COMPLETE from the evaluation job"
+  }
+}

@@ -17,7 +17,8 @@ spec = importlib.util.spec_from_file_location('previous_phase_control', OLD / 'c
 previous = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(previous)
 ROOT = '/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006'
-FILES = ('protocol.json', 'environment.sh', 'run.pbs', 'smooth_vq.py', 'test_smooth_vq.py', 'run_validation.py', 'analysis.py', 'analysis.pbs')
+FILES = ('protocol.json', 'environment.sh', 'run.pbs', 'smooth_vq.py', 'test_smooth_vq.py', 'run_validation.py', 'analysis.py', 'analysis.pbs',
+         'visualization_protocol.json', 'collect_visualization.py', 'plot_visualization.py', 'summarize_visualization.py', 'visualize.pbs', 'vizplot.pbs')
 HANDLE = re.compile(r'^\d+(?:\[\d*\])?\.[A-Za-z0-9_.-]+$')
 
 
@@ -57,15 +58,18 @@ def verified_success(transport, phase):
 def submit(transport, phase, attempt):
     if phase == 'full':
         verified_success(transport, 'preflight')
-    elif phase == 'analysis':
+    elif phase in ('analysis', 'visualize'):
         verified_success(transport, 'full')
+    elif phase == 'vizplot':
+        verified_success(transport, 'visualize')
     path = HERE / f'{phase}_intent_{attempt}.json'
     receipt = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
     if receipt.get('job_id'):
         save(HERE / f'{phase}_handle.json', receipt)
         print('CONFIRMED_HANDLE', receipt['job_id'])
         return
-    name = f'fwsv1006{phase[0]}{attempt}'
+    tag = {'visualize': 'v', 'vizplot': 'r'}.get(phase, phase[0])
+    name = f'fwsv1006{tag}{attempt}'
     code, output = remote.command(transport, f'qselect -x -u yguo017 -N {shlex.quote(name)} 2>&1', timeout=35)
     if code not in (0, 1) or (code == 1 and output.strip()):
         raise RuntimeError('PBS history unavailable; submission not attempted')
@@ -80,8 +84,9 @@ def submit(transport, phase, attempt):
         receipt = {'phase': phase, 'attempt': attempt, 'job_name': name,
                    'created_utc': datetime.now(timezone.utc).isoformat(), 'status': 'intent_before_qsub'}
         save(path, receipt)
-        hours = {'preflight': '02:00:00', 'full': '08:00:00', 'analysis': '00:10:00'}[phase]
-        script = 'analysis.pbs' if phase == 'analysis' else 'run.pbs'
+        hours = {'preflight': '02:00:00', 'full': '08:00:00', 'analysis': '00:10:00',
+                 'visualize': '02:00:00', 'vizplot': '00:30:00'}[phase]
+        script = {'analysis': 'analysis.pbs', 'visualize': 'visualize.pbs', 'vizplot': 'vizplot.pbs'}.get(phase, 'run.pbs')
         command = f'qsub -q normal -N {shlex.quote(name)} -l walltime={hours} -v FW_PHASE={phase} {ROOT}/{script}'
         code, output = remote.command(transport, command, timeout=40)
         if code or not HANDLE.fullmatch(output.strip()):
@@ -97,7 +102,7 @@ def submit(transport, phase, attempt):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('upload', 'submit', 'status', 'pull', 'verify'))
-    parser.add_argument('--phase', choices=('preflight', 'full', 'analysis'))
+    parser.add_argument('--phase', choices=('preflight', 'full', 'analysis', 'visualize', 'vizplot'))
     parser.add_argument('--attempt', default='a')
     parser.add_argument('--job')
     parser.add_argument('--files', nargs='+')

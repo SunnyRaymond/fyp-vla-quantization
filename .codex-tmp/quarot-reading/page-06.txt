@@ -1,0 +1,58 @@
+processingonWv andWout usingaHadamardmatrixHdh whichmatchesthedimensionofeach
+head:
+                         W(h)v  ←W(h)v Hdh,         W(h)out ←HdhW(h)out .                               (7)
+Substitutingthesemodiﬁcationsintoequation(  6),weseethatthecomputedresultofattentionremains
+unchanged. Sincetheweightsforeachheadareconcatenatedintheweightrepresentation,wecan
+equivalentlyperformasingleKroneckerstructuredmultiplication:
+                     Wv←Wv(I⊗Hdh),         Wout← (I⊗Hdh)Wout.                         (8)
+Thistransformationhasnowbeenappliedhead-wisetotheweightmatrices,andresultsincomputed
+activations(emittedbytheblock multi-head attention)rotatedhead-wisealso. Tocompletea“full”
+Hadamardoperationontheattention-activations,sharingthetransformacrossheads,wemakeuseof
+theidentity
+                                    Hnh×dh = (I⊗Hdh)(Hnh⊗I)                                              (9)
+whichholdswhenthenumberofheadsnh andthedimensionofeachheaddh arebothpowersof2.
+Since we have already applied (I⊗Hdh) to bothWv andWout, it remains to apply (Hdh⊗I) to
+Wout,whichresultsinacompletetransformationofWout←HWout,andtoinsertablockintothe
+forward pass that computesZ ←Z(Hnh⊗I) whereZ is the attention activation. This block is
+denoted Hadamard headsinFigure6andcanbecomputedefﬁcientlyusingareshapetodealwith
+theKroneckerstructure,andaWalsh-Hadamardtransformonthereshapeddata.
+
+Stage1d: KeyRotation.   Usingthemethodabove,wecansuccessfullyquantizethevaluevectors.
+However,keyvectorsintheattentionmodulearealsoknowntosufferfromoutliers[Hooperetal.,
+2024, Liu et al., 2024]. Similar to above, we can use a Hadamard rotation to alleviate this issue,
+allowingustohaveafullyquantizedKVcache. FirstnotethattheattentionscoresP1,...,Ph are
+computedas:
+                        Q ← Pos(XWq) = concat[Pos(Q1),...,Pos(Qnh)]                           (10)
+                        K ← Pos(XWk) = concat[Pos(K1),...,Pos(Knh)]                          (11)
+                       Ph ← Softmax(αPos(Qh)Pos(K⊤h)⊙M),                                        (12)
+whereα is the Softmax scale usually set to    1√dh,M is the attention mask (e.g., causal), and Pos
+denotesthepositionalembedding. Previously,positionalembeddingwasonlyaddedbeforetheﬁrst
+layertotheinput,inwhichcase Posisanidentityfunction. However,recentmethodssuchasRoPE
+[Suetal.,2021]addpositioninformationdirectlytothekeyandqueryvectors.
+WecannowobservethesameinteractionbetweenQandKasweobservedbetweenWv andWout.
+However,theexistenceof PospreventsusfromdirectlyfusingtheHadamardmatrixintoWq and
+Wk. Therefore,weuseonlinehead-wiseHadamardrotationtorotateboththequeriesandkeys. Asa
+result,thecomputationofqueryandkeymatricesisalteredasfollows:
+            Q ← Pos(XWq)(I⊗Hdh) = concat[Pos(Q1)Hdh,...,Pos(Qnh)Hdh]             (13)
+            K ← Pos(XWk)(I⊗Hdh) = concat[Pos(K1)Hdh,...,Pos(Knh)Hdh].           (14)
+
+Since both queries and keys are rotated, the ﬁnal attention scores P1,...,Ph remain unchanged.
+Wenotethatanalternativetotheaboveprocessiscachingthekeysbeforeapplyingthepositional
+encoding. Thisapproach(calledPre-RoPECaching[Hooperetal.,2024])needstheinverserotation
+tobeappliedonlinebeforeapplyingthepositionalencodingbutremovestheneedtorotatethequery
+vector. It also adds the overhead of rotating the keys and values for every query. Given that at the
+time of decoding there is a single query vector and many cached key vectors, we use Post-RoPE
+caching. ThishelpsustoapplyaHadamardtransformationonasingletokenateachdecodingstep.
+Overall,ourmodiﬁcationstotheforwardpass,includingtheinsertionofspecialHadamardblocks
+andadjustmentstotheweightsdonotchangetheforwardpassofthemodel. Theeffectisthatthe
+activationsbetweenblockshavebeenmultipliedbyaHadamardmatrix,andtheactivationswithin
+blocksareprocessedon-lineusingHadamardtransformsinawaythatisundonebycorresponding
+weightmatrixmodiﬁcations. Wearenowreadytoquantizetheweightsandactivations.
+
+Stage2a: WeightQuantization.   WeapplyGPTQ[Frantaretal.,2022]toquantizetheweightsof
+thenetwork. Wenotethataftertheaboveforward-passmodiﬁcations,anyquantizationmethodcould
+be applied. In subsequent sections, we showthat a simple round-to-nearest (RTN)scheme can be
+appliedinsteadofGPTQ,atthecostofsomeaccuracy.
+
+
+                                                     6

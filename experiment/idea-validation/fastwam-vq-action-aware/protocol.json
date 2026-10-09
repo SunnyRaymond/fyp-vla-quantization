@@ -1,0 +1,195 @@
+{
+  "protocol": "fastwam-vq-action-aware-v1",
+  "status": "implementation_preflight_design",
+  "date_local": "2026-10-09",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "source_full_job": "25722477.pbs101",
+  "model": "released Fast-WAM Optional-IDM clean checkpoint; idm mode",
+  "transform": {
+    "name": "smooth05_hadamard",
+    "alpha": 0.5,
+    "hadamard_block": 128,
+    "scale_bound": 16,
+    "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+  },
+  "selection_seed": 20261009,
+  "input_seed": 20261009,
+  "selection": {
+    "original_task_ids": [
+      1,
+      3,
+      6,
+      8
+    ],
+    "state_id": 2,
+    "plus_per_dimension": 2,
+    "plus_dimensions": [
+      "camera",
+      "robot",
+      "layout",
+      "language",
+      "light",
+      "background"
+    ],
+    "test_original_task_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "test_state_id": 1,
+    "case_id_start": 1000,
+    "exclude_all_old_plus_variants": true,
+    "settling_steps": 30,
+    "sampler_seed_rule": "[910000000 + case_id*1000, 910000001 + case_id*1000]",
+    "environment_seed_rule": "820000000 + case_id*1000"
+  },
+  "calibration_cases": [
+    0,
+    2,
+    4,
+    6,
+    10,
+    12,
+    14,
+    16
+  ],
+  "calibration_seed_indices": [
+    0
+  ],
+  "selection_cases": [
+    1000,
+    1001,
+    1002,
+    1003
+  ],
+  "test_cases": [
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
+    1023,
+    1024,
+    1025
+  ],
+  "evaluation_seed_indices": [
+    0,
+    1
+  ],
+  "weight_scope": "all 614 target Linears; video306/action307/root-proprio1; no highprecision restoration branch",
+  "activation": "dynamic per-row signed symmetric absmax A4 qmax7; decoded BF16",
+  "unquantized": "KV cache, bias, normalization, nonlinearities, text encoder, VAE and other non-target modules",
+  "vq": {
+    "dimension": 4,
+    "codebooks": 2,
+    "entries": 256,
+    "row_scale_dtype": "bfloat16",
+    "row_scale_initialization": "row RMS with numerical floor; round to saved precision before encoding",
+    "samples": 8192,
+    "iterations": 8,
+    "seed": 20261006,
+    "tune_steps": 64,
+    "tune_learning_rate": 0.001,
+    "tune_patience": 12,
+    "tune_scales": true
+  },
+  "arms": [
+    "bf16",
+    "bf16w_a4",
+    "scalar_w4a4",
+    "original_vq_a4",
+    "row_scale_vq_a4",
+    "row_output_vq_a4",
+    "row_action_vq_a4"
+  ],
+  "original_baseline_banks": "old_banks/results/full/banks/smooth05_hadamard_{scalar,vq}; readonly",
+  "row_scale_objective": "reuse recomputed original candidate-specific decoded-Q4-input diagonal second moment; add row scale only to existing additive format",
+  "output_objective": "mean squared local Linear output deviation: QZ * Bhat^T versus unquantized teacher output; same-format fixed-index codebook/scale tuning",
+  "calibration_reservoir": {
+    "rows_per_call": 2,
+    "maximum_rows_per_module": 256,
+    "sampling": "deterministic uniform two rows per call; preserve every calibration context, stage and call; no late-step truncation; sampled projected-square is a proxy, not an unbiased full Jacobian quadratic"
+  },
+  "action_sensitivity": {
+    "reference": "first10 x 6 normalized final motor actions on original BF16 teacher trajectory",
+    "probes": 4,
+    "probe_seed": 20261009,
+    "lambda_candidates": [
+      0.1,
+      1.0
+    ],
+    "objective": "same local output objective plus randomly probed final-action first-order projected error; normalize both loss components by frozen initialization values",
+    "shared_weight_rule": "sum per-call projected contributions within a context before squaring; do not claim sum of per-step squared errors is full shared-weight sensitivity",
+    "claim_scope": "sampled first-order action projection proxy; validate with actual quantized final action queries",
+    "no_gradient_of_zero_teacher_mse": true,
+    "no_sensitivity_metric_in_deployed_encoding": true
+  },
+  "selection_rule": "freeze action lambda using lowest four-case mean of paired motor RMSE, seeds averaged within case; tie uses declared lambda order; no test outcomes before freeze",
+  "primary_metric": "case mean over two seeds of first10 x 6 motor RMSE versus own same-input same-seed original BF16",
+  "secondary_metrics": [
+    "gripper_rmse_first10",
+    "motor_rmse_32",
+    "paired_case_difference",
+    "per_stream_local_output_error",
+    "encoded_bytes_with_scales_books_indices_tails_transforms",
+    "serialized_bytes",
+    "calibration_projection_prediction_vs_actual_action_error",
+    "fit_wall_seconds_diagnostic"
+  ],
+  "unit": "fixed observation; two sampler seeds are paired repeats, not independent scenes; Plus variants can share underlying tasks",
+  "claim_scope": "new held-out observations within familiar tasks and disjoint selected Plus variants; not unseen-task generalization, success rate or native-kernel latency",
+  "sampler": "10 video + 10 action denoising steps; normalized action chunk [32,7]",
+  "evaluation_episodes": 0,
+  "predicted_actions_executed": 0,
+  "restoration_experiments": false,
+  "native_latency_claim": false,
+  "preflight": {
+    "calibration_cases": [
+      0
+    ],
+    "selection_cases": [
+      1000
+    ],
+    "test_cases": [],
+    "evaluation_seed_indices": [
+      0
+    ],
+    "numerical_modules": [
+      "video_expert.blocks.17.cross_attn.o",
+      "action_expert.blocks.16.cross_attn.o",
+      "action_expert.blocks.21.cross_attn.o"
+    ],
+    "probes": 2,
+    "tune_steps": 16,
+    "purpose": "encoding/toy assertions, teacher differentiable parity, genuine nonzero final-action sensitivity and bounded runtime/memory; no method selection"
+  },
+  "baseline_transfer": "after Fast-WAM numerical mechanism is established, adapt the same objectives to CosmosPolicy and LingBot-VA with their own inputs/schedulers/actions; this protocol is the first Fast-WAM campaign",
+  "design_software_reference": "Kassis, T., Agarwal, V., He, Y., Patel, D., & Brueckner, A. M. (2026). Scientific Agent Skills: A Library of Procedural Knowledge for Research Agents. arXiv:2609.00065, current version v2 verified 2026-10-09. https://doi.org/10.48550/arXiv.2609.00065"
+}

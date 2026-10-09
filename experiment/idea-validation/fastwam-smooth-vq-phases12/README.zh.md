@@ -1,8 +1,12 @@
 # Fast-WAM Smooth + Hadamard → Weight VQ 两阶段验证
 
-状态：2026-10-08，preflight 作业 25721014.pbs101 已成功完成（Exit_status=0，21 次查询，614/614 Linear 覆盖）。正式 full 作业 25722477.pbs101 已确认正常启动：数值自检通过、MODEL_READY、已完成至少 25 次模型查询并进入 phase1_identity。按用户要求暂停目标及监控，等待通知；正式实验的最终结果尚未验证。启动证据保存在 [work_status.json](work_status.json) 和 [full progress.json](results/full/progress.json)。
+Weight / activation 可视化已完成：GPU 采集 `25727294.pbs101`、最终 CPU 绘图与汇总 `25728448.pbs101` 均为 F、Exit_status=0。3 条 BF16 teacher inputs 各覆盖 614/614 Linear，10 张最终图已逐张检查。实测热点与清晰读图说明见 [VISUALIZATION.zh.md](<D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-smooth-vq-phases12/VISUALIZATION.zh.md>)，固定方法见 [VISUALIZATION_PLAN.zh.md](VISUALIZATION_PLAN.zh.md)。复用 existing codebooks，没有做恢复实验或重新拟合；这是已知输入上的机制诊断，不改动下文正式 held-out 结论。
 
-Preflight 的单个评估输入、两个 sampler seeds 上，BF16 weights/A4 的 action RMSE 从 Identity 的 0.270035 降至 Smooth α=1 + Hadamard 的 0.045414；同一变换下 Scalar W4A4 为 0.046645，VQ+A4 为 0.057953。变换的 BF16 对照漂移为 0.001424。Scalar 与 VQ 的有效存储分别为 4.1370 与 4.0154 bits/weight（计入变换 tensor 元数据）。这些结果只证明程序可运行，不能据此宣布 VQ 优于 Scalar 或泛化收益；full 仍按原协议独立选择参数。原始汇总见 [preflight summary.json](results/preflight/summary.json)。
+状态：2026-10-08，Fast-WAM 两阶段验证已完成。正式 full 作业 25722477.pbs101 和 CPU 汇总作业 25725256.pbs101 均为 F、Exit_status=0；444 次查询完整，614/614 Linear 覆盖，原始 query 重现结果均值。完整解释、逐 case 对比、实际存储成本和另外两个 WAM 的架构迁移讨论见 [RESULTS.zh.md](RESULTS.zh.md)。
+
+Held-out 10 个输入、每个两个 seeds 上，BF16 weights/A4 的 motor RMSE 从 Identity 的 0.337242 降至 Smooth α=0.5 + Hadamard 的 0.045289。同变换下 Scalar W4A4 为 0.057447，VQ+A4 为 0.078310，VQ 在 10/10 cases 更差。选择集冻结的 VQ winner 是 α=1 + Hadamard，其 test RMSE 为 0.104092；不能根据 test 把 α=0.5 改称正式 VQ winner。本轮支持 activation 变换的收益，但当前简单 codebook 尚未胜过 Scalar。结果源为 [full summary.json](results/full/summary.json)、[analysis summary.json](results/analysis/summary.json) 和 [frozen winners](results/full/frozen_winners.json)。
+
+Preflight 作业 25721014.pbs101 也已成功结束。它的单个评估输入、两个 sampler seeds 上，BF16 weights/A4 的 action RMSE 从 Identity 的 0.270035 降至 Smooth α=1 + Hadamard 的 0.045414；同一变换下 Scalar W4A4 为 0.046645，VQ+A4 为 0.057953。变换的 BF16 对照漂移为 0.001424。这些只用于验证实现，不参与 full 的配置选择。原始汇总见 [preflight summary.json](results/preflight/summary.json)。
 
 复用上一轮已经保存的 22 个固定观察，不执行预测动作。模型是 released Optional-IDM clean checkpoint，IDM 中 Video 和 Action 各 10 个 denoising steps，KV 保持 BF16。目标 Linear 的范围与原量化诊断相同。
 
@@ -22,4 +26,4 @@ Full runner 每 10 分钟输出一次 faulthandler stack snapshot，用于定位
 
 设计流程使用 `experimental-design` skill 的分组、重复与独立评估规则；软件参考：Kassis, T., Agarwal, V., He, Y., Patel, D., & Brueckner, A. M. (2026). [Scientific Agent Skills: A Library of Procedural Knowledge for Research Agents](https://doi.org/10.48550/arXiv.2609.00065)，当前 arXiv v2（2026-09-02）。
 
-连接恢复后的入口是 `control.py`：先 `upload`，再 `submit --phase preflight`。Preflight 必须同时满足 scheduler terminal state、Exit_status=0、PIPELINE_COMPLETE、exit_code.txt=0 和非空 summary.json；检查该数值结果后才提交 `submit --phase full`。重复使用同一提交 attempt 会恢复既有 job handle，未知提交结果不会自动重投。完整执行保留原 BF16 weights 的 CPU 副本用于各变换的公平拟合，GPU 推理使用重建后的 BF16 weights；该工作内存不等于低位部署显存。
+控制入口是 `control.py`，已有 preflight/full/analysis 三个成功作业及持久化 handles，不需重新提交。完成判据同时检查 scheduler terminal state、Exit_status=0、PIPELINE_COMPLETE、exit_code.txt=0 和非空 summary.json。重复使用同一提交 attempt 会恢复既有 job handle，未知提交结果不会自动重投。`analysis.py` 的结果汇总通过 `analysis.pbs` 在 CPU allocation 内执行。完整执行保留原 BF16 weights 的 CPU 副本用于各变换的公平拟合，GPU 推理使用重建后的 BF16 weights；该工作内存不等于低位部署显存。

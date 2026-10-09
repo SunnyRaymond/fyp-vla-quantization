@@ -1,0 +1,53 @@
+                                              SalehAshkboos                               AmirkeivanMohtashami
+                                                 ETHZurich                                           EPFL
+                                     saleh.ashkboos@inf.ethz.ch                     amirkeivan.mohtashami@epfl.ch
+
+                                    MaximilianL.Croci                       BoLi                    PashminaCameron
+                                      MicrosoftResearch                  ETHZurich                        Microsoft
+                                  mcroci@microsoft.com               bolibo@ethz.ch             pcameron@microsoft.com
+
+                                                  MartinJaggi                                  DanAlistarh
+                                                      EPFL                              ISTAustria&NeuralMagic
+                                           martin.jaggi@epfl.ch                        dan.alistarh@ist.ac.at
+
+                                                TorstenHoeﬂer                                   JamesHensman
+                                                  ETHZurich                                    MicrosoftResearch
+                                      torsten.hoefler@inf.ethz.ch                      jameshensman@microsoft.com
+
+
+                                                                           Abstract
+
+                                     WeintroduceQuaRot,anew Quantizationschemebasedon Rotations,whichis
+                                      abletoquantizeLLMsend-to-end,includingallweights,activations,andKVcache
+                                      in 4 bits. QuaRot rotates LLMs in a way that removes outliers from the hidden
+                                      statewithoutchangingtheoutput,makingquantizationeasier. This computational
+                                      invarianceisappliedtothehiddenstate(residual)oftheLLM,aswellastotheacti-
+                                     vationsofthefeed-forwardcomponents,aspectsoftheattentionmechanism,andto
+                                      theKVcache. Theresultisaquantizedmodelwhereallmatrixmultiplicationsare
+                                      performedin4bits,withoutanychannelsidentiﬁedforretentioninhigherprecision.
+                                      Our4-bitquantizedLLAMA              modelhaslossesofatmost0.47WikiText-2per-
+                                      plexityandretains99%ofthezero-shotperformance. WealsoshowthatQuaRot
+                                      canprovidelossless6and8bitLLAMA-           modelswithoutanycalibrationdatausing
+                                      round-to-nearestquantization. Codeisavailableatgithub.com/spcl/QuaRot.
+
+                            1   Introduction
+
+                            Largelanguagemodels(LLMs)havebecomeincreasinglyimportantduetotheircountlessapplica-
+                            tions. However,usingthesemodelsinpractice,knownasinference,requiresasigniﬁcantamount
+                            of computation, memory, and energy, speciﬁcally during the   preﬁll phase, in which the model is
+                            supposed to process large prompts and cache them in each layer. Quantization is among the most
+                            importanttechniquestoimprovebothmemoryandcomputeissuesbykeepingthedatatypesatlower
+                            precisionduringtheforwardpass.
+                            Asthepreﬁllstageisknowntobecompute-bound[  Ashkboosetal.,2023],jointquantizationaimsto
+                            reducetheprecisionofparametersandKVcache(whichresultsinlowermemoryusage)aswellas
+                            inputs(knownasactivations)andcomputetheforwardpassinlowprecision. However,quantizing
+                            theactivationsishardastheyhavelargeoutlierelements(seeFigure1foranillustrativeexample)
+                            with much larger values, making activation quantization more difﬁcult than weight quantization,
+                            especiallyforthe4-bitcase. Previousworkreliesonusingacalibrationsettocharacterizetheoutlier
+                            featuresandkeepingtheminhigherprecisionforinference[Zhaoetal.,2023,Ashkboosetal.,2023].
+
+
+                            38thConferenceonNeuralInformationProcessingSystems(NeurIPS2024).
+
+
+QuaRot: Outlier-Free4-BitInferenceinRotatedLLMs2-70B2

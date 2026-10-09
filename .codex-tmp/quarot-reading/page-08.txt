@@ -1,0 +1,71 @@
+                              Table1: WikiText-2perplexityresultson4-bitquantizationof LLAMA-                   modelswith2048sequence
+                              length. WeextracttheresultsforSmoothQuantandOmniQuantresultsof[Shaoetal.,2023]. 128G
+                              showsthegroup-wisequantizationwithgroupsize128.Here,wequantizeallweights,activations,
+                              andcachesin4-bitsinQuaRot.
+
+
+
+
+
+
+
+
+
+
+
+
+                              Table2: Zero-shotaccuracyof LLAMA-               modelswith4-bit(A4W4KV4)QuaRotonPIQA(PQ),
+                              WinoGrande(WG),HellaSwag(HS),Arc-Easy(A-e),Arc-Challenge(A-c),andLAMBADA(LA).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              Figure 4:  Performance of the QuaRot kernel on a single transformer block of LLAMA-                     models
+                              usingNVIDIARTX3090GPU.Left: Forthespeedupresults,weevaluateusingsequencelength
+                              2048 with different batch sizes. Right: Peak memory saving during decoding of 50 tokens with
+                              differentpreﬁllsequencelengthsusingbatchsize16.
+                              modeldoesnotﬁtonourGPUclusterforlargebatchsizes. Weprovidemoreperformanceanalysis
+                              ofourkernels(aswellascompleteresults)inAppendixA.10.
+
+                              PreﬁllStagePerformanceIncreases.   Forthecompute-boundpreﬁllstage,wepresentthespeedups
+                              ofusingQuaRoton2048sequencelengthwithdifferentbatchsizesinFigure4Left. OnLLAMA
+                              model, we get 1.97x-2.16x speedup over the FP16 implementation using our QuaRot kernel. The
+                              speedupincreaseswithbatchsizesasthecomputationwillbecomeabottleneckinlargerbatchsizes.
+                              on LLAMA             model, we get up to 3.33x speedup. Note that our performance results could be
+                              improvedbyoptimizingourkernels(e.g.,fusingthequantizationoperationsintotheMatMul).
+
+                              DecodingStagesMemorySaving.   Finally, we evaluate the memory improvement which is the
+                              mainbottleneckofthedecodingstage. Figure4Rightshowsthepeakmemorysavingon LLAMA-
+                              models. Weprovideresultsfor LLAMA                   and LLAMA             models. Inbothmodels,wegetat
+                              least 3.63x peak memory saving compared to FP16 case during the decoding stage. Note that the
+                              KVcacheislargerin LLAMA                 modelasthe LLAMA               usesgrouped-queryattention[Ainslie
+                              et al., 2023]. In the LLAMA             model, the memory saving increases with the sequence length,
+                              resultinginupto3.75xmemorysaving. on LLAMA                        model,weget3.89xsavingsinalmostall
+                              thecases. Weexpectthesevaluestobelargerforthewholemodel(insteadofjustthesinglelayer
+
+
+     Method           Weight        #Outlier          LLAMA-2                         8
+      Model        QuantizationMethodPQ      WG      HS       A-e       A-c       LAFeatures7B       13B     70BAvg.
+  LLAMABaseline2-7B  FP16-    79.11    69.06    75.99    74.58    46.25    73.90-5.47      4.88     3.3269.82
+  SmoothQuant      QuaRotRTN  76.77    63.77    72.16    69.87    40.87    70.39083.12    35.88       -65.64
+2-70B2-7B2-7B2-70B2-7B2-70B2-7B2-70B2222LLAMAOmniQuant2-13BFP16RTN80.47    72.22    79.39    77.48    49.23    76.75014.26    12.30       -72.59
+    QUIK-4B        QuaRotGPTQ 78.89    70.24    76.37    72.98    46.59    73.672568.87      7.78     6.9169.79
+     QuaRot          FP16GPTQ 82.70    77.98    83.84    80.98    57.34    79.5806.10      5.40     3.7977.07
+  LLAMAAtom-128G2-70BQuaRot   82.43    76.24    81.82    80.43    56.23    78.731286.03      5.26        -75.98
+  QuaRot-128G       GPTQ-128G           0        5.93      5.26     3.61

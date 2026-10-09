@@ -1,0 +1,69 @@
+                            A   Appendix
+
+                            A.1   QuaRotontheAttentionModule
+                            Figure5showstheoriginalattentionmoduleinlargelanguagemodelswithRoPE.Theinputofthe
+                            attentionmoduleisalreadyrotatedusingtherandomizedHadamardmatrixQ(seeSection4)and
+                            intheﬁrststep,wefusetheinverseofsuchmatricesintotheinputlinearlayersoftheattention. In
+                            thenextstep,wefusetheexactHadamardmatricesoneachblockofthecolumns(proportionalto
+                            eachhead)ontheV_projectionlayertomakesurethattheValueswillberotatedattheoutputof
+                            thatlayer. Inthenextstep,weapplyexactHadamardtransformationsontheKeysandQueriesand
+                            quantize the KV after RoPE operation (note that the Keys and Queries Hadmard transformations
+                           willbecanceledduringtheattentionoperation). Finally,weapplyanotherHadamardtransformation
+                            betweenheadsbeforeOut_projectionlayerandfusetheinverseintotheweights. Figure6shows
+                            theresultofapplyingQuaRotontheattentionmodule.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            Figure5: Flowdiagramofaself-attentionblockasusedinmostLMs,includingthepre-positioned
+                            RMSNorm. Solidarrowsrepresentﬂowduringtraining,preﬁllandinferenceofeachtoken. Dashed
+                            arrowsshowaccesstoandfromtheKVcache,usedatgeneration-time. TheRoPEblockcomputes
+                            relativepositionalembeddings.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            Figure6: QuaRotappliedtoanattentioncomponent. TheRMSNormscalingαisabsorbedintotheAttention
+                            inputweightmatrices,andthehiddenstatehasbeenrotatedbyQinthesamewayasfortheFFNINT4
+                            block(seepreviousﬁgure). Coloredlabelsshowthebit-widthofeachﬂow,anddashedlinesshowAttention
+                            theﬂowto/fromtheKVcache.Q⊤(α)WqFP16RoPEMulti-head
+                                                                  Attention
+         RMSNorm                    Wq          RoPE          Multi-head
+           RMSNorm          A.2   ClippingRatioAblationINT4   Attention
+FP16                       Weusetheclippingratioforbothweightsandactivationsduringthequantization. DuringtheweightINT4
+          x          INT4                 FP16                    hadamard
+XQ       ∥x∥                quantization,weapplyalinearsearchovertheMSEerrortoextractthebestclippingratioforeachQ⊤(α)WkFP16
+X       x        diag(α)            Wk                           dequantize       Wout    INT4YHWoutQ        YQ
+       ∥x∥
+                                    INT4                      KV-cache         13
+                                                                  KV-cache
+                               Q⊤(α)WvHheadWv  FP16
+
+                                                                    INT4

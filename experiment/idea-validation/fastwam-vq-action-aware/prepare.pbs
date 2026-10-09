@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -N fwva1009p
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ROOT/artifacts"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; }
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+PROTOCOL_FILE="$ROOT/experiment_protocol.json"
+[[ -f "$PROTOCOL_FILE" ]] || PROTOCOL_FILE="$ROOT/protocol.json"
+cp "$ROOT/environment.sh" "$ROOT/prepare.pbs" "$ROOT/prepare_inputs.py" "$ARTIFACTS/"
+cp "$PROTOCOL_FILE" "$ARTIFACTS/protocol.json"
+cp "$ROOT/protocol.json" "$ARTIFACTS/roots_protocol.json"
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=4
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/prepare_inputs.py" --control-test
+run_python "$ARTIFACTS/prepare_inputs.py" --protocol "$ARTIFACTS/protocol.json" --out "$ROOT"
+cp "$ROOT/plan.json" "$ROOT/prepare_summary.json" "$ARTIFACTS/"
+python3 - "$ARTIFACTS/prepare_summary.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d.get("status") == "complete" and d.get("cases") == 26
+assert d.get("selection_cases") == 4 and d.get("test_cases") == 22
+assert d.get("old_variant_exclusion_passed") is True
+PY
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo INPUT_SUMMARY_COMPLETE
