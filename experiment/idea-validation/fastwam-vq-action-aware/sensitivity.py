@@ -296,12 +296,16 @@ def capture_action_projections(
                     "total_rows": total_rows,
                     "adjoints": [None] * probes,
                     "adjoint_connected": [None] * probes,
-                    "_inputs_gpu": x.reshape(-1, in_width).index_select(
+                    # Detach before reshape/index_select. Detaching afterward
+                    # still builds capture-only backward nodes inside the
+                    # checkpoint's saved-tensor context, so recomputation would
+                    # save a different number of tensors.
+                    "_inputs_gpu": x.detach().reshape(-1, in_width).index_select(
                         0, row_ids.to(device=x.device)
-                    ).detach().float(),
-                    "_teacher_y_gpu": y.reshape(-1, out_width).index_select(
+                    ).float(),
+                    "_teacher_y_gpu": y.detach().reshape(-1, out_width).index_select(
                         0, row_ids.to(device=y.device)
-                    ).detach().float(),
+                    ).float(),
                 }
                 records[_name].append(record)
             else:

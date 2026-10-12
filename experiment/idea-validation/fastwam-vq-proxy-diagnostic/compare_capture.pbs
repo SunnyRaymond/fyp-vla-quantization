@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -N fwvpcmpa
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=00:40:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-proxy-diagnostic-20261010
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'printf "%s\n" "$?" > "$ARTIFACTS/exit_code.txt"' EXIT
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=8
+source "$ROOT/environment.sh"
+run_python "$ROOT/compare_capture.py"

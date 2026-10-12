@@ -665,6 +665,83 @@ def _paired_differences(test_by_arm: dict[str, dict[str, Any]], arms: list[str],
     return result
 
 
+def _mechanism_diagnostics(source: Path, raw_queries: list[dict[str, Any]], test: dict[str, Any], selection: dict[str, Any]) -> dict[str, Any]:
+    """Exploratory summaries of existing fit logs; no refitting or test-based selection."""
+    base_arm = "row_scale_vq_a4"
+    fit_arms = [base_arm, "row_output_vq_a4", "row_action_vq_a4_lambda_0.1", "row_action_vq_a4_lambda_1"]
+    fits = {arm: {} for arm in fit_arms}
+    for row in _jsonl(source / "module_fit.jsonl"):
+        arm, name = row["arm"], row["module"]
+        if arm not in fits or name in fits[arm]:
+            raise ValueError("unexpected or duplicate module fit")
+        fits[arm][name] = row["fit"]
+    names = set(fits[base_arm])
+    if len(names) != 614 or any(set(rows) != names for rows in fits.values()):
+        raise ValueError("mechanism diagnostic needs four complete 614-module banks")
+    normal = _json(source / "objective_normalization.json")
+    initial_task = float(normal["global_initial_projected_half_mse"])
+    local = {}
+    for arm in fit_arms:
+        ratios = {name: fits[arm][name]["local_output_mse"] / max(fits[base_arm][name]["local_output_mse"], 1e-12) for name in names}
+        groups = {prefix: [value for name, value in ratios.items() if name.startswith(prefix)]
+                  for prefix in ("video_expert.", "action_expert.", "proprio_encoder")}
+        last = next(reversed(fits[arm].values()))
+        task_ratio = 1.0 if arm == base_arm else last["global_projected_half_mse_after_module"] / initial_task
+        local[arm] = {
+            "module_count": len(names), "mean_per_module_normalized_local_mse": _mean(list(ratios.values())),
+            "local_mse_decreased_modules": sum(x < 1 for x in ratios.values()),
+            "local_mse_increased_modules": sum(x > 1 for x in ratios.values()),
+            "global_sampled_projected_half_mse_ratio_to_base": task_ratio,
+            "by_expert_mean_normalized_local_mse": {key: _mean(values) for key, values in groups.items()},
+            "top_local_mse_increase_ratios": sorted(ratios.items(), key=lambda item: item[1], reverse=True)[:10],
+        }
+        if arm != base_arm:
+            rows = list(fits[arm].values())
+            bad = [r for r in rows if r["tuning"]["best_loss"] > r["initial_objective"] + max(1e-7, abs(r["initial_objective"]) * 1e-5)]
+            if bad:
+                raise ValueError("saved fitted bank worsens accepted coordinate objective")
+            local[arm].update(reassignment_accepted_modules=sum(r["reassignment_accepted"] for r in rows),
+                fitted_coordinate_objective_nonincreasing_modules=len(rows),
+                mean_optimizer_steps=_mean([r["tuning"]["optimizer_steps"] for r in rows]))
+    calibration = {}
+    cal_rows = [r for r in raw_queries if r["split"] == "calibration"]
+    for arm in ["bf16w_a4", *fit_arms]:
+        rows = [r for r in cal_rows if r["arm"] == arm]
+        if len(rows) != 8 or len({r["case_id"] for r in rows}) != 8:
+            raise ValueError("calibration diagnostic expects eight paired contexts per arm")
+        calibration[arm] = {"case_count": 8, "mean_actual_motor_rmse": _mean([_extract_metric(r, METRIC_ALIASES[PRIMARY_METRIC]) for r in rows])}
+        if arm in fit_arms:
+            calibration[arm]["mean_sampled_proxy_rmse"] = _mean([r["projected_action_rmse_sampled_proxy"] for r in rows])
+            calibration[arm]["per_case_actual_and_proxy"] = {str(r["case_id"]): {
+                "actual_motor_rmse": _extract_metric(r, METRIC_ALIASES[PRIMARY_METRIC]),
+                "sampled_proxy_rmse": r["projected_action_rmse_sampled_proxy"]} for r in rows}
+    for arm in fit_arms:
+        per_case = calibration[arm]["per_case_actual_and_proxy"]
+        base_case = calibration[base_arm]["per_case_actual_and_proxy"]
+        proxy_improved = [key for key in per_case if per_case[key]["sampled_proxy_rmse"] < base_case[key]["sampled_proxy_rmse"]]
+        calibration[arm].update(proxy_improved_cases=len(proxy_improved),
+            actual_improved_cases=sum(per_case[key]["actual_motor_rmse"] < base_case[key]["actual_motor_rmse"] for key in per_case),
+            proxy_improved_but_actual_worse_cases=sum(per_case[key]["actual_motor_rmse"] > base_case[key]["actual_motor_rmse"] for key in proxy_improved))
+    pairs = {}
+    comparisons = [(base_arm, "original_vq_a4"), ("row_output_vq_a4", base_arm),
+        ("row_action_vq_a4", "row_output_vq_a4"), ("row_action_vq_a4", base_arm), ("row_action_vq_a4", "scalar_w4a4")]
+    for arm, ref in comparisons:
+        a = test[arm]["per_case_two_seed_means"]
+        b = test[ref]["per_case_two_seed_means"]
+        deltas = {key: a[key][PRIMARY_METRIC] - b[key][PRIMARY_METRIC] for key in a}
+        mean_a = test[arm]["summary"][PRIMARY_METRIC]["mean_of_case_means"]
+        mean_b = test[ref]["summary"][PRIMARY_METRIC]["mean_of_case_means"]
+        pairs[arm + "_vs_" + ref] = {"mean_difference": mean_a - mean_b,
+            "relative_change_percent": 100 * (mean_a / mean_b - 1),
+            "better_cases": sum(v < 0 for v in deltas.values()), "worse_cases": sum(v > 0 for v in deltas.values()),
+            "per_case_difference": deltas, "largest_worsenings": sorted(deltas.items(), key=lambda x: x[1], reverse=True)[:5]}
+    return {"status": "complete", "analysis_type": "exploratory mechanism diagnosis of already-frozen experiment",
+        "local_and_projected_fit": local, "calibration_actual_and_proxy": calibration, "paired_stage_changes": pairs,
+        "limits": ["local losses use sampled teacher-path inputs", "four action probes and two rows per call",
+            "global proxy sums shared calls/modules before squaring; cancellation can reduce the proxy without improving action",
+            "calibration uses one sampler seed; selection/test use two seeds within each case", "no independence, significance or causal claim"]}
+
+
 def _markdown(report: dict[str, Any]) -> str:
     coverage = report["coverage"]
     test = report["test_metrics_by_arm"]
@@ -672,7 +749,7 @@ def _markdown(report: dict[str, Any]) -> str:
         "# Fast-WAM Action-Aware VQ 汇总", "",
         f"Full run 状态为 `{report['source']['full_status']}`，作业 `{report['source']['full_job_id']}`；protocol `{report['protocol']}`。",
         f"本分析覆盖 {coverage['target_linears']} 个 target Linear，{coverage['test_cases']} 个 test cases、",
-        f"{coverage['test_contexts']} 个 case/seed contexts；执行 episodes 与 query 后环境步数均为 0。", "",
+        f"{coverage['test_contexts']} 个 case/seed contexts；未执行 episode 或预测动作。", "",
         "## 选择冻结", "",
         f"Action lambda 只依据 {coverage['selection_cases']} 个 selection cases 选择：每个 case 先平均两个 sampler seeds，再对 cases 等权平均。",
         f"冻结值为 `{report['action_lambda_selection']['winner']}`；测试记录均晚于 selection 记录，且使用该值。", "",
@@ -688,7 +765,7 @@ def _markdown(report: dict[str, Any]) -> str:
                   "|---|---:|---:|---:|---:|---:|"])
     for arm in report["arms"]:
         entry = test[arm]
-        metric = entry["metrics"]
+        metric = entry["summary"]
         lines.append(f"| {arm} | {entry['case_count']} | {entry['context_count']} | "
                      f"{metric[PRIMARY_METRIC]['mean_of_case_means']:.8g} | "
                      f"{metric['gripper_rmse_first10_vs_bf16']['mean_of_case_means']:.8g} | "
@@ -828,11 +905,14 @@ def analyze(protocol_path: Path, out_root: Path, source_root: Path) -> dict[str,
             "episodes": 0, "success_rate_claim": False, "native_kernel_latency_claim": False,
         },
     }
+    diagnostic = _mechanism_diagnostics(source_root, raw_queries, test_by_arm, selection_by_arm)
+    result["mechanism_diagnostic_file"] = "diagnostics.json"
     markdown = _markdown(result)
     out_root.parent.mkdir(parents=True, exist_ok=True)
     out_root.mkdir(exist_ok=False)
     (out_root / "summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     (out_root / "RESULTS.zh.md").write_text(markdown, encoding="utf-8")
+    (out_root / "diagnostics.json").write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     return result
 
 

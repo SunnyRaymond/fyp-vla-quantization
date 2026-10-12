@@ -1,0 +1,62 @@
+#!/bin/bash
+#PBS -N fwvkd1011a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/full-$PBS_JOBID"
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+test ! -e "$OUT" || exit 73
+test -f "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/exit_code.txt")" = 0
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json control.py environment.sh gpu.pbs sampler.py train_banks.py run_distill.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python --version
+run_python "$ARTIFACTS/run_distill.py" --protocol "$ARTIFACTS/protocol.json" --out "$OUT"
+test -s "$OUT/summary.json"
+copy_small "$OUT/summary.json" "$ARTIFACTS/summary.json"
+echo "RUN_SUMMARY_COMPLETE job_id=$PBS_JOBID"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

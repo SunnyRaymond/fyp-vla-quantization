@@ -1,0 +1,151 @@
+#!/bin/bash
+#PBS -N fwvp1010g
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-proxy-diagnostic-20261010
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+PHASE=${FW_PHASE:-preflight}
+[[ "$PHASE" == preflight || "$PHASE" == full ]] || exit 64
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+
+copy_small() {
+  local src=$1 dst=$2 bytes
+  test -f "$src"
+  bytes=$(wc -c < "$src")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || {
+    echo "Refusing missing or oversized source file: $src" >&2; exit 73;
+  }
+  cp -- "$src" "$dst"
+}
+source_gate() {
+  local job summary bytes
+  job=$(python3 - "$ROOT/protocol.json" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1], encoding="utf-8"))
+if p.get("source_root") != "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009":
+    raise SystemExit("Unexpected source campaign")
+if p.get("source_full_job") != "25743693.pbs101": raise SystemExit("Unexpected source full job")
+print(p["source_full_job"])
+PY
+  )
+  [[ "$job" == 25743693.pbs101 ]]
+  test -f "$SOURCE_CAMPAIGN/artifacts/$job/PIPELINE_COMPLETE"
+  test "$(cat "$SOURCE_CAMPAIGN/artifacts/$job/exit_code.txt")" = 0
+  summary="$SOURCE_CAMPAIGN/results/full/summary.json"
+  test -f "$summary"
+  bytes=$(wc -c < "$summary")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]]
+  python3 - "$summary" "$job" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+if not isinstance(d, dict) or d.get("status") != "complete" or d.get("pbs_jobid") != sys.argv[2]:
+    raise SystemExit("Verified source full summary is incomplete or belongs to another job")
+PY
+  echo "SOURCE_FULL_VERIFIED job=$job"
+}
+require_preflight() {
+  local summary="$ROOT/results/preflight/summary.json" bytes job
+  test -f "$summary"
+  bytes=$(wc -c < "$summary")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]]
+  python3 - "$summary" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+c, r = d.get("probe_counts"), d.get("row_sets")
+if (d.get("status") != "complete" or d.get("phase") != "preflight"
+        or d.get("target_linears") != 614 or d.get("case_ids") != [0]
+        or d.get("original_proxy_reproduction_passed") is not True
+        or not isinstance(c, dict) or (c.get("old"), c.get("new"), c.get("total")) != (4, 16, 20)
+        or not isinstance(r, dict) or (r.get("old"), r.get("new")) != (2, 2)):
+    raise SystemExit("Preflight coverage or original proxy reproduction gate failed")
+PY
+  job=$(python3 - "$summary" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["job_id"])
+PY
+  )
+  [[ "$job" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]]
+  test -f "$ROOT/artifacts/$job/PIPELINE_COMPLETE"
+  test "$(cat "$ROOT/artifacts/$job/exit_code.txt")" = 0
+}
+test ! -e "$ROOT/results/$PHASE" || { echo "Refusing existing result path" >&2; exit 73; }
+source_gate
+if [[ "$PHASE" == full ]]; then require_preflight; fi
+
+copy_small "$ROOT/protocol.json" "$ARTIFACTS/protocol.json"
+for name in test_sampling.py run_diagnostic.py sensitivity.py environment.sh original.pbs gpu.pbs control.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+copy_small "$SOURCE_CAMPAIGN/run_experiment.py" "$ARTIFACTS/run_experiment.py"
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo "PBS did not expose the allocated GPU" >&2; exit 65; }
+run_python - "$CUDA_VISIBLE_DEVICES" <<'PY_GPU'
+import sys, torch
+mask = sys.argv[1]
+assert mask.startswith("GPU-") and "," not in mask, mask
+assert torch.cuda.device_count() == 1, torch.cuda.device_count()
+props = torch.cuda.get_device_properties(0)
+assert str(props.uuid).removeprefix("GPU-").lower() == mask.removeprefix("GPU-").lower()
+print("Allocated GPU verified:", props.name, str(props.uuid), flush=True)
+PY_GPU
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python "$ARTIFACTS/test_sampling.py"
+run_python "$ARTIFACTS/run_diagnostic.py" --phase "$PHASE" --protocol "$ARTIFACTS/protocol.json" --out "$ROOT/results/$PHASE"
+SUMMARY="$ROOT/results/$PHASE/summary.json"
+test -s "$SUMMARY"
+bytes=$(wc -c < "$SUMMARY")
+[[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]]
+python3 - "$SUMMARY" "$PHASE" "$PBS_JOBID" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+p, phase, job = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+d = json.loads(p.read_text(encoding="utf-8"))
+if not isinstance(d, dict) or d.get("status") != "complete": raise SystemExit("Diagnostic summary is incomplete")
+if d.get("phase", phase) != phase or d.get("job_id", job) != job: raise SystemExit("Diagnostic summary identity mismatch")
+d["phase"], d["job_id"] = phase, job
+if phase == "preflight":
+    c, r = d.get("probe_counts"), d.get("row_sets")
+    if (d.get("target_linears") != 614 or d.get("case_ids") != [0]
+            or d.get("original_proxy_reproduction_passed") is not True
+            or not isinstance(c, dict) or (c.get("old"), c.get("new"), c.get("total")) != (4, 16, 20)
+            or not isinstance(r, dict) or (r.get("old"), r.get("new")) != (2, 2)):
+        raise SystemExit("Preflight summary coverage is incomplete")
+with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=p.parent, delete=False) as f:
+    json.dump(d, f, indent=2, allow_nan=False); f.write("\n"); f.flush(); os.fsync(f.fileno()); tmp = f.name
+os.replace(tmp, p)
+PY
+copy_small "$SUMMARY" "$ARTIFACTS/summary.json"
+echo "RUN_SUMMARY_COMPLETE phase=$PHASE job_id=$PBS_JOBID"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

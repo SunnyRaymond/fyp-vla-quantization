@@ -1,0 +1,105 @@
+{
+  "protocol": "fastwam-vq-plus-v1",
+  "checkpoint": "libero_optional_idm_2cam224.clean.pt",
+  "inference": {
+    "mode": "idm",
+    "video_steps": 10,
+    "action_steps": 10,
+    "sigma_shift": 1.0,
+    "action_horizon": 32,
+    "execute_per_replan": 10,
+    "action_ensembler": false,
+    "settling_steps": 30,
+    "max_steps_normal": 400,
+    "max_steps_long": 700
+  },
+  "cohort": {
+    "manifest_protocol": "fastwam-rotation-baselines-v1",
+    "reference_manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "reference_evaluation_job_id": "25728285.pbs101",
+    "sampling_changed": false,
+    "variants_per_arm": 280,
+    "total_new_episodes": 560,
+    "suites": 4,
+    "dimensions": 7,
+    "variants_per_suite": 70,
+    "variants_per_dimension": 40,
+    "variants_per_cell": 10,
+    "state_id": 0,
+    "env_seed_base": 800000000,
+    "sampler_seed_base": 900000000,
+    "seed_stride": 1000,
+    "paired_seeds_across_arms": true
+  },
+  "arms": [
+    "row_scale_vq_a4",
+    "micro_scale_vq_a4"
+  ],
+  "sources": {
+    "row_scale_vq_a4": {
+      "root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+      "job_id": "25743693.pbs101",
+      "bank": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009/results/full/banks/row_scale_vq_a4",
+      "helper": "codebook.py",
+      "scale_block": null,
+      "complete": true
+    },
+    "micro_scale_vq_a4": {
+      "root": "/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011",
+      "job_id": "25755896.pbs101",
+      "bank": "/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011/results/full/banks/micro_scale_vq_a4",
+      "helper": "micro_codebook.py",
+      "scale_block": 32,
+      "complete": true
+    }
+  },
+  "quantization": {
+    "weights": "Reuse each source bank's books, scales, and indices unchanged; decode weights to BF16 for matrix multiplication.",
+    "activations": "Dynamic per-row A4; decode operands to BF16 for matrix multiplication.",
+    "kv_cache": "bf16",
+    "new_training_steps": 0,
+    "native_int4_kernel": false,
+    "claim_boundary": "Decoded-BF16 weight and activation compute; no native INT4 kernel claim."
+  },
+  "worker_assignment": {
+    "workers": 4,
+    "row_scale_vq_a4": [0, 1],
+    "micro_scale_vq_a4": [2, 3],
+    "indices_per_worker": "manifest index % 2 == worker_id % 2 within the worker's arm",
+    "variants_per_worker": 140,
+    "model_loads_total": 4,
+    "persistent_worker_per_arm_shard": true,
+    "start_stagger_seconds": 20
+  },
+  "soft_deadline_seconds": 85500,
+  "source_parity_case_id": 1000,
+  "source_parity_seed_index": 0,
+  "source_parity_max_abs_tolerance": 1e-6,
+  "source_parity_plan": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009/plan.json",
+  "roots": {
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "references": {
+    "rotation_results": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results",
+    "rotation_job_id": "25728285.pbs101",
+    "scalar_results": "/scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009/results",
+    "scalar_job_id": "25734678.pbs101",
+    "arms": [
+      "bf16",
+      "quarot_adapted_w4a4",
+      "spinquant_adapted_w4a4",
+      "smooth05_hadamard_scalar_w4a4"
+    ],
+    "reference_episode_slots": 1120
+  },
+  "allocation": {
+    "jobs": 1,
+    "queue": "normal",
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 220,
+    "walltime": "24:00:00",
+    "gpu_monitor_seconds": 15,
+    "route": "normal to g3"
+  }
+}

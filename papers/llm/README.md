@@ -20,7 +20,8 @@
 | [018. OPTQ / GPTQ](018-gptq-optq/README.md) | 二阶误差补偿的 weight-only PTQ |
 | [021. AWQ](021-awq/README.md) | 用 activation 信息指导 weight quantization |
 | [022. SpinQuant](022-spinquant/README.md) | 学习正交旋转，改善低比特量化；固定 arXiv v4 |
-| [023. QuaRot](023-quarot/README.md) | 固定 randomized Hadamard rotations 与 W4A4KV4 inference |
+| [023. QuaRot](023-quarot/README.md) | 固定 randomized Hadamard rotations 与 W4A4KV4 inference；2026-10-09 更新详细中文教学讲解 |
+| [109. PrismQuant](109-prismquant/README.md) | Quantizer-aware null-space alignment、闭式谱最优性与 compact-WY；固定 arXiv v1，区分质量协议与独立部署测试 |
 | [029. Outlier Suppression](029-outlier-suppression/README.md) | Transformer activation outlier 的诊断与处理 |
 | [040. AQLM](040-aqlm/README.md) | learned additive codebooks 与极低比特 weight compression |
 | [041. HIGGS](041-higgs/README.md) | theory-guided data-free quantization 与 bit allocation |
@@ -55,9 +56,13 @@
 
 ## 6. 推荐入口
 
-- **Weight / activation PTQ**：LLM.int8() → Outlier Suppression → SmoothQuant → GPTQ / AWQ → QuaRot → SpinQuant。
+- **Weight / activation PTQ**：LLM.int8() → Outlier Suppression → SmoothQuant → GPTQ / AWQ → QuaRot → SpinQuant → PrismQuant。
 - **KV-cache quantization**：先读 KIVI，理解 K/V 为什么区别处理，再读 TurboQuant 与 RaBitQ / TurboQuant comparison。
 - **Codebook compression**：AQLM → HIGGS；MoE 专项再读 QMoE。
 - **低精度训练**：先补 FP8 / MX 格式，再读 NVFP4 pretraining 与 HALO；部署取舍参考 BF16 trade-offs。
 
 SpinQuant 和 KIVI 的正文讲解于 2026-10-08 更新，均可独立阅读，包含直觉、可计算例子、公式与变量解释、实验解读、物理页阅读路线、未作答的 Reading Questions 和空白 Meeting Card。论文报告结果与本地复现状态在各包中分开记录。
+
+QuaRot 的正文讲解于 2026-10-09 更新，补充完整 INT4 算例与反例、RMSNorm/residual/FFN/attention 的等价变换推导、原论文图示，以及 LLaMA-3 质量下降和小 batch cache slowdown 的边界解读，同样包含阅读路线、Reading Questions 与空白 Meeting Card。
+
+PrismQuant #109 于 2026-10-11 加入，保存 arXiv:2609.32429v1 的 38 页 PDF、两张原论文图与详细中文教学讲解。阅读重点是 grouped quantizer 的 range-null subspace、能量对齐的最优性范围，以及 random-weight GPU deployment study 与 pretrained-model 精度结果的不同证据边界。

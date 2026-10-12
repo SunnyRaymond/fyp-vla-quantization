@@ -1,0 +1,289 @@
+"""Bounded true final-action distillation; all numerical work requires PBS."""
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import os
+from pathlib import Path
+import statistics
+import time
+import traceback
+
+
+def save(path, value):
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n', encoding='utf-8')
+    temporary.replace(path)
+
+
+def append(path, value):
+    with path.open('a', encoding='utf-8') as stream:
+        stream.write(json.dumps(value, allow_nan=False) + '\n')
+
+
+def aggregate(rows):
+    groups = {}
+    for row in rows:
+        groups.setdefault(row['case_id'], []).append(row)
+    metrics = ('motor_rmse_first10_vs_bf16', 'gripper_rmse_first10_vs_bf16', 'motor_rmse_32_vs_bf16')
+    values = {str(case): {metric: statistics.mean(r[metric] for r in records) for metric in metrics}
+              for case, records in groups.items()}
+    return {'case_count': len(groups), 'context_count': len(rows),
+            'mean_motor_rmse_first10': statistics.mean(v[metrics[0]] for v in values.values()),
+            'mean_gripper_rmse_first10': statistics.mean(v[metrics[1]] for v in values.values()),
+            'mean_motor_rmse_32': statistics.mean(v[metrics[2]] for v in values.values()),
+            'per_case': values}
+
+
+def run(args):
+    import sampler
+    sampler._require_compute_allocation()
+    import torch
+    import runner as pilot
+    import run_diagnostic as source
+    from train_banks import TrainableBanks, self_check
+
+    p = json.loads(args.protocol.read_text(encoding='utf-8'))
+    if p['protocol'] != 'fastwam-vq-final-action-distill-v1':
+        raise ValueError('Unexpected protocol')
+    if args.out.exists():
+        raise FileExistsError(f'Existing result directory: {args.out}')
+    args.out.mkdir(parents=True)
+    save(args.out / 'protocol.json', p)
+    started = time.monotonic()
+    allocation_started = float(os.environ.get('FW_JOB_START_EPOCH', time.time()))
+    deadline = started + p['soft_deadline_seconds'] - (time.time() - allocation_started)
+    source_root, old_root = Path(p['source_root']), Path(p['roots']['old_inputs'])
+    source_dir = source_root / 'results/full'
+    full_summary = json.loads((source_dir / 'summary.json').read_text())
+    if full_summary['status'] != 'complete' or full_summary['pbs_jobid'] != p['source_full_job']:
+        raise RuntimeError('Source summary is not the verified completed run')
+    old_plan = json.loads((old_root / 'plan.json').read_text())
+    fresh = {row['case_id']: row for row in json.loads((source_root / 'plan.json').read_text())['inputs']}
+    cached, references = {}, {}
+    for line in (source_dir / 'actions.jsonl').open(encoding='utf-8'):
+        row = json.loads(line)
+        if row['arm'] not in ('bf16', p['initial_arm']):
+            continue
+        key = (row['case_id'], row['seed_index'])
+        table = references if row['arm'] == 'bf16' else cached
+        if key in table:
+            raise RuntimeError(f'Duplicate cached action: {row["arm"]} {key}')
+        table[key] = row
+    for case in p['calibration_cases']:
+        key = (case, 0)
+        if key not in references:
+            # mmap reads the tiny action storage without paging in captured layer tensors.
+            capture = torch.load(source_dir / 'sensitivity' / f'case_{case}.pt',
+                                 map_location='cpu', weights_only=True, mmap=True)
+            row = source.validate_plan(old_plan, case)
+            references[key] = {'case_id': case, 'seed_index': 0, 'sampler_seed': row['sampler_seeds'][0],
+                               'action': capture['baseline_action'].detach().float().clone().tolist()}
+            del capture
+            gc.collect()
+    for cases, seeds in ((p['calibration_cases'], [0]),
+                         (p['selection_cases'] + p['test_cases'], p['evaluation_seed_indices'])):
+        for case in cases:
+            for seed_index in seeds:
+                key = (case, seed_index)
+                if key not in references or key not in cached:
+                    raise RuntimeError(f'Missing paired cached teacher/initialization {key}')
+                expected = (source.validate_plan(old_plan, case) if case < 1000 else fresh[case])['sampler_seeds'][seed_index]
+                for table in (references, cached):
+                    action = torch.tensor(table[key]['action'], dtype=torch.float32)
+                    if table[key]['sampler_seed'] != expected or action.shape != (32, 7) or not torch.isfinite(action).all():
+                        raise RuntimeError(f'Invalid cached action identity/values {key}')
+
+    stage, completed_updates, complete_epochs, frozen = 'self_check', 0, 0, False
+    runtime = banks = None
+    forward_seconds, gradient_seconds, evaluations = [], [], []
+    torch.backends.cuda.matmul.allow_tf32 = False
+
+    def progress(**extra):
+        record = {'status': 'running', 'stage': stage, 'updates_completed': completed_updates,
+                  'epochs_completed': complete_epochs, 'elapsed_seconds': time.monotonic() - started, **extra}
+        save(args.out / 'progress.json', record)
+        print('DISTILL_PROGRESS ' + json.dumps(record), flush=True)
+
+    try:
+        self_check()
+        stage = 'model_loading'
+        progress()
+        runtime = pilot.Runtime(args.out)
+        runtime.arm('bf16')
+        stage = 'loading_existing_vq_banks'
+        progress()
+        banks = TrainableBanks(runtime, source_dir, p['initial_arm'])
+        parameters = banks.parameters()
+        optimizer = torch.optim.Adam(parameters, lr=p['learning_rate'])
+        initial = banks.snapshot()
+        best = initial
+        best_epoch = 0
+        cached_selection = aggregate([cached[case, seed] for case in p['selection_cases']
+                                      for seed in p['evaluation_seed_indices']])
+        best_score = cached_selection['mean_motor_rmse_first10']
+        selection_history = [{'epoch': 0, 'source': 'paired cached initialization', **cached_selection}]
+        data = {}
+
+        def datum(case):
+            if case not in data:
+                row = source.validate_plan(old_plan, case) if case < 1000 else fresh[case]
+                observation, metadata = source.load_case(old_root if case < 1000 else source_root, row)
+                data[case] = (runtime.datum(observation), metadata['description'], row)
+            return data[case]
+
+        def query(case, seed_index, checkpointed):
+            value, description, row = datum(case)
+            runtime.description, runtime.current_arm = description, 'final_action_distill'
+            banks.seen.clear()
+            action, counts = sampler.differentiable_action(runtime, value, row['sampler_seeds'][seed_index],
+                                                          checkpointed=checkpointed)
+            if len(banks.seen) != p['target_linears']:
+                raise RuntimeError(f'Only {len(banks.seen)}/614 targets called')
+            return action, counts
+
+        def evaluate(cases, seeds, split, epoch):
+            if split == 'test' and not frozen:
+                raise RuntimeError('Test evaluation before freeze')
+            records = []
+            for case in cases:
+                for seed_index in seeds:
+                    progress(case_id=case, seed_index=seed_index, split=split, epoch=epoch)
+                    tick = time.monotonic()
+                    action, counts = query(case, seed_index, False)
+                    action = action.detach().float().cpu()
+                    forward_seconds.append(time.monotonic() - tick)
+                    target = torch.tensor(references[case, seed_index]['action'], dtype=torch.float32)
+                    record = {'case_id': case, 'seed_index': seed_index, 'split': split, 'epoch': epoch,
+                              'arm': 'final_action_distill', **source.action_metrics(torch, action, target),
+                              'forward_seconds': forward_seconds[-1], **counts}
+                    records.append(record)
+                    evaluations.append(record)
+                    append(args.out / 'actions.jsonl', {**record, 'action': action.tolist()})
+            return aggregate(records)
+
+        stage = 'cached_initialization_forward_parity'
+        parity = []
+        for case in (p['calibration_cases'][0], p['selection_cases'][0]):
+            tick = time.monotonic()
+            action, counts = query(case, 0, False)
+            forward_seconds.append(time.monotonic() - tick)
+            delta = action.detach().float().cpu() - torch.tensor(cached[case, 0]['action'], dtype=torch.float32)
+            record = {'case_id': case, 'max_abs': float(delta.abs().max()), 'rmse': float(delta.square().mean().sqrt()), **counts}
+            record['passed'] = record['max_abs'] <= p['parity_max_abs_tolerance'] and record['rmse'] <= p['parity_rmse_tolerance']
+            parity.append(record)
+            save(args.out / 'parity.json', {'records': parity})
+            if not record['passed']:
+                raise RuntimeError(f'Cached initialization parity failed: {record}')
+        print('CACHED_INITIALIZATION_PARITY_PASSED', flush=True)
+
+        def remaining_evaluation_seconds(include_selection=True):
+            calls = len(p['calibration_cases']) + len(p['test_cases']) * len(p['evaluation_seed_indices'])
+            if include_selection:
+                calls += len(p['selection_cases']) * len(p['evaluation_seed_indices'])
+            return calls * max(forward_seconds) * 1.4 + p['save_reserve_seconds']
+
+        stage = 'true_final_action_distillation'
+        for epoch in range(1, p['maximum_epochs'] + 1):
+            if gradient_seconds:
+                needed = len(p['calibration_cases']) * max(gradient_seconds) * 1.4 + remaining_evaluation_seconds()
+                if time.monotonic() + needed >= deadline:
+                    if not complete_epochs:
+                        raise RuntimeError('Budget cannot cover one complete training epoch and the frozen evaluation cohort')
+                    print('SECOND_EPOCH_SKIPPED_BY_DECLARED_BUDGET', flush=True)
+                    break
+            for offset, case in enumerate(p['calibration_cases']):
+                progress(case_id=case, epoch=epoch, update_in_epoch=offset)
+                optimizer.zero_grad(set_to_none=True)
+                tick = time.monotonic()
+                action, counts = query(case, 0, True)
+                if completed_updates == 0:
+                    diff = action.detach().float().cpu() - torch.tensor(cached[case, 0]['action'])
+                    grad_parity = {'max_abs': float(diff.abs().max()), 'rmse': float(diff.square().mean().sqrt())}
+                    save(args.out / 'gradient_forward_parity.json', grad_parity)
+                    if grad_parity['max_abs'] > p['parity_max_abs_tolerance'] or grad_parity['rmse'] > p['parity_rmse_tolerance']:
+                        raise RuntimeError('Checkpointed gradient forward differs from cached deployed forward')
+                teacher = torch.tensor(references[case, 0]['action'], dtype=torch.float32, device='cuda')
+                loss = (action[:10, :6].float() - teacher[:10, :6]).square().mean()
+                if not torch.isfinite(loss):
+                    raise RuntimeError('Nonfinite actual final-action loss')
+                loss_value = float(loss.detach())
+                loss.backward()
+                report = banks.gradient_report()
+                if report['connected'] != 614 or report['finite'] != 614 or report['nonzero'] == 0:
+                    save(args.out / 'gradient_coverage_failure.json', report)
+                    raise RuntimeError('Trainable codebook gradient coverage is incomplete or nonfinite')
+                norm = torch.nn.utils.clip_grad_norm_(parameters, p['gradient_norm_clip'], error_if_nonfinite=True)
+                optimizer.step()
+                del action, teacher, loss
+                banks.refresh()
+                torch.cuda.synchronize()
+                duration = time.monotonic() - tick
+                gradient_seconds.append(duration)
+                completed_updates += 1
+                record = {'update': completed_updates, 'case_id': case, 'epoch': epoch,
+                          'actual_preupdate_motor_mse': loss_value,
+                          'gradient_norm_before_clip': float(norm), 'gradient_seconds': duration, **counts, **report}
+                append(args.out / 'training.jsonl', record)
+                if completed_updates == 1:
+                    save(args.out / 'first_backward.json', record)
+                    needed = (len(p['calibration_cases']) - 1) * duration * 1.4 + remaining_evaluation_seconds()
+                    if time.monotonic() + needed >= deadline:
+                        raise RuntimeError('First gradient timing cannot fit a complete epoch and full evaluation within 2h')
+            complete_epochs = epoch
+            stage = 'selection_of_completed_epoch'
+            score = evaluate(p['selection_cases'], p['evaluation_seed_indices'], 'selection', epoch)
+            selection_history.append({'epoch': epoch, **score})
+            save(args.out / 'selection_history.json', {'history': selection_history})
+            if score['mean_motor_rmse_first10'] < best_score:
+                best_score, best_epoch, best = score['mean_motor_rmse_first10'], epoch, banks.snapshot()
+                torch.save(best, args.out / 'best_trainable_master.pt')
+            stage = 'true_final_action_distillation'
+
+        stage = 'freeze_before_test'
+        banks.restore(best)
+        frozen = True
+        save(args.out / 'frozen_checkpoint.json', {'selected_epoch': best_epoch, 'completed_epochs': complete_epochs,
+             'updates': completed_updates, 'selection_score': best_score, 'test_queries_before_freeze': 0})
+        torch.save({'source_root': str(source_root), 'source_arm': p['initial_arm'],
+                    'module_names': list(banks.modules), 'master_state': best,
+                    'fixed_indices_and_transforms': 'reuse corresponding source bank files'},
+                   args.out / 'selected_codebook_overlay.pt')
+        changed_books, changed_scales = 0, 0
+        for name in banks.modules:
+            e = banks.stored_encoding(name)
+            changed_books += int(torch.count_nonzero(e['books'] != banks.encodings[name]['books']))
+            changed_scales += int(torch.count_nonzero(e['row_scales'] != banks.encodings[name]['row_scales']))
+        stage = 'final_calibration_validation'
+        calibration = evaluate(p['calibration_cases'], [0], 'calibration', best_epoch)
+        stage = 'paired_test_after_freeze'
+        test = evaluate(p['test_cases'], p['evaluation_seed_indices'], 'test', best_epoch)
+        initial_test = aggregate([cached[case, seed] for case in p['test_cases'] for seed in p['evaluation_seed_indices']])
+        summary = {'status': 'complete', 'protocol': p['protocol'], 'job_id': os.environ['PBS_JOBID'],
+                   'target_linears': 614, 'completed_epochs': complete_epochs, 'updates': completed_updates,
+                   'selected_epoch': best_epoch, 'selection_history': selection_history, 'calibration': calibration,
+                   'test': test, 'cached_initial_test': initial_test,
+                   'relative_test_motor_rmse_change': test['mean_motor_rmse_first10'] / initial_test['mean_motor_rmse_first10'] - 1,
+                   'changed_stored_book_scalars': changed_books, 'changed_stored_row_scales': changed_scales,
+                   'evaluation_contexts': len(evaluations), 'test_queries_before_freeze': 0,
+                   'teacher_inference_queries': 0, 'teacher_source': p['teacher'],
+                   'training_seconds_per_update': gradient_seconds, 'forward_seconds': forward_seconds,
+                   'wall_seconds': time.monotonic() - started, 'episodes': 0, 'native_low_bit_kernel': False,
+                   'test_independence_boundary': p['reuse_boundary'],
+                   'peak_cuda_allocated_bytes': int(torch.cuda.max_memory_allocated())}
+        save(args.out / 'summary.json', summary)
+        print('FINAL_ACTION_DISTILL_COMPLETE ' + json.dumps(summary), flush=True)
+    except Exception as exc:
+        if banks is not None:
+            torch.save(banks.snapshot(), args.out / 'failure_trainable_master.pt')
+        save(args.out / 'failure.json', {'status': 'failed', 'stage': stage, 'message': str(exc),
+             'updates': completed_updates, 'epochs': complete_epochs, 'traceback': traceback.format_exc()})
+        raise
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--protocol', type=Path, required=True)
+    parser.add_argument('--out', type=Path, required=True)
+    run(parser.parse_args())

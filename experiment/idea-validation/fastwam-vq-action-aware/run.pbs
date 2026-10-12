@@ -44,6 +44,63 @@ d = json.load(open(sys.argv[1], encoding="utf-8"))
 assert d.get("status") == "complete"
 PY
 fi
+
+FAILED_PREFLIGHT_JOB=${FW_FAILED_PREFLIGHT_JOB:-}
+if [[ -n "$FAILED_PREFLIGHT_JOB" ]]; then
+  [[ "$PHASE" == preflight ]] || { echo "Failed-preflight archive is valid only for preflight" >&2; exit 64; }
+  [[ "$FAILED_PREFLIGHT_JOB" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || {
+    echo "Invalid failed preflight job handle" >&2; exit 64;
+  }
+  [[ "$FAILED_PREFLIGHT_JOB" != "$PBS_JOBID" ]] || { echo "Cannot archive this running job" >&2; exit 64; }
+
+  FAILED_ARTIFACTS="$ROOT/artifacts/$FAILED_PREFLIGHT_JOB"
+  FAILED_RESULT="$ROOT/results/preflight"
+  FAILED_ARCHIVE="$ROOT/results/preflight.failed-$FAILED_PREFLIGHT_JOB"
+  test -f "$FAILED_ARTIFACTS/exit_code.txt" || { echo "Failed job exit receipt is missing" >&2; exit 73; }
+  FAILED_EXIT_CODE=$(cat "$FAILED_ARTIFACTS/exit_code.txt")
+  [[ "$FAILED_EXIT_CODE" =~ ^[0-9]+$ && ! "$FAILED_EXIT_CODE" =~ ^0+$ ]] || {
+    echo "Old job artifact does not record a nonzero exit code" >&2; exit 73;
+  }
+  test ! -e "$FAILED_ARTIFACTS/PIPELINE_COMPLETE" || { echo "Old job has a success marker" >&2; exit 73; }
+  [[ -d "$FAILED_RESULT" && ! -L "$FAILED_RESULT" ]] || { echo "Failed preflight result directory is missing or unsafe" >&2; exit 73; }
+  test -f "$FAILED_RESULT/failure.json" || { echo "Old preflight failure.json is missing" >&2; exit 73; }
+  if [[ -e "$FAILED_RESULT/summary.json" ]]; then
+    SUMMARY_BYTES=$(wc -c < "$FAILED_RESULT/summary.json")
+    [[ "$SUMMARY_BYTES" =~ ^[0-9]+$ && "$SUMMARY_BYTES" -le 262144 ]] || {
+      echo "Refusing oversized preflight summary" >&2; exit 73;
+    }
+    python3 - "$FAILED_RESULT/summary.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    summary = json.load(stream)
+if not isinstance(summary, dict) or summary.get("status") == "complete":
+    raise SystemExit("Refusing to archive a complete preflight summary")
+PY
+  fi
+  [[ ! -e "$FAILED_ARCHIVE" && ! -L "$FAILED_ARCHIVE" ]] || {
+    echo "Refusing existing failed-preflight archive: $FAILED_ARCHIVE" >&2; exit 73;
+  }
+  echo "ARCHIVING_FAILED_PREFLIGHT job=$FAILED_PREFLIGHT_JOB source=$FAILED_RESULT archive=$FAILED_ARCHIVE"
+  mv -nT -- "$FAILED_RESULT" "$FAILED_ARCHIVE"
+  test ! -e "$FAILED_RESULT" && test -d "$FAILED_ARCHIVE" || {
+    echo "Failed-preflight archive rename did not complete safely" >&2; exit 73;
+  }
+  python3 - "$ARTIFACTS/preflight_failure_archive.json" "$PBS_JOBID" "$FAILED_PREFLIGHT_JOB" "$FAILED_RESULT" "$FAILED_ARCHIVE" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+receipt = {
+    "archiving_job_id": sys.argv[2],
+    "failed_job_id": sys.argv[3],
+    "source": sys.argv[4],
+    "archive": sys.argv[5],
+    "archived_utc": datetime.now(timezone.utc).isoformat(),
+}
+with open(sys.argv[1], "w", encoding="utf-8") as stream:
+    json.dump(receipt, stream, indent=2)
+    stream.write("\n")
+PY
+  echo "ARCHIVED_FAILED_PREFLIGHT job=$FAILED_PREFLIGHT_JOB source=$FAILED_RESULT archive=$FAILED_ARCHIVE"
+fi
 test ! -e "$ROOT/results/$PHASE" || { echo "Refusing existing result path: $ROOT/results/$PHASE" >&2; exit 73; }
 
 PROTOCOL_SOURCE="$ROOT/protocol.json"

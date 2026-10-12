@@ -1,0 +1,89 @@
+#!/bin/bash
+#PBS -N fwspin1011a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-spinquant-rmse-20261011
+export SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+SOURCE_FULL_JOB=25743693.pbs101
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/full"
+LOCK="$ROOT/results/full.writer-lock"
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+GPU_MONITOR_PID=
+LOCK_HELD=0
+finish() {
+  rc=$?
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if [[ "$LOCK_HELD" == 1 ]]; then
+    rmdir -- "$LOCK" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+if ! mkdir "$LOCK"; then
+  echo "Another SpinQuant RMSE writer holds $LOCK"
+  exit 73
+fi
+LOCK_HELD=1
+test -f "$SOURCE_CAMPAIGN/artifacts/$SOURCE_FULL_JOB/PIPELINE_COMPLETE"
+test "$(cat "$SOURCE_CAMPAIGN/artifacts/$SOURCE_FULL_JOB/exit_code.txt")" = 0
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json control.py environment.sh gpu.pbs run_rmse.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+SPIN_ROOT=/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008
+copy_small "$SPIN_ROOT/artifacts/25728285.pbs101/rotation.py" "$ARTIFACTS/rotation.py"
+copy_small "$SPIN_ROOT/artifacts/25728285.pbs101/quantization.py" "$ARTIFACTS/quantization.py"
+copy_small /scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005/runner.py "$ARTIFACTS/runner.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python --version
+run_python "$ARTIFACTS/run_rmse.py" --protocol "$ARTIFACTS/protocol.json" --out "$OUT"
+test -s "$ARTIFACTS/summary.json"
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["status"])' "$ARTIFACTS/summary.json")
+case "$status" in
+  checkpointed)
+    echo "RUN_SUMMARY_CHECKPOINTED job_id=$PBS_JOBID"
+    touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+    ;;
+  complete)
+    echo "RUN_SUMMARY_COMPLETE job_id=$PBS_JOBID"
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+    ;;
+  *)
+    echo "Unexpected runner summary status: $status"
+    exit 65
+    ;;
+esac

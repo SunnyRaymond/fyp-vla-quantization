@@ -1,0 +1,67 @@
+#!/bin/bash
+#PBS -N fwpr1012ga
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-prism-visualization-20261012
+export ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/full"
+LOCK="$ROOT/results/capture.writer-lock"
+mkdir -p "$ARTIFACTS" "$ROOT/results"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+LOCK_HELD=0
+finish() {
+  rc=$?
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  if [[ "$LOCK_HELD" == 1 ]]; then rmdir -- "$LOCK" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+mkdir "$LOCK" || exit 73
+LOCK_HELD=1
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+copy_small() {
+  test -f "$1"
+  local bytes=$(wc -c < "$1")
+  [[ "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json collect.py test_collect.py environment.sh gpu.pbs; do copy_small "$ROOT/$name" "$ARTIFACTS/$name"; done
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+copy_small "$SOURCE_CAMPAIGN/run_experiment.py" "$ARTIFACTS/run_experiment.py"
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+copy_small /scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011/micro_codebook.py "$ARTIFACTS/micro_codebook.py"
+copy_small /scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/rotation.py "$ARTIFACTS/rotation.py"
+copy_small /scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009/scalar_native.py "$ARTIFACTS/scalar_native.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python "$ARTIFACTS/test_collect.py"
+run_python "$ARTIFACTS/collect.py" --protocol "$ARTIFACTS/protocol.json" --out "$OUT"
+test -s "$OUT/summary.json"
+cp -- "$OUT/summary.json" "$ARTIFACTS/summary.json"
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$OUT/summary.json")
+case "$status" in
+  complete) touch "$ARTIFACTS/PIPELINE_COMPLETE";;
+  checkpointed) touch "$ARTIFACTS/PIPELINE_CHECKPOINTED";;
+  *) exit 65;;
+esac

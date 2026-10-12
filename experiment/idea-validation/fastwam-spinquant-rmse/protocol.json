@@ -1,0 +1,89 @@
+{
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "model": "released Fast-WAM Optional-IDM clean checkpoint; idm mode",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "selection_cases": [
+    1000,
+    1001,
+    1002,
+    1003
+  ],
+  "test_cases": [
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
+    1023,
+    1024,
+    1025
+  ],
+  "protocol": "fastwam-spinquant-rmse-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-spinquant-rmse-20261011",
+  "spinquant_root": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008",
+  "spinquant_bank": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/banks/spinquant_adapted_w4a4",
+  "spinquant_reference_job": "25728285.pbs101",
+  "rotation_training_job": "25726472.pbs101",
+  "rotation_selected_step": 200,
+  "arms": [
+    "spinquant_native_w4a4"
+  ],
+  "reference_arms": [
+    "bf16",
+    "bf16w_a4",
+    "scalar_w4a4",
+    "original_vq_a4",
+    "row_scale_vq_a4",
+    "row_output_vq_a4",
+    "row_action_vq_a4"
+  ],
+  "seed_indices": [
+    0,
+    1
+  ],
+  "new_queries": 52,
+  "walltime": "02:00:00",
+  "soft_deadline_seconds": 6900,
+  "primary_metric": "case mean of two paired seeds: first10 x 6 normalized motor RMSE versus cached same-input BF16",
+  "secondary_metrics": [
+    "first10 gripper RMSE",
+    "32-step motor RMSE",
+    "original/Plus subgroups"
+  ],
+  "quantization": {
+    "weight_bits": 4,
+    "activation_bits": 4,
+    "weight_group": 128,
+    "kv_cache": "bf16",
+    "target_linears": 614,
+    "execution": "original native S4 Tensor Core implementation; group-scaled FP32 accumulation; BF16 output"
+  },
+  "reuse": {
+    "observations": "exact source plan and saved npz; no new environment rollout",
+    "BF16": "source results/full/actions.jsonl; one replay parity query",
+    "spinquant": "exact frozen 200-step learned packed bank; no train/calibration/refit",
+    "checkpoint": "one atomic JSON per arm/case/seed; skip completed queries"
+  },
+  "claim_scope": "Existing frozen observation cohort, previously seen results; descriptive paired method comparison. Different training datasets/rotation transforms. Zero episodes; no closed-loop/native speed claim.",
+  "scope_instruction": "Native INT4 baseline only; no decoded-BF16/native INT4 comparison"
+}

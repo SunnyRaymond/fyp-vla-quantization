@@ -93,7 +93,34 @@ def verified_success(transport, phase: str) -> dict:
     handle_path = HERE / f"{phase}_handle.json"
     receipt = json.loads(handle_path.read_text(encoding="utf-8"))
     observed = scheduler(transport, receipt["job_id"])
-    if observed["query_rc"] or observed["job_state"] not in ("F", "X") or observed["Exit_status"] != "0":
+    source = "live_pbs"
+    terminal = observed
+    live_history_expired = observed.get("query_rc") == 153 and not observed.get("job_state")
+    if live_history_expired:
+        evidence_path = HERE / f"{phase}_terminal_evidence.json"
+        if not evidence_path.is_file():
+            raise RuntimeError(f"PBS history expired and saved {phase} terminal evidence is missing")
+        if evidence_path.stat().st_size > remote.LIMIT:
+            raise RuntimeError(f"Saved {phase} terminal evidence exceeds the small-file limit")
+        saved_raw = evidence_path.read_bytes()
+        if len(saved_raw) > remote.LIMIT:
+            raise RuntimeError(f"Saved {phase} terminal evidence grew beyond the small-file limit")
+        saved = json.loads(saved_raw.decode("utf-8"))
+        if not isinstance(saved, dict):
+            raise RuntimeError(f"Saved {phase} terminal evidence is malformed: {type(saved).__name__}")
+        proof = saved.get("terminal_evidence", saved)
+        if not isinstance(proof, dict):
+            raise RuntimeError(f"Saved {phase} terminal evidence is malformed: {saved}")
+        saved_exit = proof.get("Exit_status")
+        valid_exit = not isinstance(saved_exit, bool) and str(saved_exit).strip() == "0"
+        if (proof.get("job_id") != receipt["job_id"]
+                or type(proof.get("query_rc")) is not int or proof["query_rc"] != 0
+                or proof.get("job_state") not in ("F", "X") or not valid_exit):
+            raise RuntimeError(f"Saved {phase} terminal evidence does not verify the current handle: {saved}")
+        terminal = {key: proof[key] for key in ("job_id", "query_rc", "job_state", "Exit_status")}
+        source = "saved_verified_receipt_after_pbs_history_expired"
+    elif (observed.get("query_rc") != 0 or observed.get("job_state") not in ("F", "X")
+          or observed.get("Exit_status") != "0"):
         raise RuntimeError(f"{phase} is not a verified successful terminal job: {observed}")
 
     root = root_path()
@@ -121,10 +148,51 @@ def verified_success(transport, phase: str) -> dict:
         summary = read_small_json(transport, f"{root}/results/analysis/summary.json")
         if summary.get("status") != "complete":
             raise RuntimeError(f"Analysis summary does not report complete: {summary}")
-    return {**observed, "summary": summary}
+    return {
+        **observed,
+        "terminal_evidence_source": source,
+        "terminal_evidence": terminal,
+        "live_scheduler_snapshot": observed,
+        "summary": summary,
+    }
 
 
-def submit(transport, phase: str, attempt: str, queue: str, project: str) -> None:
+def validate_failed_preflight_retry(transport, job: str) -> dict:
+    if not HANDLE.fullmatch(job):
+        raise ValueError("Invalid failed preflight PBS job handle")
+    handle_path = HERE / "preflight_handle.json"
+    if not handle_path.is_file():
+        raise RuntimeError("Cannot retry without the current preflight handle")
+    current = json.loads(handle_path.read_text(encoding="utf-8"))
+    if current.get("job_id") != job:
+        raise RuntimeError("Retry job must equal the current preflight handle")
+
+    observed = scheduler(transport, job)
+    try:
+        exit_status = int(observed["Exit_status"])
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"PBS has no authoritative numeric exit status for {job}: {observed}") from exc
+    if observed["query_rc"] or observed["job_state"] not in ("F", "X") or exit_status == 0:
+        raise RuntimeError(f"Retry requires a terminal failed PBS job: {observed}")
+
+    root = root_path()
+    artifact = f"{root}/artifacts/{job}"
+    failed_result = f"{root}/results/preflight"
+    command = (
+        f"test ! -e {shlex.quote(artifact + '/PIPELINE_COMPLETE')} && "
+        f"test -f {shlex.quote(failed_result + '/failure.json')}"
+    )
+    code, _ = remote.command(transport, command, timeout=25)
+    if code:
+        raise RuntimeError("Failed preflight must have no success marker and must contain failure.json")
+    return observed
+
+
+def submit(transport, phase: str, attempt: str, queue: str, project: str,
+           retry_failed_job: str | None = None) -> None:
+    if retry_failed_job is not None:
+        if phase != "preflight" or not HANDLE.fullmatch(retry_failed_job):
+            raise ValueError("Failed-job retry is restricted to preflight and a valid PBS handle")
     prerequisites = {"preflight": "prepare", "full": "preflight", "analysis": "full"}
     if phase in prerequisites:
         verified_success(transport, prerequisites[phase])
@@ -133,6 +201,8 @@ def submit(transport, phase: str, attempt: str, queue: str, project: str) -> Non
     name = f"fwva1009{tag}{attempt}"
     intent_path = HERE / f"{phase}_intent_{attempt}.json"
     receipt = json.loads(intent_path.read_text(encoding="utf-8")) if intent_path.exists() else {}
+    if retry_failed_job and receipt and receipt.get("retry_failed_job") != retry_failed_job:
+        raise RuntimeError("This attempt already has a different durable intent; choose an unused --attempt")
     if receipt.get("job_id"):
         save(HERE / f"{phase}_handle.json", receipt)
         print("CONFIRMED_HANDLE", receipt["job_id"])
@@ -151,6 +221,8 @@ def submit(transport, phase: str, attempt: str, queue: str, project: str) -> Non
     else:
         if receipt:
             raise RuntimeError("Unconfirmed durable intent exists; recover it before another attempt")
+        if retry_failed_job:
+            validate_failed_preflight_retry(transport, retry_failed_job)
         receipt = {
             "phase": phase, "attempt": attempt, "job_name": name,
             "created_utc": datetime.now(timezone.utc).isoformat(), "status": "intent_before_qsub",
@@ -158,11 +230,14 @@ def submit(transport, phase: str, attempt: str, queue: str, project: str) -> Non
         resources = {
             "prepare": ("select=1:ncpus=4:mem=16gb", "01:00:00", "prepare.pbs"),
             "preflight": ("select=1:ncpus=16:mem=110gb:ngpus=1", "02:00:00", "run.pbs"),
-            "full": ("select=1:ncpus=16:mem=110gb:ngpus=1", "08:00:00", "run.pbs"),
+            "full": ("select=1:ncpus=16:mem=110gb:ngpus=1", "24:00:00", "run.pbs"),
             "analysis": ("select=1:ncpus=4:mem=16gb", "00:15:00", "analysis.pbs"),
         }
         select, walltime, script = resources[phase]
         variables = f"FW_PHASE={phase}"
+        if retry_failed_job:
+            variables += f",FW_FAILED_PREFLIGHT_JOB={retry_failed_job}"
+            receipt["retry_failed_job"] = retry_failed_job
         if phase == "analysis":
             variables += f",FW_FULL_JOB={json.loads((HERE / 'full_handle.json').read_text(encoding='utf-8'))['job_id']}"
         receipt.update(queue=queue, project=project, script=script, select=select,
@@ -194,6 +269,7 @@ def main() -> int:
     parser.add_argument("--phase", choices=("prepare", "preflight", "full", "analysis"))
     parser.add_argument("--attempt", default="a")
     parser.add_argument("--job")
+    parser.add_argument("--retry-failed-job")
     parser.add_argument("--files", nargs="+")
     parser.add_argument("--queue", default=os.environ.get("FW_QUEUE", "normal"))
     parser.add_argument("--project", default=os.environ.get("FW_PROJECT", "personal-yguo017"))
@@ -203,6 +279,11 @@ def main() -> int:
         parser.error("Use a short lowercase attempt")
     if args.action in ("submit", "verify") and not args.phase:
         parser.error("--phase required")
+    if args.retry_failed_job is not None:
+        if args.action != "submit" or args.phase != "preflight":
+            parser.error("--retry-failed-job is supported only for submit --phase preflight")
+        if not HANDLE.fullmatch(args.retry_failed_job):
+            parser.error("--retry-failed-job must be a valid PBS job handle")
     if args.action == "submit" and (not SAFE_TOKEN.fullmatch(args.queue) or not SAFE_TOKEN.fullmatch(args.project)):
         parser.error("Queue and project must be simple PBS names")
     if args.action == "pull" and not args.files:
@@ -254,7 +335,8 @@ def main() -> int:
                         stream.write(data)
                     print("UPLOADED", name, len(data))
         elif args.action == "submit":
-            submit(transport, args.phase, args.attempt, args.queue, args.project)
+            submit(transport, args.phase, args.attempt, args.queue, args.project,
+                   retry_failed_job=args.retry_failed_job)
         elif args.action == "verify":
             evidence = verified_success(transport, args.phase)
             save(HERE / f"{args.phase}_terminal_evidence.json", evidence)

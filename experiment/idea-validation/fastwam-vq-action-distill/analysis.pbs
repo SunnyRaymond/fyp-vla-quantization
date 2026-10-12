@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -N fwvkdan1012
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/analysis-$PBS_JOBID"
+OUT="$ROOT/results/analysis-$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=1
+source "$ROOT/environment.sh"
+test -f "$ROOT/artifacts/25764781.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$ROOT/artifacts/25764781.pbs101/exit_code.txt")" = 0
+cp "$ROOT/analyze_results.py" "$ARTIFACTS/analyze_results.py"
+run_python "$ARTIFACTS/analyze_results.py" --protocol "$ROOT/protocol.json" --job 25764781.pbs101 --out "$OUT"
+test -f "$OUT/ANALYSIS_COMPLETE"
+cp "$OUT/summary.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

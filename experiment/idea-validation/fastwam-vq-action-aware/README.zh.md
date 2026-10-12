@@ -16,15 +16,22 @@
 
 1. **prepare（CPU，4 CPUs、16 GB、1 小时）**：根据官方 task/variant metadata 和 loader，在 allocation 内生成 26 份固定观察、numeric NPZ、metadata、`plan.json` 与 `prepare_summary.json`。包含 30 步 dummy-action settling，不运行预测策略。完成证据要求 summary 明确报告 26 cases、4 selection、22 test 且旧 Plus variant 排除通过。
 2. **preflight（GPU，1 GPU、16 CPUs、110 GB、2 小时）**：小规模数值/编码与运行时检查，不据此选择方法。
-3. **full（GPU，1 GPU、16 CPUs、110 GB、8 小时）**：按冻结协议执行完整拟合与固定输入评估。只有 runner 的 `summary.json` 报告 `status=complete`，且 PBS 作业成功、退出码为 0、存在完成标记时，才视为完整阶段完成。
+3. **full（GPU，1 GPU、16 CPUs、110 GB、24 小时上限）**：按冻结协议执行完整拟合与固定输入评估。只有 runner 的 `summary.json` 报告 `status=complete`，且 PBS 作业成功、退出码为 0、存在完成标记时，才视为完整阶段完成。
 4. **analysis（CPU，4 CPUs、16 GB、15 分钟）**：仅在 full 的完成证据通过后汇总结果。
 
 ## 控制与结果状态
 
 `control.py` 的 upload/submit/status/verify/pull 操作仅面向小型控制或 summary 文件，单文件上限 256 KiB，并保留 SSH host-key verification。每次 submit 会先保存 durable intent；若 qsub 返回未知结果，应先用 PBS 历史恢复原 job handle，不能盲目重提。不要取消、重启或覆盖已有结果目录；PBS scheduler 显示完成本身也不等于数值实验完成。
 
-第一次输入准备作业（PBS `F`，exit 1，walltime 5 分 29 秒）因 Plus layout `task_id=1764` 只有 1 个官方初始状态却请求 state 1，未能完成 plan。此次修正只加入上述精确回退；固定 case、variant IDs 与随机种子不变。随后 attempt b 在脚本启动前因 CRLF shebang 失败（25734784.pbs101，exit 126）；已修正为 LF。attempt c 为 25734790.pbs101，已确认 F / exit 0，walltime 4分54秒，26个 inputs 全部完成；两条 layout singleton-state fallback 已记录。GPU preflight 为 25734831.pbs101，已确认提交；其启动及数值结果、full 和 analysis 仍待验证。提交记录、job log 与 summary 应分别核对后再报告实验结论。
+第一次输入准备作业（PBS `F`，exit 1，walltime 5 分 29 秒）因 Plus layout `task_id=1764` 只有 1 个官方初始状态却请求 state 1，未能完成 plan。此次修正只加入上述精确回退；固定 case、variant IDs 与随机种子不变。随后 attempt b 在脚本启动前因 CRLF shebang 失败（25734784.pbs101，exit 126）；已修正为 LF。attempt c 为 25734790.pbs101，已确认 F / exit 0，walltime 4分54秒，26个 inputs 全部完成；两条 layout singleton-state fallback 已记录。GPU preflight 初次 25734831.pbs101 因测试 fixture 提供了意外零 codeword 而失败；25739830.pbs101 已完成 BF16 前向，但记录用采样进入 checkpoint 梯度图导致 backward 不一致。修正采样 detach 顺序后，25740090.pbs101 已确认 F / exit 0，walltime 21分49秒，完成13条诊断 query；614个目标 Linear 全部捕获，2次 backward 通过，可微 action 与 BF16 parity 的 max-abs/RMSE 均为0，三个指定敏感模块均有非零 adjoint。仅3个模块进行了数值拟合，因此这些结果用于通过 preflight gate，不是完整方法效果或全模型存储结果。Full 会独立重新拟合614层、选择 lambda 并进行完整 test；preflight 的 lambda 不沿用。提交记录、job log 与 summary 应分别核对后再报告实验结论。
 
 ## 拟合目标的静态核对
 
 联合目标已完成针对性的源码核对：sampled rows 的 N/n 权重、context/probe 归一化、stored row scale 的 metric 换算，以及跨调用/跨模块 offset 的 coordinate update 与协议一致；此项不能替代数值验证。Preflight 的 projection 仅汇总三个实际拟合模块，其余 611 个 A4 路径模块不纳入该诊断，所以不能据此声称完整模型的 action-error projection 已验证。Full phase 会拟合并汇总全部 614 个目标模块。
+
+
+完整实验 **25743693.pbs101** 已成功完成（F / exit 0，9小时6分54秒），614 个目标 Linear 全部拟合，412 次查询完整。CPU 汇总 **25748947.pbs101** 成功完成，复算并核验 22 个 test cases、44 个配对 contexts、7 个版本。独立分析仅在 PBS CPU allocation 上运行；本机读取小型结果和撰写解释。
+
+结果与机制解读见 [RESULTS.zh.md](RESULTS.zh.md)。Row-scale 配置相对原始 VQ 的 test motor RMSE 下降约20%，但仍未超过 Scalar。局部输出拟合和当前 action-sensitive 拟合未进一步改善 test 主指标。Action-sensitive 的训练 projection loss 几乎归零，真实 calibration action 误差却仍然很大；下一步应优先核验 proxy，而不是加大 lambda 或 Smooth 强度。
+
+完整数值和拟合诊断在 `retrieved/results/analysis/`；原始训练、bank、action tensors 和 job snapshots 保留在集群目录。未执行闭环 episodes，没有 native VQ kernel 或其他 baseline 的数值验证。此前 full 监控 automation 已不存在；当前没有待排队或运行的本轮 analysis 作业。

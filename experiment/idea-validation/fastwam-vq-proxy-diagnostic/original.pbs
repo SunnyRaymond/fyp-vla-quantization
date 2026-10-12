@@ -1,0 +1,99 @@
+#!/bin/bash
+#PBS -N fwvp1010o
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-proxy-diagnostic-20261010
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+PHASE=original
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+
+copy_small() {
+  local src=$1 dst=$2 bytes
+  test -f "$src"
+  bytes=$(wc -c < "$src")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || {
+    echo "Refusing missing or oversized source file: $src" >&2; exit 73;
+  }
+  cp -- "$src" "$dst"
+}
+source_gate() {
+  local job summary bytes
+  job=$(python3 - "$ROOT/protocol.json" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1], encoding="utf-8"))
+if p.get("source_root") != "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009":
+    raise SystemExit("Unexpected source campaign")
+if p.get("source_full_job") != "25743693.pbs101": raise SystemExit("Unexpected source full job")
+print(p["source_full_job"])
+PY
+  )
+  [[ "$job" == 25743693.pbs101 ]]
+  test -f "$SOURCE_CAMPAIGN/artifacts/$job/PIPELINE_COMPLETE"
+  test "$(cat "$SOURCE_CAMPAIGN/artifacts/$job/exit_code.txt")" = 0
+  summary="$SOURCE_CAMPAIGN/results/full/summary.json"
+  test -f "$summary"
+  bytes=$(wc -c < "$summary")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]]
+  python3 - "$summary" "$job" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+if (not isinstance(d, dict) or d.get("status") != "complete"
+        or d.get("pbs_jobid") != sys.argv[2]):
+    raise SystemExit("Verified source full summary is incomplete or belongs to another job")
+PY
+  echo "SOURCE_FULL_VERIFIED job=$job"
+}
+test ! -e "$ROOT/results/$PHASE" || { echo "Refusing existing result path" >&2; exit 73; }
+source_gate
+copy_small "$ROOT/protocol.json" "$ARTIFACTS/protocol.json"
+for name in test_original_projection.py original_projection.py sensitivity.py environment.sh original.pbs gpu.pbs control.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+copy_small "$SOURCE_CAMPAIGN/run_experiment.py" "$ARTIFACTS/run_experiment.py"
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=4
+source "$ARTIFACTS/environment.sh"
+test "$(python3 - "$ROOT/protocol.json" <<'PY'
+import json, sys
+print(len(json.load(open(sys.argv[1], encoding="utf-8"))["calibration_cases"]))
+PY
+)" = 8
+run_python "$ARTIFACTS/test_original_projection.py"
+run_python "$ARTIFACTS/original_projection.py" --protocol "$ARTIFACTS/protocol.json" --out "$ROOT/results/original"
+SUMMARY="$ROOT/results/original/summary.json"
+test -s "$SUMMARY"
+bytes=$(wc -c < "$SUMMARY")
+[[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]]
+python3 - "$SUMMARY" "$PHASE" "$PBS_JOBID" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+p, phase, job = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+d = json.loads(p.read_text(encoding="utf-8"))
+if not isinstance(d, dict) or d.get("status") != "complete": raise SystemExit("Original summary is incomplete")
+if d.get("phase", phase) != phase or d.get("job_id", job) != job: raise SystemExit("Original summary identity mismatch")
+d["phase"], d["job_id"] = phase, job
+with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=p.parent, delete=False) as f:
+    json.dump(d, f, indent=2, allow_nan=False); f.write("\n"); f.flush(); os.fsync(f.fileno()); tmp = f.name
+os.replace(tmp, p)
+PY
+copy_small "$SUMMARY" "$ARTIFACTS/summary.json"
+echo "RUN_SUMMARY_COMPLETE phase=$PHASE job_id=$PBS_JOBID"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

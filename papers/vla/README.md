@@ -12,6 +12,8 @@
 
 详细阅读入口：[101. VQVLA](101-vqvla/README.md)（weight Vector Quantization 与 Centroid Reuse；固定 v1 PDF、中文公式例子与分时阅读路线）。
 
+详细阅读入口：[097. ActQuant](097-actquant/README.md)（action-guided sub-4-bit weight-only PTQ；固定 v3 PDF、HSIC / Action-Mixed Fisher 的中文例子与公式、20/90/180 分钟物理页路线、空白 Meeting Card 和 Reading Questions）。
+
 2026-10-08 分类调整：以 LLM 量化为主要研究对象的阅读包已迁至 [LLM papers](../llm/README.md)，保留原编号。其中 [022. SpinQuant](../llm/022-spinquant/README.md) 与 [108. KIVI](../llm/108-kivi/README.md) 含固定版本 PDF、详细中文教学 README、物理页阅读路线、未作答的 Reading Questions 与空白 Meeting Card。
 
 论文库中重复的 OpenVLA、BitVLA、HBVLA、OPTQ/GPTQ、QuaRot、FAST 和 TD-MPC2 已合并到一个 canonical copy；相近但不是同一篇的 paper（例如 FlashVLA 与 Think Twice, Act Once）仍分别保留。

@@ -1,0 +1,286 @@
+#!/bin/bash
+#PBS -N fwvqplus1012
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=4
+#PBS -l walltime=24:00:00
+#PBS -o /scratch/users/ntu/yguo017/fastwam-vq-plus-20261012/artifacts/pbs.out
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-plus-20261012
+DIAG_ROOT=$NEW_ROOT
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ROTATION_ROOT=/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008
+ROTATION_ARTIFACTS=$ROTATION_ROOT/artifacts/25728285.pbs101
+SCALAR_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009
+SCALAR_ARTIFACTS=$SCALAR_ROOT/artifacts/25734678.pbs101
+ROW_SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ROW_BANK=$ROW_SOURCE_ROOT/results/full/banks/row_scale_vq_a4
+ROW_SOURCE_ARTIFACTS=$ROW_SOURCE_ROOT/artifacts/25743693.pbs101
+MICRO_SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011
+MICRO_BANK=$MICRO_SOURCE_ROOT/results/full/banks/micro_scale_vq_a4
+MICRO_SOURCE_ARTIFACTS=$MICRO_SOURCE_ROOT/artifacts/25755896.pbs101
+RESULTS=$NEW_ROOT/results
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+GPU_MONITOR_PID=
+WORKER_PIDS=()
+PIPELINE_READY=0
+PIPELINE_CHECKPOINTED=0
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKER_PIDS[@]:-}"; do kill -TERM "$pid" 2>/dev/null || true; done
+    for pid in "${WORKER_PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if (( rc == 0 && PIPELINE_READY == 1 )); then
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+    rm -f "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+  elif (( rc == 0 && PIPELINE_CHECKPOINTED == 1 )); then
+    touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+    rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+  else
+    rm -f "$ARTIFACTS/PIPELINE_COMPLETE" "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+    (( rc != 0 )) || rc=65
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+test -s "$ROOT/env_status.json" -a -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
+test -s "$NEW_ROOT/run.pbs" -a -s "$NEW_ROOT/protocol.json" -a -s "$NEW_ROOT/evaluate.py" -a -s "$NEW_ROOT/aggregate.py" -a -s "$NEW_ROOT/vq_adapter.py"
+test -s "$ROTATION_ARTIFACTS/runner.py" -a -s "$ROTATION_ARTIFACTS/quantization.py" -a -s "$ROTATION_ARTIFACTS/libero_state_loader.py" -a -s "$ROTATION_ARTIFACTS/environment.sh"
+test -s "$SCALAR_ARTIFACTS/aggregate.py" -a -s "$SMOOTH_ROOT/smooth_vq.py"
+test -s "$ROW_SOURCE_ARTIFACTS/codebook.py" -a -s "$MICRO_SOURCE_ARTIFACTS/micro_codebook.py"
+test -s "$ROW_SOURCE_ROOT/plan.json"
+test -s "$ROW_SOURCE_ROOT/inputs/case_1000.npz"
+test -s "$MICRO_SOURCE_ROOT/results/full/query_records/selection_1000_0.json"
+test -s "$ROTATION_ROOT/results/manifest.json"
+test -s "$ROW_SOURCE_ROOT/results/full/receipts.json" -a -s "$MICRO_SOURCE_ROOT/results/full/bank_freeze.json"
+test -s "$ROW_BANK/0000.pt" -a -s "$ROW_BANK/0613.pt"
+test -s "$MICRO_BANK/0000.pt" -a -s "$MICRO_BANK/0613.pt"
+
+cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$NEW_ROOT/vq_adapter.py" "$ARTIFACTS/"
+cp "$ROTATION_ARTIFACTS/runner.py" "$ROTATION_ARTIFACTS/quantization.py" "$ROTATION_ARTIFACTS/libero_state_loader.py" "$ARTIFACTS/"
+cp "$ROTATION_ARTIFACTS/environment.sh" "$ARTIFACTS/environment.sh"
+cp "$SCALAR_ARTIFACTS/aggregate.py" "$ARTIFACTS/reference_aggregate.py"
+cp "$SMOOTH_ROOT/smooth_vq.py" "$ROW_SOURCE_ARTIFACTS/codebook.py" "$MICRO_SOURCE_ARTIFACTS/micro_codebook.py" "$ARTIFACTS/"
+cp "$ROW_SOURCE_ROOT/results/full/receipts.json" "$ARTIFACTS/row_source_receipts.json"
+cp "$MICRO_SOURCE_ROOT/results/full/bank_freeze.json" "$ARTIFACTS/micro_bank_freeze.json"
+cp -n "$ROTATION_ROOT/results/manifest.json" "$RESULTS/manifest.json"
+cmp -s "$ROTATION_ROOT/results/manifest.json" "$RESULTS/manifest.json" || {
+  echo 'Existing result manifest differs from the frozen reference manifest' >&2; exit 65;
+}
+cp -n "$ARTIFACTS/protocol.json" "$RESULTS/protocol.json"
+cmp -s "$ARTIFACTS/protocol.json" "$RESULTS/protocol.json" || {
+  echo 'Existing result protocol differs from the uploaded frozen protocol' >&2; exit 65;
+}
+
+source "$ARTIFACTS/environment.sh"
+FW_CPU_THREADS=8
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifiers' >&2; exit 65; }
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 4 || { echo "Expected four allocated GPUs, got $CUDA_VISIBLE_DEVICES" >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || { echo "Unable to resolve allocated GPU UUID: $gpu" >&2; exit 65; }
+  for prior in "${GPU_UUIDS[@]:-}"; do
+    test "$prior" != "$uuid" || { echo "Duplicate allocated GPU UUID: $uuid" >&2; exit 65; }
+  done
+  GPU_UUIDS+=("$uuid")
+done
+
+(
+  while :; do
+    stamp=$(date -Is)
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s gpu_uuid=%s ' "$stamp" "$uuid"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+printf 'phase=evaluation protocol=fastwam-vq-plus-v1 PBS_JOBID=%s GPU_UUIDS=%s\n' \
+  "$PBS_JOBID" "${GPU_UUIDS[*]}" | tee -a "$ARTIFACTS/launch.txt"
+
+for worker in 0 1 2 3; do
+  gpu_uuid=${GPU_UUIDS[$worker]}
+  rc_path="$ARTIFACTS/worker_${worker}.rc"
+  rm -f "$rc_path" "$rc_path.tmp"
+  (
+    child_pid=
+    stop_worker() {
+      if [[ -n "$child_pid" ]]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+        wait "$child_pid" 2>/dev/null || true
+      fi
+      printf '143\n' > "$rc_path.tmp"
+      mv "$rc_path.tmp" "$rc_path"
+      exit 143
+    }
+    trap stop_worker TERM INT
+    CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/evaluate.py" \
+      --protocol "$ARTIFACTS/protocol.json" --manifest "$RESULTS/manifest.json" \
+      --out "$RESULTS/worker_$worker" --worker-id "$worker" &
+    child_pid=$!
+    set +e
+    wait "$child_pid"
+    rc=$?
+    set -e
+    printf '%s\n' "$rc" > "$rc_path.tmp"
+    mv "$rc_path.tmp" "$rc_path"
+    exit "$rc"
+  ) &
+  WORKER_PIDS+=("$!")
+  echo "WORKER_STARTED worker=$worker gpu_uuid=$gpu_uuid pid=$!"
+  if (( worker < 3 )); then sleep 20; fi
+done
+
+declare -A WORKER_DONE=()
+while (( ${#WORKER_DONE[@]} < 4 )); do
+  failed_worker=
+  failed_rc=0
+  for worker in 0 1 2 3; do
+    [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+    rc_path="$ARTIFACTS/worker_${worker}.rc"
+    if [[ -s "$rc_path" ]]; then
+      rc=$(<"$rc_path")
+      WORKER_DONE[$worker]=1
+      if (( rc != 0 )); then failed_worker=$worker; failed_rc=$rc; break; fi
+    fi
+  done
+  if [[ -n "$failed_worker" ]]; then
+    echo "WORKER_FAILED worker=$failed_worker exit_code=$failed_rc; stopping remaining workers" >&2
+    for worker in 0 1 2 3; do
+      [[ -n "${WORKER_DONE[$worker]:-}" ]] && continue
+      kill -TERM "${WORKER_PIDS[$worker]}" 2>/dev/null || true
+    done
+    for pid in "${WORKER_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+    exit "$failed_rc"
+  fi
+  (( ${#WORKER_DONE[@]} == 4 )) || sleep 2
+done
+for pid in "${WORKER_PIDS[@]}"; do wait "$pid"; done
+
+run_python - "$RESULTS" "$ARTIFACTS/protocol.json" <<'PY_WORKER_GATE'
+import json, sys
+from pathlib import Path
+
+results = Path(sys.argv[1])
+protocol = json.loads(Path(sys.argv[2]).read_text())
+arms = protocol['arms']
+row_root = Path(protocol['sources']['row_scale_vq_a4']['root'])
+plan = json.loads((row_root / 'plan.json').read_text())
+parity_case = protocol['source_parity_case_id']
+parity_seed_index = protocol['source_parity_seed_index']
+parity_sampler_seed = next(row['sampler_seeds'][parity_seed_index]
+                           for row in plan['inputs'] if row['case_id'] == parity_case)
+required = ('protocol', 'worker_id', 'arm', 'expected', 'episodes', 'status', 'complete', 'soft_deadline_reached')
+checkpointed = []
+for worker_id in range(4):
+    arm = arms[worker_id // 2]
+    worker = results / f'worker_{worker_id}'
+    progress = json.loads((worker / 'progress.json').read_text())
+    summary = json.loads((worker / 'summary.json').read_text())
+    setup = json.loads((worker / 'setup_receipt.json').read_text())
+    source = protocol['sources'][arm]
+    metadata = setup['install_metadata']
+    for label, receipt in (('progress', progress), ('summary', summary)):
+        assert all(key in receipt for key in required), (worker_id, label, receipt)
+        assert receipt['protocol'] == protocol['protocol'], (worker_id, label)
+        assert receipt['worker_id'] == worker_id and receipt['arm'] == arm, (worker_id, label)
+        assert receipt['expected'] == 140 and 0 <= receipt['episodes'] <= 140, (worker_id, label)
+    assert {key: progress[key] for key in required} == {key: summary[key] for key in required}, worker_id
+    assert setup['arm'] == arm and setup['case_id'] == protocol['source_parity_case_id']
+    assert setup['seed_index'] == protocol['source_parity_seed_index']
+    assert setup['sampler_seed'] == parity_sampler_seed
+    assert setup['passed'] is True and setup['max_abs_vs_frozen_action'] <= protocol['source_parity_max_abs_tolerance']
+    assert setup['observed_modules'] == 614
+    assert progress['install_metadata'] == summary['install_metadata'] == metadata
+    assert metadata['source_bank'] == source['bank'] and metadata['source_job_id'] == source['job_id']
+    assert metadata['module_count'] == 614 and metadata['execution'] == 'decoded_bf16_vq'
+    assert metadata['activation_bits'] == 4 and metadata['kv_cache_dtype'] == 'bf16'
+    assert metadata['native_low_bit_kernel'] is False and metadata['frozen_bank_reused'] is True
+    assert metadata['scale_block'] == source['scale_block']
+    if summary['status'] == 'complete':
+        assert summary['complete'] is True and summary['episodes'] == 140
+        assert summary['soft_deadline_reached'] is False
+    elif summary['status'] == 'checkpointed':
+        assert summary['complete'] is False and summary['soft_deadline_reached'] is True
+        assert summary['episodes'] < 140
+        checkpointed.append(worker_id)
+    else:
+        raise AssertionError((worker_id, summary['status']))
+print('WORKER_RECEIPTS_OK', json.dumps({'checkpointed_workers': checkpointed}), flush=True)
+PY_WORKER_GATE
+
+run_python "$ARTIFACTS/aggregate.py" --protocol "$ARTIFACTS/protocol.json" \
+  --manifest "$RESULTS/manifest.json" --results "$RESULTS"
+cp "$RESULTS/summary.json" "$ARTIFACTS/summary.json"
+run_python - "$RESULTS/summary.json" "$ARTIFACTS/protocol.json" "$RESULTS" <<'PY_AGGREGATE_GATE'
+import json, sys
+from pathlib import Path
+
+summary = json.loads(Path(sys.argv[1]).read_text())
+protocol = json.loads(Path(sys.argv[2]).read_text())
+results = Path(sys.argv[3])
+expected_arms = protocol['arms']
+assert summary.get('reference_episode_slots') == 1120
+worker_checkpointed = []
+for worker_id in range(4):
+    progress = json.loads((results / f'worker_{worker_id}' / 'progress.json').read_text())
+    if progress['status'] == 'checkpointed':
+        worker_checkpointed.append(worker_id)
+if summary.get('complete') is True:
+    assert summary.get('status') == 'complete'
+    assert summary.get('episode_slots') == 560
+    assert summary.get('arm_episodes') == {arm: 280 for arm in expected_arms}
+    assert summary.get('new_arms') == expected_arms
+    assert not worker_checkpointed
+    print('AGGREGATE_GATE_PASSED slots=560 references=1120 arms=2', flush=True)
+else:
+    assert summary.get('complete') is False and summary.get('status') == 'checkpointed'
+    assert summary.get('checkpointed_workers') == worker_checkpointed and worker_checkpointed
+    assert summary.get('episode_slots', 0) < 560
+    assert set(summary.get('arm_episodes', {})) == set(expected_arms)
+    print('AGGREGATE_CHECKPOINT_GATE_PASSED', json.dumps({'checkpointed_workers': worker_checkpointed}), flush=True)
+PY_AGGREGATE_GATE
+
+SUMMARY_STATUS=$(run_python - "$RESULTS/summary.json" <<'PY_STATUS'
+import json, sys
+print(json.load(open(sys.argv[1]))['status'])
+PY_STATUS
+)
+if [[ "$SUMMARY_STATUS" == "complete" ]]; then
+  PIPELINE_READY=1
+  echo FASTWAM_VQ_PLUS_COMPLETE
+else
+  PIPELINE_CHECKPOINTED=1
+  echo FASTWAM_VQ_PLUS_CHECKPOINTED
+fi

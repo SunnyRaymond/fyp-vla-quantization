@@ -92,7 +92,9 @@ def test_anisotropic_metric_protects_sensitive_coordinate() -> None:
     torch, vq = _engine()
     books = torch.zeros((2, 256, 4), dtype=torch.bfloat16)
     books[0, 0] = torch.tensor([0.1, 10.0, 0.0, 0.0], dtype=torch.bfloat16)
-    books[0, 1] = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.bfloat16)
+    # Keep B as the only isotropically best codeword; other books must not
+    # offer an accidental exact zero reconstruction for the zero target.
+    books[0, 1:] = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.bfloat16)
     encoding = {
         "format": vq.FORMAT,
         "shape": (1, 4),

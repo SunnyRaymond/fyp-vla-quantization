@@ -1,0 +1,131 @@
+{
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "model": "released Fast-WAM Optional-IDM clean checkpoint; idm mode",
+  "transform": {
+    "name": "smooth05_hadamard",
+    "alpha": 0.5,
+    "hadamard_block": 128,
+    "scale_bound": 16,
+    "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+  },
+  "calibration_cases": [
+    0,
+    2,
+    4,
+    6,
+    10,
+    12,
+    14,
+    16
+  ],
+  "calibration_seed_indices": [
+    0
+  ],
+  "selection_cases": [
+    1000,
+    1001,
+    1002,
+    1003
+  ],
+  "test_cases": [
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
+    1023,
+    1024,
+    1025
+  ],
+  "evaluation_seed_indices": [
+    0,
+    1
+  ],
+  "weight_scope": "all 614 target Linears; video306/action307/root-proprio1; no highprecision restoration branch",
+  "activation": "dynamic per-row signed symmetric absmax A4 qmax7; decoded BF16",
+  "unquantized": "KV cache, bias, normalization, nonlinearities, text encoder, VAE and other non-target modules",
+  "protocol": "fastwam-vq-microscale-v1",
+  "phase": "full",
+  "date_local": "2026-10-11",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "control_arm": "row_scale_vq_a4",
+  "new_arm": "micro_scale_vq_a4",
+  "walltime": "02:00:00",
+  "soft_deadline_seconds": 6600,
+  "target_linears": 614,
+  "new_query_count": 52,
+  "moment_preparation_queries": 8,
+  "vq": {
+    "dimension": 4,
+    "codebooks": 2,
+    "entries": 256,
+    "books_dtype": "bfloat16",
+    "row_scale_dtype": "bfloat16",
+    "samples": 8192,
+    "iterations": 8,
+    "seed": 20261006,
+    "local_tuning_steps": 0,
+    "action_lambda": 0
+  },
+  "microscaling": {
+    "scale_block": 32,
+    "axis": "input dimension within each output row",
+    "row_gain": "reuse exact existing BF16 row RMS",
+    "scale_rule": "r_i * 2**round(log2(block_RMS / r_i))",
+    "rms_tail_rule": "mean over real coordinates only",
+    "ratio_floor": 1e-12,
+    "exponent_storage": "uint8 exponent+127; 255 reserved",
+    "exponent_min": -127,
+    "exponent_max": 127,
+    "scales_frozen_during_fit": true,
+    "books_shared": "two books shared within each Linear",
+    "metric": "same A4 input diagonal second moment multiplied by actual block scale squared"
+  },
+  "reuse": {
+    "source_readonly": true,
+    "teacher_actions": "source results/full/actions.jsonl",
+    "control_banks": "source results/full/banks/row_scale_vq_a4",
+    "input_plans": "source plan.json and old_inputs plan.json",
+    "moments": "recompute same BF16W+A4 calibration path once; persist sums/counts to resume",
+    "local_diagnostics": "existing frozen teacher inputs/outputs in source sensitivity captures; no sensitivity recapture"
+  },
+  "evaluation": {
+    "primary_metric": "first10 x 6 motor RMSE versus same-input same-seed BF16; average seeds within case then average cases",
+    "secondaries": [
+      "gripper_rmse_first10",
+      "motor_rmse_32"
+    ],
+    "episodes": 0,
+    "predicted_actions_executed": 0,
+    "sampler": "10 video + 10 action denoising; 32x7 action chunk",
+    "method_selection": "none; B32 and all fitting settings frozen before any new query",
+    "reuse_boundary": "existing test results already seen; paired mechanism diagnostic, not a new independent generalization test",
+    "engineering_gate": {
+      "relative_test_motor_improvement": 0.05,
+      "minimum_improved_cases": 12
+    },
+    "calibration_replay_max_abs_tolerance": 1e-06
+  },
+  "claim_scope": "Numerical B32 exponent scaling with BF16 additive books; no INT4-book, native-kernel, latency or closed-loop claim"
+}

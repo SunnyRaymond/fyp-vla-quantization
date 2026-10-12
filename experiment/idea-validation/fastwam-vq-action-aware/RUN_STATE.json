@@ -1,6 +1,6 @@
 {
   "goal": "row-scale -> A4-aware local output -> action-sensitive same-format codebook experiment",
-  "status": "paused_waiting_preflight_gpu_slot",
+  "status": "full_results_analysed_proxy_mismatch_identified",
   "prepare_job": "25734790.pbs101",
   "prior_prepare_jobs": [
     {
@@ -15,8 +15,8 @@
     }
   ],
   "runner_implemented": true,
-  "runner_numerically_verified": false,
-  "next": "wait for user to resume; then inspect the same preflight handle",
+  "runner_numerically_verified": true,
+  "next": "validate sampled action proxy with independent probes/rows and finite perturbations before further codebook fitting; other-baseline experiments remain pending",
   "full_target_linears": 614,
   "preflight_fit_linears": 3,
   "preflight_sensitivity_target_linears": 614,
@@ -112,7 +112,7 @@
       "episodes_executed": 0
     }
   },
-  "preflight_job": "25734831.pbs101",
+  "preflight_job": "25740090.pbs101",
   "static_objective_review": {
     "completed": true,
     "numerical_execution": false,
@@ -129,11 +129,436 @@
     "preflight_projection_scope": "three numerically fitted modules only; other 611 A4-path target contributions are not included in this sampled projection diagnostic",
     "full_projection_scope": "all 614 numerically fitted target modules"
   },
-  "queue_reason": "overall queue ngpus resource limit",
-  "goal_status": "paused",
-  "blocking_condition": "same PBS job remained Q with overall queue ngpus limit in three consecutive goal turns",
+  "goal_status": "active",
   "numerical_gate": "preflight successful completion required before full submission",
   "automatic_wakeup_monitor_configured": false,
-  "last_verified_pbs_state": "Q",
-  "pause_reason": "user explicitly requested keeping goal stopped while job is queued or running"
+  "last_verified_pbs_state": "F",
+  "preflight_a_terminal": {
+    "job_id": "25734831.pbs101",
+    "query_rc": 0,
+    "job_state": "F",
+    "Exit_status": "1",
+    "Job_Name": "fwva1009ra",
+    "exec_host": "x1000c1s7b0n0/1*16",
+    "comment": "Job run at Fri Oct 09 at 21:49 on (x1000c1s7b0n0:ncpus=16:mem=115",
+    "resources_used.walltime": "00:01:56"
+  },
+  "preflight_a_failure": {
+    "stage": "self_checks",
+    "queries_completed": 0,
+    "error": "AssertionError: "
+  },
+  "last_updated_utc": "2026-10-10T12:51:27.231468+00:00",
+  "preflight_retry": {
+    "attempt": "c",
+    "failed_job": "25739830.pbs101",
+    "fix": "detach diagnostic inputs/teacher outputs before reshape/index_select; preserve complete model VJP and checkpoint checks",
+    "source_backup": "sensitivity.preflight-b.py",
+    "source_remote_backup": "sensitivity.py.before-25739830",
+    "numerically_verified": true,
+    "archive_status": "executed in preflight c allocation; preflight b result preserved",
+    "archive_path": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009/results/preflight.failed-25739830.pbs101"
+  },
+  "wakeup_monitor": {
+    "id": "fast-wam-vq-preflight-25739830",
+    "name": "Fast-WAM VQ full 25743693 监控",
+    "kind": "cron",
+    "status": "NOT_FOUND",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "xhigh",
+    "schedule": "FREQ=HOURLY;INTERVAL=1",
+    "target_job": "25743693.pbs101",
+    "wake_thread": "01a10fef-c232-7890-84fb-2c66b332bbd2",
+    "host_id": "local",
+    "handoff_tool": "send_message_to_thread",
+    "end_to_end_handoff_verified": false,
+    "needed": false,
+    "verified_not_found": true
+  },
+  "preflight_b_terminal": {
+    "job_id": "25739830.pbs101",
+    "query_rc": 0,
+    "job_state": "F",
+    "Exit_status": "1",
+    "Job_Name": "fwva1009rb",
+    "exec_host": "x1000c0s1b0n0/0*16",
+    "comment": "Job run at Fri Oct 09 at 23:11 on (x1000c0s1b0n0:ncpus=16:mem=115",
+    "resources_used.walltime": "00:09:37"
+  },
+  "preflight_b_failure": {
+    "stage": "teacher_action_sensitivity",
+    "queries_completed": 0,
+    "error": "CheckpointError: torch.utils.checkpoint: A different number of tensors was saved during the original forward and recomputation.\nNumber of tensors saved during forward: 2662\nNumber of tensors saved during recomputation: 2049"
+  },
+  "preflight_b_verified_progress": {
+    "codebook_self_checks": true,
+    "shared_projection_self_check": true,
+    "model_loaded": true,
+    "target_transforms_loaded": 614,
+    "bf16_baseline_forward_complete": true,
+    "probe_forward_complete": 1,
+    "probe_backward_complete": 0,
+    "codebook_fit_started": false
+  },
+  "prepare_history_expiry": {
+    "live_pbs_query_rc": 153,
+    "saved_terminal_job": "25734790.pbs101",
+    "same_job_success_artifacts_reverified": true,
+    "current_input_summary_reverified": true,
+    "evidence": "prepare_revalidated_after_history_expiry.json",
+    "controller_backup": "control.preflight-b.py"
+  },
+  "preflight_c_terminal": {
+    "job_id": "25740090.pbs101",
+    "query_rc": 0,
+    "job_state": "F",
+    "Exit_status": "0",
+    "Job_Name": "fwva1009rc",
+    "exec_host": "x1000c3s7b0n1/1*16",
+    "comment": "Job run at Sat Oct 10 at 00:51 on (x1000c3s7b0n1:ncpus=16:mem=115",
+    "resources_used.walltime": "00:21:49",
+    "terminal_evidence_source": "live_pbs",
+    "terminal_evidence": {
+      "job_id": "25740090.pbs101",
+      "query_rc": 0,
+      "job_state": "F",
+      "Exit_status": "0",
+      "Job_Name": "fwva1009rc",
+      "exec_host": "x1000c3s7b0n1/1*16",
+      "comment": "Job run at Sat Oct 10 at 00:51 on (x1000c3s7b0n1:ncpus=16:mem=115",
+      "resources_used.walltime": "00:21:49"
+    },
+    "live_scheduler_snapshot": {
+      "job_id": "25740090.pbs101",
+      "query_rc": 0,
+      "job_state": "F",
+      "Exit_status": "0",
+      "Job_Name": "fwva1009rc",
+      "exec_host": "x1000c3s7b0n1/1*16",
+      "comment": "Job run at Sat Oct 10 at 00:51 on (x1000c3s7b0n1:ncpus=16:mem=115",
+      "resources_used.walltime": "00:21:49"
+    },
+    "summary": {
+      "status": "complete",
+      "protocol": "fastwam-vq-action-aware-v1",
+      "phase": "preflight",
+      "pbs_jobid": "25740090.pbs101",
+      "target_module_count": 614,
+      "calibrated_module_count": 3,
+      "sensitivity_target_module_count": 614,
+      "numerically_fitted_modules": [
+        "video_expert.blocks.17.cross_attn.o",
+        "action_expert.blocks.16.cross_attn.o",
+        "action_expert.blocks.21.cross_attn.o"
+      ],
+      "split": {
+        "calibration_cases": [
+          0
+        ],
+        "selection_cases": [
+          1000
+        ],
+        "test_cases": []
+      },
+      "query_count": 13,
+      "selected_action_lambda": 0.1,
+      "selection_scores": {
+        "0.1": 0.043355416506528854,
+        "1.0": 0.046109169721603394
+      },
+      "test_queries_before_freeze": 0,
+      "selection": {
+        "bf16": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.0,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.0
+          }
+        },
+        "bf16w_a4": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.04021085053682327,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.04021085053682327
+          }
+        },
+        "scalar_w4a4": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.046067263931035995,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.046067263931035995
+          }
+        },
+        "original_vq_a4": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.06337695568799973,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.06337695568799973
+          }
+        },
+        "row_scale_vq_a4": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.042372286319732666,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.042372286319732666
+          }
+        },
+        "row_output_vq_a4": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.04625841975212097,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.04625841975212097
+          }
+        },
+        "row_action_vq_a4_lambda_0.1": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.043355416506528854,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.043355416506528854
+          }
+        },
+        "row_action_vq_a4_lambda_1": {
+          "case_count": 1,
+          "context_count": 1,
+          "mean_motor_rmse_first10": 0.046109169721603394,
+          "per_case_motor_rmse_first10": {
+            "1000": 0.046109169721603394
+          }
+        }
+      },
+      "test": {},
+      "receipts": {
+        "row_scale_vq_a4": {
+          "arm": "row_scale_vq_a4",
+          "module_count": 3,
+          "encoded_bytes": 7932928,
+          "serialized_bytes": 7940968,
+          "transform_tensor_payload_bytes": 46080,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "effective_bpw_with_transform": 0.010548549778649977
+        },
+        "row_output_vq_a4": {
+          "arm": "row_output_vq_a4",
+          "module_count": 3,
+          "encoded_bytes": 7932928,
+          "serialized_bytes": 7940968,
+          "transform_tensor_payload_bytes": 46080,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "effective_bpw_with_transform": 0.010548549778649977
+        },
+        "row_action_vq_a4_lambda_0.1": {
+          "arm": "row_action_vq_a4_lambda_0.1",
+          "module_count": 3,
+          "encoded_bytes": 7932928,
+          "serialized_bytes": 7940968,
+          "transform_tensor_payload_bytes": 46080,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "effective_bpw_with_transform": 0.010548549778649977
+        },
+        "row_action_vq_a4_lambda_1": {
+          "arm": "row_action_vq_a4_lambda_1",
+          "module_count": 3,
+          "encoded_bytes": 7932928,
+          "serialized_bytes": 7940968,
+          "transform_tensor_payload_bytes": 46080,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "effective_bpw_with_transform": 0.010548549778649977
+        },
+        "scalar_w4a4": {
+          "arm": "scalar_w4a4",
+          "module_count": 614,
+          "encoded_bytes": 3111207611,
+          "serialized_bytes": 3112661146,
+          "effective_bpw_with_transform": 4.137025869432847,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "source": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006/results/full/banks/smooth05_hadamard_scalar"
+        },
+        "original_vq_a4": {
+          "arm": "original_vq_a4",
+          "module_count": 614,
+          "encoded_bytes": 3019708491,
+          "serialized_bytes": 3021279898,
+          "effective_bpw_with_transform": 4.015357927656158,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "source": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006/results/full/banks/smooth05_hadamard_vq"
+        },
+        "bf16": {
+          "arm": "bf16",
+          "module_count": 614,
+          "encoded_bytes": 12032634880,
+          "effective_bpw_with_transform": 16.0,
+          "transforms": "identity",
+          "storage_boundary": "dense target weights and transform tensors; non-target model tensors excluded"
+        },
+        "bf16w_a4": {
+          "arm": "bf16w_a4",
+          "module_count": 614,
+          "encoded_bytes": 12041669195,
+          "effective_bpw_with_transform": 16.012013082873498,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "storage_boundary": "dense target weights and transform tensors; non-target model tensors excluded"
+        },
+        "row_action_vq_a4": {
+          "arm": "row_action_vq_a4",
+          "module_count": 3,
+          "encoded_bytes": 7932928,
+          "serialized_bytes": 7940968,
+          "transform_tensor_payload_bytes": 46080,
+          "transforms": {
+            "name": "smooth05_hadamard",
+            "alpha": 0.5,
+            "hadamard_block": 128,
+            "scale_bound": 16,
+            "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+          },
+          "effective_bpw_with_transform": 0.010548549778649977,
+          "action_lambda": 0.1
+        }
+      },
+      "evaluation_episodes": 0,
+      "predicted_actions_executed": 0,
+      "restoration_experiments": false,
+      "native_latency_claim": false,
+      "wall_seconds_diagnostic_only": 1225.6454504649155,
+      "peak_cuda_allocated_bytes": 27281845248,
+      "execution": "decoded BF16 reference; stored books/indices/scales; no packed VQ compute kernel",
+      "claim_scope": "new held-out observations within familiar tasks and disjoint selected Plus variants; not unseen-task generalization, success rate or native-kernel latency",
+      "preflight_only": true
+    }
+  },
+  "preflight_verified_checks": {
+    "pbs_exit": 0,
+    "pbs_walltime": "00:21:49",
+    "sensitivity_target_count": 614,
+    "sensitivity_uncalled_targets": [],
+    "gradient_passes": 2,
+    "bf16_action_parity": {
+      "max_abs": 0.0,
+      "rmse": 0.0,
+      "max_abs_tolerance": 0.002,
+      "rmse_tolerance": 0.001,
+      "passed": true
+    },
+    "required_three_module_gradients_nonzero": true,
+    "numerically_fitted_module_count": 3,
+    "queries_completed": 13,
+    "all_preflight_gates_passed": true,
+    "method_effect_conclusion": false
+  },
+  "full_job": "25743693.pbs101",
+  "full_submission": {
+    "job_id": "25743693.pbs101",
+    "pbs_queue": "g1",
+    "walltime": "24:00:00",
+    "resources": "select=1:ncpus=16:mem=110gb:ngpus=1",
+    "experiment_protocol_unchanged": true,
+    "target_module_count": 614,
+    "calibration_cases": 8,
+    "selection_cases": 4,
+    "test_cases": 22,
+    "expected_recorded_queries": 412,
+    "full_lambda_reselected": true
+  },
+  "full_startup": {
+    "allocated_gpu_verified": true,
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "gpu_uuid": "608ccc40-fdcc-5e93-962f-25699bc8ac18",
+    "compute_host": "x1000c0s2b0n0",
+    "runner_entered": true,
+    "stage": "teacher_action_sensitivity",
+    "model_loaded": true,
+    "first_sensitivity_capture_complete": true,
+    "transforms_loaded": 614,
+    "first_calibration_case": 0,
+    "gradient_passes": 4,
+    "bf16_action_parity": {
+      "max_abs": 0.0,
+      "rmse": 0.0,
+      "max_abs_tolerance": 0.002,
+      "rmse_tolerance": 0.001,
+      "passed": true
+    },
+    "sensitivity_coverage": 614,
+    "three_required_adjoint_norms_nonzero": true,
+    "progress_observed_next_case": 2,
+    "peak_cuda_allocated_bytes": 27281845248,
+    "evidence": "full_startup_sensitivity_case0_evidence.json"
+  },
+  "pause_reason": null,
+  "full_result_complete": true,
+  "analysis_complete": true,
+  "full_terminal": {
+    "job_id": "25743693.pbs101",
+    "query_rc": 0,
+    "job_state": "F",
+    "Exit_status": "0",
+    "resources_used.walltime": "09:06:54"
+  },
+  "analysis_job": "25748947.pbs101",
+  "analysis_terminal": {
+    "job_id": "25748947.pbs101",
+    "query_rc": 0,
+    "job_state": "F",
+    "Exit_status": "0",
+    "resources_used.walltime": "00:00:03"
+  },
+  "results_report": "RESULTS.zh.md",
+  "mechanism_diagnostics": "retrieved/results/analysis/diagnostics.json",
+  "result_conclusions": {
+    "row_scale_vs_original_vq_test_relative_change_percent": -19.99521756381667,
+    "action_aware_vs_scalar_test_relative_change_percent": 10.975029761264743,
+    "chosen_lambda": 0.1,
+    "action_proxy_mismatch_observed_on_calibration": true,
+    "closed_loop_or_native_speed_claim": false,
+    "other_baseline_numerical_validation": false
+  }
 }

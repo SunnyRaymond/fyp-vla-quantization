@@ -1,0 +1,118 @@
+"""Reuse trusted bounded SSH control for the two-hour distillation job."""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import importlib.util
+import json
+from pathlib import Path
+import re
+import shlex
+
+HERE = Path(__file__).resolve().parent
+ROOT = '/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011'
+spec = importlib.util.spec_from_file_location('distill_trusted_control', HERE.parent / 'fastwam-vq-proxy-diagnostic/control.py')
+trusted = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(trusted)
+trusted.HERE, trusted.ROOT = HERE, ROOT
+trusted.FILES = ('protocol.json', 'control.py', 'environment.sh', 'gpu.pbs', 'sampler.py', 'train_banks.py', 'run_distill.py')
+remote, save, scheduler, read_remote_json = trusted.remote, trusted.save, trusted.scheduler, trusted.read_remote_json
+
+
+def submit(transport, attempt):
+    trusted.protocol()
+    if not re.fullmatch(r'[a-z][a-z0-9]{0,5}', attempt):
+        raise ValueError('Invalid attempt label')
+    name = f'fwvkd1011{attempt}'
+    intent, handle = HERE / f'intent_{attempt}.json', HERE / 'full_handle.json'
+    receipt = json.loads(intent.read_text()) if intent.exists() else {}
+    if receipt.get('job_id'):
+        save(handle, receipt)
+        print('CONFIRMED_HANDLE', receipt['job_id'])
+        return
+    rc, output = remote.command(transport, f'qselect -x -u yguo017 -N {shlex.quote(name)} 2>&1', timeout=35)
+    if rc not in (0, 1) or (rc == 1 and output.strip()):
+        raise RuntimeError('Scheduler submission history is unavailable')
+    matches = output.split()
+    if matches:
+        if len(matches) != 1 or not trusted.HANDLE.fullmatch(matches[0]):
+            raise RuntimeError('Ambiguous existing submission')
+        receipt.update(job_id=matches[0], status='recovered', job_name=name)
+    else:
+        if receipt:
+            raise RuntimeError('Unconfirmed intent exists; recover before resubmitting')
+        receipt = {'status': 'intent_before_qsub', 'job_name': name, 'attempt': attempt,
+                   'created_utc': datetime.now(timezone.utc).isoformat(),
+                   'walltime': '02:00:00', 'queue': 'normal', 'project': 'personal-yguo017',
+                   'select': 'select=1:ncpus=16:mem=110gb:ngpus=1', 'remote_root': ROOT}
+        save(intent, receipt)
+        command = f'qsub -N {shlex.quote(name)} {shlex.quote(ROOT + "/gpu.pbs")}'
+        rc, output = remote.command(transport, command, timeout=40)
+        if rc or not trusted.HANDLE.fullmatch(output.strip()):
+            receipt.update(status='unknown_or_rejected', message=output[:2000])
+            save(intent, receipt)
+            raise RuntimeError('qsub outcome unknown/rejected; inspect intent before retry')
+        receipt.update(job_id=output.strip(), status='confirmed')
+    save(intent, receipt)
+    save(handle, receipt)
+    print('CONFIRMED_HANDLE', receipt['job_id'])
+
+
+def verify(transport, job):
+    observed = scheduler(transport, job)
+    if observed['query_rc'] or observed['job_state'] not in ('F', 'X') or observed['Exit_status'] != '0':
+        raise RuntimeError(f'Not a successful terminal job: {observed}')
+    artifact = f'{ROOT}/artifacts/{job}'
+    rc, _ = remote.command(transport, f'test -f {shlex.quote(artifact + "/PIPELINE_COMPLETE")} && '
+                           f'test "$(cat {shlex.quote(artifact + "/exit_code.txt")})" = 0', timeout=25)
+    if rc:
+        raise RuntimeError('Missing success marker or zero exit receipt')
+    summary = read_remote_json(transport, artifact + '/summary.json')
+    if (summary.get('status') != 'complete' or summary.get('job_id') != job or summary.get('target_linears') != 614
+            or summary.get('completed_epochs', 0) < 1 or summary.get('updates', 0) < 8
+            or summary.get('test', {}).get('case_count') != 22
+            or summary.get('test', {}).get('context_count') != 44 or summary.get('test_queries_before_freeze') != 0):
+        raise RuntimeError('Incomplete identity/training/evaluation coverage')
+    evidence = {**observed, 'summary': summary, 'success_marker': True}
+    save(HERE / 'full_terminal_evidence.json', evidence)
+    print(json.dumps(evidence))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('upload', 'submit', 'status', 'verify', 'pull'))
+    parser.add_argument('--attempt', default='a')
+    parser.add_argument('--files', nargs='+')
+    args = parser.parse_args()
+    jump = transport = None
+    try:
+        jump, transport = remote.direct_connect()
+        if args.action == 'upload':
+            trusted.upload(transport, args.files)
+        elif args.action == 'submit':
+            submit(transport, args.attempt)
+        else:
+            job = json.loads((HERE / 'full_handle.json').read_text())['job_id']
+            if args.action == 'status':
+                observed = scheduler(transport, job)
+                save(HERE / 'last_scheduler_snapshot.json', observed)
+                print(json.dumps(observed))
+                if observed['job_state'] in ('R', 'F', 'X'):
+                    path = f'{ROOT}/artifacts/{job}/job.log'
+                    rc, output = remote.command(transport, f'test ! -f {shlex.quote(path)} || tail -c 7000 {shlex.quote(path)}', timeout=25)
+                    print('LOG_TAIL_RC', rc, output)
+            elif args.action == 'verify':
+                verify(transport, job)
+            else:
+                if not args.files:
+                    raise ValueError('--files required for pull')
+                trusted.pull(transport, args.files)
+    finally:
+        if transport:
+            transport.close()
+        if jump:
+            jump.close()
+
+
+if __name__ == '__main__':
+    main()

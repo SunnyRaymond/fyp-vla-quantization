@@ -1,0 +1,254 @@
+"""Frozen-bank probe/row factorial on a genuine PBS GPU allocation."""
+from __future__ import annotations
+
+import argparse
+import faulthandler
+import json
+import os
+from pathlib import Path
+import statistics
+import time
+
+
+def probes(torch, seed, count):
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    return torch.randint(0, 2, (count, 60), generator=generator).mul(2).sub(1).float().div(60**0.5).reshape(count, 10, 6)
+
+
+def row_positions(torch, call, label):
+    ids, selected = call['row_ids'], call['row_sets'][label]
+    positions = torch.searchsorted(ids, selected)
+    if not torch.equal(ids[positions], selected):
+        raise ValueError('A row subset is absent from the captured union')
+    return positions
+
+
+def project_error(torch, call, error):
+    """Keep each row subset's original N/n normalization, then sum all calls."""
+    responses = (call['adjoints'].to(error.device) * error.unsqueeze(0)).sum(-1)
+    result = {}
+    for label in ('old', 'new'):
+        positions = row_positions(torch, call, label).to(error.device)
+        result[label] = responses[:, positions].sum(-1) * (call['total_rows'] / positions.numel())
+    return result
+
+
+def vector_metrics(torch, predicted, actual):
+    denominator = float(predicted.norm() * actual.norm())
+    return {'proxy_rmse': float(predicted.square().mean().sqrt()),
+            'actual_projection_rmse': float(actual.square().mean().sqrt()),
+            'prediction_error_rmse': float((predicted - actual).square().mean().sqrt()),
+            'cosine': float(predicted.dot(actual)) / denominator if denominator > 1e-12 else None,
+            'predicted': predicted.tolist(), 'actual': actual.tolist()}
+
+
+def evaluate_banks(torch, api, codebook, banks, capture, original_capture, full, arms, progress):
+    count = capture['summary']['gradient_passes']
+    totals = {arm: {row: torch.zeros(count, device='cuda') for row in ('old', 'new')} for arm in arms}
+    module_energy = {arm: {row: torch.zeros(count, device='cuda') for row in ('old', 'new')} for arm in arms}
+    original_totals = {arm: torch.zeros(4, device='cuda') for arm in arms}
+    for index, (name, module) in enumerate(banks.modules.items()):
+        calls = capture['layers'][name]
+        if not calls:
+            raise ValueError(f'Missing captured module {name}')
+        original_layer = api.LayerData(banks, name, [original_capture])
+        # Reuse the same Q4 inputs for all four banks; books and transforms stay read-only.
+        prepared = [(call, api.qinput(torch, banks.core, call['inputs'].to('cuda'), banks.transforms[name]).float(),
+                     call['teacher_y'].to('cuda')) for call in calls]
+        bias = None if module.bias is None else module.bias.detach().float()
+        for arm in arms:
+            path = full / 'banks' / arm / f'{index:04d}.pt'
+            bank = torch.load(path, map_location='cuda', weights_only=True)
+            if bank['module'] != name:
+                raise ValueError(f'Frozen bank identity mismatch: {path}')
+            dense = codebook.decode_vq(bank['encoded']).float()
+            original_totals[arm] += original_layer.project(dense)[0]
+            per_module = {row: torch.zeros(count, device='cuda') for row in ('old', 'new')}
+            for call, x, teacher_y in prepared:
+                error = torch.nn.functional.linear(x, dense, bias) - teacher_y
+                contributions = project_error(torch, call, error)
+                for row in ('old', 'new'):
+                    per_module[row] += contributions[row]
+            for row in ('old', 'new'):
+                totals[arm][row] += per_module[row]
+                module_energy[arm][row] += per_module[row].square()
+            del bank, dense, per_module
+        del prepared, original_layer
+        if index % 100 == 0 or index == 613:
+            progress(stage='frozen_bank_projection', modules_completed=index + 1)
+    return ({arm: {row: value.cpu() for row, value in rows.items()} for arm, rows in totals.items()},
+            {arm: {row: value.cpu() for row, value in rows.items()} for arm, rows in module_energy.items()},
+            {arm: value.cpu() for arm, value in original_totals.items()})
+
+
+def run(args):
+    import run_experiment as api
+    api.guard()
+    import torch
+    import codebook
+    import runner as pilot
+    import sensitivity
+    # This script has the same basename as the old input helper. Import that helper by path.
+    import importlib.util
+    protocol = json.loads(args.protocol.read_text(encoding='utf-8'))
+    input_helper = Path(protocol['roots']['old_inputs']) / 'run_diagnostic.py'
+    spec = importlib.util.spec_from_file_location('source_input_diagnostic', input_helper)
+    source = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(source)
+    if protocol['protocol'] != 'fastwam-vq-proxy-diagnostic-v1':
+        raise ValueError('Unexpected diagnostic protocol')
+    if args.out.exists():
+        raise FileExistsError(f'Refusing prior results: {args.out}')
+    args.out.mkdir(parents=True)
+    api.save(args.out / 'protocol.json', protocol)
+    cases = protocol['preflight_cases'] if args.phase == 'preflight' else protocol['calibration_cases']
+    source_root = Path(protocol['source_root'])
+    full = source_root / 'results/full'
+    old_protocol = json.loads((full / 'protocol.json').read_text())
+    old_plan = json.loads((Path(protocol['roots']['old_inputs']) / 'plan.json').read_text())
+    actions = [json.loads(line) for line in (full / 'actions.jsonl').read_text().splitlines() if line.strip()]
+    actions = {(r['case_id'], r['arm']): r for r in actions if r['split'] == 'calibration' and r['seed_index'] == 0}
+    pcount = protocol['probes_per_batch']
+    seeds = [protocol['old_probe_seed'], *protocol['new_probe_seeds']]
+    directions = torch.cat([probes(torch, seed, pcount) for seed in seeds])
+    runtime = banks = None
+    completed = []
+    tf32 = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    started = time.perf_counter()
+    faulthandler.enable()
+    faulthandler.dump_traceback_later(600, repeat=True)
+    current_case = None
+
+    def progress(**extra):
+        api.save(args.out / 'progress.json', {'status': 'running', 'phase': args.phase,
+                 'job_id': os.environ['PBS_JOBID'], 'case_id': current_case, 'completed_cases': completed, **extra})
+        print('PROGRESS ' + json.dumps(extra), flush=True)
+
+    try:
+        progress(stage='model_loading')
+        runtime = pilot.Runtime(args.out)
+        runtime.arm('bf16')
+        banks = api.FrozenBanks(runtime, full, old_protocol)
+        banks.activate('bf16')
+        for case in cases:
+            current_case = case
+            row = source.validate_plan(old_plan, case)
+            observation, metadata = source.load_case(Path(protocol['roots']['old_inputs']), row)
+            runtime.description, runtime.current_arm = metadata['description'], 'bf16'
+            datum = runtime.datum(observation)
+            seed = row['sampler_seeds'][0]
+            old_capture = torch.load(full / 'sensitivity' / f'case_{case}.pt', map_location='cpu', weights_only=True, mmap=True)
+            if not torch.equal(old_capture['probe_vectors'], directions[:pcount]):
+                raise ValueError('Original probe vectors were not reproduced exactly')
+            progress(stage='teacher_gradient_capture', probes=len(directions))
+            capture = sensitivity.capture_action_projections(runtime, datum, seed, None,
+                      len(directions), protocol['old_probe_seed'], rows_per_call=protocol['rows_per_call'],
+                      artifact_path=args.out / 'sensitivity' / f'case_{case}.pt',
+                      probe_vectors_override=directions, row_seed=protocol['old_row_seed'],
+                      extra_row_seed=protocol['new_row_seed'])
+            sensitivity.validate_preflight(capture)
+            if capture['summary']['target_module_count'] != 614 or capture['summary']['uncalled_target_modules']:
+                raise ValueError('Diagnostic capture did not cover all 614 targets')
+            baseline_delta = capture['baseline_action'] - old_capture['baseline_action']
+            reference_action = old_capture['baseline_action'].detach().clone()
+            baseline_rmse = float(baseline_delta.square().mean().sqrt())
+            if baseline_rmse > 0.001 or float(baseline_delta.abs().max()) > 0.002:
+                raise ValueError('New teacher trajectory differs from saved source reference')
+            old_row_matches = same_subsets = call_count = 0
+            if list(capture['layers']) != list(old_capture['layers']):
+                raise ValueError('Canonical module order differs from the saved capture')
+            for name, calls in capture['layers'].items():
+                original_calls = old_capture['layers'][name]
+                if len(calls) != len(original_calls):
+                    raise ValueError(f'Call count differs at {name}')
+                for call, original in zip(calls, original_calls):
+                    call_count += 1
+                    for key in ('call_id', 'stage', 'step', 'context', 'input_shape', 'output_shape', 'total_rows'):
+                        if call[key] != original[key]:
+                            raise ValueError(f'Original call identity differs at {name}/{call["call_id"]}: {key}')
+                    if not torch.equal(call['row_sets']['old'], original['row_ids']):
+                        raise ValueError(f'Original token rows differ at {name}/{call["call_id"]}')
+                    old_row_matches += 1
+                    same_subsets += int(torch.equal(call['row_sets']['old'], call['row_sets']['new']))
+            with torch.no_grad():
+                projected, module_energy, original_projected = evaluate_banks(torch, api, codebook, banks, capture, old_capture, full,
+                                                          protocol['frozen_arms'], progress)
+            case_result = {'case_id': case, 'sampler_seed': seed, 'baseline_replay_rmse': baseline_rmse,
+                'capture': capture['summary'], 'calls': call_count, 'original_row_matches': old_row_matches,
+                'identical_old_new_row_subsets': same_subsets, 'arms': {}}
+            for arm in protocol['frozen_arms']:
+                recorded = actions[case, arm]
+                if recorded['sampler_seed'] != seed:
+                    raise ValueError('Saved action and teacher sampler seeds differ')
+                delta = (torch.tensor(recorded['action']) - reference_action)[:10, :6].reshape(-1)
+                actual = directions.reshape(len(directions), -1) @ delta
+                arm_result = {'motor_rmse': float(delta.square().mean().sqrt()), 'row_sets': {}}
+                for row_set in ('old', 'new'):
+                    values = projected[arm][row_set]
+                    batches = {}
+                    for group, probe_seed in enumerate(seeds):
+                        sl = slice(group * pcount, (group + 1) * pcount)
+                        item = vector_metrics(torch, values[sl], actual[sl])
+                        item['sum_module_squared_projection_mean'] = float(module_energy[arm][row_set][sl].mean())
+                        batches[str(probe_seed)] = item
+                    arm_result['row_sets'][row_set] = batches
+                old_rms = float(original_projected[arm].square().mean().sqrt())
+                replay_rms = arm_result['row_sets']['old'][str(seeds[0])]['proxy_rmse']
+                logged_rms = recorded['projected_action_rmse_sampled_proxy']
+                tolerances = protocol['original_proxy_reproduction']
+                difference = abs(old_rms - logged_rms)
+                allowed = max(tolerances['absolute_tolerance'], tolerances['relative_tolerance'] * abs(logged_rms))
+                arm_result['original_proxy_reproduction'] = {'logged_rmse': logged_rms, 'recomputed_rmse': old_rms,
+                    'absolute_difference': difference, 'allowed_difference': allowed, 'passed': difference <= allowed,
+                    'reference': 'frozen_source_capture', 'new_capture_old_probe_old_row_rmse': replay_rms,
+                    'capture_replay_absolute_difference': abs(replay_rms - old_rms)}
+                case_result['arms'][arm] = arm_result
+            api.save(args.out / f'case_{case}.json', case_result)
+            if not all(item['original_proxy_reproduction']['passed'] for item in case_result['arms'].values()):
+                raise ValueError(f'Original proxy reproduction failed for case {case}; saved detailed diagnostics')
+            completed.append(case)
+            del capture, old_capture, projected, module_energy, original_projected, case_result
+            torch.cuda.empty_cache()
+        results = [json.loads((args.out / f'case_{case}.json').read_text()) for case in cases]
+        aggregate = {}
+        for arm in protocol['frozen_arms']:
+            aggregate[arm] = {'mean_motor_rmse': statistics.mean(r['arms'][arm]['motor_rmse'] for r in results), 'factorial': {}}
+            for row_set in ('old', 'new'):
+                for probe_label, probe_seeds in [('old', seeds[:1]), ('new', seeds[1:])]:
+                    entries = [r['arms'][arm]['row_sets'][row_set][str(s)] for r in results for s in probe_seeds]
+                    aggregate[arm]['factorial'][f'{probe_label}_probes_{row_set}_rows'] = {
+                        'case_count': len(results), 'batches_per_case': len(probe_seeds),
+                        **{f'mean_{key}': statistics.mean(item[key] for item in entries) for key in
+                           ('proxy_rmse', 'actual_projection_rmse', 'prediction_error_rmse', 'sum_module_squared_projection_mean')}}
+        summary = {'status': 'complete', 'phase': args.phase, 'job_id': os.environ['PBS_JOBID'],
+            'source_full_job': protocol['source_full_job'], 'target_linears': 614, 'case_ids': cases,
+            'probe_counts': {'old': pcount, 'new': len(directions) - pcount, 'total': len(directions)},
+            'row_sets': {'old': protocol['rows_per_call'], 'new': protocol['rows_per_call']},
+            'original_proxy_reproduction_passed': True, 'refit': False, 'evaluation_episodes': 0,
+            'aggregate': aggregate, 'case_files': [f'case_{case}.json' for case in cases],
+            'wall_seconds': time.perf_counter() - started,
+            'limits': ['Calibration mechanism diagnosis with frozen banks; no new method efficacy or success claim.',
+                       'Four new batches are Monte Carlo repeats within each case, not independent scenes.',
+                       'Finite probes and two sampled rows do not constitute the exact full Jacobian.']}
+        api.save(args.out / 'summary.json', summary)
+        return summary
+    except Exception as exc:
+        api.save(args.out / 'failure.json', {'status': 'failed', 'phase': args.phase, 'job_id': os.environ['PBS_JOBID'],
+                 'case_id': current_case, 'completed_cases': completed, 'error': type(exc).__name__ + ': ' + str(exc)})
+        raise
+    finally:
+        if banks is not None:
+            banks.close()
+        if runtime is not None:
+            runtime.q.close()
+        torch.backends.cuda.matmul.allow_tf32 = tf32
+        faulthandler.cancel_dump_traceback_later()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--phase', choices=('preflight', 'full'), required=True)
+    parser.add_argument('--protocol', type=Path, required=True)
+    parser.add_argument('--out', type=Path, required=True)
+    run(parser.parse_args())

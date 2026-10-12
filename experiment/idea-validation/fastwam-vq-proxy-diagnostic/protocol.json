@@ -1,0 +1,33 @@
+{
+  "protocol": "fastwam-vq-proxy-diagnostic-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-proxy-diagnostic-20261010",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "calibration_cases": [0, 2, 4, 6, 10, 12, 14, 16],
+  "preflight_cases": [0],
+  "calibration_seed_index": 0,
+  "frozen_arms": ["row_scale_vq_a4", "row_output_vq_a4", "row_action_vq_a4_lambda_0.1", "row_action_vq_a4_lambda_1"],
+  "target_linears": 614,
+  "old_probe_seed": 20261009,
+  "new_probe_seeds": [20261010, 20261011, 20261012, 20261013],
+  "probes_per_batch": 4,
+  "old_row_seed": 20261009,
+  "new_row_seed": 20261014,
+  "rows_per_call": 2,
+  "sampling": "Capture the union of two independently seeded uniform row subsets in the same BF16 teacher replay; evaluate each subset separately using its own N/n factor. The old rows exactly preserve the original module-order/call-index seed rule. Singleton/small calls may have identical subsets and are reported.",
+  "probe_scope": "The original four directions plus four independent four-direction batches, all unit-norm Rademacher vectors over first10 x motor6. New probes do not cover all sixty dimensions.",
+  "trajectory": "Same eight original BF16 teacher contexts and original sampler seeds; ten video and ten action denoising steps; actual student actions reused from completed source job.",
+  "frozen": ["all four codebook banks", "indices", "row scales", "Smooth alpha0.5", "signed Hadamard128", "scale bound16", "A4 per-row absmax qmax7", "teacher checkpoint", "observations", "sampler seeds"],
+  "original_proxy_reproduction": {"absolute_tolerance": 0.00001, "relative_tolerance": 0.001},
+  "claim_scope": "Paired calibration mechanism diagnosis only; no refitting, method selection on test, closed-loop success, other-baseline result or native-kernel latency claim.",
+  "decision": "Compare actual action projections to the same-direction proxy; isolate probe dependence from row dependence with the frozen-bank factorial, then recommend a bounded codebook objective change based on the observed mismatch.",
+  "evaluation_episodes": 0,
+  "refit": false,
+  "restoration_experiments": false
+}

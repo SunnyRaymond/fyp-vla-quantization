@@ -79,7 +79,7 @@ SpinQuant 在论文中归为 PTQ，但**它需要 calibration、backpropagation 
 
 ## 3. 为什么 outlier 会伤害低位数量化？
 
-先用对称 INT4 教学量化器说明。取整数网格 \(-7,\ldots,7\)，让一组数共用 scale：
+先用对称 INT4 教学量化器说明。取整`z数网格 \(-7,\ldots,7\)，让一组数共用 scale：
 
 \[
 s=\frac{\max_i|x_i|}{7},\qquad
