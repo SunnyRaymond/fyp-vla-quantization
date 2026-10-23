@@ -1,0 +1,34 @@
+#!/bin/bash -l
+#PBS -N cosp1015prep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+test -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+  rc=$?
+  trap - EXIT
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+printf 'PBS_JOBID=%s\nHOST=%s\n' "$PBS_JOBID" "$(hostname -f)"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+test -s "$SIF"
+apptainer exec --cleanenv --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --env "ROOT=$ROOT,ARTIFACTS=$ARTIFACTS,PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE" \
+  "$SIF" /bin/bash "$ROOT/prepare.sh"
+test -s "$ROOT/environment_ready.json"
+touch "$ARTIFACTS/PREPARATION_COMPLETE"

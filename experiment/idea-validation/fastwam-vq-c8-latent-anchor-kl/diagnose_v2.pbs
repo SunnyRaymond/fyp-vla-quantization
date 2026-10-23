@@ -1,0 +1,13 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=0
+#PBS -l walltime=00:15:00
+#PBS -j oe
+source /scratch/users/ntu/yguo017/fastwam-vq-c8-latent-anchor-kl-20261021/allocation.sh
+NV_ARGS=()
+FW_CPU_THREADS=4
+FW_SOFT_DEADLINE_SECONDS=780
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+run_python "$ARTIFACTS/diagnose.py" --protocol "$ARTIFACTS/protocol.json" --output-name diagnosis_v2
+touch "$ARTIFACTS/PHASE_COMPLETE"

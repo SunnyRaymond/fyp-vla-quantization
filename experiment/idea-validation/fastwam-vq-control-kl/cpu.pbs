@@ -1,0 +1,72 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=4:mem=16gb:ngpus=0
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-control-kl-20261021
+SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-softbin-relational-plus-20261020/artifacts/25886452.pbs101
+FORWARD=/scratch/users/ntu/yguo017/fastwam-vq-relational-kl-20261020/artifacts/25883750.pbs101
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+export ARTIFACTS
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+for name in protocol.json aggregate.py control_common.py control_losses.py prepare_pairs.py coverage_inventory.py parameter_gate.py c80_gate_protocol.json c80_gate_grad.py c80_gate_reduce.py c80_gate_eval.py test_c80_gate.py test_c80_gate_eval.py test_parameter_gate.py gate_selfcheck.py trajectory_trace.py training_data_protocol.json prepare_training_pairs.py test_training_pairs.py training_teacher_plan.py training_objective.py test_training_objective.py training_loss_selfcheck.py control_training.py test_control_training.py training_runtime_selfcheck.py; do
+  if [ -f "$NEW_ROOT/$name" ]; then cp "$NEW_ROOT/$name" "$ARTIFACTS/"; fi
+done
+for name in trained_deployment.py training_evaluation.py test_trained_deployment.py test_training_evaluation.py training_evaluation_selfcheck.py training_protocol.json training_closedloop.py test_training_closedloop.py training_closedloop_aggregate.py test_training_closedloop_aggregate.py training_closedloop_selfcheck.py; do
+  if [ -f "$NEW_ROOT/$name" ]; then cp "$NEW_ROOT/$name" "$ARTIFACTS/"; fi
+done
+for name in final_c80_eval.py test_final_c80_eval.py final_c80_aggregate.py test_final_c80_aggregate.py final_c80_selfcheck.py; do
+  if [ -f "$NEW_ROOT/$name" ]; then cp "$NEW_ROOT/$name" "$ARTIFACTS/"; fi
+done
+cp "$FORWARD/softbin_loss.py" "$FORWARD/relational_loss.py" "$ARTIFACTS/"
+cp "$SOURCE/checkpointing.py" "$ARTIFACTS/"
+cp "$FORWARD/metrics_reference.py" "$FORWARD/latent_reference.py" "$FORWARD/clipping_reference.py" "$ARTIFACTS/"
+cp "$SOURCE/environment.sh" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+NV_ARGS=()
+export CUDA_VISIBLE_DEVICES=''
+FW_CPU_THREADS=4
+FW_SOFT_DEADLINE_SECONDS=1080
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+case "$FW_CONTROL_UNIT" in
+  calibration_pairs) run_python "$ARTIFACTS/prepare_pairs.py";;
+  training_pairs)
+    run_python "$ARTIFACTS/test_training_pairs.py"
+    run_python "$ARTIFACTS/prepare_training_pairs.py"
+    ;;
+  training_teacher_plan) run_python "$ARTIFACTS/training_teacher_plan.py";;
+  gate_selfcheck) run_python "$ARTIFACTS/gate_selfcheck.py";;
+  training_loss_selfcheck) run_python "$ARTIFACTS/training_loss_selfcheck.py";;
+  training_runtime_selfcheck) run_python "$ARTIFACTS/training_runtime_selfcheck.py";;
+  training_evaluation_selfcheck) run_python "$ARTIFACTS/training_evaluation_selfcheck.py";;
+  training_closedloop_selfcheck) run_python "$ARTIFACTS/training_closedloop_selfcheck.py";;
+  final_c80_selfcheck) run_python "$ARTIFACTS/final_c80_selfcheck.py";;
+  aggregate_final_c80) run_python "$ARTIFACTS/final_c80_aggregate.py";;
+  aggregate_closedloop_*) run_python "$ARTIFACTS/training_closedloop_aggregate.py" --unit "$FW_CONTROL_UNIT";;
+  aggregate_heldout_*) run_python "$ARTIFACTS/training_evaluation.py" --unit "$FW_CONTROL_UNIT";;
+  trajectory_trace) run_python "$ARTIFACTS/trajectory_trace.py";;
+  c80_direction_*|aggregate_c80_parameter_gate)
+    run_python "$ARTIFACTS/test_c80_gate.py"
+    run_python "$ARTIFACTS/c80_gate_reduce.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  aggregate_*) run_python "$ARTIFACTS/aggregate.py" --unit "$FW_CONTROL_UNIT";;
+  *) exit 64;;
+esac
+touch "$ARTIFACTS/PHASE_COMPLETE"

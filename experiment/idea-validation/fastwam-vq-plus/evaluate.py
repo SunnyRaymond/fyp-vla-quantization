@@ -92,6 +92,12 @@ def validate_record(record, rows, worker_id, bank):
         if (type(q) is not int or q < 0 or type(metric.get('first_query_in_arm')) is not bool
                 or metric['first_query_in_arm'] != (q == 0)):
             raise ValueError('Invalid first/query marker')
+        implementation = record.get('transform_implementation')
+        if implementation is not None and (implementation != 'batched_h128_v2'
+                or metric.get('transform_implementation') != implementation
+                or not record.get('pbs_job_id') or metric.get('pbs_job_id') != record['pbs_job_id']
+                or type(metric.get('first_query_in_run')) is not bool):
+            raise ValueError('Invalid resumed implementation/run marker')
         for key in TIMING_FIELDS:
             value = metric.get(key)
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
@@ -114,7 +120,7 @@ def recover_records(path, rows, worker_id, bank):
         temp = path.with_suffix('.recovered.tmp')
         temp.write_bytes(payload)
         temp.replace(path)
-    found, queries = {}, []
+    found, queries, seen_runs = {}, [], set()
     for line in payload.splitlines():
         record = json.loads(line)
         index = validate_record(record, rows, worker_id, bank)
@@ -122,6 +128,12 @@ def recover_records(path, rows, worker_id, bank):
             raise ValueError('Duplicate completed episode')
         found[index] = record
         queries.extend(metric['query_index_in_arm'] for metric in record['metrics'])
+        for metric in record['metrics']:
+            if 'first_query_in_run' in metric:
+                run = metric['pbs_job_id']
+                if metric['first_query_in_run'] != (run not in seen_runs):
+                    raise ValueError('Invalid first query marker within a resumed PBS run')
+                seen_runs.add(run)
     if queries != list(range(len(queries))):
         raise ValueError('Saved query sequence is not a consecutive prefix')
     return found
@@ -181,6 +193,14 @@ def run_worker(args):
                 validate_record(record, rows, args.worker_id, bank)
                 append_episode(path, record)
                 completed[index] = record
+                warm = [m for m in record['metrics'] if not m['first_query_in_run']]
+                save(args.out / 'last_episode_timing.json', {
+                    'pbs_job_id': record['pbs_job_id'], 'transform_implementation': record['transform_implementation'],
+                    'index': index, 'completed_episodes': len(completed), 'episode_seconds': record['episode_seconds'],
+                    'replans': record['replans'], 'subsequent_queries': len(warm),
+                    'full_query_wall_ms_mean': sum(m['full_query_wall_ms'] for m in warm) / len(warm) if warm else None,
+                    'denoising_latency_ms_mean': sum(m['denoising_latency_ms'] for m in warm) / len(warm) if warm else None,
+                })
                 save(args.out / 'progress.json', receipt('running', stage='episode_saved', index=index))
                 print(f'SLOT_COMPLETE worker={args.worker_id} arm={arm} index={index} success={record["success"]}', flush=True)
         else:

@@ -1,0 +1,72 @@
+#!/bin/bash
+#PBS -N c80reclip0001
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=1:mem=8gb:ngpus=0
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+case "${FW_AGG_ARM:-}" in clip_only|joint) ;; *) exit 64;; esac
+[[ "${FW_SOURCE_EVAL_JOB:-}" =~ ^[0-9]+\.[A-Za-z0-9_.-]+$ ]] || exit 64
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+SOURCE_ARTIFACTS=$NEW_ROOT/artifacts/$FW_SOURCE_EVAL_JOB
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() {
+ rc=$?
+ trap - EXIT
+ printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+ exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+qstat -xf "$FW_SOURCE_EVAL_JOB" > "$ARTIFACTS/source_scheduler.txt"
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*[FX]([[:space:]]|$)' "$ARTIFACTS/source_scheduler.txt"
+cp "$NEW_ROOT/recover_aggregate.pbs" "$NEW_ROOT/aggregate.py" "$ARTIFACTS/"
+for file in evaluate.py vq_adapter.py runner.py reference_aggregate.py protocol.json; do
+ cp "$SOURCE_ARTIFACTS/$file" "$ARTIFACTS/"
+done
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export CUDA_VISIBLE_DEVICES= PYTHONUNBUFFERED=1
+export PYTHONPATH="$ARTIFACTS"
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+python3 - "$NEW_ROOT" "$ARTIFACTS" "$FW_SOURCE_EVAL_JOB" "$FW_AGG_ARM" <<'PY_RECOVER'
+import argparse, json, os, re, sys
+from pathlib import Path
+import aggregate
+root, artifact, source_id, arm = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4]
+source = root / 'artifacts' / source_id
+qstat = (artifact / 'source_scheduler.txt').read_text()
+exit_match = re.search(r'^\s*Exit_status\s*=\s*(\S+)', qstat, re.M)
+assert exit_match and int(exit_match[1]) != 0, 'Source must be a terminal failed evaluation'
+assert int((source / 'exit_code.txt').read_text()) != 0
+phase = json.loads((source / 'RUN_PHASE.json').read_text())
+assert phase['protocol'] == aggregate.PROTOCOL and phase['arm'] == arm and phase['phase'] == 'failed'
+for worker in range(4):
+    assert (source / f'worker_{worker}.rc').read_text().strip() == '0'
+    summary = json.loads((root / 'results' / 'evaluations' / arm / f'worker_{worker}' / 'summary.json').read_text())
+    assert summary['complete'] is True and summary['episodes'] == 70 and summary['arm'] == arm
+assert 'torch' not in sys.modules
+aggregate.run(argparse.Namespace(protocol=artifact / 'protocol.json',
+    manifest=root / 'results' / 'manifest.json', results=root / 'results', arm=arm))
+assert 'torch' not in sys.modules, 'Aggregation recovery must not load a model'
+result = json.loads((root / 'results' / 'evaluations' / arm / 'summary.json').read_text())
+assert result['complete'] is True and result['episode_slots'] == 280
+assert result['arm_episodes'] == {arm: 280} and result['reference_episode_slots'] == 2240
+receipt = {'protocol': aggregate.PROTOCOL, 'arm': arm, 'pbs_jobid': os.environ['PBS_JOBID'],
+           'purpose': 'aggregate_only_recovery', 'source_evaluation_job_id': source_id,
+           'complete': True, 'reused_completed_episodes': 280, 'reference_episode_slots': 2240,
+           'new_model_forwards': 0, 'new_episodes': 0}
+aggregate.save(artifact / 'recovery_receipt.json', receipt)
+aggregate.save(artifact / 'RUN_PHASE.json', {'protocol': aggregate.PROTOCOL, 'arm': arm,
+    'pbs_jobid': os.environ['PBS_JOBID'], 'phase': 'complete', 'purpose': 'aggregate_only_recovery'})
+(artifact / 'PIPELINE_COMPLETE').touch()
+print('AGGREGATION_RECOVERY_COMPLETE ' + json.dumps(receipt), flush=True)
+PY_RECOVER

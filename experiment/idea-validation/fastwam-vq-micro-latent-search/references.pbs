@@ -1,0 +1,75 @@
+#!/bin/bash
+#PBS -N fwm14refa
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh references.pbs sampler.py metrics.py latent_reference.py prepare_references.py test_latent_loss.py test_micro_reference.py micro_codebook.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+test -f "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/exit_code.txt")" = 0
+test -f /scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011/artifacts/25755896.pbs101/PIPELINE_COMPLETE
+test "$(cat /scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011/artifacts/25755896.pbs101/exit_code.txt)" = 0
+export FW_JOB_START_EPOCH=$(date +%s)
+export FW_SOFT_DEADLINE_SECONDS=${FW_SOFT_DEADLINE_SECONDS:-3300}
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=6
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python --version
+run_python "$ARTIFACTS/prepare_references.py" --protocol "$ARTIFACTS/protocol.json" --out "$ROOT"
+test -s "$ROOT/reference_summary.json"
+copy_small "$ROOT/reference_summary.json" "$ARTIFACTS/summary.json"
+state=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8"))["status"])' "$ARTIFACTS/summary.json")
+case "$state" in
+  resumable)
+    test -s "$ROOT/reference_progress.json"
+    touch "$ARTIFACTS/RESUME_READY"
+    echo "REFERENCE_RESUMABLE job_id=$PBS_JOBID"
+    ;;
+  complete)
+    test -s /scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014/reference_cache.pt
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+    echo "REFERENCE_COMPLETE job_id=$PBS_JOBID"
+    ;;
+  *) echo "Unexpected reference summary status: $state" >&2; exit 65 ;;
+esac

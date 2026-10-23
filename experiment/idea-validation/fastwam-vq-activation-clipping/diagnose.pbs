@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -N fwcl17diag
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=2:mem=8gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+cp "$NEW_ROOT/diagnose.py" "$ARTIFACTS/diagnose.py"
+apptainer exec --cleanenv --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}" \
+  --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,NEW_ROOT=$NEW_ROOT" \
+  --env "OMP_NUM_THREADS=2,OPENBLAS_NUM_THREADS=2" \
+  "$SIF" "$BASE/venv/bin/python" "$ARTIFACTS/diagnose.py"
+touch "$ARTIFACTS/PHASE_COMPLETE"

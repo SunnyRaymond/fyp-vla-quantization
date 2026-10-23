@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "target": "experiment/idea-validation/fastwam-vq-kl-direction",
+  "poll_interval_seconds": 600,
+  "expected_units": [
+    "mse_dual",
+    "dual_dual",
+    "latent_latent",
+    "action_action"
+  ],
+  "monitor_agent": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "xhigh",
+    "source": "parent dispatch"
+  },
+  "completion_gate": "6 direction conditions; each 80 query cases, 80 parity cases, 80 gradient queries; summary complete; scheduler terminal Exit_status=0; artifact exit_code=0 and marker=true; control.py passed=true",
+  "constraints": [
+    "status-only polling; never submit/cancel/restart",
+    "Q/R are not failures; queue comments do not trigger resubmission",
+    "timeout is inconclusive; recheck same handle",
+    "read logs only with control.py logs and bounded tail <=9 KB",
+    "no login-node compute, heavy I/O, model loading, downloads, transfer, or hashing",
+    "GPU_SAMPLE must repeatedly record utilization and memory during running"
+  ],
+  "setup_utc": "2026-10-19T23:08:46.4836287+08:00",
+  "submission_note": "All four units were submitted independently; each unit performs its helper selfcheck before model loading. A public shared selfcheck release gate is no longer pending.",
+  "first_failure_action": "Immediately notify root if any per-unit selfcheck fails before model loading."
+}

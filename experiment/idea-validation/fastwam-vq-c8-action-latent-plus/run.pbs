@@ -1,0 +1,440 @@
+#!/bin/bash
+#PBS -N fwale1015
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=4
+#PBS -l walltime=24:00:00
+#PBS -o /scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/artifacts/pbs.out
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+test -n "${PBS_JOBNAME:-}" || { echo 'PBS_JOBNAME required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+JOB_NAME=fwale1015
+case "$PBS_JOBNAME" in
+  "$JOB_NAME") ;;
+  "$JOB_NAME"r*)
+    RESUME_SEQUENCE=${PBS_JOBNAME#"$JOB_NAME"r}
+    [[ "$RESUME_SEQUENCE" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid resume job name' >&2; exit 64; }
+    ;;
+  *) echo "Unexpected PBS job name: $PBS_JOBNAME" >&2; exit 64 ;;
+esac
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ROTATION_ROOT=/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008
+RUNTIME_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-vq-plus-20261012/artifacts/25771275.pbs101
+SCALAR_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009/artifacts/25734678.pbs101
+ROW_SOURCE_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009/artifacts/25743693.pbs101
+MICRO_SEARCH_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014
+CALIBRATION_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+RESULTS=$NEW_ROOT/results
+REFERENCE_ROOT=$RESULTS/reference
+TRAINING_ROOT=$RESULTS/training
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not in running state; refusing workload startup' >&2; exit 64;
+}
+mkdir -p "$ARTIFACTS" "$RESULTS" "$TRAINING_ROOT"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+GPU_MONITOR_PID=
+WORKER_PIDS=()
+PIPELINE_READY=0
+PIPELINE_CHECKPOINTED=0
+write_phase() {
+  local phase="$1" stamp temp
+  stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  temp="$ARTIFACTS/RUN_PHASE.json.tmp"
+  printf '{"pbs_jobid":"%s","job_name":"%s","phase":"%s","updated_utc":"%s","allocation_start_epoch":%s}\n' \
+    "$PBS_JOBID" "$PBS_JOBNAME" "$phase" "$stamp" "$FW_JOB_START_EPOCH" > "$temp"
+  mv -f "$temp" "$ARTIFACTS/RUN_PHASE.json"
+}
+
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKER_PIDS[@]:-}"; do kill -TERM "$pid" 2>/dev/null || true; done
+    for pid in "${WORKER_PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if (( rc == 0 && PIPELINE_READY == 1 )); then
+    write_phase complete || rc=65
+    if (( rc == 0 )); then
+      touch "$ARTIFACTS/PIPELINE_COMPLETE"
+      rm -f "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+    fi
+  elif (( rc == 0 && PIPELINE_CHECKPOINTED == 1 )); then
+    write_phase checkpointed || rc=65
+    if (( rc == 0 )); then
+      touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+      rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+    fi
+  fi
+  if (( rc != 0 )); then
+    write_phase failed || true
+    rm -f "$ARTIFACTS/PIPELINE_COMPLETE" "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+write_phase allocation_verified
+printf 'PBS_JOBID=%s PBS_JOBNAME=%s allocation_start_epoch=%s\n' \
+  "$PBS_JOBID" "$PBS_JOBNAME" "$FW_JOB_START_EPOCH"
+
+test -s "$ROOT/env_status.json" -a -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
+test -s "$NEW_ROOT/run.pbs" -a -s "$NEW_ROOT/protocol.json" -a -s "$NEW_ROOT/prepare_c8.py"
+test -s "$NEW_ROOT/train_c8.py" -a -s "$NEW_ROOT/train_banks.py" -a -s "$NEW_ROOT/vq_adapter.py"
+test -s "$NEW_ROOT/evaluate.py" -a -s "$NEW_ROOT/aggregate.py" -a -s "$NEW_ROOT/environment.sh"
+test -s "$NEW_ROOT/batched_transform.py" -a -s "$NEW_ROOT/transform_checks.py"
+test -s "$RUNTIME_ARTIFACTS/runner.py" -a -s "$RUNTIME_ARTIFACTS/quantization.py" -a -s "$RUNTIME_ARTIFACTS/libero_state_loader.py" -a -s "$RUNTIME_ARTIFACTS/environment.sh"
+test -s "$SCALAR_ARTIFACTS/aggregate.py" -a -s "$SMOOTH_ROOT/smooth_vq.py"
+test -s "$ROW_SOURCE_ARTIFACTS/codebook.py"
+test -s "$MICRO_SEARCH_ROOT/micro_codebook.py" -a -s "$MICRO_SEARCH_ROOT/sampler.py"
+test -s "$MICRO_SEARCH_ROOT/latent_reference.py" -a -s "$MICRO_SEARCH_ROOT/checkpointing.py"
+test -s "$CALIBRATION_ROOT/run_calibration.py"
+test -s "$ROTATION_ROOT/results/manifest.json"
+test -s "$CALIBRATION_ROOT/data/plan.json" -a -d "$CALIBRATION_ROOT/results/c8/banks/micro_scale_vq_a4"
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" -a -s "$SIF"
+
+cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/prepare_c8.py" \
+  "$NEW_ROOT/train_c8.py" "$NEW_ROOT/train_banks.py" "$NEW_ROOT/vq_adapter.py" \
+  "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$NEW_ROOT/batched_transform.py" \
+  "$NEW_ROOT/transform_checks.py" "$NEW_ROOT/environment.sh" "$ARTIFACTS/"
+cp "$RUNTIME_ARTIFACTS/runner.py" "$RUNTIME_ARTIFACTS/quantization.py" \
+  "$RUNTIME_ARTIFACTS/libero_state_loader.py" "$ARTIFACTS/"
+cp "$RUNTIME_ARTIFACTS/environment.sh" "$ARTIFACTS/source_environment.sh"
+cp "$SCALAR_ARTIFACTS/aggregate.py" "$ARTIFACTS/reference_aggregate.py"
+cp "$SMOOTH_ROOT/smooth_vq.py" "$ARTIFACTS/smooth_vq.py"
+cp "$ROW_SOURCE_ARTIFACTS/codebook.py" "$ARTIFACTS/codebook.py"
+cp "$MICRO_SEARCH_ROOT/micro_codebook.py" "$MICRO_SEARCH_ROOT/sampler.py" \
+  "$MICRO_SEARCH_ROOT/latent_reference.py" "$MICRO_SEARCH_ROOT/checkpointing.py" "$ARTIFACTS/"
+cp "$CALIBRATION_ROOT/run_calibration.py" "$ARTIFACTS/calibration_source.py"
+
+cp -n "$ROTATION_ROOT/results/manifest.json" "$RESULTS/manifest.json"
+cmp -s "$ROTATION_ROOT/results/manifest.json" "$RESULTS/manifest.json" || {
+  echo 'Existing result manifest differs from the frozen cohort' >&2; exit 65;
+}
+cp -n "$ARTIFACTS/protocol.json" "$RESULTS/protocol.json"
+cmp -s "$ARTIFACTS/protocol.json" "$RESULTS/protocol.json" || {
+  echo 'Existing result protocol differs from the uploaded frozen protocol' >&2; exit 65;
+}
+
+source "$ARTIFACTS/environment.sh"
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=85500
+export FW_CPU_THREADS FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifiers' >&2; exit 65; }
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 4 || { echo "Expected four allocated GPUs, got $CUDA_VISIBLE_DEVICES" >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || { echo "Unable to resolve allocated GPU UUID: $gpu" >&2; exit 65; }
+  for prior in "${GPU_UUIDS[@]:-}"; do
+    test "$prior" != "$uuid" || { echo "Duplicate allocated GPU UUID: $uuid" >&2; exit 65; }
+  done
+  GPU_UUIDS+=("$uuid")
+done
+printf 'ALLOCATED_GPU_UUIDS=%s\n' "${GPU_UUIDS[*]}"
+(
+  while :; do
+    stamp=$(date -Is)
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s gpu_uuid=%s ' "$stamp" "$uuid"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+write_phase transform_checks
+CUDA_VISIBLE_DEVICES="${GPU_UUIDS[0]}" run_python "$ARTIFACTS/transform_checks.py" \
+  --out "$ARTIFACTS/transform_check.json"
+run_python - "$ARTIFACTS/transform_check.json" <<'PY_TRANSFORM_GATE'
+import json, sys
+from pathlib import Path
+receipt = json.loads(Path(sys.argv[1]).read_text())
+assert receipt.get('passed') is True and receipt.get('bitwise_equal') is True, receipt
+assert receipt.get('forward_inverse_checked') is True, receipt
+print('TRANSFORM_GATE_PASSED implementation=batched_h128_v2 forward_inverse_checked=true', flush=True)
+PY_TRANSFORM_GATE
+
+write_phase reference_validation
+run_python - "$REFERENCE_ROOT" "$ARTIFACTS/protocol.json" <<'PY_REFERENCE_GATE'
+import json, math, sys
+from pathlib import Path
+root, protocol_path = Path(sys.argv[1]), Path(sys.argv[2])
+receipt = json.loads((root / 'reference_receipt.json').read_text())
+protocol = json.loads(protocol_path.read_text())
+calibration = protocol['calibration']
+assert (root / 'reference_cache.pt').is_file()
+assert receipt.get('status') == 'complete' and receipt.get('complete') is True
+assert receipt.get('passed') is True and receipt.get('context_count') == 8
+assert receipt.get('target_linears') == 614 and receipt.get('no_training') is True
+assert receipt.get('source_c8', {}).get('protocol') == 'fastwam-vq-calibration-suites-v1'
+assert receipt.get('source_c8', {}).get('source_job_id') == calibration['source_job_id']
+assert receipt.get('source_c8', {}).get('case_ids') == calibration['case_ids']
+assert receipt.get('source_c8', {}).get('bank_directory') == calibration['bank_directory']
+assert set(receipt.get('suite_case_counts', {}).values()) == {2}
+for source_kind in ('teacher', 'parent'):
+    cases = receipt.get('parity', {}).get(source_kind, {})
+    assert all(cases.get(str(case), {}).get('passed') is True for case in calibration['case_ids'])
+counts = receipt.get('counts', {})
+assert counts.get('model_forward_count') == 32 and counts.get('target_linears') == 614
+normalization_c = receipt.get('normalization', {}).get('normalization_c')
+assert isinstance(normalization_c, (int, float)) and math.isfinite(normalization_c) and normalization_c > 0
+print('C8_REFERENCE_GATE_PASSED contexts=8 linears=614 source_job=' + calibration['source_job_id'], flush=True)
+PY_REFERENCE_GATE
+
+write_phase validating_trained_c8
+run_python - "$ARTIFACTS/protocol.json" "$TRAINING_ROOT" "$REFERENCE_ROOT" <<'PY_PRETRAINED_GATE'
+import json, sys
+from pathlib import Path
+from vq_adapter import validate_training_artifacts
+protocol = json.loads(Path(sys.argv[1]).read_text())
+training, reference = Path(sys.argv[2]), Path(sys.argv[3])
+for arm in protocol['arms']:
+    value = validate_training_artifacts(protocol, arm, training / arm, reference)
+    receipt = value['training_receipt']
+    print('PRETRAINED_C8_GATE arm=' + arm + ' updates=' + str(receipt['updates']), flush=True)
+PY_PRETRAINED_GATE
+for arm in rho0.1 rho1.5; do
+  printf '0\n' > "$ARTIFACTS/pretrained_${arm}.rc"
+done
+
+run_python - "$ARTIFACTS/training_gate.json" "$TRAINING_ROOT" "$ARTIFACTS/protocol.json" "$ARTIFACTS" <<'PY_TRAINING_GATE'
+import json, math, sys
+from pathlib import Path
+gate_path, root, protocol_path, artifacts = map(Path, sys.argv[1:])
+protocol = json.loads(protocol_path.read_text())
+expected = {'rho0.1': (0.1, 2, 16), 'rho1.5': (1.5, 1, 8)}
+receipts, checkpointed = {}, []
+for arm, (rho, epochs, updates) in expected.items():
+    out = root / arm
+    receipt = json.loads((out / 'training_receipt.json').read_text())
+    rc = int((artifacts / f'pretrained_{arm}.rc').read_text().strip())
+    assert receipt.get('protocol') == protocol['protocol'] and receipt.get('arm') == arm
+    assert receipt.get('rho') == rho and receipt.get('epochs') == epochs
+    assert receipt.get('target_linears') == 614
+    assert receipt.get('source_c8', {}).get('source_job_id') == protocol['calibration']['source_job_id']
+    assert receipt.get('source_c8', {}).get('case_ids') == protocol['calibration']['case_ids']
+    if receipt.get('status') == 'complete':
+        assert rc == 0 and receipt.get('complete') is True and receipt.get('updates') == updates
+        assert receipt.get('epochs_completed') == epochs
+        assert receipt.get('optimizer_reset_after_update1') is True
+        counts = receipt.get('counts', {})
+        assert counts.get('reference_contexts') == 8
+        assert counts.get('gradient_updates') == updates
+        assert counts.get('reference_action_sampler_forwards') == 1
+        assert counts.get('reference_action_pilot_infer_calls') == 1
+        coverage = receipt.get('gradient_coverage', {})
+        assert all(coverage.get(key) == 614 for key in (
+            'target_linears', 'connected_linears', 'finite_linears'))
+        nonzero = coverage.get('nonzero_gradient_linears')
+        assert type(nonzero) is int and 0 < nonzero <= 614
+        assert (out / 'deployment.pt').is_file() and (out / 'reference_action.json').is_file()
+        parity = receipt.get('reference_action_parity', {})
+        assert isinstance(parity.get('max_abs'), (int, float))
+        assert parity['max_abs'] <= protocol['source_parity_max_abs_tolerance']
+    elif receipt.get('status') == 'checkpointed':
+        updates_done, checkpoint = receipt.get('updates'), receipt.get('checkpoint')
+        assert (rc == 75 and receipt.get('complete') is False
+                and type(updates_done) is int and 0 <= updates_done < updates
+                and type(receipt.get('epochs_completed')) is int
+                and receipt['epochs_completed'] <= epochs
+                and receipt.get('optimizer_reset_after_update1') is (updates_done > 0)
+                and checkpoint == str(out / 'checkpoint.pt')
+                and (out / 'checkpoint.pt').is_file())
+        checkpointed.append(arm)
+    else:
+        raise AssertionError((arm, receipt.get('status'), rc))
+    receipts[arm] = receipt
+c_values = [receipts[arm]['normalization_c'] for arm in expected]
+assert all(isinstance(value, (int, float)) and math.isfinite(value) and value > 0 for value in c_values)
+assert c_values[0] == c_values[1], c_values
+for arm, (rho, _epochs, _updates) in expected.items():
+    assert math.isclose(receipts[arm]['latent_weight'], rho * c_values[0], rel_tol=1e-12, abs_tol=1e-12)
+completed = [arm for arm in expected if receipts[arm]['status'] == 'complete']
+next_arm = next((arm for arm in expected if receipts[arm]['status'] != 'complete'), None)
+result = {'status': 'checkpointed' if checkpointed else 'complete',
+          'completed_training_arms': completed, 'next_training_arm': next_arm,
+          'training_updates': {arm: receipts[arm]['updates'] for arm in expected},
+          'normalization_c': c_values[0]}
+gate_path.write_text(json.dumps(result, indent=2) + '\n')
+print('TRAINING_GATE ' + json.dumps(result, separators=(',', ':')), flush=True)
+PY_TRAINING_GATE
+TRAINING_STATUS=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACTS/training_gate.json")
+test "$TRAINING_STATUS" = complete || { echo "Evaluation requires both completed training arms" >&2; exit 65; }
+
+write_phase evaluation
+for worker in 0 1 2 3; do
+  gpu_uuid=${GPU_UUIDS[$worker]}
+  rc_path="$ARTIFACTS/worker_${worker}.rc"
+  rm -f "$rc_path" "$rc_path.tmp"
+  (
+    child_pid=
+    stop_worker() {
+      if [[ -n "$child_pid" ]]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+        wait "$child_pid" 2>/dev/null || true
+      fi
+      printf '143\n' > "$rc_path.tmp"
+      mv -f "$rc_path.tmp" "$rc_path"
+      exit 143
+    }
+    trap stop_worker TERM INT
+    CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/evaluate.py" \
+      --protocol "$ARTIFACTS/protocol.json" --manifest "$RESULTS/manifest.json" \
+      --out "$RESULTS/worker_$worker" --worker-id "$worker" &
+    child_pid=$!
+    set +e
+    wait "$child_pid"
+    rc=$?
+    set -e
+    printf '%s\n' "$rc" > "$rc_path.tmp"
+    mv -f "$rc_path.tmp" "$rc_path"
+    exit "$rc"
+  ) &
+  WORKER_PIDS+=("$!")
+  echo "WORKER_STARTED worker=$worker gpu_uuid=$gpu_uuid pid=$!"
+  if (( worker < 3 )); then sleep 20; fi
+done
+
+declare -A WORKER_DONE=()
+while (( ${#WORKER_DONE[@]} < 4 )); do
+  failed_worker=
+  failed_rc=0
+  for worker in 0 1 2 3; do
+    [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+    rc_path="$ARTIFACTS/worker_${worker}.rc"
+    if [[ -s "$rc_path" ]]; then
+      rc=$(<"$rc_path")
+      WORKER_DONE[$worker]=1
+      if (( rc != 0 )); then failed_worker=$worker; failed_rc=$rc; break; fi
+    fi
+  done
+  if [[ -n "$failed_worker" ]]; then
+    echo "WORKER_FAILED worker=$failed_worker exit_code=$failed_rc; stopping remaining workers" >&2
+    for worker in 0 1 2 3; do
+      [[ -n "${WORKER_DONE[$worker]:-}" ]] && continue
+      kill -TERM "${WORKER_PIDS[$worker]}" 2>/dev/null || true
+    done
+    for pid in "${WORKER_PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
+    exit "$failed_rc"
+  fi
+  (( ${#WORKER_DONE[@]} == 4 )) || sleep 2
+done
+for pid in "${WORKER_PIDS[@]}"; do wait "$pid"; done
+WORKER_PIDS=()
+
+run_python - "$RESULTS" "$ARTIFACTS/protocol.json" <<'PY_WORKER_GATE'
+import json, math, sys
+from pathlib import Path
+results = Path(sys.argv[1])
+protocol = json.loads(Path(sys.argv[2]).read_text())
+checkpointed = []
+required = ('protocol', 'worker_id', 'arm', 'expected', 'episodes', 'status',
+            'complete', 'soft_deadline_reached')
+for worker_id in range(4):
+    arm = protocol['arms'][worker_id // 2]
+    expected_indices = list(range(worker_id % 2, 280, 2))
+    worker = results / f'worker_{worker_id}'
+    progress = json.loads((worker / 'progress.json').read_text())
+    summary = json.loads((worker / 'summary.json').read_text())
+    setup = json.loads((worker / 'setup_receipt.json').read_text())
+    for label, receipt in (('progress', progress), ('summary', summary)):
+        assert all(key in receipt for key in required), (worker_id, label)
+        assert receipt['protocol'] == protocol['protocol']
+        assert receipt['worker_id'] == worker_id and receipt['arm'] == arm
+        assert receipt['expected'] == 140 and type(receipt['episodes']) is int
+        assert 0 <= receipt['episodes'] <= 140
+        assert receipt.get('indices') == expected_indices
+        completed_indices = receipt.get('completed_indices')
+        assert (isinstance(completed_indices, list)
+                and completed_indices == expected_indices[:receipt['episodes']])
+    assert {key: progress[key] for key in required} == {key: summary[key] for key in required}
+    assert setup.get('passed') is True and setup.get('arm') == arm
+    assert setup.get('observed_modules') == 614
+    max_abs = setup.get('max_abs_vs_reference')
+    assert isinstance(max_abs, (int, float)) and math.isfinite(max_abs)
+    assert max_abs <= protocol['source_parity_max_abs_tolerance']
+    if summary['status'] == 'complete':
+        assert summary['complete'] is True and summary['episodes'] == 140
+        assert summary['soft_deadline_reached'] is False
+    elif summary['status'] == 'checkpointed':
+        assert summary['complete'] is False and summary['soft_deadline_reached'] is True
+        assert summary['episodes'] < 140
+        checkpointed.append(worker_id)
+    else:
+        raise AssertionError((worker_id, summary['status']))
+print(json.dumps({'checkpointed_workers': checkpointed}, separators=(',', ':')), flush=True)
+PY_WORKER_GATE
+
+write_phase aggregation
+run_python "$ARTIFACTS/aggregate.py" --protocol "$ARTIFACTS/protocol.json" \
+  --manifest "$RESULTS/manifest.json" --results "$RESULTS"
+cp "$RESULTS/summary.json" "$ARTIFACTS/summary.json"
+AGGREGATE_STATUS=$(run_python - "$RESULTS/summary.json" <<'PY_AGGREGATE_STATUS'
+import json, sys
+print(json.load(open(sys.argv[1]))['status'])
+PY_AGGREGATE_STATUS
+)
+run_python - "$RESULTS/summary.json" "$ARTIFACTS/protocol.json" "$RESULTS" <<'PY_AGGREGATE_GATE'
+import json, sys
+from pathlib import Path
+summary = json.loads(Path(sys.argv[1]).read_text())
+protocol = json.loads(Path(sys.argv[2]).read_text())
+results = Path(sys.argv[3])
+assert summary.get('reference_episode_slots') == 1680
+checkpointed_workers = []
+for worker_id in range(4):
+    progress = json.loads((results / f'worker_{worker_id}' / 'progress.json').read_text())
+    if progress['status'] == 'checkpointed':
+        checkpointed_workers.append(worker_id)
+if summary.get('complete') is True:
+    assert summary.get('status') == 'complete'
+    assert summary.get('episode_slots') == 560
+    assert summary.get('arm_episodes') == {arm: 280 for arm in protocol['arms']}
+    assert not checkpointed_workers
+    print('AGGREGATE_GATE_PASSED slots=560 references=1680 arms=2', flush=True)
+else:
+    assert summary.get('status') == 'checkpointed' and summary.get('complete') is False
+    assert summary.get('checkpointed_workers') == checkpointed_workers and checkpointed_workers
+    assert summary.get('episode_slots', 0) < 560
+    assert set(summary.get('arm_episodes', {})) == set(protocol['arms'])
+    print('AGGREGATE_CHECKPOINT_GATE_PASSED ' + json.dumps(
+        {'checkpointed_workers': checkpointed_workers}, separators=(',', ':')), flush=True)
+PY_AGGREGATE_GATE
+
+if [[ "$AGGREGATE_STATUS" == complete ]]; then
+  PIPELINE_READY=1
+  echo FASTWAM_VQ_C8_ACTION_LATENT_PLUS_COMPLETE
+else
+  PIPELINE_CHECKPOINTED=1
+  echo FASTWAM_VQ_C8_ACTION_LATENT_PLUS_CHECKPOINTED
+fi

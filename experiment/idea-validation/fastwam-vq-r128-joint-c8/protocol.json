@@ -1,0 +1,179 @@
+{
+  "protocol": "fastwam-vq-r128-joint-c8-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-r128-joint-c8-20261021",
+  "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+  "baseline_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+  "calibration": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+    "plan_file": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+    "source_job_id": "25789685.pbs101",
+    "case_ids": [
+      2000,
+      2019,
+      2021,
+      2025,
+      2051,
+      2057,
+      2066,
+      2070
+    ],
+    "seed_indices": [
+      0
+    ]
+  },
+  "evaluation": {
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "queries": 80,
+    "aggregation": "average seeds within context, contexts within suite, then four suites equally",
+    "checkpoint_selection": "fixed final Joint8; no heldout selection",
+    "episodes": 0
+  },
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "target_linears": 614,
+  "checkpoint": "libero_optional_idm_2cam224.clean.pt",
+  "training": {
+    "rho": 1.5,
+    "normalization_c": 0.028303017887797623,
+    "latent_weight": 0.04245452683169643,
+    "action_loss": "mean squared error first10 x6 motor dimensions versus same-input same-seed BF16 teacher",
+    "latent_loss": "global clean-future NMSE excluding clamped frame0; student-generated future remains connected to action",
+    "rotation_updates": 0,
+    "rotation_learning_rate": 0.0001,
+    "rotation_optimizer_reset_after_update1": false,
+    "vq_updates": 8,
+    "vq_learning_rate": 0.0005,
+    "vq_optimizer_reset_after_update1": true,
+    "gradient_norm_clip": 1.0,
+    "optimizer": "Adam",
+    "random_seed": 20261021,
+    "existing_rotation_updates": 8,
+    "joint_updates": 8,
+    "update_order": [
+      2000,
+      2019,
+      2021,
+      2025,
+      2051,
+      2057,
+      2066,
+      2070
+    ],
+    "initialization": "exact original H+VQ0 banks and U=I; H+VQ8 comparator uses same banks, update order, VQ lr, loss and 8 updates",
+    "joint_forward": "A4((X/S) H U) @ Decode(C,g,I,e).T; compressed student coadaptation; no post-training refit",
+    "frozen": "Smooth, original model parameters, VQ indices and B32 exponents; D=I and r=1",
+    "trainable": "two stream-shared Cayley residuals, 614 codebook pairs and row gains",
+    "gradient_clip": "VQ and R parameter groups independently norm-clipped at 1; VQ-only Adam state reset after update1",
+    "monitoring": "per-update same-input pre/post metrics, initial/final complete C8; no heldout selection"
+  },
+  "rotation": {
+    "block": 128,
+    "sharing": "one Cayley residual per eligible video/action/proprio stream; original signs retained per layer and block",
+    "parameterization": "R=H128 U; U=solve(I-.5(A-A.T),I+.5(A-A.T)); A initially zero",
+    "execution": "original signed FWHT followed by U, both stages in FP32, to preserve baseline arithmetic at U=I; no folded-kernel claim",
+    "tails": "keep original fixed signed power-of-two transforms below 128",
+    "weight_precision_during_rotation": "existing frozen R8 for diagnostics; joint learner uses actual decoded BF16 VQ weights",
+    "freeze_after_update": 8
+  },
+  "quantization": {
+    "smooth": "reuse exact frozen Smooth0.5 scales and signs from source banks",
+    "D": 1,
+    "clipping_ratio": 1,
+    "activations": "dynamic per-token signed symmetric A4 qmax7, BF16 decoded operands",
+    "weights": "d4 two additive 256-entry BF16 codebooks; BF16 row gains; B32 uint8 power-of-two exponents",
+    "kv_cache": "BF16",
+    "native_kernel": false
+  },
+  "fitting": {
+    "samples": 8192,
+    "iterations": 8,
+    "seed": 20261006,
+    "moments": "new R8 BF16W+A4 moments; normalize each context by token rows then equal contexts/suites"
+  },
+  "allocation": {
+    "queue": "normal",
+    "gpus": 1,
+    "ncpus": 16,
+    "memory_gb": 110,
+    "walltime": "04:00:00",
+    "soft_deadline_seconds": 14100,
+    "gpu_monitor_seconds": 15
+  },
+  "comparison_arms": [
+    "H_W16A4",
+    "R8_W16A4",
+    "H_VQ8",
+    "R8_VQ8",
+    "Joint8"
+  ],
+  "scope": "paired fixed-input decoded-BF16/A4 numerical diagnostics and Joint8; same VQ updates, extra rotation compute; no closed-loop/native/equal-walltime claim",
+  "existing_rotation_root": "/scratch/users/ntu/yguo017/fastwam-vq-learned-r128-c8-20261021",
+  "existing_rotation_job": "25902163.pbs101",
+  "calibration_arms": [
+    "H_W16A4",
+    "R8_W16A4",
+    "H_VQ0",
+    "H_VQ8",
+    "R8_VQ0",
+    "R8_VQ8",
+    "Joint8"
+  ],
+  "stage_order": [
+    "no_vq_diagnostic",
+    "calibration_boundaries",
+    "joint_training",
+    "joint_evaluation",
+    "aggregate"
+  ],
+  "refinement": "inspect complete diagnostics and Joint8 before deciding any further LR or gradient-accumulation arm; no automatic large sweep"
+}

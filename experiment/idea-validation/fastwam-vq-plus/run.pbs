@@ -9,6 +9,7 @@
 set -euo pipefail
 
 test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+test -n "${PBS_JOBNAME:-}" || { echo 'PBS_JOBNAME required' >&2; exit 64; }
 case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
 test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
 grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
@@ -16,6 +17,16 @@ grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
 }
 
 NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-plus-20261012
+JOB_NAME=fwvqplus1012
+REPAIR_SEQUENCE=
+case "$PBS_JOBNAME" in
+  "${JOB_NAME}"p*)
+    REPAIR_SEQUENCE=${PBS_JOBNAME#"${JOB_NAME}"p}
+    [[ "$REPAIR_SEQUENCE" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid repair job name' >&2; exit 64; }
+    ;;
+  "${JOB_NAME}"|"${JOB_NAME}"r[1-9]*) ;;
+  *) echo "Unexpected PBS job name: $PBS_JOBNAME" >&2; exit 64 ;;
+esac
 DIAG_ROOT=$NEW_ROOT
 ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
 SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
@@ -72,6 +83,7 @@ trap 'exit 143' TERM INT
 qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
 test -s "$ROOT/env_status.json" -a -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
 test -s "$NEW_ROOT/run.pbs" -a -s "$NEW_ROOT/protocol.json" -a -s "$NEW_ROOT/evaluate.py" -a -s "$NEW_ROOT/aggregate.py" -a -s "$NEW_ROOT/vq_adapter.py"
+test -s "$NEW_ROOT/batched_transform.py" -a -s "$NEW_ROOT/transform_checks.py"
 test -s "$ROTATION_ARTIFACTS/runner.py" -a -s "$ROTATION_ARTIFACTS/quantization.py" -a -s "$ROTATION_ARTIFACTS/libero_state_loader.py" -a -s "$ROTATION_ARTIFACTS/environment.sh"
 test -s "$SCALAR_ARTIFACTS/aggregate.py" -a -s "$SMOOTH_ROOT/smooth_vq.py"
 test -s "$ROW_SOURCE_ARTIFACTS/codebook.py" -a -s "$MICRO_SOURCE_ARTIFACTS/micro_codebook.py"
@@ -83,13 +95,18 @@ test -s "$ROW_SOURCE_ROOT/results/full/receipts.json" -a -s "$MICRO_SOURCE_ROOT/
 test -s "$ROW_BANK/0000.pt" -a -s "$ROW_BANK/0613.pt"
 test -s "$MICRO_BANK/0000.pt" -a -s "$MICRO_BANK/0613.pt"
 
-cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$NEW_ROOT/vq_adapter.py" "$ARTIFACTS/"
+cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$NEW_ROOT/vq_adapter.py" "$NEW_ROOT/batched_transform.py" "$NEW_ROOT/transform_checks.py" "$ARTIFACTS/"
 cp "$ROTATION_ARTIFACTS/runner.py" "$ROTATION_ARTIFACTS/quantization.py" "$ROTATION_ARTIFACTS/libero_state_loader.py" "$ARTIFACTS/"
 cp "$ROTATION_ARTIFACTS/environment.sh" "$ARTIFACTS/environment.sh"
 cp "$SCALAR_ARTIFACTS/aggregate.py" "$ARTIFACTS/reference_aggregate.py"
 cp "$SMOOTH_ROOT/smooth_vq.py" "$ROW_SOURCE_ARTIFACTS/codebook.py" "$MICRO_SOURCE_ARTIFACTS/micro_codebook.py" "$ARTIFACTS/"
 cp "$ROW_SOURCE_ROOT/results/full/receipts.json" "$ARTIFACTS/row_source_receipts.json"
 cp "$MICRO_SOURCE_ROOT/results/full/bank_freeze.json" "$ARTIFACTS/micro_bank_freeze.json"
+if [[ -n "$REPAIR_SEQUENCE" ]]; then
+  repair_auth="$NEW_ROOT/control/repair_authorization_${REPAIR_SEQUENCE}.json"
+  test -s "$repair_auth" || { echo 'Repair authorization is missing' >&2; exit 65; }
+  cp "$repair_auth" "$ARTIFACTS/repair_authorization.json"
+fi
 cp -n "$ROTATION_ROOT/results/manifest.json" "$RESULTS/manifest.json"
 cmp -s "$ROTATION_ROOT/results/manifest.json" "$RESULTS/manifest.json" || {
   echo 'Existing result manifest differs from the frozen reference manifest' >&2; exit 65;
@@ -101,6 +118,72 @@ cmp -s "$ARTIFACTS/protocol.json" "$RESULTS/protocol.json" || {
 
 source "$ARTIFACTS/environment.sh"
 FW_CPU_THREADS=8
+if [[ -n "$REPAIR_SEQUENCE" ]]; then
+  run_python - "$ARTIFACTS/repair_authorization.json" "$ARTIFACTS/protocol.json" "$RESULTS" "$NEW_ROOT/artifacts" "$REPAIR_SEQUENCE" <<'PY_REPAIR_GATE'
+import json, math, sys
+from pathlib import Path
+
+authorization_path, protocol_path, results_root, artifacts_root = map(Path, sys.argv[1:5])
+sequence = int(sys.argv[5])
+authorization = json.loads(authorization_path.read_text())
+protocol = json.loads(protocol_path.read_text())
+results, artifacts = Path(results_root), Path(artifacts_root)
+old_job = authorization['previous_job_id']
+assert authorization['resume_sequence'] == sequence
+assert authorization['authorization_source'] == 'human_user_instruction'
+assert authorization['reason']
+assert authorization['change_scope'] == 'batched FWHT execution optimization only'
+assert authorization['protocol'] == protocol['protocol']
+assert authorization['protocol_and_cohort_unchanged'] is True
+assert authorization['preserve_existing_episodes'] is True
+assert authorization['revalidate_and_recover_episodes_in_new_allocation'] is True
+assert authorization['required_startup_gate'] == 'batched_transform_bitwise_and_cached_action_parity'
+assert authorization['vq_model_bank_cohort_and_numerical_recipe_unchanged'] is True
+assert json.loads((results / 'protocol.json').read_text()) == protocol
+assert json.loads((artifacts / old_job / 'protocol.json').read_text()) == protocol
+reference_manifest = json.loads(Path(protocol['cohort']['reference_manifest']).read_text())
+assert json.loads((results / 'manifest.json').read_text()) == reference_manifest
+metadata_by_arm = {}
+for worker_id in range(4):
+    worker = results / f'worker_{worker_id}'
+    arm = protocol['arms'][worker_id // 2]
+    assert json.loads((worker / 'protocol.json').read_text()) == protocol
+    episodes = worker / 'episodes.jsonl'
+    assert episodes.is_file() and episodes.stat().st_size > 0, f'missing durable episodes for worker {worker_id}'
+    receipt = json.loads((worker / 'setup_receipt.json').read_text())
+    progress = json.loads((worker / 'progress.json').read_text())
+    source = protocol['sources'][arm]
+    assert progress['protocol'] == protocol['protocol']
+    assert progress['worker_id'] == worker_id and progress['arm'] == arm
+    assert progress['expected'] == 140 and progress['status'] in ('running', 'complete', 'checkpointed')
+    assert type(progress['episodes']) is int and 0 < progress['episodes'] <= 140
+    assert not (worker / 'failure.json').exists(), f'worker {worker_id} has a recorded failure'
+    assert receipt['passed'] is True and receipt['arm'] == arm
+    assert receipt['case_id'] == protocol['source_parity_case_id']
+    assert receipt['seed_index'] == protocol['source_parity_seed_index']
+    assert receipt['sampler_seed'] == 911000000
+    assert receipt['tolerance'] == protocol['source_parity_max_abs_tolerance']
+    assert receipt['observed_modules'] == 614
+    max_abs = receipt['max_abs_vs_frozen_action']
+    assert isinstance(max_abs, (int, float)) and not isinstance(max_abs, bool) and math.isfinite(max_abs)
+    assert max_abs <= protocol['source_parity_max_abs_tolerance']
+    metadata = receipt['install_metadata']
+    assert metadata['source_bank'] == source['bank'] and metadata['source_job_id'] == source['job_id']
+    assert metadata['module_count'] == 614 and metadata['execution'] == 'decoded_bf16_vq'
+    assert metadata['activation_bits'] == 4 and metadata['kv_cache_dtype'] == 'bf16'
+    assert metadata['native_low_bit_kernel'] is False and metadata['frozen_bank_reused'] is True
+    assert metadata['scale_block'] == source['scale_block']
+    assert progress['install_metadata'] == metadata
+    if arm in metadata_by_arm:
+        assert metadata_by_arm[arm] == metadata, f'install metadata differs across {arm} workers'
+    metadata_by_arm[arm] = metadata
+print('REPAIR_INPUTS_OK protocol_unchanged=true durable_worker_files=4 setup_receipts=4', flush=True)
+PY_REPAIR_GATE
+  for worker in 0 1 2 3; do
+    cp "$RESULTS/worker_${worker}/setup_receipt.json" "$ARTIFACTS/previous_worker_${worker}_setup_receipt.json"
+    cp "$RESULTS/worker_${worker}/progress.json" "$ARTIFACTS/previous_worker_${worker}_progress.json"
+  done
+fi
 test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifiers' >&2; exit 65; }
 IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
 test "${#GPU_IDS[@]}" -eq 4 || { echo "Expected four allocated GPUs, got $CUDA_VISIBLE_DEVICES" >&2; exit 65; }
@@ -125,6 +208,28 @@ done
   done
 ) &
 GPU_MONITOR_PID=$!
+
+CUDA_VISIBLE_DEVICES="${GPU_UUIDS[0]}" run_python "$ARTIFACTS/transform_checks.py" \
+  --out "$ARTIFACTS/transform_check.json"
+run_python - "$ARTIFACTS/transform_check.json" <<'PY_TRANSFORM_GATE'
+import json, sys
+from pathlib import Path
+
+receipt = json.loads(Path(sys.argv[1]).read_text())
+assert receipt.get('passed') is True and receipt.get('bitwise_equal') is True, receipt
+timings = receipt.get('isolated_transform_timing')
+assert isinstance(timings, list) and len(timings) == 2, 'missing isolated transform timings'
+print('TRANSFORM_GATE_PASSED implementation=batched_h128_v2 bitwise_equal=true', flush=True)
+for sample in timings:
+    for implementation, values in sample['samples'].items():
+        print('TRANSFORM_TIMING ' + json.dumps({
+            'shape': sample['shape'], 'implementation': implementation,
+            'wall_ms_per_call': values['wall_ms_per_call'],
+            'cuda_interval_ms_per_call': values['cuda_interval_ms_per_call'],
+            'wall_speedup': sample.get('wall_speedup'),
+            'timing_scope': receipt['timing_scope'],
+        }, separators=(',', ':')), flush=True)
+PY_TRANSFORM_GATE
 
 printf 'phase=evaluation protocol=fastwam-vq-plus-v1 PBS_JOBID=%s GPU_UUIDS=%s\n' \
   "$PBS_JOBID" "${GPU_UUIDS[*]}" | tee -a "$ARTIFACTS/launch.txt"
@@ -188,12 +293,14 @@ while (( ${#WORKER_DONE[@]} < 4 )); do
 done
 for pid in "${WORKER_PIDS[@]}"; do wait "$pid"; done
 
-run_python - "$RESULTS" "$ARTIFACTS/protocol.json" <<'PY_WORKER_GATE'
+run_python - "$RESULTS" "$ARTIFACTS/protocol.json" "$ARTIFACTS" "$REPAIR_SEQUENCE" <<'PY_WORKER_GATE'
 import json, sys
 from pathlib import Path
 
 results = Path(sys.argv[1])
 protocol = json.loads(Path(sys.argv[2]).read_text())
+artifacts = Path(sys.argv[3])
+repair_sequence = sys.argv[4]
 arms = protocol['arms']
 row_root = Path(protocol['sources']['row_scale_vq_a4']['root'])
 plan = json.loads((row_root / 'plan.json').read_text())
@@ -228,6 +335,9 @@ for worker_id in range(4):
     assert metadata['activation_bits'] == 4 and metadata['kv_cache_dtype'] == 'bf16'
     assert metadata['native_low_bit_kernel'] is False and metadata['frozen_bank_reused'] is True
     assert metadata['scale_block'] == source['scale_block']
+    if repair_sequence:
+        previous_setup = json.loads((artifacts / f'previous_worker_{worker_id}_setup_receipt.json').read_text())
+        assert previous_setup['install_metadata'] == metadata, (worker_id, 'install_metadata changed during repair')
     if summary['status'] == 'complete':
         assert summary['complete'] is True and summary['episodes'] == 140
         assert summary['soft_deadline_reached'] is False

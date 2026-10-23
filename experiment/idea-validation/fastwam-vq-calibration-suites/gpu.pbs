@@ -1,0 +1,139 @@
+#!/bin/bash
+#PBS -N fwvc13g
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+export FW_SOFT_DEADLINE_SECONDS=6300
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+SOURCE_FULL_JOB=25743693.pbs101
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+COHORT="${FW_COHORT:-}"
+case "$COHORT" in teacher|c8|c80) ;; *) echo "FW_COHORT must be teacher, c8, or c80"; exit 64;; esac
+OUT="$ROOT/results/$COHORT"
+LOCK="$OUT/.writer-lock"
+mkdir -p "$ROOT/artifacts" "$ROOT/results" "$OUT"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+LOCK_HELD=0
+finish() {
+  rc=$?
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if [[ "$LOCK_HELD" == 1 && -f "$LOCK/owner_job_id" && "$(cat "$LOCK/owner_job_id")" == "$PBS_JOBID" ]]; then
+    rm -f -- "$LOCK/owner_job_id"
+    rmdir -- "$LOCK" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+if ! mkdir "$LOCK" 2>/dev/null; then
+  owner_file="$LOCK/owner_job_id"
+  test -s "$owner_file" || { echo "Unowned $COHORT lock; refusing cleanup"; exit 73; }
+  owner=$(cat "$owner_file")
+  [[ "$owner" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || { echo "Invalid $COHORT lock owner"; exit 73; }
+  previous=$(qstat -xf "$owner" 2>&1) || { echo "Cannot confirm prior $COHORT lock owner is terminal"; exit 73; }
+  state=$(awk -F' = ' '/^[[:space:]]*job_state = / {print $2; exit}' <<< "$previous")
+  [[ "$state" == F || "$state" == X ]] || { echo "$COHORT lock belongs to nonterminal job $owner ($state)"; exit 73; }
+  test "$(cat "$owner_file")" = "$owner" || { echo "$COHORT lock owner changed during recovery"; exit 73; }
+  rm -f -- "$owner_file"
+  rmdir -- "$LOCK" || { echo "Unable to remove confirmed stale $COHORT lock"; exit 73; }
+  mkdir "$LOCK"
+fi
+printf '%s\n' "$PBS_JOBID" > "$LOCK/owner_job_id"
+LOCK_HELD=1
+
+python3 - "$ROOT/data/plan.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+rows = p.get("inputs", [])
+ids = [int(row.get("case_id", -1)) for row in rows]
+c = p.get("calibration_cohorts", {})
+c8, c80 = c.get("c8", []), c.get("c80", [])
+assert p.get("status") == "complete"
+assert ids == list(range(2000, 2080)) + list(range(3000, 3040))
+assert (p.get("input_count"), p.get("calibration_count"), p.get("test_count")) == (120, 80, 40)
+assert len(c8) == len(set(c8)) == 8 and c8 == sorted(c8)
+assert c80 == list(range(2000, 2080)) and set(c8) <= set(c80)
+PY
+if [[ "$COHORT" == c8 || "$COHORT" == c80 ]]; then
+  source_job="${FW_TEACHER_JOBID:-}"
+  [[ "$source_job" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || { echo "Missing validated teacher handle"; exit 65; }
+  teacher_artifact="$ROOT/artifacts/$source_job"
+  test -f "$teacher_artifact/PIPELINE_COMPLETE"
+  test "$(cat "$teacher_artifact/exit_code.txt")" = 0
+  test -f "$teacher_artifact/summary.json"
+  prior=$(qstat -xf "$source_job")
+  prior_state=$(awk -F' = ' '/^[[:space:]]*job_state = / {print $2; exit}' <<< "$prior")
+  prior_exit=$(awk -F' = ' '/^[[:space:]]*Exit_status = / {print $2; exit}' <<< "$prior")
+  [[ "$prior_state" == F || "$prior_state" == X ]] && [[ "$prior_exit" == 0 ]]
+  python3 - "$teacher_artifact/summary.json" <<'PY'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert s.get("status") == "complete" and s.get("cohort") == "teacher"
+assert s.get("protocol") == "fastwam-vq-calibration-suites-v1"
+assert s.get("case_ids") == list(range(3000, 3040))
+assert (s.get("case_count"), s.get("query_count"), s.get("target_linears")) == (40, 80, 614)
+assert (s.get("queries_completed"), s.get("expected_queries")) == (80, 80)
+assert s.get("suites") == {name: 10 for name in ("libero_spatial", "libero_object", "libero_goal", "libero_10")}
+PY
+fi
+
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh gpu.pbs micro_codebook.py run_calibration.py control.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+test -f "$SOURCE_CAMPAIGN/artifacts/$SOURCE_FULL_JOB/PIPELINE_COMPLETE"
+test "$(cat "$SOURCE_CAMPAIGN/artifacts/$SOURCE_FULL_JOB/exit_code.txt")" = 0
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+copy_small "$SOURCE_CAMPAIGN/run_experiment.py" "$ARTIFACTS/run_experiment.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python --version
+run_python "$ARTIFACTS/run_calibration.py" --protocol "$ARTIFACTS/protocol.json" --out "$OUT" --cohort "$COHORT"
+test -s "$ARTIFACTS/summary.json"
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8"))["status"])' "$ARTIFACTS/summary.json")
+case "$status" in
+  checkpointed)
+    echo "CALIBRATION_CHECKPOINT job_id=$PBS_JOBID cohort=$COHORT"
+    touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+    ;;
+  complete)
+    echo "CALIBRATION_COMPLETE job_id=$PBS_JOBID cohort=$COHORT"
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+    ;;
+  *) echo "Unexpected runner summary status: $status"; exit 65;;
+esac

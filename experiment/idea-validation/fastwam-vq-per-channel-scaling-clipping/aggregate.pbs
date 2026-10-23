@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N fwapchag
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=1:mem=4gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018
+CLIP_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+cp "$NEW_ROOT/worker.py" "$ARTIFACTS/worker.py"
+cp "$CLIP_ROOT/experiment.py" "$ARTIFACTS/clipping_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-c80-activation-clipping-20261017/worker.py "$ARTIFACTS/c80_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-scaling-clipping-20261017/worker.py "$ARTIFACTS/discrete_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-continuous-b32-scaling-clipping-20261017/worker.py "$ARTIFACTS/uncoupled_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-absmax-coupling-20261018/worker.py "$ARTIFACTS/coupled_reference.py"
+python3 "$ARTIFACTS/worker.py" --unit aggregate --protocol "$NEW_ROOT/protocol.json"
+touch "$ARTIFACTS/PHASE_COMPLETE"

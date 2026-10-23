@@ -1,0 +1,95 @@
+{
+  "phase": "complete_gate_failed",
+  "goal_status": "complete",
+  "scope": "C8 A+Z rho1.5; cached baseline/teacher; no activation clip/per-channel; no closedloop; one KL recipe; MSE ablation only if frozen heldout gate passes",
+  "prepare_job": "25910452.pbs101",
+  "gpu_submission": "after verified successful CPU preparation; normal route with execution g1 guard;4h/1GPU",
+  "expected_queries_without_retry": {
+    "new_student_training_queries": 16,
+    "first_step_actual_student_check": 1,
+    "student_evaluation_queries": 88,
+    "native_infer_parity_query": 1,
+    "initial_reader_queries": 9,
+    "training_reader_backward_queries": 8,
+    "reader_grad_no_grad_parity_query": 1,
+    "new_teacher_full_queries": 0,
+    "baseline_new_queries": 0,
+    "closedloop_episodes": 0
+  },
+  "ablation_gate": "motor mean<baseline; paired median<0; wins>=21/40; NMSE mean<=baseline; exact40cases x2seeds",
+  "handles": {
+    "prepare": {
+      "unit": "prepare",
+      "attempt": 1,
+      "job_name": "fw8rkprep",
+      "status": "confirmed",
+      "gpus": 0,
+      "walltime": "00:45:00",
+      "created_utc": "2026-10-22T03:19:39.151699+00:00",
+      "afterok_job_ids": [],
+      "job_id": "25910452.pbs101"
+    },
+    "reader_kl": {
+      "unit": "reader_kl",
+      "attempt": 1,
+      "job_name": "fw8rktrain",
+      "status": "confirmed",
+      "gpus": 1,
+      "walltime": "04:00:00",
+      "created_utc": "2026-10-22T03:21:41.689607+00:00",
+      "afterok_job_ids": [
+        "25910452.pbs101"
+      ],
+      "job_id": "25910456.pbs101"
+    },
+    "aggregate": {
+      "unit": "aggregate",
+      "attempt": 1,
+      "job_name": "fw8rkagg",
+      "status": "confirmed",
+      "gpus": 0,
+      "walltime": "00:45:00",
+      "created_utc": "2026-10-22T03:21:53.737296+00:00",
+      "afterok_job_ids": [
+        "25910456.pbs101"
+      ],
+      "job_id": "25910457.pbs101"
+    }
+  },
+  "queue_receipt": {
+    "job_id": "25910456.pbs101",
+    "query_rc": 0,
+    "selected_qstat_fields": "    job_state = Q\n    queue = g1\n    Resource_List.select = 1:ncpus=16:mem=110GB:ngpus=1\n    Resource_List.walltime = 04:00:00\n    comment = Not Running: Insufficient amount of resource: node_pool \n"
+  },
+  "cpu_preparation": {
+    "passed": true,
+    "walltime": "00:01:19",
+    "job_id": "25910452.pbs101"
+  },
+  "next_action": "Monitor exact GPU handle25910456; aggregate25910457 is afterok. Inspect full heldout gate; run exactly one matched reader-MSE ablation only if all conditions pass; otherwise stop recipe.",
+  "monitor": {
+    "agent": "/root/reader_kl_monitor",
+    "configured_model": "gpt-6-luna",
+    "configured_reasoning_effort": "xhigh",
+    "interval_seconds": 600,
+    "authorization": "user explicitly requested subagent10min monitoring",
+    "read_only": true,
+    "silence_unchanged_queue_or_running": true,
+    "notify_on": [
+      "verified_complete",
+      "failure",
+      "required_root_action"
+    ],
+    "goal_owner": "/root",
+    "current_handles_file": "handles.json"
+  },
+  "decision": "stop_this_recipe_no_parameter_sweep",
+  "completed_utc": "2026-10-22T04:19:52.263371+00:00",
+  "final_report": "results/CONCLUSIONS.zh.md",
+  "completion_evidence": "completion_evidence.json",
+  "all_jobs_verified": true,
+  "reader_mse_ablation_started": false,
+  "monitor_stopped": true,
+  "goal_elapsed_seconds": 4472,
+  "all_required_work_complete": true
+}

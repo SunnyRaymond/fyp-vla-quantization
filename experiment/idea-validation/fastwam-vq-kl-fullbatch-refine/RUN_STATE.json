@@ -1,0 +1,53 @@
+{
+  "objective": "Continue the full active information-loss goal after completed parity/direction diagnostics",
+  "stage": "round complete; C80 gains did not generalize; retain original MSE as reference",
+  "method": "full_C80_gradient_actual_loss_selection",
+  "diagnostic_aggregate": "25881584.pbs101",
+  "heldout_selection": false,
+  "gpu_job_caps": {
+    "mse_nmse": "01:59:00",
+    "dual_kl": "00:45:00"
+  },
+  "next_action": "Verify shared-original-MSE-start KL candidate from existing mse_dual diagnostic; no new gradient or teacher, original heldout80 only.",
+  "authorization": "Latest active-goal continuation explicitly requests the next experimental round after completed diagnostics; the earlier analysis-only turn has finished.",
+  "prepared_code_status": "worker, analysis and controller syntax checks passed; fresh remote status confirmed no existing handles; numerical checks run in guarded PBS allocations",
+  "jobs": {
+    "mse_nmse": "25881910.pbs101",
+    "dual_kl": "25881829.pbs101",
+    "aggregate": "25882215.pbs101"
+  },
+  "monitor": {
+    "model": "gpt-6-luna",
+    "interval_seconds": 600,
+    "reasoning_effort": "xhigh",
+    "agent": "/root/kl_fullbatch_monitor"
+  },
+  "repaired_failures": [
+    {
+      "new_job_id": "25881753.pbs101",
+      "permanent_optimizer_updates_before_failure": 0,
+      "exit_status": 1,
+      "reason": "mean(generator) TypeError",
+      "fix": "convert iterable to list before length",
+      "job_id": "25881698.pbs101"
+    },
+    {
+      "job_id": "25881753.pbs101",
+      "exit_status": 1,
+      "reason": "runtime.command returns NumPy, not tensor",
+      "fix": "use tolist directly and verify serialization on source replay",
+      "new_job_id": "25881829.pbs101",
+      "candidate": "saved_adam_f0p25",
+      "source_checkpoint_unchanged": true
+    },
+    {
+      "job_id": "25881697.pbs101",
+      "exit_status": 1,
+      "reason": "old mean(generator) after complete80 gradient",
+      "fix": "reuse complete gradient_state and saved no-step records with corrected worker",
+      "new_job_id": "25881910.pbs101",
+      "gradient_queries_reused": 80,
+      "new_teacher_queries": 0
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "comparison": "original C80 joint vs rollout-aware C80 joint",
+  "original_job": "25858027.pbs101",
+  "rollout_job": "25862999.pbs101",
+  "decision": "Continue current run; do not cancel or repeat solely to remove the parity warmup.",
+  "observed": {
+    "first_four_contexts_unchanged": [2000, 2020, 2040, 2060],
+    "first_update_forward_metrics_identical": true,
+    "first_update_original_gradient_norm": 0.011214777827262878,
+    "first_update_rollout_gradient_norm": 0.011182006448507309,
+    "subsequent_common_prefix_metrics_differ": true,
+    "clip_banks_train_banks_sampler_batched_transform_sources_identical": true,
+    "same_torch_version": "2.7.1+cu128",
+    "same_gpu_model": "NVIDIA A100-SXM4-40GB",
+    "same_host": "x1000c0s1b0n1"
+  },
+  "known_mechanisms": [
+    "DecodedWeight.backward accumulates repeated codebook indices with CUDA index_add_; PyTorch documents potential nondeterminism.",
+    "Attention uses automatically selected scaled_dot_product_attention backends; the actual backend was not recorded."
+  ],
+  "other_execution_differences": [
+    "Rollout worker performs an extra no_grad baseline parity query before training.",
+    "Rollout job loads original-LIBERO environment while the original C80 job loaded the Plus environment."
+  ],
+  "runtime_inspection": {
+    "explicit_query_local_noise_generators": true,
+    "scheduler_rebuilt_per_query": true,
+    "video_cache_rebuilt_per_query": true,
+    "temporary_sampler_patches_restored": true,
+    "persistent_state_leak_found": false
+  },
+  "interpretation_limit": "The specific source and magnitude of observed backward drift were not isolated. This is one training run per recipe with reused historical control, not a bitwise common-prefix reproduction or a causal estimate excluding run variance.",
+  "primary_reference": "https://docs.pytorch.org/docs/2.7/generated/torch.Tensor.index_add_.html"
+}

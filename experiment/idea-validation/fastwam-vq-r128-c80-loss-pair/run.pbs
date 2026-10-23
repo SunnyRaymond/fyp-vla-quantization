@@ -1,0 +1,260 @@
+#!/bin/bash
+#PBS -N r128lp0001
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=2
+#PBS -l walltime=12:00:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+PROTOCOL_ID=fastwam-vq-r128-c80-loss-pair-v1
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+[[ "$PBS_JOBID" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || {
+  echo 'PBS_JOBID is not a scheduler-issued PBS handle' >&2; exit 64;
+}
+test -n "${PBS_NODEFILE:-}" -a -s "$PBS_NODEFILE" -a -r "$PBS_NODEFILE" || {
+  echo 'PBS_NODEFILE is missing, empty, or unreadable' >&2; exit 64;
+}
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || {
+  echo 'Current host is outside the approved PBS allocation' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || { echo 'Cannot verify the live PBS allocation' >&2; exit 64; }
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not running; refusing workload startup' >&2; exit 64;
+}
+grep -Eq '^[[:space:]]*Job_Name[[:space:]]*=[[:space:]]*r128lp0001([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job name does not match this frozen calibration' >&2; exit 64;
+}
+grep -Eiq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g2([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS did not route this normal-queue job to g2; refusing workload startup' >&2; exit 64;
+}
+awk -F= -v host="$HOST" '/^[[:space:]]*exec_host[[:space:]]*=/ {v=$2; sub(/^[[:space:]]*/, "", v); split(v, a, "/"); if (a[1] == host) found=1} END {exit !found}' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS execution host differs from the node running this script' >&2; exit 64;
+}
+
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+GPU_MONITOR_PID=
+AZ_PID=
+READER_PID=
+
+write_phase() {
+  python3 - "$ARTIFACTS/RUN_PHASE.json" "$PROTOCOL_ID" "$PBS_JOBID" "$1" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+target=Path(sys.argv[1])
+value={"protocol":sys.argv[2], "pbs_jobid":sys.argv[3], "phase":sys.argv[4]}
+fd, name=tempfile.mkstemp(prefix=target.name + ".", dir=str(target.parent))
+with os.fdopen(fd, "w", encoding="utf-8") as stream:
+    json.dump(value, stream, indent=2)
+    stream.write("\n")
+os.replace(name, target)
+PY
+}
+
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  set +e
+  for child in "$AZ_PID" "$READER_PID"; do
+    if [[ -n "$child" ]]; then kill -TERM "$child" 2>/dev/null; fi
+  done
+  for child in "$AZ_PID" "$READER_PID"; do
+    if [[ -n "$child" ]]; then wait "$child" 2>/dev/null; fi
+  done
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null
+    wait "$GPU_MONITOR_PID" 2>/dev/null
+  fi
+  if (( rc == 0 )); then
+    printf '0\n' > "$ARTIFACTS/exit_code.txt"
+    if python3 - "$RESULTS" "$ARTIFACTS" "$PROTOCOL_ID" "$PBS_JOBID" <<'PY'
+import json, math, sys
+from pathlib import Path
+results, artifacts = Path(sys.argv[1]), Path(sys.argv[2])
+protocol, job = sys.argv[3], sys.argv[4]
+if (artifacts / "exit_code.txt").read_text(encoding="utf-8").strip() != "0":
+    raise SystemExit("artifact exit code is not zero")
+root=json.loads((results / "summary.json").read_text(encoding="utf-8"))
+if (root.get("protocol") != protocol or root.get("pbs_jobid") != job
+        or root.get("complete") is not True or root.get("status") != "complete"
+        or root.get("new_teacher_queries") != 0):
+    raise SystemExit("root summary identity/completion gate failed")
+arms=root.get("arms")
+if not isinstance(arms, dict) or set(arms) != {"az", "reader_kl"}:
+    raise SystemExit("root summary does not contain both loss-pair arms")
+for arm in ("az", "reader_kl"):
+    actual=json.loads((results / "arms" / arm / "summary.json").read_text(encoding="utf-8"))
+    beta=actual.get("beta")
+    if (actual.get("protocol") != protocol or actual.get("arm") != arm
+            or actual.get("pbs_jobid") != job or actual.get("complete") is not True
+            or actual.get("status") != "complete" or actual.get("updates") != 8
+            or actual.get("exposures") != 80 or actual.get("target_linears") != 614
+            or actual.get("frozen_rotation") is not True
+            or actual.get("final_anchor") is not True or actual.get("new_teacher_queries") != 0
+            or not isinstance(beta, (int, float)) or isinstance(beta, bool) or not math.isfinite(beta)
+            or (arm == "az" and beta != 0) or (arm == "reader_kl" and beta <= 0)):
+        raise SystemExit(f"{arm} summary contract failed")
+    for key in ("initial_parity_max_abs", "formal_parity_max_abs"):
+        value=actual.get(key)
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or not 0 <= value <= 1e-6:
+            raise SystemExit(f"{arm} {key} gate failed")
+    if arms.get(arm) != actual:
+        raise SystemExit(f"root and actual {arm} summaries differ")
+PY
+    then
+      write_phase complete && touch "$ARTIFACTS/PHASE_COMPLETE"
+      if (( $? != 0 )); then rc=65; fi
+    else
+      echo 'Final summary or actual arm receipts failed; no PHASE_COMPLETE marker' >&2
+      rc=65
+    fi
+  fi
+  if (( rc != 0 )); then
+    rm -f "$ARTIFACTS/PHASE_COMPLETE"
+    write_phase failed || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+write_phase running
+printf 'PBS_JOBID=%s host=%s allocation_start_epoch=%s route=g2\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH"
+
+shopt -s nullglob
+LOCAL_PY_FILES=("$NEW_ROOT"/*.py)
+test "${#LOCAL_PY_FILES[@]}" -gt 0 || { echo 'No local Python sources were uploaded' >&2; exit 65; }
+for file in "${LOCAL_PY_FILES[@]}" "$NEW_ROOT/protocol.json" "$NEW_ROOT/run.pbs" "$NEW_ROOT/environment.sh"; do
+  test -s "$file" || { echo "Required local source is missing: $file" >&2; exit 65; }
+done
+cp "${LOCAL_PY_FILES[@]}" "$NEW_ROOT/protocol.json" "$NEW_ROOT/run.pbs" "$NEW_ROOT/environment.sh" "$ARTIFACTS/"
+
+mapfile -t SOURCE_PATHS < <(python3 - "$ARTIFACTS/protocol.json" <<'PY'
+import json, sys
+from pathlib import Path
+p=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for key in ("source_initialization", "reader_source"):
+    value=p[key].get("runtime_artifacts")
+    if not value:
+        raise SystemExit(f"protocol lacks {key}.runtime_artifacts")
+    print(value)
+PY
+)
+test "${#SOURCE_PATHS[@]}" -eq 2 || { echo 'Could not resolve frozen source runtime directories' >&2; exit 65; }
+SOURCE_RUNTIME=${SOURCE_PATHS[0]}
+READER_RUNTIME=${SOURCE_PATHS[1]}
+test -d "$SOURCE_RUNTIME" -a -d "$READER_RUNTIME" || { echo 'Frozen source runtime directory is unavailable' >&2; exit 65; }
+for file in rotation_bank.py c8_train_banks.py batched_transform.py runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$SOURCE_RUNTIME/$file" || { echo "Frozen source artifact is missing: $file" >&2; exit 65; }
+done
+test -s "$SOURCE_RUNTIME/worker.py" || { echo 'Frozen source worker is missing' >&2; exit 65; }
+for file in frozen_reader.py reader_runtime.py reader_loss.py softbin_loss.py; do
+  test -s "$READER_RUNTIME/$file" || { echo "Frozen reader artifact is missing: $file" >&2; exit 65; }
+done
+cp "$SOURCE_RUNTIME/worker.py" "$ARTIFACTS/source_worker.py"
+for file in rotation_bank.py c8_train_banks.py batched_transform.py runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  cp "$SOURCE_RUNTIME/$file" "$ARTIFACTS/$file"
+done
+for file in frozen_reader.py reader_runtime.py reader_loss.py softbin_loss.py; do
+  cp "$READER_RUNTIME/$file" "$ARTIFACTS/$file"
+done
+
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+export ROOT BASE DIAG_ROOT NEW_ROOT SMOOTH_ROOT SOURCE_ROOT R128_ROOT
+FW_CPU_THREADS=16
+FW_SOFT_DEADLINE_SECONDS=42600
+FW_SAVE_RESERVE_SECONDS=300
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" -a -s "$SIF" || {
+  echo 'Frozen FastWAM runtime or container image is unavailable' >&2; exit 65;
+}
+source "$ARTIFACTS/environment.sh"
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'CUDA_VISIBLE_DEVICES is empty' >&2; exit 65; }
+IFS=, read -r -a ALLOCATED_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#ALLOCATED_IDS[@]}" -eq 2 || { echo 'Expected exactly two allocated GPUs' >&2; exit 65; }
+mapfile -t GPU_UUIDS < <(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader \
+  | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); if (length) print}')
+test "${#GPU_UUIDS[@]}" -eq 2 -a -n "${GPU_UUIDS[0]}" -a -n "${GPU_UUIDS[1]}" || {
+  echo 'Could not resolve the two allocated GPU UUIDs' >&2; exit 65;
+}
+GPU_UUID0=${GPU_UUIDS[0]}
+GPU_UUID1=${GPU_UUIDS[1]}
+printf 'ALLOCATED_GPU_UUIDS=%s,%s\n' "$GPU_UUID0" "$GPU_UUID1"
+(
+  while :; do
+    timestamp=$(date -Is)
+    nvidia-smi -i "$GPU_UUID0,$GPU_UUID1" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader \
+      | while IFS= read -r sample; do printf 'GPU_SAMPLE timestamp=%s %s\n' "$timestamp" "$sample"; done || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+launch_worker() {
+  local gpu_uuid=$1 arm=$2
+  CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/worker.py" \
+    --protocol "$ARTIFACTS/protocol.json" --arm "$arm"
+}
+
+worker_running() {
+  kill -0 "$1" 2>/dev/null && jobs -pr | grep -qx "$1"
+}
+
+launch_worker "$GPU_UUID0" az &
+AZ_PID=$!
+launch_worker "$GPU_UUID1" reader_kl &
+READER_PID=$!
+AZ_RC=0
+READER_RC=0
+AZ_DONE=0
+READER_DONE=0
+while (( AZ_DONE == 0 || READER_DONE == 0 )); do
+  if (( AZ_DONE == 0 )) && ! worker_running "$AZ_PID"; then
+    set +e; wait "$AZ_PID"; AZ_RC=$?; set -e
+    AZ_DONE=1
+  fi
+  if (( READER_DONE == 0 )) && ! worker_running "$READER_PID"; then
+    set +e; wait "$READER_PID"; READER_RC=$?; set -e
+    READER_DONE=1
+  fi
+  if (( AZ_DONE == 1 && AZ_RC != 0 && READER_DONE == 0 )); then
+    kill -TERM "$READER_PID" 2>/dev/null || true
+    for _ in {1..6}; do worker_running "$READER_PID" || break; sleep 5; done
+    kill -KILL "$READER_PID" 2>/dev/null || true
+    set +e; wait "$READER_PID"; READER_RC=$?; set -e
+    READER_DONE=1
+  elif (( READER_DONE == 1 && READER_RC != 0 && AZ_DONE == 0 )); then
+    kill -TERM "$AZ_PID" 2>/dev/null || true
+    for _ in {1..6}; do worker_running "$AZ_PID" || break; sleep 5; done
+    kill -KILL "$AZ_PID" 2>/dev/null || true
+    set +e; wait "$AZ_PID"; AZ_RC=$?; set -e
+    AZ_DONE=1
+  fi
+  if (( AZ_DONE == 0 || READER_DONE == 0 )); then sleep 5; fi
+done
+AZ_PID=
+READER_PID=
+if (( AZ_RC != 0 || READER_RC != 0 )); then
+  printf 'ARM_FAILURE az_rc=%s reader_kl_rc=%s\n' "$AZ_RC" "$READER_RC"
+  exit 1
+fi
+
+run_python "$ARTIFACTS/finalize.py" --protocol "$ARTIFACTS/protocol.json"

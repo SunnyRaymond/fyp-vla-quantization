@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=0
+#PBS -l walltime=00:45:00
+#PBS -j oe
+source /scratch/users/ntu/yguo017/fastwam-vq-c8-frozen-reader-kl-20261022/allocation.sh
+NV_ARGS=()
+FW_CPU_THREADS=4
+FW_SOFT_DEADLINE_SECONDS=2520
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+if [ "$FW_AK_UNIT" = aggregate_mse ]; then export FW_READER_ARM=reader_mse; fi
+case "$FW_AK_UNIT" in
+  prepare)
+    run_python "$ARTIFACTS/selfcheck.py"
+    run_python "$ARTIFACTS/prepare.py" --protocol "$ARTIFACTS/protocol.json";;
+  aggregate|aggregate_mse)
+    run_python "$ARTIFACTS/aggregate.py" --protocol "$ARTIFACTS/protocol.json" --arm "${FW_READER_ARM:-reader_kl}";;
+  *) exit 64;;
+esac
+touch "$ARTIFACTS/PHASE_COMPLETE"

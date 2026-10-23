@@ -28,7 +28,7 @@ trap finish EXIT
 mkdir "$LOCK" || exit 73
 LOCK_HELD=1
 qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
-for name in protocol.json plot.py README.zh.md environment.sh plot.pbs; do cp -- "$ROOT/$name" "$ARTIFACTS/$name"; done
+for name in protocol.json plot.py delivery.py README.zh.md environment.sh plot.pbs; do cp -- "$ROOT/$name" "$ARTIFACTS/$name"; done
 FW_REQUIRE_GPU=0
 FW_CPU_THREADS=8
 source "$ARTIFACTS/environment.sh"
@@ -38,7 +38,9 @@ test -s "$OUT/plots/index.html"
 cp -- "$OUT/plots/manifest.json" "$ARTIFACTS/summary.json"
 status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$OUT/plots/manifest.json")
 case "$status" in
-  complete) touch "$ARTIFACTS/PIPELINE_COMPLETE";;
+  complete)
+    run_python "$ARTIFACTS/delivery.py" --out "$OUT"
+    touch "$ARTIFACTS/PIPELINE_COMPLETE";;
   checkpointed) touch "$ARTIFACTS/PIPELINE_CHECKPOINTED";;
   *) exit 65;;
 esac

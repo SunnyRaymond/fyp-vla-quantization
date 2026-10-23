@@ -1,0 +1,149 @@
+#!/bin/bash
+#PBS -N fw128lane
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+
+EXPERIMENT_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$EXPERIMENT_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RUNTIME_ARTIFACTS=$PARENT/artifacts/25814264.pbs101
+PROTOCOL_ID=fastwam-r128-improvements-v1
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+test -n "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+test -s "$PBS_NODEFILE" || { echo 'PBS_NODEFILE is empty or unavailable' >&2; exit 64; }
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not in running state; refusing workload startup' >&2; exit 64;
+}
+grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g1([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job did not route to the frozen g1 execution queue' >&2; exit 64;
+}
+
+case "${FW_JOB_KIND:-}" in
+  path) LANE=path; WORKER=path_worker.py ;;
+  optimization) LANE=optimization; WORKER=train_worker.py ;;
+  coverage) LANE=coverage_c80; WORKER=train_worker.py ;;
+  *) echo 'FW_JOB_KIND must name a frozen protocol lane' >&2; exit 64 ;;
+esac
+FW_ATTEMPT=${FW_ATTEMPT:-0}
+FW_PREVIOUS_JOBID=${FW_PREVIOUS_JOBID:-}
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+ARTIFACTS=$EXPERIMENT_ROOT/artifacts/$PBS_JOBID
+RESULTS=$EXPERIMENT_ROOT/results
+RESULTS_DIR=$RESULTS/$LANE
+mkdir -p "$ARTIFACTS" "$RESULTS_DIR"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null
+    wait "$GPU_MONITOR_PID" 2>/dev/null
+  fi
+  if (( rc == 0 )) && [[ -s "$RESULTS_DIR/summary.json" ]] && \
+      cp "$RESULTS_DIR/summary.json" "$ARTIFACTS/worker_summary.json" && \
+      python3 - "$ARTIFACTS/worker_summary.json" "$PROTOCOL_ID" "$PBS_JOBID" "$LANE" <<'PY'
+import json, sys
+from pathlib import Path
+summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if (not isinstance(summary, dict) or summary.get("status") != "complete"
+        or summary.get("complete") is not True or summary.get("protocol") != sys.argv[2]
+        or summary.get("pbs_jobid") != sys.argv[3] or summary.get("lane") != sys.argv[4]
+        or summary.get("target_linears") != 614):
+    raise SystemExit("lane summary does not match the complete frozen protocol")
+PY
+  then
+    touch "$ARTIFACTS/PHASE_COMPLETE" || rc=65
+  else
+    echo 'Exit was not successful or lane summary is missing/incomplete; no PHASE_COMPLETE marker' >&2
+    (( rc != 0 )) || rc=65
+    rm -f "$ARTIFACTS/PHASE_COMPLETE"
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+printf 'PBS_JOBID=%s kind=%s lane=%s attempt=%s previous=%s host=%s allocation_start_epoch=%s\n' \
+  "$PBS_JOBID" "$FW_JOB_KIND" "$LANE" "$FW_ATTEMPT" "$FW_PREVIOUS_JOBID" "$HOST" "$FW_JOB_START_EPOCH"
+
+test -s "$ROOT/env_status.json" -a -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" -a -s "$SIF"
+test -s "$EXPERIMENT_ROOT/protocol.json" -a -s "$EXPERIMENT_ROOT/environment.sh"
+test -s "$EXPERIMENT_ROOT/$WORKER" -a -s "$EXPERIMENT_ROOT/rotation_bank.py" -a -s "$EXPERIMENT_ROOT/rotation_selfcheck.py"
+test -s "$RUNTIME_ARTIFACTS/runner.py" -a -s "$RUNTIME_ARTIFACTS/quantization.py" -a -s "$RUNTIME_ARTIFACTS/libero_state_loader.py"
+test -s "$RUNTIME_ARTIFACTS/smooth_vq.py" -a -s "$RUNTIME_ARTIFACTS/codebook.py" -a -s "$RUNTIME_ARTIFACTS/micro_codebook.py"
+test -s "$RUNTIME_ARTIFACTS/sampler.py" -a -s "$RUNTIME_ARTIFACTS/latent_reference.py" -a -s "$RUNTIME_ARTIFACTS/checkpointing.py"
+test -s "$RUNTIME_ARTIFACTS/calibration_source.py" -a -s "$PARENT/train_banks.py" -a -s "$PARENT/batched_transform.py"
+
+shopt -s nullglob
+LOCAL_PY_FILES=("$EXPERIMENT_ROOT"/*.py)
+test "${#LOCAL_PY_FILES[@]}" -gt 0 || { echo 'No local Python sources found' >&2; exit 65; }
+cp "${LOCAL_PY_FILES[@]}" "$EXPERIMENT_ROOT/protocol.json" "$EXPERIMENT_ROOT/run.pbs" \
+  "$EXPERIMENT_ROOT/environment.sh" "$EXPERIMENT_ROOT/queue_routing.json" "$ARTIFACTS/"
+for file in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py \
+            sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  if [[ ! -e "$ARTIFACTS/$file" ]]; then
+    cp "$RUNTIME_ARTIFACTS/$file" "$ARTIFACTS/$file"
+  else
+    printf 'PRESERVED_LOCAL_SOURCE=%s\n' "$file"
+  fi
+done
+[[ -e "$ARTIFACTS/c8_train_banks.py" ]] || cp "$PARENT/train_banks.py" "$ARTIFACTS/c8_train_banks.py"
+[[ -e "$ARTIFACTS/batched_transform.py" ]] || cp "$PARENT/batched_transform.py" "$ARTIFACTS/batched_transform.py"
+
+FW_CPU_THREADS=16
+FW_SOFT_DEADLINE_SECONDS=14100
+FW_SAVE_RESERVE_SECONDS=300
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS
+source "$ARTIFACTS/environment.sh"
+
+python3 - "$ARTIFACTS/protocol.json" "$FW_JOB_KIND" "$LANE" <<'PY'
+import json, sys
+from pathlib import Path
+p = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+kind, lane = sys.argv[2:]
+if (p.get("protocol") != "fastwam-r128-improvements-v1"
+        or p.get("remote_root") != "/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021"
+        or p.get("allocation", {}).get("queue") != "normal"
+        or p.get("jobs", {}).get(kind) != {
+            "lanes": [lane], "gpus": 1, "execution_queue": "g1",
+        }):
+    raise SystemExit("PBS lane/queue does not match the frozen protocol")
+PY
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifier' >&2; exit 65; }
+[[ "$CUDA_VISIBLE_DEVICES" != *,* ]] || { echo 'Expected exactly one allocated GPU' >&2; exit 65; }
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || { echo 'Unable to resolve allocated GPU UUID' >&2; exit 65; }
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+printf 'ALLOCATED_GPU_UUID=%s\n' "$GPU_UUID"
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s lane=%s gpu_uuid=%s ' "$(date -Is)" "$LANE" "$GPU_UUID"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+run_python "$ARTIFACTS/$WORKER" --protocol "$ARTIFACTS/protocol.json" --lane "$LANE"

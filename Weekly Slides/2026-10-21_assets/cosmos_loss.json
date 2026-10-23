@@ -1,0 +1,187 @@
+{
+  "title": "Cosmos Policy closed-loop results and Fast-WAM soft-bin / relational KL",
+  "prepared_for": "Weekly Slides 2026-10-21",
+  "status_snapshot": {
+    "plus_job": "25886452.pbs101",
+    "checked_utc": "2026-10-20T12:38:16Z",
+    "checked_sgt": "2026-10-20 20:38:16"
+  },
+  "cosmos_closed_loop": {
+    "model": "nvidia/Cosmos-Policy-LIBERO-Predict2-2B",
+    "protocol": {
+      "mode": "LIBERO direct policy; planning disabled",
+      "cohort": "280 paired variants per arm: 4 suites x 7 perturbation dimensions x 10 variants; state 0; environment and sampler seeds paired",
+      "calibration": "C8, two snapshots per original suite; IDs 2000, 2019, 2021, 2025, 2051, 2057, 2066, 2070; test variants excluded from fitting",
+      "inference": "5 denoising steps; 16-action chunk, 16 actions executed per replan; 30 settling steps; 400-step standard and 700-step LIBERO-10 caps",
+      "target": "Same 280 DiT attention/MLP Linear modules, 1,761,607,680 target weights",
+      "execution": "Decoded-BF16 weights + dynamic per-token signed fake-A4 (qmax 7); BF16 KV; no native INT4 kernel"
+    },
+    "arms": [
+      {
+        "arm": "BF16",
+        "successes": 233,
+        "episodes": 280,
+        "success_rate_pct": 83.21,
+        "target_effective_bpw": 16,
+        "whole_dit_effective_bpw": 16
+      },
+      {
+        "arm": "Adapted SpinQuant W4A4",
+        "successes": 221,
+        "episodes": 280,
+        "success_rate_pct": 78.93,
+        "target_effective_bpw": 4.125446,
+        "whole_dit_effective_bpw": 5.30783
+      },
+      {
+        "arm": "Action+latent-aware microscaling VQ A4",
+        "successes": 226,
+        "episodes": 280,
+        "success_rate_pct": 80.71,
+        "target_effective_bpw": 4.286979,
+        "whole_dit_effective_bpw": 5.453279
+      }
+    ],
+    "paired": [
+      {
+        "comparison": "VQ vs SpinQuant",
+        "vq_only": 14,
+        "spinquant_only": 9,
+        "ties": 257,
+        "episodes": 280,
+        "rate_delta_pp": 1.79
+      },
+      {
+        "comparison": "VQ vs BF16",
+        "vq_only": 6,
+        "bf16_only": 13,
+        "ties": 261,
+        "episodes": 280,
+        "rate_delta_pp": -2.5
+      }
+    ],
+    "slide_ready_sentence": "On the frozen 280-variant paired LIBERO-Plus cohort, action+latent-aware microscaling VQ achieved 226/280 successes (80.71%), versus 221/280 (78.93%) for adapted SpinQuant W4A4 and 233/280 (83.21%) for BF16. VQ used 4.28698 effective bpw on target weights (5.45328 across the whole DiT).",
+    "limits": [
+      "Cohort differences are descriptive, not a statistical-significance or overall-superiority claim.",
+      "This comparison does not isolate action-loss versus latent-loss causality.",
+      "Effective bpw includes encoding overhead; it is not native-kernel memory or speed evidence."
+    ]
+  },
+  "fastwam_softbin_relational": {
+    "shared_setup": {
+      "evaluation": "Decoded-BF16 VQ weights, dynamic signed A4 activations, BF16 KV, Smooth0.5/H128.",
+      "trainables": "614 FP32 activation clipping ratios and 1,806,863 FP32 per-input-channel log2 scales.",
+      "frozen": "VQ codebooks, indices, row gains, B32 exponents, biases, non-target weights, and BF16 KV.",
+      "initialization": "Soft-bin and relational final80 checkpoints independently start from original C8 rho=1.5 baseline; relational is not fine-tuned from soft-bin.",
+      "training": "Adam, 80 updates / one epoch, fresh optimizer per arm, state reset after update 1, gradient norm clip 1.0, fixed final80, no held-out checkpoint selection.",
+      "learning_rates": {
+        "clip_ratio": 0.01,
+        "per_input_channel_log2_scale": 0.02
+      },
+      "plus_evaluation": "Reuses saved final80 checkpoints; zero new training updates."
+    },
+    "soft_bin": {
+      "normalization": "z=(x-mu_c)/max(s_c,0.02), using frozen per-action-coordinate / per-latent-channel population mean and std from original C80 teacher outputs only.",
+      "bins": "16 bins: 15 equally spaced interior edges from -3.5 to 3.5, plus two tails.",
+      "smoothing": "Gaussian sigma=0.375; interior-bin mass is a Gaussian CDF difference; tails use CDF tails.",
+      "divergence": "Mean, across paired scalar positions, of 16-bin KL(p_teacher || p_student); no temporal or spatial histogram pooling.",
+      "action_path": "First 10 action steps x first 6 motor dimensions; excludes gripper and late 22 steps.",
+      "latent_path": "Future latent values with frame 0 excluded; all 48 channels and spatial positions.",
+      "teacher": "Teacher action/future tensors and teacher probabilities are detached."
+    },
+    "relational_kl": {
+      "action_tokens": "Standardized first-10 x 6 motor values; ordered sliding windows length 3, stride 1 -> 8 tokens x 18 values.",
+      "action_neighbors": "All distinct pairs among the 8 action-window tokens; self-pairs masked.",
+      "latent_tokens": "Drop frame 0; standardize 48 channels; split width into two cameras; 2x2 average-pool with stride 2 -> 196 tokens x 48 values (2 future frames x 2 cameras x 7 x 7).",
+      "latent_neighbors": "Eight-connected spatial neighbors in same time/camera, plus same location across distinct future times in same camera; camera views never connect.",
+      "distribution": "d_ij=mean_k((z_i-z_j)^2); q(j|i)=softmax_j(-d_ij/T) over the fixed neighbor mask; average row-wise KL(p_teacher(j|i) || p_student(j|i)).",
+      "gram_matrix_note": "Implementation forms pairwise mean-squared Euclidean distance matrices; it does not construct or match feature Gram matrices.",
+      "temperatures": {
+        "rule": "Median positive teacher neighbor distance over full C80, frozen before training",
+        "action": 0.05844502896,
+        "latent": 0.42243281007
+      },
+      "betas": {
+        "rule": "Separately beta=0.25 x mean teacher standardized Gaussian-noise soft-bin KL / mean relational KL; noise std=0.1 on C80 teacher only",
+        "action": 0.61968510916,
+        "latent": 27.14823378066
+      },
+      "teacher": "Teacher tokens, distances, and probabilities are detached / computed under no_grad; gradients flow through student relations."
+    },
+    "objectives": {
+      "softbin_formula": "L_softbin = alpha_a * KL_SB(A) + rho*c*alpha_z * KL_SB(Z)",
+      "relational_formula": "L_relational = alpha_a * [KL_SB(A) + beta_a*KL_A_temporal] + rho*c*alpha_z * [KL_SB(Z) + beta_z*KL_Z_spatiotemporal]",
+      "fitted_values": {
+        "alpha_a": 0.01230247928,
+        "alpha_z": 0.31297895225,
+        "rho": 1.5,
+        "c": 0.02830301789,
+        "rho_c": 0.04245452683,
+        "beta_a": 0.61968510916,
+        "beta_z": 27.14823378066,
+        "effective_action_anchor": 0.01230247928,
+        "effective_latent_anchor": 0.01328737333,
+        "effective_action_temporal": 0.00762366321,
+        "effective_latent_spatiotemporal": 0.36072871738
+      },
+      "alpha_rule": "alpha_a=mean_C80 initial action MSE / mean_C80 action soft-bin KL; alpha_z=mean_C80 initial latent NMSE / mean_C80 latent soft-bin KL; preserve original rho*c latent weighting."
+    },
+    "fixed_input_evidence": {
+      "scope": "Decoded-BF16 fixed-input endpoints on original held-out 40 cases x 2 seeds; average seeds within case and weight four suites equally; no environment actions executed.",
+      "softbin_final80": {
+        "first10_motor_rmse": 0.03232986,
+        "future_latent_nmse": 0.053033005,
+        "action_softbin_kl": 0.083403036,
+        "latent_softbin_kl": 0.170951142
+      },
+      "relational_final80": {
+        "first10_motor_rmse": 0.031438487,
+        "future_latent_nmse": 0.054295895,
+        "action_softbin_kl": 0.075975663,
+        "latent_softbin_kl": 0.17523083,
+        "action_temporal_kl": 0.034484781,
+        "latent_spatiotemporal_kl": 0.006147169
+      },
+      "interpretation": "Relational final80 lowered held-out first10 motor RMSE and both relational KLs versus soft-bin final80, while future-latent NMSE and pointwise latent soft-bin KL were higher. These proxies do not determine closed-loop success."
+    }
+  },
+  "evidence_status": {
+    "cosmos": "Complete: 840/840 episodes, 280 per arm.",
+    "softbin_relational_plus": {
+      "job": "25886452.pbs101",
+      "state_at_snapshot": "Running / evaluating",
+      "snapshot_utc": "2026-10-20T12:38:16Z",
+      "progress": {
+        "softbin": "217/280",
+        "relational": "214/280",
+        "total": "431/560"
+      },
+      "all_four_worker_startup_checks_passed": true,
+      "completion_gate_passed": false,
+      "final_success_rates": null,
+      "slide_ready_sentence": "The paired LIBERO-Plus evaluation of the soft-bin and soft-bin-plus-relational checkpoints is still in progress; the latest local snapshot has 431/560 episodes complete, so final success rates are not yet available."
+    },
+    "not_established": [
+      "No final closed-loop success-rate comparison for soft-bin versus soft-bin-plus-relational is available in current local evidence.",
+      "Lower fixed-input MSE/RMSE or KL does not guarantee higher closed-loop success.",
+      "The Cosmos result evaluates the action+latent VQ recipe as a whole and does not establish native low-bit kernel speed."
+    ]
+  },
+  "sources": [
+    "D:/Downloads/Final Year Project/experiment/idea-validation/cosmos-policy-c8-w4a4/RESULTS.zh.md",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/cosmos-policy-c8-w4a4/protocol.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/cosmos-policy-c8-w4a4/retrieved/results/evaluation/summary.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-dual-kl/softbin_loss.py",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-dual-kl/protocol.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-dual-kl/results/prepare/loss_scaling.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-dual-kl/results/ANALYSIS.zh.md",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-relational-kl/relational_loss.py",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-relational-kl/protocol.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-relational-kl/README.zh.md",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-relational-kl/results/relational/summary.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-relational-kl/results/ANALYSIS.zh.md",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-softbin-relational-plus/README.zh.md",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-softbin-relational-plus/protocol.json",
+    "D:/Downloads/Final Year Project/experiment/idea-validation/fastwam-vq-softbin-relational-plus/monitor_status.json"
+  ]
+}

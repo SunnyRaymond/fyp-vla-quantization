@@ -1,0 +1,403 @@
+{
+  "title": "Fast-WAM LIBERO-Plus 闭环结果（2026-10-21 组会）",
+  "source_root": "D:/Downloads/Final Year Project",
+  "prepared_utc_date": "2026-10-20",
+  "evaluation_protocol": {
+    "cohort": "frozen LIBERO-Plus subset",
+    "episodes_per_arm": 280,
+    "construction": "4 suites × 7 perturbation dimensions × 10 variants per suite-dimension cell; 10 episodes per cell",
+    "suite_denominators": {
+      "libero_spatial": 70,
+      "libero_object": 70,
+      "libero_goal": 70,
+      "libero_10": 70
+    },
+    "pairing": "方法间沿用同一 frozen manifest、初始状态、environment seeds 和 sampler seeds。",
+    "interpretation": "成功数是这个固定 cohort 上的配对描述性结果；同一 task 可跨扰动重复出现，没有独立随机 seed 重复或显著性结论。",
+    "c8_c80_meaning": "C8/C80 指 calibration/training contexts 规模，不是闭环评测分母；以下 Plus success denominator 始终为 280。"
+  },
+  "bit_budget_conventions": {
+    "scope": "除特别说明外，bpw 只指 614 个目标 Linear 的 weight payload，不是整模型 bpw，也不是运行时 GPU 显存。",
+    "effective_bpw_definition": "编码 payload bytes（包括报告明确计入的量化元数据和 transform tensors）× 8 / 6,016,317,440 个目标权重。",
+    "whole_model_equivalent_bpw": null,
+    "whole_model_note": "未找到把未量化模块、bias、norm、KV cache 等一并纳入的统一整模型 bpw 账本。A4 activation 和 BF16 KV 不计入 weight bpw。",
+    "runtime_note": "VQ 闭环 arm 以 decoded BF16 VQ weights、dynamic A4 activations 和 BF16 KV 执行；其 effective bpw 描述保存的编码表示，不代表 native low-bit execution 或运行时显存。",
+    "rotation_estimate_note": "QuaRot/SpinQuant 的协议给出 W4、G128、BF16 scales；4 + 16/128 = 4.125 是 code-plus-scale 估算，未计 rotation tensors、padding/tail overhead，也不是 artifact 报告的实测 payload bpw。"
+  },
+  "closed_loop_results": [
+    {
+      "method": "BF16 reference",
+      "kind": "reference",
+      "c8_c80": "不适用；BF16 对照。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 56, "episodes": 70},
+        "libero_object": {"successes": 55, "episodes": 70},
+        "libero_goal": {"successes": 51, "episodes": 70},
+        "libero_10": {"successes": 54, "episodes": 70}
+      },
+      "total": {"successes": 216, "episodes": 280, "success_rate_pct": 77.14},
+      "bit_budget": {
+        "target_linear_effective_bpw": 16.0,
+        "whole_model_equivalent_bpw": null,
+        "definition": "目标 Linear 为 dense BF16，即 16 bits/weight；其余模型组成不在统一整模型预算中。"
+      },
+      "execution_precision": "BF16 reference pipeline",
+      "source_files": [
+        "experiment/idea-validation/fastwam-rotation-baselines/results/summary.json",
+        "experiment/idea-validation/fastwam-vq-plus/results/RESULTS.zh.md"
+      ],
+      "fairness_and_limits": "同一个 280-episode frozen cohort 的 reference arm；其余结果与它按 variant 配对。"
+    },
+    {
+      "method": "QuaRot-adapted W4A4",
+      "kind": "Fast-WAM local rotation baseline",
+      "c8_c80": "不是 C8/C80 endpoint；rotation protocol 使用 8 个 original training cases 和 4 个 original selection cases。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 51, "episodes": 70},
+        "libero_object": {"successes": 52, "episodes": 70},
+        "libero_goal": {"successes": 45, "episodes": 70},
+        "libero_10": {"successes": 47, "episodes": 70}
+      },
+      "total": {"successes": 195, "episodes": 280, "success_rate_pct": 69.64},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "code_plus_scale_estimate_bpw": 4.125,
+        "whole_model_equivalent_bpw": null,
+        "definition": "协议为 packed signed W4、group size 128、BF16 group scales；4.125=4-bit code + 16-bit scale/128 weights，未计旋转/尾块开销，故仅作估算。"
+      },
+      "execution_precision": "Native packed S4 linear path；dynamic per-row A4；BF16 KV；目标外模块保持浮点。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-rotation-baselines/protocol.json",
+        "experiment/idea-validation/fastwam-rotation-baselines/results/summary.json",
+        "experiment/idea-validation/fastwam-vq-plus/results/RESULTS.zh.md"
+      ],
+      "fairness_and_limits": "这是针对 Fast-WAM LayerNorm/timestep modulation/residual-gated 结构的 QuaRot adaptation，不是官方 QuaRot 在原架构上的逐项复现；无整模型 bpw 账本。"
+    },
+    {
+      "method": "SpinQuant-adapted W4A4",
+      "kind": "Fast-WAM local rotation baseline",
+      "c8_c80": "8 个 original training cases、4 个 original selection cases；不是 C8/C80 命名的 VQ checkpoint。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 55, "episodes": 70},
+        "libero_object": {"successes": 51, "episodes": 70},
+        "libero_goal": {"successes": 48, "episodes": 70},
+        "libero_10": {"successes": 49, "episodes": 70}
+      },
+      "total": {"successes": 203, "episodes": 280, "success_rate_pct": 72.50},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "code_plus_scale_estimate_bpw": 4.125,
+        "whole_model_equivalent_bpw": null,
+        "definition": "packed signed W4、G128、BF16 group scales；4.125=4+16/128，未计 learned rotation tensors、尾块和目标外浮点参数。"
+      },
+      "execution_precision": "Native packed S4 linear path；dynamic per-row A4；BF16 KV；目标外模块保持浮点。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-rotation-baselines/protocol.json",
+        "experiment/idea-validation/fastwam-rotation-baselines/results/summary.json",
+        "experiment/idea-validation/fastwam-vq-plus/results/RESULTS.zh.md"
+      ],
+      "fairness_and_limits": "本地 learned-R128 adaptation：旋转位置和目标函数按 Fast-WAM 调整，不等同论文完整 SpinQuant recipe；相对 BF16 为 -13 successes。"
+    },
+    {
+      "method": "Scalar W4A4 + Smooth α=0.5 + Hadamard-128",
+      "kind": "local scalar-quantization baseline",
+      "c8_c80": "固定 scalar bank；0 个新增训练 steps。原 calibration/selection 只覆盖 Spatial，且含 original 与 Plus 样本。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 53, "episodes": 70},
+        "libero_object": {"successes": 52, "episodes": 70},
+        "libero_goal": {"successes": 47, "episodes": 70},
+        "libero_10": {"successes": 48, "episodes": 70}
+      },
+      "total": {"successes": 200, "episodes": 280, "success_rate_pct": 71.43},
+      "bit_budget": {
+        "target_linear_effective_bpw": 4.1370258694,
+        "whole_model_equivalent_bpw": null,
+        "payload_bytes_with_transforms": 3111207611,
+        "target_weight_count": 6016317440,
+        "definition": "本地 receipt 的 packed weight payload 加 transform tensor bytes，再除以目标权重数；不含整模型其余 BF16 参数。"
+      },
+      "execution_precision": "本闭环报告为 native S4 Tensor Core MMA；W4 G128/BF16 scales、dynamic per-row A4、BF16 KV。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-smooth-scalar-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-smooth-scalar-plus/results/summary.json",
+        "experiment/idea-validation/fastwam-smooth-scalar-plus/source_receipts/receipt.json",
+        "experiment/idea-validation/fastwam-smooth-scalar-plus/protocol.json"
+      ],
+      "fairness_and_limits": "完整配置的 paired cohort 比较；calibration 覆盖与其他 arms 不同，不能把结果单独归因于 Smooth 或 Hadamard。差异是描述性结果，未做显著性检验。"
+    },
+    {
+      "method": "Row-scale VQ + A4",
+      "kind": "VQ baseline",
+      "c8_c80": "来源 bank 使用 8 个 calibration replay contexts；LIBERO-Plus evaluation 为 frozen 280 episodes。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 54, "episodes": 70},
+        "libero_object": {"successes": 53, "episodes": 70},
+        "libero_goal": {"successes": 47, "episodes": 70},
+        "libero_10": {"successes": 48, "episodes": 70}
+      },
+      "total": {"successes": 202, "episodes": 280, "success_rate_pct": 72.14},
+      "bit_budget": {
+        "target_linear_effective_bpw": 4.02087306,
+        "whole_model_equivalent_bpw": null,
+        "payload_bytes_with_transforms": 3023856089,
+        "target_weight_count": 6016317440,
+        "definition": "encoded VQ bank（indices、codebooks、row gains）加 saved Smooth/Hadamard transforms 的目标 Linear payload / target weights。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；dynamic per-row A4；BF16 KV；无 native VQ low-bit kernel。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-plus/results/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-plus/results/summary.json",
+        "experiment/idea-validation/fastwam-vq-microscale/RESULTS.zh.md"
+      ],
+      "fairness_and_limits": "冻结 bank 在同一 Plus cohort 上评估；编码 payload 的 bpw 不等于闭环时 decoded BF16 权重的 GPU memory。"
+    },
+    {
+      "method": "Microscaling VQ B32 + A4",
+      "kind": "VQ baseline",
+      "c8_c80": "来源 bank 使用 8 个 calibration replay contexts；B32 exponent scaling；LIBERO-Plus evaluation 为 frozen 280 episodes。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 56, "episodes": 70},
+        "libero_object": {"successes": 51, "episodes": 70},
+        "libero_goal": {"successes": 46, "episodes": 70},
+        "libero_10": {"successes": 51, "episodes": 70}
+      },
+      "total": {"successes": 204, "episodes": 280, "success_rate_pct": 72.86},
+      "bit_budget": {
+        "target_linear_effective_bpw": 4.27087821,
+        "whole_model_equivalent_bpw": null,
+        "payload_bytes_with_transforms": 3211869881,
+        "target_weight_count": 6016317440,
+        "definition": "VQ indices、codebooks、row gains、B32 block exponents 和 saved Smooth/Hadamard transforms 的目标 Linear payload / target weights。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；dynamic per-row A4；BF16 KV；无 native VQ low-bit kernel。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-plus/results/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-plus/results/summary.json",
+        "experiment/idea-validation/fastwam-vq-microscale/RESULTS.zh.md"
+      ],
+      "fairness_and_limits": "比 row-scale 多 2 个 success；差异很小、未做重复 seed 或显著性检验。编码 payload 的 bpw 不是运行时显存或 native INT4 证据。"
+    },
+    {
+      "method": "C8 action+latent-aware VQ, ρ=0.1 (2 epochs / 16 updates)",
+      "kind": "action+latent-aware VQ",
+      "c8_c80": "C8：8 个 original calibration cases；ρ=0.1 跑 2 epochs/16 updates；evaluation 280 episodes。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 50, "episodes": 70},
+        "libero_object": {"successes": 54, "episodes": 70},
+        "libero_goal": {"successes": 48, "episodes": 70},
+        "libero_10": {"successes": 49, "episodes": 70}
+      },
+      "total": {"successes": 201, "episodes": 280, "success_rate_pct": 71.79},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "inherited_micro_bank_effective_bpw": 4.27087821,
+        "whole_model_equivalent_bpw": null,
+        "definition": "4.27087821 是来源 Microscaling bank（含 transforms）的 payload bpw；训练后 endpoint 的辅助参数没有单独 reserialize 账本，因此不是训练后完整 bpw。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；dynamic A4；BF16 KV；无 native VQ low-bit kernel。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/results/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/results/summary.json"
+      ],
+      "fairness_and_limits": "与 ρ=1.5 比较同时改变了 ρ 和训练 epochs；不能把差异单独归因于 loss coefficient。相对 BF16 -15 successes。"
+    },
+    {
+      "method": "C8 action+latent-aware VQ, ρ=1.5 (1 epoch / 8 updates)",
+      "kind": "action+latent-aware VQ",
+      "c8_c80": "C8：8 个 original calibration cases；ρ=1.5 跑 1 epoch/8 updates；evaluation 280 episodes。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 51, "episodes": 70},
+        "libero_object": {"successes": 54, "episodes": 70},
+        "libero_goal": {"successes": 48, "episodes": 70},
+        "libero_10": {"successes": 53, "episodes": 70}
+      },
+      "total": {"successes": 206, "episodes": 280, "success_rate_pct": 73.57},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "inherited_micro_bank_effective_bpw": 4.27087821,
+        "whole_model_equivalent_bpw": null,
+        "definition": "来源 Microscaling bank payload bpw；trained endpoint 的辅助参数没有独立序列化预算，故不当作完整 endpoint bpw。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；dynamic A4；BF16 KV；无 native VQ low-bit kernel。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/results/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/results/summary.json"
+      ],
+      "fairness_and_limits": "这是本轮量化 arms 中最高的闭环成功数；比 Micro 多 2、比 SpinQuant 多 3、比 BF16 少 10。Micro source bank 的 calibration 与本轮 C8 bank 不同，且没有同 C8/同 epoch 的 action-only 闭环臂来隔离 latent loss。"
+    },
+    {
+      "method": "C80 activation clip-only",
+      "kind": "activation clipping VQ",
+      "c8_c80": "C8 ρ=1.5 checkpoint 起点；C80 calibration/clip-only endpoint 为 80 contexts、80 updates；frozen Plus evaluation 280 episodes。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 51, "episodes": 70},
+        "libero_object": {"successes": 54, "episodes": 70},
+        "libero_goal": {"successes": 50, "episodes": 70},
+        "libero_10": {"successes": 52, "episodes": 70}
+      },
+      "total": {"successes": 207, "episodes": 280, "success_rate_pct": 73.93},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "inherited_micro_bank_effective_bpw": 4.27087821,
+        "whole_model_equivalent_bpw": null,
+        "definition": "来源 Micro VQ bank 的 payload bpw；最终 clipping endpoint 的 learned metadata 未在结果账本中重算。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；per-token A4 activations；BF16 KV；非 native low-bit kernel latency。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus/summary.json"
+      ],
+      "fairness_and_limits": "相对同一 C8 ρ=1.5 起点净增 1 success；相对 BF16 少 9。闭环固定 cohort 的描述性差异，未重复 rollout 或做显著性检验。"
+    },
+    {
+      "method": "C80 joint clipping + VQ scaling",
+      "kind": "activation clipping / joint VQ adaptation",
+      "c8_c80": "C8 ρ=1.5 checkpoint 起点；C80 calibration 80 contexts/80 updates；frozen Plus evaluation 280 episodes。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 52, "episodes": 70},
+        "libero_object": {"successes": 53, "episodes": 70},
+        "libero_goal": {"successes": 48, "episodes": 70},
+        "libero_10": {"successes": 49, "episodes": 70}
+      },
+      "total": {"successes": 202, "episodes": 280, "success_rate_pct": 72.14},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "inherited_micro_bank_effective_bpw": 4.27087821,
+        "whole_model_equivalent_bpw": null,
+        "definition": "来源 Micro VQ bank payload bpw；trained joint endpoint 的额外参数未在结果中重算完整 payload。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；dynamic A4 activations；BF16 KV；无 native VQ low-bit kernel。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus/summary.json"
+      ],
+      "fairness_and_limits": "比 C80 clip-only 少 5 successes；相对 C8 ρ=1.5 少 4。固定 cohort 结果没有显示 joint 比 clip-only 更好。"
+    },
+    {
+      "method": "C80 per-channel scaling + clipping",
+      "kind": "per-channel VQ adaptation",
+      "c8_c80": "C8 ρ=1.5 warm start；C80 final-80 checkpoint；Plus evaluation 280 episodes。闭环轮次复用现成 endpoint，没有重训。",
+      "suite_successes": {
+        "libero_spatial": {"successes": 54, "episodes": 70},
+        "libero_object": {"successes": 56, "episodes": 70},
+        "libero_goal": {"successes": 46, "episodes": 70},
+        "libero_10": {"successes": 47, "episodes": 70}
+      },
+      "total": {"successes": 203, "episodes": 280, "success_rate_pct": 72.50},
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "inherited_micro_bank_effective_bpw": 4.27087821,
+        "whole_model_equivalent_bpw": null,
+        "definition": "4.27087821 只描述底层 Micro VQ payload；per-channel endpoint 还含 1,806,863 个 FP32 log2D 参数和 clipping ratios，报告没有给出合并后的 packed endpoint bpw。"
+      },
+      "execution_precision": "Decoded BF16 VQ weights；per-token A4 activations；BF16 KV；无 native low-bit kernel。",
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-c80-per-channel-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-per-channel-plus/CLOSED_LOOP_ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-per-channel-plus/summary.json"
+      ],
+      "fairness_and_limits": "与 SpinQuant 总成功数相同但逐 episode 配对为 15 wins/15 losses；比 C80 clip-only 少 4。Fixed-input motor RMSE 改善未转化为更多闭环成功；无重复 rollout 或显著性结论。"
+    }
+  ],
+  "completed_but_not_closed_loop": [
+    {
+      "method": "Action-sensitive VQ, λ=0.1",
+      "status": "已完成 fixed-input endpoint；没有 completed closed-loop success rate。",
+      "c8_c80": "8 个旧 calibration inputs；held-out 为 10 original + 12 Plus cases，各 2 seeds（22 cases/44 contexts）。",
+      "suite_successes": null,
+      "total": null,
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "inherited_row_scale_bank_effective_bpw": 4.02087306,
+        "whole_model_equivalent_bpw": null,
+        "definition": "来源 row-scale VQ payload 的估算；action-sensitive endpoint 没有重算包含新增参数的完整序列化预算。"
+      },
+      "fixed_input_metrics": {
+        "test_first10_motor_rmse": 0.06103,
+        "row_scale_vq_test_first10_motor_rmse": 0.05705,
+        "local_output_fit_test_first10_motor_rmse": 0.05726
+      },
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-action-aware/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-action-aware/retrieved/results/analysis/summary.json"
+      ],
+      "fairness_and_limits": "在相同 row-scale initialization/格式/容量的局部比较中，action-sensitive endpoint 的 test motor RMSE 高于 row-scale 与 local-output-fit；这些 fixed-input 指标不等于闭环成功率。"
+    },
+    {
+      "method": "Soft-bin + relational KL endpoint",
+      "status": "C80 fixed-input endpoint comparison complete；没有 closed-loop episodes。",
+      "c8_c80": "C80 training/held-out endpoint；held-out 40 cases × 2 seeds，先按 case 聚合，不把 80 queries 当独立样本。",
+      "suite_successes": null,
+      "total": null,
+      "bit_budget": {
+        "target_linear_effective_bpw": null,
+        "whole_model_equivalent_bpw": null,
+        "definition": "该 analysis 未报告最终 trained endpoint 的编码 payload bpw。"
+      },
+      "fixed_input_metrics": {
+        "motor_rmse_first10_softbin": 0.03232986,
+        "motor_rmse_first10_relational": 0.031438487,
+        "motor_rmse_change_pct": -2.757,
+        "future_latent_nmse_softbin": 0.053033005,
+        "future_latent_nmse_relational": 0.054295895,
+        "future_latent_nmse_change_pct": 2.381,
+        "action_temporal_kl_change_pct": -14.68,
+        "latent_spatiotemporal_kl_change_pct": -3.907,
+        "composite_objective_change_pct": -2.873
+      },
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-relational-kl/results/ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-relational-kl/results/paired_details.json"
+      ],
+      "fairness_and_limits": "每个 arm 只有一条训练轨迹；relational composite/RMSE 改善伴随 latent NMSE 上升，且没有环境闭环证据。"
+    }
+  ],
+  "latest_softbin_relational_plus_evaluation": {
+    "status": "本地 latest monitor snapshot 尚未通过 completion gate；不可填 success counts。",
+    "snapshot_utc": "2026-10-20T12:38:16Z",
+    "job_id": "25886452.pbs101",
+    "scheduler_state_at_snapshot": "R",
+    "completion_gate": false,
+    "recorded_episode_progress_only": {
+      "softbin": {"completed": 217, "expected": 280},
+      "relational": {"completed": 214, "expected": 280}
+    },
+    "suite_successes": null,
+    "total": null,
+    "source_files": [
+      "experiment/idea-validation/fastwam-vq-softbin-relational-plus/monitor_status.json",
+      "experiment/idea-validation/fastwam-vq-softbin-relational-plus/protocol.json"
+    ],
+    "fairness_and_limits": "217/280 和 214/280 是 episode 记录进度，不是成功数；截至该本地快照没有最终聚合结果。"
+  },
+  "original_libero": {
+    "standalone_original_only_closed_loop_result": {
+      "status": "在已检查的本地 completed reports 中未找到 standalone original-only success aggregate。",
+      "suite_successes": null,
+      "total": null,
+      "source_files": [
+        "experiment/idea-validation/fastwam-vq-original-episode-c80/protocol.json"
+      ],
+      "note": "该目录当前有 original demonstration-state evaluation protocol，但没有本地结果报告或完成 summary；不可当作已完成闭环结果。"
+    },
+    "available_original_input_evidence": {
+      "status": "fixed-input diagnostics only; 0 environment episodes",
+      "cohort": "10 original LIBERO-Spatial tasks + 12 selected LIBERO-Plus variants; 2 sampler seeds each, 44 contexts total",
+      "suite_successes": null,
+      "total": null,
+      "all_a4_original_first10_motor_rmse_vs_bf16": 0.34717,
+      "source_files": [
+        "experiment/idea-validation/fastwam-a4-phases12/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-a4-phases12/artifacts/25701688.pbs101/analysis/summary.json"
+      ],
+      "fairness_and_limits": "这是 original 输入上的 action-fidelity fixed-input metric，不是 success rate，也不是 original-only closed-loop benchmark。"
+    }
+  },
+  "suggested_slide_readout": [
+    "主 cohort 为 paired frozen LIBERO-Plus N=280/arm；BF16 216/280。",
+    "本地 rotation baselines：QuaRot-adapted 195/280、SpinQuant-adapted 203/280；Scalar Smooth/Hadamard 200/280。",
+    "VQ：row-scale 202/280、B32 micro 204/280；C8 action+latent ρ=1.5 为 206/280，ρ=0.1 为 201/280。",
+    "C80：clip-only 207/280；joint 202/280；per-channel+clip 203/280。所有差异都应按固定 cohort 的描述性结果报告。",
+    "Soft-bin/relational KL 的 completed evidence 仍是 fixed-input；Plus 闭环结果截至本地快照未完成。"
+  ]
+}

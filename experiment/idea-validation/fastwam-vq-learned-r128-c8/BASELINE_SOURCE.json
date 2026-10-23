@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "target_protocol": "fastwam-vq-learned-r128-c8-v1",
+  "selection": {
+    "experiment": "fastwam-vq-activation-clipping",
+    "source_protocol": "fastwam-vq-activation-clipping-v1",
+    "source_arm": "baseline",
+    "reason": "80 fixed-input original-heldout per-query records were generated from the frozen C8 rho1.5 update8 deployment and share the requested contexts and seeds."
+  },
+  "remote_roots": {
+    "baseline_source": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+    "c8_training_source": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+    "c8_calibration_source": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013"
+  },
+  "baseline": {
+    "query_directory": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/baseline/queries",
+    "query_file_pattern": "{case_id}_{seed_index}.json",
+    "summary": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/baseline/summary.json",
+    "validation_receipt": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/baseline/validation.json",
+    "protocol_binding": "fastwam-vq-activation-clipping-v1 / arm=baseline / updates=0",
+    "case_ids": [
+      3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009,
+      3010, 3011, 3012, 3013, 3014, 3015, 3016, 3017, 3018, 3019,
+      3020, 3021, 3022, 3023, 3024, 3025, 3026, 3027, 3028, 3029,
+      3030, 3031, 3032, 3033, 3034, 3035, 3036, 3037, 3038, 3039
+    ],
+    "seed_indices": [0, 1],
+    "expected_queries": 80,
+    "record_schema": {
+      "identity": ["protocol", "arm", "updates", "case_id", "suite", "seed_index", "sampler_seed"],
+      "metrics": ["first10motor_rmse", "full32motor_rmse", "late22motor_rmse", "first10gripper_rmse", "future_latent_nmse"],
+      "other": ["counts"]
+    },
+    "schema_sample_3000_0": {
+      "protocol": "fastwam-vq-activation-clipping-v1",
+      "arm": "baseline",
+      "updates": 0,
+      "case_id": 3000,
+      "suite": "libero_spatial",
+      "seed_index": 0,
+      "sampler_seed": 911006000,
+      "first10motor_rmse": 0.05296842008829117,
+      "full32motor_rmse": 0.05431222915649414,
+      "late22motor_rmse": 0.05491218343377113,
+      "first10gripper_rmse": 0.6253758668899536,
+      "future_latent_nmse": 0.08773092180490494
+    },
+    "derived_metrics": {
+      "first10motor_mse": "first10motor_rmse ** 2",
+      "mixed_loss": "first10motor_mse + latent_weight * future_latent_nmse",
+      "latent_weight": 0.04245452683169643
+    }
+  },
+  "teacher": {
+    "directory": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/teacher",
+    "heldout_file_pattern": "{case_id}_{seed_index}.pt",
+    "heldout_receipt": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/teacher/receipt.json",
+    "coverage": "40 original-heldout contexts x seed indices [0,1] = 80 teacher objects",
+    "calibration_source": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/reference/reference_cache.pt",
+    "calibration_lookup": "cache['teacher'][str(case_id)] for the frozen C8 calibration IDs"
+  },
+  "h_deployment": {
+    "path": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/training/rho1.5/deployment.pt",
+    "training_receipt": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/training/rho1.5/training_receipt.json",
+    "reference_action": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/training/rho1.5/reference_action.json",
+    "binding": {
+      "protocol": "fastwam-vq-c8-action-latent-plus-v1",
+      "arm": "rho1.5",
+      "updates": 8,
+      "rho": 1.5,
+      "normalization_c": 0.028303017887797623,
+      "latent_weight": 0.04245452683169643,
+      "target_linears": 614,
+      "calibration_case_ids": [2000, 2019, 2021, 2025, 2051, 2057, 2066, 2070],
+      "reference_action_shape": [32, 7]
+    },
+    "input_loading": "Use the C8 bank directory only for its fixed encoding layout, indices, exponents, and transforms; restore module_masters from this trained deployment before evaluating. Do not use the initial micro codebooks as deployed VQ weights."
+  },
+  "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+  "loading_notes": [
+    "The source experiment loads the parent protocol, C8 reference_cache.pt, rho1.5 training receipt, deployment.pt, and reference_action.json in its load_inputs routine.",
+    "The heldout query loop loads teacher/{case_id}_{seed_index}.pt, checks its plan row and sampler seed, then stores the five metrics in baseline/queries/{case_id}_{seed_index}.json.",
+    "Read tensor .pt files only inside the PBS compute allocation; the fresh source audit read only small JSON files."
+  ],
+  "fresh_remote_validation": {
+    "checked": "2026-10-21",
+    "method": "Trusted SSH/SFTP read of bounded JSON files and exact query paths; no model or tensor files read.",
+    "query_files_found": 80,
+    "expected_case_seed_names_exact": true,
+    "record_bindings_checked_against_plan": true,
+    "binding_mismatches": 0,
+    "missing_metric_fields": 0,
+    "baseline_summary_complete": true,
+    "baseline_summary_updates": 0,
+    "baseline_initial_parity_max_abs": 0.0,
+    "baseline_validation_recomputed_from_query_records": true,
+    "baseline_validation_new_model_forwards": 0,
+    "baseline_source_gpu_job_exit_code": 1,
+    "baseline_source_gpu_job_note": "The known Runtime.close cleanup error occurred after all numerical records were written; the independent validation recomputed from all 80 records and passed.",
+    "heldout_teacher_receipt_complete": true,
+    "heldout_teacher_queries": 80,
+    "heldout_teacher_job_id": "25848310.pbs101",
+    "c8_training_receipt_complete": true,
+    "c8_training_job_id": "25821658.pbs101"
+  },
+  "not_substitutes": [
+    {
+      "source": "fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+      "reason": "Initial untrained codebooks are only the fixed encoding layout/source; the baseline deployment must restore the trained rho1.5 module masters."
+    },
+    {
+      "source": "fastwam-vq-c80-activation-clipping",
+      "reason": "Its heldout summary is a later C80 training arm/report; use the underlying matched C8 rho1.5 baseline query records above."
+    },
+    {
+      "source": "fastwam-vq-c80-joint-rmse",
+      "reason": "This is an 80-update joint candidate deployment, not the frozen H baseline."
+    },
+    {
+      "source": "fastwam-vq-c8-action-latent-plus closed-loop result records",
+      "reason": "Those are closed-loop episodes and do not contain the requested fixed-input first10/full32/late22/future-NMSE per-query records."
+    }
+  ],
+  "claim_scope": "Fixed-input decoded-BF16/A4 comparison on this paired heldout cohort. Descriptive paired results only; no statistical-significance, closed-loop, or native-kernel claim."
+}

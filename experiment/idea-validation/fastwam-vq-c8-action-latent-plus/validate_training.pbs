@@ -1,0 +1,171 @@
+#!/bin/bash
+#PBS -N fwav15r15
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=1:mem=4gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+SOURCE_RUNTIME_ARTIFACTS=$NEW_ROOT/artifacts/25814264.pbs101
+RESULTS=$NEW_ROOT/results
+REFERENCE_ROOT=$RESULTS/reference
+TRAINING_ROOT=$RESULTS/training
+
+ARM=${FW_VALIDATE_ARM:-}
+SOURCE_TRAIN_JOB_ID=${FW_SOURCE_TRAIN_JOB_ID:-}
+PHASE=allocation_guard
+ARTIFACTS=
+TRAINING_OUT=
+set +u
+PBS_JOBID=$PBS_JOBID
+PBS_JOBNAME=$PBS_JOBNAME
+PBS_NODEFILE=$PBS_NODEFILE
+set -u
+
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  if [[ -n "$ARTIFACTS" && -d "$ARTIFACTS" ]]; then
+    if (( rc != 0 )); then
+      rm -f "$ARTIFACTS/TRAINING_COMPLETE" "$ARTIFACTS/TRAINING_CHECKPOINTED"
+      python3 - "$ARTIFACTS/training_summary.json" "$PBS_JOBID" "$PBS_JOBNAME" \
+        "$ARM" "$PHASE" "$rc" "$SOURCE_TRAIN_JOB_ID" "$TRAINING_OUT" <<'PY_FAILURE' || true
+import json, sys
+from pathlib import Path
+path, job_id, job_name, arm, phase, rc, source_job_id, training_dir = sys.argv[1:]
+summary = {'schema_version': 1, 'protocol': 'fastwam-vq-c8-action-latent-plus-v1',
+           'phase': 'metadata_validation', 'pbs_jobid': job_id, 'job_name': job_name,
+           'arm': arm or None, 'status': 'failed', 'complete': False,
+           'failed_phase': phase, 'exit_code': int(rc),
+           'purpose': 'validation_only', 'source_training_job_id': source_job_id or None,
+           'training_dir': training_dir or None, 'new_model_forwards': 0}
+temp = Path(path + '.tmp')
+temp.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+temp.replace(path)
+PY_FAILURE
+    fi
+    printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+test -n "$PBS_JOBID" || { echo 'PBS_JOBID required; failed_phase=allocation_guard' >&2; exit 64; }
+test -n "$PBS_JOBNAME" || { echo 'PBS_JOBNAME required; failed_phase=allocation_guard' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution; failed_phase=allocation_guard' >&2; exit 64;; esac
+test -s "$PBS_NODEFILE" || { echo 'PBS_NODEFILE required; failed_phase=allocation_guard' >&2; exit 64; }
+HOST_SHORT=$(hostname -s)
+awk -F. -v host="$HOST_SHORT" '$1 == host { found=1 } END { exit !found }' "$PBS_NODEFILE" || {
+  echo 'Current host is not in PBS_NODEFILE; failed_phase=allocation_guard' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not running; failed_phase=allocation_guard' >&2; exit 64;
+}
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+
+case "$ARM:$PBS_JOBNAME" in
+  rho0.1:fwav15r01|rho1.5:fwav15r15) ;;
+  rho0.1:*|rho1.5:*) echo "FW_VALIDATE_ARM and PBS_JOBNAME do not match: $ARM / $PBS_JOBNAME" >&2; exit 64 ;;
+  *) echo "FW_VALIDATE_ARM must be rho0.1 or rho1.5: $ARM" >&2; exit 64 ;;
+esac
+[[ "$SOURCE_TRAIN_JOB_ID" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || {
+  echo 'FW_SOURCE_TRAIN_JOB_ID is not a valid PBS job id' >&2; exit 64;
+}
+CUDA_VISIBLE_DEVICES=
+export CUDA_VISIBLE_DEVICES
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+TRAINING_OUT=$TRAINING_ROOT/$ARM
+mkdir -p "$ARTIFACTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf 'PBS_JOBID=%s PBS_JOBNAME=%s FW_VALIDATE_ARM=%s source_training_job_id=%s allocation_start_epoch=%s\n' \
+  "$PBS_JOBID" "$PBS_JOBNAME" "$ARM" "$SOURCE_TRAIN_JOB_ID" "$FW_JOB_START_EPOCH"
+
+PHASE=source_snapshot
+for file in vq_adapter.py protocol.json environment.sh; do
+  test -s "$NEW_ROOT/$file" || { echo "Missing staged source: $file" >&2; exit 65; }
+done
+for file in runner.py quantization.py libero_state_loader.py; do
+  test -s "$SOURCE_RUNTIME_ARTIFACTS/$file" || { echo "Missing reusable source: $file" >&2; exit 65; }
+done
+cp "$NEW_ROOT/vq_adapter.py" "$NEW_ROOT/protocol.json" "$NEW_ROOT/environment.sh" "$ARTIFACTS/"
+cp "$SOURCE_RUNTIME_ARTIFACTS/runner.py" "$SOURCE_RUNTIME_ARTIFACTS/quantization.py" \
+  "$SOURCE_RUNTIME_ARTIFACTS/libero_state_loader.py" "$ARTIFACTS/"
+
+PHASE=source_failure_gate
+SOURCE_ARTIFACTS=$NEW_ROOT/artifacts/$SOURCE_TRAIN_JOB_ID
+SOURCE_QSTAT=$(qstat -xf "$SOURCE_TRAIN_JOB_ID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*[FX]([[:space:]]|$)' <<< "$SOURCE_QSTAT" || {
+  echo 'Source GPU training job is not terminal; failed_phase=source_failure_gate' >&2; exit 65;
+}
+SOURCE_PBS_EXIT=$(awk -F= '/^[[:space:]]*Exit_status[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' <<< "$SOURCE_QSTAT")
+test -n "$SOURCE_PBS_EXIT" && test "$SOURCE_PBS_EXIT" != 0 || {
+  echo 'Source GPU training PBS exit status is not nonzero' >&2; exit 65;
+}
+test -s "$SOURCE_ARTIFACTS/exit_code.txt" || { echo 'Source artifact exit code is missing' >&2; exit 65; }
+SOURCE_ARTIFACT_EXIT=$(cat "$SOURCE_ARTIFACTS/exit_code.txt")
+test "$SOURCE_ARTIFACT_EXIT" != 0 || { echo 'Source artifact exit status is zero' >&2; exit 65; }
+test ! -e "$SOURCE_ARTIFACTS/TRAINING_COMPLETE" || { echo 'Source GPU training already has a completion marker' >&2; exit 65; }
+test ! -e "$SOURCE_ARTIFACTS/TRAINING_CHECKPOINTED" || { echo 'Source GPU training is checkpointed, not metadata-validation eligible' >&2; exit 65; }
+
+PHASE=environment_setup
+source "$ARTIFACTS/environment.sh"
+NV_ARGS=()
+FW_CPU_THREADS=1
+export FW_CPU_THREADS CUDA_VISIBLE_DEVICES=
+
+PHASE=metadata_validation
+run_python - "$ARTIFACTS/protocol.json" "$REFERENCE_ROOT" "$ARM" "$TRAINING_OUT" \
+  "$SOURCE_TRAIN_JOB_ID" "$SOURCE_ARTIFACTS/training_summary.json" \
+  "$SOURCE_ARTIFACTS/exit_code.txt" "$ARTIFACTS/training_summary.json" \
+  "$PBS_JOBID" "$PBS_JOBNAME" "$SOURCE_PBS_EXIT" <<'PY_VALIDATE'
+import json, sys
+from pathlib import Path
+import vq_adapter
+
+(protocol_path, reference_root, arm, training_dir, source_job_id,
+ source_summary_path, source_exit_path, output_summary_path, job_id,
+ job_name, source_pbs_exit) = sys.argv[1:]
+protocol = json.loads(Path(protocol_path).read_text(encoding='utf-8'))
+config = protocol['arm_configs'][arm]
+source_summary = json.loads(Path(source_summary_path).read_text(encoding='utf-8'))
+source_exit = int(Path(source_exit_path).read_text(encoding='utf-8').strip())
+assert source_summary.get('schema_version') == 1
+assert source_summary.get('protocol') == protocol['protocol']
+assert source_summary.get('pbs_jobid') == source_job_id
+assert source_summary.get('job_name') == {'rho0.1': 'fwalt15r01', 'rho1.5': 'fwalt15r15'}[arm]
+assert source_summary.get('arm') == arm
+assert source_summary.get('status') == 'failed' and source_summary.get('complete') is False
+assert source_summary.get('failed_phase') == 'complete_validation'
+assert int(source_pbs_exit) != 0 and source_exit != 0
+assert 'torch' not in sys.modules
+validated = vq_adapter.validate_training_artifacts(protocol, arm, training_dir, reference_root)
+assert 'torch' not in sys.modules, 'metadata validation unexpectedly imported Torch'
+receipt = validated['training_receipt']
+summary = {
+    'schema_version': 1, 'protocol': protocol['protocol'], 'phase': 'metadata_validation',
+    'pbs_jobid': job_id, 'job_name': job_name, 'arm': arm, 'rho': config['rho'],
+    'status': 'complete', 'complete': True, 'updates': receipt['updates'],
+    'epochs_completed': receipt['epochs_completed'], 'training_dir': str(Path(training_dir)),
+    'source_job_id': protocol['calibration']['source_job_id'],
+    'purpose': 'validation_only', 'source_training_job_id': source_job_id,
+    'new_model_forwards': 0,
+}
+path = Path(output_summary_path)
+temp = path.with_suffix(path.suffix + '.tmp')
+temp.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+temp.replace(path)
+print('TRAINING_METADATA_VALIDATION_COMPLETE ' + json.dumps(summary, separators=(',', ':')), flush=True)
+PY_VALIDATE
+touch "$ARTIFACTS/TRAINING_COMPLETE"

@@ -1,0 +1,361 @@
+#!/bin/bash
+#PBS -N sbrel0001
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=4
+#PBS -l walltime=24:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -n "${PBS_JOBNAME:-}" -a -s "${PBS_NODEFILE:-}" || { echo 'PBS allocation variables required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || { echo 'Host outside PBS allocation' >&2; exit 64; }
+[[ "$PBS_JOBNAME" =~ ^sbrel[0-9]{4}$ ]] || { echo 'Unexpected PBS job name' >&2; exit 64; }
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID") || { echo 'Cannot verify PBS allocation' >&2; exit 64; }
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || { echo 'PBS job is not running' >&2; exit 64; }
+
+# PBS runs a spool copy, so resolve sources from this frozen path after allocation guards.
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-softbin-relational-plus-20261020
+mapfile -t P < <(python3 - "$NEW_ROOT/protocol.json" <<'PY_PATHS'
+import json, sys
+from pathlib import Path
+p = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+s, roots, refs = p["sources"], p["roots"], p["references"]
+arms = p["arm_sources"]
+for value in (
+    p["remote_root"], roots["pilot"], roots["base"], roots["old_banks"], roots["old_inputs"],
+    s["runtime_artifacts"], s["previous_episode_artifacts"], s["forward_artifacts"],
+    s["reference_loader_artifacts"], s["channel_reference_artifacts"],
+    s["diffusion_reference_artifacts"], p["cohort"]["reference_manifest"],
+    arms["softbin"]["training_artifacts"], arms["softbin"]["training_root"],
+    arms["softbin"]["source_protocol_file"], arms["softbin"]["training_results"],
+    arms["softbin"]["deployment"], arms["softbin"]["training_receipt"],
+    arms["softbin"]["endpoint_root"], arms["softbin"]["forward_source"],
+    arms["relational"]["training_artifacts"], arms["relational"]["training_root"],
+    arms["relational"]["source_protocol_file"], arms["relational"]["training_results"],
+    arms["relational"]["deployment"], arms["relational"]["training_receipt"],
+    arms["relational"]["endpoint_root"], arms["relational"]["forward_source"],
+):
+    print(value)
+PY_PATHS
+)
+test "${#P[@]}" -eq 28 || { echo 'Could not resolve frozen source paths' >&2; exit 65; }
+[[ "${P[0]}" == "$NEW_ROOT" ]] || { echo 'Protocol remote_root differs from the PBS source path' >&2; exit 65; }
+ROOT=${P[1]}; BASE=${P[2]}; SMOOTH_ROOT=${P[3]}; SOURCE_ROOT=${P[4]}
+RUNTIME_SOURCE=${P[5]}; PREVIOUS_SOURCE=${P[6]}; FORWARD_SOURCE=${P[7]}
+REFERENCE_SOURCE=${P[8]}; CHANNEL_REFERENCE_SOURCE=${P[9]}; DIFFUSION_REFERENCE_SOURCE=${P[10]}
+MANIFEST=${P[11]}
+SOFTBIN_TRAINING_ARTIFACTS=${P[12]}; SOFTBIN_TRAINING_ROOT=${P[13]}
+SOFTBIN_SOURCE_PROTOCOL=${P[14]}; SOFTBIN_TRAINING_RESULTS=${P[15]}
+SOFTBIN_DEPLOYMENT=${P[16]}; SOFTBIN_RECEIPT=${P[17]}
+SOFTBIN_ENDPOINT_ROOT=${P[18]}; SOFTBIN_FORWARD_SOURCE=${P[19]}
+RELATIONAL_TRAINING_ARTIFACTS=${P[20]}; RELATIONAL_TRAINING_ROOT=${P[21]}
+RELATIONAL_SOURCE_PROTOCOL=${P[22]}; RELATIONAL_TRAINING_RESULTS=${P[23]}
+RELATIONAL_DEPLOYMENT=${P[24]}; RELATIONAL_RECEIPT=${P[25]}
+RELATIONAL_ENDPOINT_ROOT=${P[26]}; RELATIONAL_FORWARD_SOURCE=${P[27]}
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=85500
+FW_SOFTBIN_RESUME_SOURCE_JOB_ID=${FW_SOFTBIN_RESUME_SOURCE_JOB_ID:-}
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SOFTBIN_RESUME_SOURCE_JOB_ID
+mkdir -p "$ARTIFACTS" "$RESULTS/workers"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+PIPELINE_READY=0
+PIPELINE_CHECKPOINTED=0
+GPU_MONITOR_PID=
+WORKERS=()
+write_phase() {
+  local phase="$1" stamp
+  stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  printf '{"protocol":"fastwam-vq-softbin-relational-plus-v1","pbs_jobid":"%s","job_name":"%s","phase":"%s","updated_utc":"%s"}\n' \
+    "$PBS_JOBID" "$PBS_JOBNAME" "$phase" "$stamp" > "$ARTIFACTS/RUN_PHASE.json.tmp"
+  mv -f "$ARTIFACTS/RUN_PHASE.json.tmp" "$ARTIFACTS/RUN_PHASE.json"
+}
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKERS[@]:-}"; do kill -TERM "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  if (( rc == 0 && PIPELINE_READY == 1 )); then
+    write_phase complete || rc=65
+    if (( rc == 0 )); then touch "$ARTIFACTS/PIPELINE_COMPLETE"; rm -f "$ARTIFACTS/PIPELINE_CHECKPOINTED"; fi
+  elif (( rc == 0 && PIPELINE_CHECKPOINTED == 1 )); then
+    write_phase checkpointed || rc=65
+    if (( rc == 0 )); then touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"; rm -f "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+  else
+    (( rc != 0 )) || rc=65
+    write_phase failed || true
+    rm -f "$ARTIFACTS/PIPELINE_COMPLETE" "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt.tmp"
+  mv -f "$ARTIFACTS/exit_code.txt.tmp" "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+write_phase allocation_verified
+case "${CUDA_VISIBLE_DEVICES:-}" in '') echo 'No allocated GPUs' >&2; exit 65;; esac
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 4 || { echo 'Expected four allocated GPU identifiers' >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || { echo 'Could not resolve an allocated GPU UUID' >&2; exit 65; }
+  for previous in "${GPU_UUIDS[@]:-}"; do test "$uuid" != "$previous" || { echo 'Duplicate allocated GPU UUID' >&2; exit 65; }; done
+  GPU_UUIDS+=("$uuid")
+done
+(
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    done
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+test -s "$NEW_ROOT/protocol.json" -a -s "$NEW_ROOT/run.pbs" -a -s "$NEW_ROOT/environment.sh" \
+  -a -s "$NEW_ROOT/runtime.py" -a -s "$NEW_ROOT/evaluate.py" -a -s "$NEW_ROOT/aggregate.py" \
+  || { echo 'Missing uploaded evaluation source' >&2; exit 65; }
+for f in runner.py quantization.py libero_state_loader.py; do test -s "$RUNTIME_SOURCE/$f" || { echo "Missing frozen runtime source: $f" >&2; exit 65; }; done
+test -s "$PREVIOUS_SOURCE/vq_adapter.py" || { echo 'Missing frozen previous episode adapter' >&2; exit 65; }
+for f in channel_banks.py clip_banks.py train_banks.py smooth_vq.py codebook.py micro_codebook.py batched_transform.py calibration_source.py sampler.py; do
+  test -s "$FORWARD_SOURCE/$f" || { echo "Missing frozen forward source: $f" >&2; exit 65; }
+done
+test -s "$REFERENCE_SOURCE/aggregate.py" -a -s "$REFERENCE_SOURCE/reference_aggregate.py" \
+  -a -s "$CHANNEL_REFERENCE_SOURCE/aggregate.py" -a -s "$CHANNEL_REFERENCE_SOURCE/evaluate.py" \
+  -a -s "$DIFFUSION_REFERENCE_SOURCE/evaluate.py" || { echo 'Missing frozen reference loader/evaluator sources' >&2; exit 65; }
+for path in "$SOFTBIN_SOURCE_PROTOCOL" "$SOFTBIN_DEPLOYMENT" "$SOFTBIN_RECEIPT" \
+  "$RELATIONAL_SOURCE_PROTOCOL" "$RELATIONAL_DEPLOYMENT" "$RELATIONAL_RECEIPT" \
+  "$MANIFEST" "$ROOT/env_status.json" "$SIF"; do
+  test -s "$path" || { echo "Missing frozen source: $path" >&2; exit 65; }
+done
+for path in "$SOFTBIN_TRAINING_ROOT" "$SOFTBIN_TRAINING_RESULTS" "$SOFTBIN_ENDPOINT_ROOT" \
+  "$SOFTBIN_FORWARD_SOURCE" "$RELATIONAL_TRAINING_ROOT" "$RELATIONAL_TRAINING_RESULTS" \
+  "$RELATIONAL_ENDPOINT_ROOT" "$RELATIONAL_FORWARD_SOURCE"; do
+  test -d "$path" || { echo "Missing frozen source directory: $path" >&2; exit 65; }
+done
+for path in "$SOFTBIN_TRAINING_ARTIFACTS" "$RELATIONAL_TRAINING_ARTIFACTS"; do
+  test "$(<"$path/exit_code.txt")" = 0 -a -e "$path/PHASE_COMPLETE" \
+    || { echo "Source training artifact is not a successful completed run: $path" >&2; exit 65; }
+done
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" || { echo 'FastWAM runtime or checkpoint source is unavailable' >&2; exit 65; }
+
+write_phase source_staging
+cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/environment.sh" \
+  "$NEW_ROOT/runtime.py" "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$ARTIFACTS/"
+cp "$RUNTIME_SOURCE/runner.py" "$RUNTIME_SOURCE/quantization.py" \
+  "$RUNTIME_SOURCE/libero_state_loader.py" "$ARTIFACTS/"
+cp "$PREVIOUS_SOURCE/vq_adapter.py" "$ARTIFACTS/previous_vq_adapter.py"
+cp "$FORWARD_SOURCE/channel_banks.py" "$FORWARD_SOURCE/clip_banks.py" \
+  "$FORWARD_SOURCE/train_banks.py" "$FORWARD_SOURCE/smooth_vq.py" "$FORWARD_SOURCE/codebook.py" \
+  "$FORWARD_SOURCE/micro_codebook.py" "$FORWARD_SOURCE/batched_transform.py" \
+  "$FORWARD_SOURCE/calibration_source.py" "$FORWARD_SOURCE/sampler.py" "$ARTIFACTS/"
+if [[ -s "$FORWARD_SOURCE/checkpointing.py" ]]; then cp "$FORWARD_SOURCE/checkpointing.py" "$ARTIFACTS/"; fi
+cp "$REFERENCE_SOURCE/aggregate.py" "$ARTIFACTS/reference_loaders.py"
+cp "$REFERENCE_SOURCE/reference_aggregate.py" "$ARTIFACTS/"
+cp "$CHANNEL_REFERENCE_SOURCE/aggregate.py" "$ARTIFACTS/reference_c80_loaders.py"
+cp "$CHANNEL_REFERENCE_SOURCE/evaluate.py" "$ARTIFACTS/reference_channel_eval.py"
+cp "$DIFFUSION_REFERENCE_SOURCE/evaluate.py" "$ARTIFACTS/reference_diffusion_eval.py"
+cp "$SOFTBIN_SOURCE_PROTOCOL" "$ARTIFACTS/source_softbin_protocol.json"
+cp "$RELATIONAL_SOURCE_PROTOCOL" "$ARTIFACTS/source_relational_protocol.json"
+cp -n "$MANIFEST" "$RESULTS/manifest.json"
+cmp -s "$MANIFEST" "$RESULTS/manifest.json" || { echo 'Frozen cohort manifest mismatch' >&2; exit 65; }
+cp -n "$NEW_ROOT/protocol.json" "$RESULTS/protocol.json"
+cmp -s "$NEW_ROOT/protocol.json" "$RESULTS/protocol.json" || { echo 'Frozen protocol mismatch' >&2; exit 65; }
+
+if [[ -n "$FW_SOFTBIN_RESUME_SOURCE_JOB_ID" ]]; then
+  [[ "$FW_SOFTBIN_RESUME_SOURCE_JOB_ID" =~ ^[0-9]+\.[A-Za-z0-9_.-]+$ ]] || { echo 'Invalid checkpoint source job id' >&2; exit 65; }
+  python3 - "$NEW_ROOT" "$RESULTS" "$FW_SOFTBIN_RESUME_SOURCE_JOB_ID" <<'PY_RESUME_GATE'
+import json, sys
+from pathlib import Path
+root, results, source = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+artifact = root / "artifacts" / source
+try:
+    phase = json.loads((artifact / "RUN_PHASE.json").read_text())
+    summary = json.loads((results / "summary.json").read_text())
+    marker = json.loads((results / "PIPELINE_CHECKPOINTED").read_text())
+    if ((artifact / "exit_code.txt").read_text().strip() != "0"
+            or not (artifact / "PIPELINE_CHECKPOINTED").is_file()
+            or (artifact / "PIPELINE_COMPLETE").exists()
+            or phase.get("protocol") != "fastwam-vq-softbin-relational-plus-v1"
+            or phase.get("phase") != "checkpointed"
+            or summary.get("protocol") != phase.get("protocol")
+            or summary.get("status") != "checkpointed" or summary.get("complete") is not False
+            or marker.get("protocol") != phase.get("protocol") or marker.get("complete") is not False
+            or summary.get("reference_episode_slots") != 3640
+            or marker.get("reference_episode_slots") != 3640):
+        raise SystemExit("Checkpoint source is not a successful frozen-protocol checkpoint")
+    expected = {"softbin": 0, "relational": 0}
+    for worker in range(4):
+        worker_root = results / "workers" / f"worker_{worker}"
+        progress = json.loads((worker_root / "progress.json").read_text())
+        receipt = json.loads((worker_root / "summary.json").read_text())
+        arm = "softbin" if worker < 2 else "relational"
+        indices = list(range(worker % 2, 280, 2))
+        count = receipt.get("episodes")
+        if (progress != receipt or receipt.get("protocol") != phase["protocol"]
+                or receipt.get("worker_id") != worker or receipt.get("arm") != arm
+                or receipt.get("expected") != 140 or type(count) is not int or not 0 <= count <= 140
+                or receipt.get("indices") != indices or receipt.get("completed_indices") != indices[:count]
+                or receipt.get("status") not in ("complete", "checkpointed")):
+            raise SystemExit(f"Worker {worker} checkpoint receipt is invalid")
+        if receipt["status"] == "complete" and (count != 140 or receipt.get("complete") is not True):
+            raise SystemExit(f"Worker {worker} completion receipt is inconsistent")
+        if receipt["status"] == "checkpointed" and (count >= 140 or receipt.get("complete") is not False
+                or receipt.get("soft_deadline_reached") is not True):
+            raise SystemExit(f"Worker {worker} checkpoint receipt is inconsistent")
+        expected[arm] += count
+    counts = summary.get("arm_counts", summary.get("arm_episodes"))
+    marker_counts = marker.get("arm_counts", marker.get("arm_episodes"))
+    if (counts != expected or marker_counts != expected
+            or summary.get("arm_counts", expected) != expected or summary.get("arm_episodes", expected) != expected
+            or marker.get("arm_counts", expected) != expected or marker.get("arm_episodes", expected) != expected
+            or sum(expected.values()) != summary.get("episode_slots")
+            or marker.get("episode_slots") != summary.get("episode_slots")
+            or not 0 <= summary["episode_slots"] < 560):
+        raise SystemExit("Checkpoint totals do not match all four worker receipts")
+except (OSError, ValueError, KeyError) as exc:
+    raise SystemExit(f"Checkpoint source is incomplete: {exc}")
+PY_RESUME_GATE
+  export APPTAINERENV_FW_SOFTBIN_RESUME=1
+  export APPTAINERENV_FW_SOFTBIN_RESUME_SOURCE_JOB_ID="$FW_SOFTBIN_RESUME_SOURCE_JOB_ID"
+fi
+
+source "$ARTIFACTS/environment.sh"
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+write_phase evaluating
+for worker in 0 1 2 3; do
+  gpu_uuid=${GPU_UUIDS[$worker]}
+  rc_path="$ARTIFACTS/worker_${worker}.rc"
+  rm -f "$rc_path" "$rc_path.tmp"
+  (
+    child_pid=
+    stop_worker() {
+      if [[ -n "$child_pid" ]]; then kill -TERM "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; fi
+      printf '143\n' > "$rc_path.tmp"
+      mv -f "$rc_path.tmp" "$rc_path"
+      exit 143
+    }
+    trap stop_worker TERM INT
+    CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/evaluate.py" \
+      --protocol "$ARTIFACTS/protocol.json" --manifest "$RESULTS/manifest.json" \
+      --worker-id "$worker" --out "$RESULTS/workers/worker_$worker" &
+    child_pid=$!
+    set +e
+    wait "$child_pid"
+    rc=$?
+    set -e
+    printf '%s\n' "$rc" > "$rc_path.tmp"
+    mv -f "$rc_path.tmp" "$rc_path"
+    exit "$rc"
+  ) > "$ARTIFACTS/worker_${worker}.log" 2>&1 &
+  WORKERS+=("$!")
+  arm=softbin; (( worker < 2 )) || arm=relational
+  echo "WORKER_STARTED worker=$worker gpu_uuid=$gpu_uuid arm=$arm indices=${worker}%2+2k expected=140"
+  if (( worker < 3 )); then sleep 20; fi
+done
+
+declare -A WORKER_DONE=()
+while (( ${#WORKER_DONE[@]} < 4 )); do
+  failed_worker=
+  failed_rc=0
+  for worker in 0 1 2 3; do
+    [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+    rc_path="$ARTIFACTS/worker_${worker}.rc"
+    if [[ -s "$rc_path" ]]; then
+      rc=$(<"$rc_path")
+      WORKER_DONE[$worker]=1
+      if (( rc != 0 )); then failed_worker=$worker; failed_rc=$rc; break; fi
+    fi
+  done
+  if [[ -n "$failed_worker" ]]; then
+    echo "WORKER_FAILED worker=$failed_worker exit_code=$failed_rc; stopping remaining workers" >&2
+    for worker in 0 1 2 3; do [[ -n "${WORKER_DONE[$worker]:-}" ]] || kill -TERM "${WORKERS[$worker]}" 2>/dev/null || true; done
+    for pid in "${WORKERS[@]}"; do wait "$pid" 2>/dev/null || true; done
+    exit "$failed_rc"
+  fi
+  (( ${#WORKER_DONE[@]} == 4 )) || sleep 2
+done
+for pid in "${WORKERS[@]}"; do wait "$pid"; done
+WORKERS=()
+
+write_phase aggregating
+run_python "$ARTIFACTS/aggregate.py" --protocol "$ARTIFACTS/protocol.json" \
+  --manifest "$RESULTS/manifest.json" --results "$RESULTS"
+run_python - "$ARTIFACTS/protocol.json" "$RESULTS" "$ARTIFACTS/aggregate_status.txt" <<'PY_RESULT_GATE'
+import json, sys
+from pathlib import Path
+p = json.loads(Path(sys.argv[1]).read_text())
+results = Path(sys.argv[2])
+summary = json.loads((results / "summary.json").read_text())
+complete = results / "PIPELINE_COMPLETE"
+checkpoint = results / "PIPELINE_CHECKPOINTED"
+def counts(row):
+    expected = row.get("arm_counts", row.get("arm_episodes"))
+    if (expected != row.get("arm_counts", expected)
+            or expected != row.get("arm_episodes", expected)):
+        raise SystemExit("Aggregate arm count aliases disagree")
+    return expected
+if summary.get("protocol") != p["protocol"] or summary.get("reference_episode_slots") != 3640:
+    raise SystemExit("Aggregate summary differs from the frozen protocol or 3,640 reference slots")
+total, arms = 0, {"softbin": 0, "relational": 0}
+for worker in range(4):
+    worker_root = results / "workers" / f"worker_{worker}"
+    progress = json.loads((worker_root / "progress.json").read_text())
+    receipt = json.loads((worker_root / "summary.json").read_text())
+    arm = "softbin" if worker < 2 else "relational"
+    indices = list(range(worker % 2, 280, 2))
+    count = receipt.get("episodes")
+    if (progress != receipt or receipt.get("protocol") != p["protocol"]
+            or receipt.get("worker_id") != worker or receipt.get("arm") != arm
+            or receipt.get("expected") != 140 or type(count) is not int or not 0 <= count <= 140
+            or receipt.get("indices") != indices or receipt.get("completed_indices") != indices[:count]):
+        raise SystemExit(f"Worker {worker} has an invalid 140-episode prefix receipt")
+    if receipt.get("status") == "complete":
+        if count != 140 or receipt.get("complete") is not True:
+            raise SystemExit(f"Worker {worker} is not complete")
+    elif receipt.get("status") == "checkpointed":
+        if count >= 140 or receipt.get("complete") is not False or receipt.get("soft_deadline_reached") is not True:
+            raise SystemExit(f"Worker {worker} checkpoint is malformed")
+    else:
+        raise SystemExit(f"Worker {worker} has an invalid status")
+    total += count
+    arms[arm] += count
+if (summary.get("episode_slots") != total or counts(summary) != arms):
+    raise SystemExit("Aggregate totals differ from the four worker receipts")
+if summary.get("status") == "complete":
+    marker = json.loads(complete.read_text())
+    if (total != 560 or arms != {"softbin": 280, "relational": 280}
+            or summary.get("complete") is not True or marker.get("protocol") != p["protocol"]
+            or marker.get("complete") is not True or marker.get("episode_slots") != 560
+            or counts(marker) != arms or marker.get("reference_episode_slots") != 3640
+            or checkpoint.exists()):
+        raise SystemExit("560/3,640 completion gate failed")
+    status = "complete"
+    print("PIPELINE_COMPLETE 560/560 episodes; references=3640", flush=True)
+elif summary.get("status") == "checkpointed":
+    marker = json.loads(checkpoint.read_text())
+    if (not 0 <= total < 560 or summary.get("complete") is not False
+            or marker.get("protocol") != p["protocol"] or marker.get("complete") is not False
+            or marker.get("episode_slots") != total or counts(marker) != arms
+            or marker.get("reference_episode_slots") != 3640 or complete.exists()):
+        raise SystemExit("Checkpoint aggregate gate failed")
+    status = "checkpointed"
+    print(f"PIPELINE_CHECKPOINTED {total}/560 episodes", flush=True)
+else:
+    raise SystemExit("Aggregate is neither complete nor checkpointed")
+Path(sys.argv[3]).write_text(status + "\n", encoding="utf-8")
+PY_RESULT_GATE
+status=$(<"$ARTIFACTS/aggregate_status.txt")
+if [[ "$status" == complete ]]; then PIPELINE_READY=1; else PIPELINE_CHECKPOINTED=1; fi

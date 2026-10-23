@@ -1,0 +1,278 @@
+#!/bin/bash
+#PBS -N fwalt15r01
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RUNTIME_ARTIFACTS=$NEW_ROOT/artifacts/25814264.pbs101
+RESULTS=$NEW_ROOT/results
+REFERENCE_ROOT=$RESULTS/reference
+TRAINING_ROOT=$RESULTS/training
+
+PHASE=allocation_guard
+ARTIFACTS=
+GPU_MONITOR_PID=
+TRAINING_OUT=
+set +u
+ARM=$FW_TRAIN_ARM
+PBS_JOBID=$PBS_JOBID
+PBS_JOBNAME=$PBS_JOBNAME
+PBS_NODEFILE=$PBS_NODEFILE
+CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
+set -u
+
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$ARTIFACTS" && -d "$ARTIFACTS" ]]; then
+    if (( rc != 0 )); then
+      rm -f "$ARTIFACTS/TRAINING_COMPLETE" "$ARTIFACTS/TRAINING_CHECKPOINTED"
+      python3 - "$ARTIFACTS/training_summary.json" "$PBS_JOBID" "$PBS_JOBNAME" \
+        "$ARM" "$PHASE" "$rc" "$TRAINING_OUT" <<'PY_FAILURE' || true
+import json, sys
+from pathlib import Path
+path, job_id, job_name, arm, phase, rc, training_dir = sys.argv[1:]
+summary = {'schema_version': 1, 'protocol': 'fastwam-vq-c8-action-latent-plus-v1',
+           'pbs_jobid': job_id, 'job_name': job_name, 'arm': arm or None,
+           'status': 'failed', 'complete': False, 'failed_phase': phase,
+           'exit_code': int(rc), 'training_dir': training_dir or None}
+temp = Path(path + '.tmp')
+temp.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+temp.replace(path)
+PY_FAILURE
+    fi
+    printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+test -n "$PBS_JOBID" || { echo 'PBS_JOBID required; failed_phase=allocation_guard' >&2; exit 64; }
+test -n "$PBS_JOBNAME" || { echo 'PBS_JOBNAME required; failed_phase=allocation_guard' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution; failed_phase=allocation_guard' >&2; exit 64;; esac
+test -s "$PBS_NODEFILE" || { echo 'PBS_NODEFILE required; failed_phase=allocation_guard' >&2; exit 64; }
+HOST_SHORT=$(hostname -s)
+awk -F. -v host="$HOST_SHORT" '$1 == host { found=1 } END { exit !found }' "$PBS_NODEFILE" || {
+  echo 'Current host is not in PBS_NODEFILE; failed_phase=allocation_guard' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not running; failed_phase=allocation_guard' >&2; exit 64;
+}
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+
+case "$ARM:$PBS_JOBNAME" in
+  rho0.1:fwalt15r01|rho1.5:fwalt15r15) ;;
+  rho0.1:*|rho1.5:*) echo "FW_TRAIN_ARM and PBS_JOBNAME do not match: $ARM / $PBS_JOBNAME" >&2; exit 64 ;;
+  *) echo "FW_TRAIN_ARM must be explicitly rho0.1 or rho1.5: $ARM" >&2; exit 64 ;;
+esac
+
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS" "$TRAINING_ROOT"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf 'PBS_JOBID=%s PBS_JOBNAME=%s FW_TRAIN_ARM=%s allocation_start_epoch=%s\n' \
+  "$PBS_JOBID" "$PBS_JOBNAME" "$ARM" "$FW_JOB_START_EPOCH"
+
+PHASE=gpu_allocation_guard
+test -n "$CUDA_VISIBLE_DEVICES" || { echo 'No allocated GPU identifiers' >&2; exit 65; }
+[[ "$CUDA_VISIBLE_DEVICES" != *,* ]] || { echo "Expected one allocated GPU, got $CUDA_VISIBLE_DEVICES" >&2; exit 65; }
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || { echo 'Could not resolve allocated GPU UUID' >&2; exit 65; }
+printf 'ALLOCATED_GPU_UUID=%s\n' "$GPU_UUID"
+(
+  while :; do
+    stamp=$(date -Is)
+    printf 'GPU_SAMPLE timestamp=%s gpu_uuid=%s ' "$stamp" "$GPU_UUID"
+    if ! nvidia-smi -i "$GPU_UUID" \
+      --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader; then
+      printf 'GPU_SAMPLE_ERROR timestamp=%s gpu_uuid=%s\n' "$stamp" "$GPU_UUID"
+    fi
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+PHASE=source_snapshot
+for file in protocol.json prepare_c8.py train_c8.py train_banks.py vq_adapter.py \
+  batched_transform.py transform_checks.py environment.sh train_one.pbs; do
+  test -s "$NEW_ROOT/$file" || { echo "Missing staged source: $NEW_ROOT/$file" >&2; exit 65; }
+done
+for file in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py \
+  micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$RUNTIME_ARTIFACTS/$file" || { echo "Missing reusable runtime source: $RUNTIME_ARTIFACTS/$file" >&2; exit 65; }
+done
+cp "$NEW_ROOT/protocol.json" "$NEW_ROOT/prepare_c8.py" "$NEW_ROOT/train_c8.py" \
+  "$NEW_ROOT/train_banks.py" "$NEW_ROOT/vq_adapter.py" "$NEW_ROOT/batched_transform.py" \
+  "$NEW_ROOT/transform_checks.py" "$NEW_ROOT/environment.sh" "$NEW_ROOT/train_one.pbs" "$ARTIFACTS/"
+cp "$RUNTIME_ARTIFACTS/runner.py" "$RUNTIME_ARTIFACTS/quantization.py" \
+  "$RUNTIME_ARTIFACTS/libero_state_loader.py" "$RUNTIME_ARTIFACTS/smooth_vq.py" \
+  "$RUNTIME_ARTIFACTS/codebook.py" "$RUNTIME_ARTIFACTS/micro_codebook.py" \
+  "$RUNTIME_ARTIFACTS/sampler.py" "$RUNTIME_ARTIFACTS/latent_reference.py" \
+  "$RUNTIME_ARTIFACTS/checkpointing.py" "$RUNTIME_ARTIFACTS/calibration_source.py" "$ARTIFACTS/"
+
+PHASE=environment_setup
+source "$ARTIFACTS/environment.sh"
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=6840
+FW_SAVE_RESERVE_SECONDS=120
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS FW_JOB_START_EPOCH
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+
+PHASE=reference_and_resume_gate
+TRAINING_OUT=$TRAINING_ROOT/$ARM
+run_python - "$ARTIFACTS/protocol.json" "$REFERENCE_ROOT" "$ARM" "$TRAINING_OUT" <<'PY_TRAINING_PREFLIGHT'
+import json, math, sys
+from pathlib import Path
+protocol_path, reference_root, arm, training_dir = map(Path, sys.argv[1:5])
+arm = str(arm)
+protocol = json.loads(protocol_path.read_text(encoding='utf-8'))
+reference_root, training_dir = Path(reference_root), Path(training_dir)
+calibration = protocol['calibration']
+config = protocol['arm_configs'][arm]
+reference_path = reference_root / 'reference_receipt.json'
+cache_path = reference_root / 'reference_cache.pt'
+receipt = json.loads(reference_path.read_text(encoding='utf-8'))
+assert cache_path.is_file()
+assert receipt.get('protocol') == protocol['protocol']
+assert receipt.get('status') == 'complete' and receipt.get('complete') is True
+assert receipt.get('passed') is True and receipt.get('context_count') == 8
+assert receipt.get('target_linears') == 614
+assert receipt.get('source_c8', {}).get('protocol') == 'fastwam-vq-calibration-suites-v1'
+assert receipt.get('source_c8', {}).get('source_job_id') == calibration['source_job_id']
+assert receipt.get('source_c8', {}).get('case_ids') == calibration['case_ids']
+assert receipt.get('source_c8', {}).get('bank_directory') == calibration['bank_directory']
+for source in ('teacher', 'parent'):
+    cases = receipt.get('parity', {}).get(source, {})
+    assert all(cases.get(str(case), {}).get('passed') is True for case in calibration['case_ids'])
+normalization_c = receipt.get('normalization', {}).get('normalization_c')
+assert isinstance(normalization_c, (int, float)) and math.isfinite(normalization_c) and normalization_c > 0
+training_receipt_path = training_dir / 'training_receipt.json'
+checkpoint_path = training_dir / 'checkpoint.pt'
+saved = json.loads(training_receipt_path.read_text(encoding='utf-8'))
+assert saved.get('protocol') == protocol['protocol'] and saved.get('arm') == arm
+assert saved.get('rho') == config['rho'] and saved.get('epochs') == config['epochs']
+assert saved.get('status') == 'checkpointed' and saved.get('complete') is False
+assert saved.get('updates') == 8
+assert saved.get('target_linears') == 614
+assert saved.get('source_c8', {}).get('source_job_id') == calibration['source_job_id']
+assert saved.get('source_c8', {}).get('case_ids') == calibration['case_ids']
+assert saved.get('checkpoint') == str(checkpoint_path) and checkpoint_path.is_file()
+assert saved.get('optimizer_reset_after_update1') is True
+print(f'C8_REFERENCE_AND_RESUME_GATE_PASSED arm={arm} updates=8 source_job={calibration["source_job_id"]}', flush=True)
+PY_TRAINING_PREFLIGHT
+
+PHASE=transform_checks
+run_python "$ARTIFACTS/transform_checks.py" --out "$ARTIFACTS/transform_check.json"
+run_python - "$ARTIFACTS/transform_check.json" <<'PY_TRANSFORM_GATE'
+import json, sys
+from pathlib import Path
+receipt = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+assert receipt.get('passed') is True and receipt.get('bitwise_equal') is True, receipt
+assert receipt.get('forward_inverse_checked') is True, receipt
+print('TRANSFORM_GATE_PASSED implementation=batched_h128_v2 forward_inverse_checked=true', flush=True)
+PY_TRANSFORM_GATE
+
+PHASE=training
+set +e
+run_python "$ARTIFACTS/train_c8.py" --protocol "$ARTIFACTS/protocol.json" \
+  --reference "$REFERENCE_ROOT" --arm "$ARM" --out "$TRAINING_OUT"
+TRAIN_RC=$?
+set -e
+
+if (( TRAIN_RC == 0 )); then
+  PHASE=complete_validation
+  run_python - "$ARTIFACTS/protocol.json" "$REFERENCE_ROOT" "$ARM" "$TRAINING_OUT" \
+    "$PBS_JOBID" "$PBS_JOBNAME" "$ARTIFACTS/training_summary.json" <<'PY_COMPLETE_GATE'
+import json, sys
+from pathlib import Path
+import vq_adapter
+protocol_path, reference_root, arm, training_dir, job_id, job_name, summary_path = sys.argv[1:]
+protocol = json.loads(Path(protocol_path).read_text(encoding='utf-8'))
+validated = vq_adapter.validate_training_artifacts(protocol, arm, training_dir, reference_root)
+receipt = validated['training_receipt']
+summary = {'schema_version': 1, 'protocol': protocol['protocol'], 'phase': 'training',
+           'pbs_jobid': job_id, 'job_name': job_name, 'arm': arm,
+           'rho': receipt['rho'], 'status': 'complete', 'complete': True,
+           'updates': receipt['updates'], 'epochs_completed': receipt['epochs_completed'],
+           'training_dir': str(Path(training_dir)),
+           'source_job_id': protocol['calibration']['source_job_id']}
+path = Path(summary_path)
+temp = path.with_suffix(path.suffix + '.tmp')
+temp.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+temp.replace(path)
+print('TRAINING_COMPLETE_GATE_PASSED ' + json.dumps(summary, separators=(',', ':')), flush=True)
+PY_COMPLETE_GATE
+  touch "$ARTIFACTS/TRAINING_COMPLETE"
+elif (( TRAIN_RC == 75 )); then
+  PHASE=checkpoint_validation
+  run_python - "$ARTIFACTS/protocol.json" "$REFERENCE_ROOT" "$ARM" "$TRAINING_OUT" \
+    "$PBS_JOBID" "$PBS_JOBNAME" "$ARTIFACTS/training_summary.json" <<'PY_CHECKPOINT_GATE'
+import json, sys
+from pathlib import Path
+import torch
+protocol_path, reference_root, arm, training_dir, job_id, job_name, summary_path = sys.argv[1:]
+protocol = json.loads(Path(protocol_path).read_text(encoding='utf-8'))
+out = Path(training_dir)
+config, calibration = protocol['arm_configs'][arm], protocol['calibration']
+receipt = json.loads((out / 'training_receipt.json').read_text(encoding='utf-8'))
+checkpoint_path = out / 'checkpoint.pt'
+assert receipt.get('protocol') == protocol['protocol'] and receipt.get('arm') == arm
+assert receipt.get('rho') == config['rho'] and receipt.get('epochs') == config['epochs']
+assert receipt.get('status') == 'checkpointed' and receipt.get('complete') is False
+updates, epochs = receipt.get('updates'), receipt.get('epochs_completed')
+assert type(updates) is int and 8 <= updates <= config['updates']
+assert type(epochs) is int and 0 <= epochs <= config['epochs']
+assert receipt.get('checkpoint') == str(checkpoint_path) and checkpoint_path.is_file()
+assert receipt.get('target_linears') == 614
+assert receipt.get('source_c8', {}).get('source_job_id') == calibration['source_job_id']
+assert receipt.get('source_c8', {}).get('case_ids') == calibration['case_ids']
+assert receipt.get('optimizer_reset_after_update1') is (updates > 0)
+payload = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
+contract, state = payload.get('contract', {}), payload.get('run_state', {})
+assert payload.get('schema_version') == 1
+assert contract.get('binding') == receipt.get('binding')
+assert contract.get('source_job_id') == calibration['source_job_id']
+assert contract.get('case_ids') == calibration['case_ids']
+assert contract.get('reference_receipt') == str(Path(reference_root) / 'reference_receipt.json')
+cursor = [updates // len(calibration['case_ids']), updates % len(calibration['case_ids'])]
+assert state.get('updates_completed') == updates and state.get('epochs_completed') == epochs
+assert state.get('cursor') == cursor
+assert state.get('optimizer_reset_after_update1') is (updates > 0)
+assert state.get('checkpoint_path') == str(checkpoint_path)
+assert state.get('last_job_id') == job_id
+summary = {'schema_version': 1, 'protocol': protocol['protocol'], 'phase': 'training',
+           'pbs_jobid': job_id, 'job_name': job_name, 'arm': arm,
+           'rho': receipt['rho'], 'status': 'checkpointed', 'complete': False,
+           'updates': updates, 'epochs_completed': epochs, 'training_dir': str(out),
+           'checkpoint': str(checkpoint_path), 'source_job_id': calibration['source_job_id']}
+path = Path(summary_path)
+temp = path.with_suffix(path.suffix + '.tmp')
+temp.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+temp.replace(path)
+print('TRAINING_CHECKPOINT_GATE_PASSED ' + json.dumps(summary, separators=(',', ':')), flush=True)
+PY_CHECKPOINT_GATE
+  touch "$ARTIFACTS/TRAINING_CHECKPOINTED"
+else
+  echo "Training failed for arm=$ARM exit_code=$TRAIN_RC" >&2
+  exit "$TRAIN_RC"
+fi
+
+exit 0
+

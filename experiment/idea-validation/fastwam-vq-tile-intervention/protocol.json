@@ -1,0 +1,61 @@
+{
+  "protocol": "fastwam-vq-tile-intervention-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-tile-intervention-20261017",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "initial_arm": "row_output_vq_a4",
+  "target_linears": 614,
+  "calibration_cases": [
+    0,
+    2,
+    4,
+    6,
+    10,
+    12,
+    14,
+    16
+  ],
+  "diagnostic_root": "/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013",
+  "diagnostic_jobs": [
+    "25787685.pbs101",
+    "25787687.pbs101"
+  ],
+  "distill_job": "25764781.pbs101",
+  "distill_result": "/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011/results/full-25764781.pbs101",
+  "protected_job": "25798439.pbs101",
+  "protected_result": "/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014/results/full-25798439.pbs101",
+  "selected_epoch": 2,
+  "sampler": "Optional-IDM; 9 video frames; 32x7 actions; 10 video + 10 action steps; sigma_shift=1; CPU RNG; compile=false; original observation frame0 clamp",
+  "walltime_seconds": 7200,
+  "save_reserve_seconds": 150,
+  "parity_max_abs_tolerance": 0.002,
+  "parity_rmse_tolerance": 0.001,
+  "teacher_replay_max_abs_tolerance": 0.002,
+  "teacher_replay_rmse_tolerance": 0.001,
+  "primary_metric": "Signed prediction versus true first10 motor MSE / future NMSE changes at full frozen source; case-blocked within-module summaries. Multi-tile loss and output nonadditivity, decomposed into quadratic loss cross terms and response nonadditivity.",
+  "claim_scope": "Calibration-only finite residual-removal diagnostic on four predefined early/late video/action FFN Linears. No training, no held-out/generalization/closed-loop/kernel claim.52 interventions per8original calibration cases plus2no-change baseline repeats; full tile removes4096residual vectors.",
+  "future_reader_root": "/scratch/users/ntu/yguo017/fastwam-vq-future-reader-20261016",
+  "latent_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014",
+  "distill_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011",
+  "tile_vectors": 4096,
+  "evaluation_shards": 8,
+  "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-residual-capacity-20261016",
+  "selected_modules": [
+    "video_expert.blocks.0.ffn.0",
+    "video_expert.blocks.29.ffn.2",
+    "action_expert.blocks.0.ffn.0",
+    "action_expert.blocks.29.ffn.2"
+  ],
+  "tiles_per_module": 7,
+  "selection_seed": 20261017,
+  "baseline_parity_max_abs": 0.0,
+  "interventions_per_case": 52,
+  "queries_per_case": 54,
+  "pack_chunk_modules": 64
+}

@@ -1,0 +1,61 @@
+{
+  "numeric_protocol": "fastwam-vq-c8-action-latent-plus-v1",
+  "user_revision": "2026-10-15 split training into two <=2h single-GPU jobs, then one four-GPU evaluation job",
+  "cancelled_queued_combined_job": "25821241.pbs101",
+  "reference": "reuse completed C8 cache from 25814264.pbs101",
+  "training": {
+    "jobs": 2,
+    "gpus_per_job": 1,
+    "queue_route": "normal to gdev",
+    "walltime_per_job": "01:59:00",
+    "soft_deadline_seconds": 6840,
+    "rho0.1": {
+      "saved_updates": 8,
+      "remaining_updates": 8,
+      "target_updates": 16,
+      "epochs": 2
+    },
+    "rho1.5": {
+      "saved_updates": 8,
+      "remaining_updates": 0,
+      "target_updates": 8,
+      "epochs": 1,
+      "remaining_work": "reference-action parity and deployment export"
+    },
+    "monitor": "gpt-6-luna/xhigh subagent in original chat, ten-minute polling interval",
+    "metadata_repair": {
+      "arm": "rho1.5",
+      "source_gpu_job_id": "25821658.pbs101",
+      "validation_job_id": "25822474.pbs101",
+      "gpus": 0,
+      "ncpus": 1,
+      "memory_gb": 4,
+      "walltime": "00:10:00",
+      "queue": "qdev",
+      "new_model_forwards": 0,
+      "purpose": "validate existing completed training artifacts after collections import fix"
+    }
+  },
+  "evaluation": {
+    "submit_after": "both arms have successful authoritative completion and exact C8 training receipts; metadata-only repair may use a successful CPU validation linked to the original GPU job",
+    "jobs": 1,
+    "gpus": 4,
+    "queue_route": "normal to g3",
+    "walltime": "24:00:00",
+    "new_episodes": 560,
+    "reference_episode_slots": 1680,
+    "training_in_evaluation_job": false,
+    "monitor": "enable existing periodic monitor only after evaluation enters queue"
+  },
+  "invariants": "C8 inputs, initial bank, loss, per-arm epoch/update targets, seeds and 280 variants per arm are unchanged",
+  "outcome": {
+    "evaluation_job_id": "25822971.pbs101",
+    "status": "complete",
+    "new_episodes": 560,
+    "reference_episode_slots": 1680,
+    "walltime_used": "08:02:26",
+    "rho0.1_successes": 201,
+    "rho1.5_successes": 206,
+    "monitor_status": "PAUSED after terminal wake"
+  }
+}

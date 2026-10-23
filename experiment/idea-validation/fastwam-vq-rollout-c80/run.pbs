@@ -1,0 +1,75 @@
+#!/bin/bash
+#PBS -N fwraprep
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-rollout-c80-20261018
+NEW_ROOT=$ROOT
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+CLIP=/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017
+SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+RUNTIME=$PARENT/artifacts/25814264.pbs101
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+case "${FW_ROLLOUT_UNIT:-}" in prepare|train_eval) ;; *) exit 64;; esac
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+FW_JOB_START_EPOCH=$(date +%s)
+FW_SOFT_DEADLINE_SECONDS=6840
+export FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID"
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+finish() {
+  rc=$?
+  trap - EXIT
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ "$rc" == 75 ]]; then touch "$ARTIFACTS/TRAINING_CHECKPOINTED"; fi
+  exit "$rc"
+}
+trap finish EXIT
+for name in protocol.json common.py prepare.py run.pbs; do cp "$ROOT/$name" "$ARTIFACTS/"; done
+if [[ "$FW_ROLLOUT_UNIT" == train_eval ]]; then cp "$ROOT/worker.py" "$ARTIFACTS/"; fi
+if [[ "$FW_ROLLOUT_UNIT" == train_eval ]]; then
+  mkdir -p "$ROOT/results"
+  cp /scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017/results/backward_check.json "$ROOT/results/backward_check.json"
+fi
+cp "$CLIP/experiment.py" "$ARTIFACTS/clipping_reference.py"
+for name in clip_banks.py selfcheck.py; do cp "$CLIP/$name" "$ARTIFACTS/"; done
+for name in train_banks.py batched_transform.py transform_checks.py; do cp "$PARENT/$name" "$ARTIFACTS/"; done
+for name in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do cp "$RUNTIME/$name" "$ARTIFACTS/"; done
+cp "$SOURCE/prepare_calibration.py" "$ARTIFACTS/render_reference.py"
+cp "$SOURCE/environment.sh" "$ARTIFACTS/environment.sh"
+cp /scratch/users/ntu/yguo017/fastwam-vq-activation-ablation-20261017/evaluate.py "$ARTIFACTS/metrics_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-c80-activation-clipping-20261017/worker.py "$ARTIFACTS/c80_reference.py"
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+FW_ALLOW_DATA_HTTP=0
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/selfcheck.py"
+if [[ "$FW_ROLLOUT_UNIT" == prepare ]]; then
+  run_python "$ARTIFACTS/prepare.py" --phase collect --protocol "$ARTIFACTS/protocol.json"
+  run_python "$ARTIFACTS/prepare.py" --phase teacher --protocol "$ARTIFACTS/protocol.json"
+else
+  ARGS=(--unit train_eval --protocol "$ARTIFACTS/protocol.json")
+  if [[ -n "${FW_ROLLOUT_RESUME_FROM:-}" ]]; then ARGS+=(--resume-from "$FW_ROLLOUT_RESUME_FROM"); fi
+  run_python "$ARTIFACTS/worker.py" "${ARGS[@]}"
+fi
+touch "$ARTIFACTS/PHASE_COMPLETE"

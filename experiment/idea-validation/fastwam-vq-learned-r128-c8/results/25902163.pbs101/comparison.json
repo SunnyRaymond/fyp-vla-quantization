@@ -1,0 +1,1189 @@
+{
+  "protocol": "fastwam-vq-learned-r128-c8-v1",
+  "complete": true,
+  "parameters": {
+    "protocol": "fastwam-vq-learned-r128-c8-v1",
+    "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-learned-r128-c8-20261021",
+    "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+    "baseline_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+    "calibration": {
+      "root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+      "plan_file": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+      "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+      "source_job_id": "25789685.pbs101",
+      "case_ids": [
+        2000,
+        2019,
+        2021,
+        2025,
+        2051,
+        2057,
+        2066,
+        2070
+      ],
+      "seed_indices": [
+        0
+      ]
+    },
+    "evaluation": {
+      "case_ids": [
+        3000,
+        3001,
+        3002,
+        3003,
+        3004,
+        3005,
+        3006,
+        3007,
+        3008,
+        3009,
+        3010,
+        3011,
+        3012,
+        3013,
+        3014,
+        3015,
+        3016,
+        3017,
+        3018,
+        3019,
+        3020,
+        3021,
+        3022,
+        3023,
+        3024,
+        3025,
+        3026,
+        3027,
+        3028,
+        3029,
+        3030,
+        3031,
+        3032,
+        3033,
+        3034,
+        3035,
+        3036,
+        3037,
+        3038,
+        3039
+      ],
+      "seed_indices": [
+        0,
+        1
+      ],
+      "queries": 80,
+      "aggregation": "average seeds within context, contexts within suite, then four suites equally",
+      "checkpoint_selection": "fixed final R8 and VQ8; no heldout selection",
+      "episodes": 0
+    },
+    "suites": [
+      "libero_spatial",
+      "libero_object",
+      "libero_goal",
+      "libero_10"
+    ],
+    "target_linears": 614,
+    "checkpoint": "libero_optional_idm_2cam224.clean.pt",
+    "training": {
+      "rho": 1.5,
+      "normalization_c": 0.028303017887797623,
+      "latent_weight": 0.04245452683169643,
+      "action_loss": "mean squared error first10 x6 motor dimensions versus same-input same-seed BF16 teacher",
+      "latent_loss": "global clean-future NMSE excluding clamped frame0; student-generated future remains connected to action",
+      "rotation_updates": 8,
+      "rotation_learning_rate": 0.001,
+      "rotation_optimizer_reset_after_update1": false,
+      "vq_updates": 8,
+      "vq_learning_rate": 0.0005,
+      "vq_optimizer_reset_after_update1": true,
+      "gradient_norm_clip": 1.0,
+      "optimizer": "Adam",
+      "random_seed": 20261021
+    },
+    "rotation": {
+      "block": 128,
+      "sharing": "one Cayley residual per eligible video/action/proprio stream; original signs retained per layer and block",
+      "parameterization": "R=H128 U; U=solve(I-.5(A-A.T),I+.5(A-A.T)); A initially zero",
+      "execution": "original signed FWHT followed by U, both stages in FP32, to preserve baseline arithmetic at U=I; no folded-kernel claim",
+      "tails": "keep original fixed signed power-of-two transforms below 128",
+      "weight_precision_during_rotation": "BF16 transformed W, dynamic A4, BF16 KV",
+      "freeze_after_update": 8
+    },
+    "quantization": {
+      "smooth": "reuse exact frozen Smooth0.5 scales and signs from source banks",
+      "D": 1,
+      "clipping_ratio": 1,
+      "activations": "dynamic per-token signed symmetric A4 qmax7, BF16 decoded operands",
+      "weights": "d4 two additive 256-entry BF16 codebooks; BF16 row gains; B32 uint8 power-of-two exponents",
+      "kv_cache": "BF16",
+      "native_kernel": false
+    },
+    "fitting": {
+      "samples": 8192,
+      "iterations": 8,
+      "seed": 20261006,
+      "moments": "new R8 BF16W+A4 moments; normalize each context by token rows then equal contexts/suites"
+    },
+    "allocation": {
+      "queue": "normal",
+      "gpus": 1,
+      "ncpus": 16,
+      "memory_gb": 110,
+      "walltime": "12:00:00",
+      "soft_deadline_seconds": 42900,
+      "gpu_monitor_seconds": 15
+    },
+    "comparison_arms": [
+      "H+VQ8",
+      "R8+VQ8"
+    ],
+    "scope": "paired fixed-input decoded-BF16/fake-A4 numerical comparison; extra R8 training and refitting cost reported; no equal-compute or closed-loop/native speed claim"
+  },
+  "paired_queries_per_arm": 80,
+  "contexts": 40,
+  "seeds_per_context": 2,
+  "arms": {
+    "baseline_H_plus_VQ8": {
+      "queries": 80,
+      "cases": 40,
+      "seed_indices": [
+        0,
+        1
+      ],
+      "aggregation": "mean seeds within context, mean 10 contexts within suite, mean four suites equally",
+      "overall": {
+        "first10motor_rmse": 0.04429677443113178,
+        "future_latent_nmse": 0.060877370962407445,
+        "mixed_loss": 0.004598651725969915,
+        "full32motor_rmse": 0.04750097952783108,
+        "late22motor_rmse": 0.04852850395254791,
+        "first10gripper_rmse": 0.057054030511062594,
+        "first10motor_mse": 0.0020141317470032507
+      },
+      "by_suite": {
+        "libero_spatial": {
+          "first10motor_rmse": 0.044794728979468346,
+          "future_latent_nmse": 0.05392393134534359,
+          "mixed_loss": 0.004318820894520662,
+          "full32motor_rmse": 0.046173594519495965,
+          "late22motor_rmse": 0.04662201907485723,
+          "first10gripper_rmse": 0.04675307525321841,
+          "first10motor_mse": 0.0020295059043492158
+        },
+        "libero_object": {
+          "first10motor_rmse": 0.041680142376571895,
+          "future_latent_nmse": 0.06507451352663338,
+          "mixed_loss": 0.004552778003192993,
+          "full32motor_rmse": 0.045767308585345744,
+          "late22motor_rmse": 0.04737020693719387,
+          "first10gripper_rmse": 0.01730817542411387,
+          "first10motor_mse": 0.0017900703226169442
+        },
+        "libero_goal": {
+          "first10motor_rmse": 0.04509206488728523,
+          "future_latent_nmse": 0.0682965524494648,
+          "mixed_loss": 0.00499157543771144,
+          "full32motor_rmse": 0.0525400809943676,
+          "late22motor_rmse": 0.05487665981054306,
+          "first10gripper_rmse": 0.1149343041703105,
+          "first10motor_mse": 0.0020920776192332735
+        },
+        "libero_10": {
+          "first10motor_rmse": 0.04562016148120165,
+          "future_latent_nmse": 0.05621448652818799,
+          "mixed_loss": 0.004531432568454565,
+          "full32motor_rmse": 0.045522934012115004,
+          "late22motor_rmse": 0.045245129987597464,
+          "first10gripper_rmse": 0.04922056719660759,
+          "first10motor_mse": 0.00214487314181357
+        }
+      },
+      "by_case": {
+        "3000": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04664495773613453,
+          "future_latent_nmse": 0.08827544376254082,
+          "mixed_loss": 0.0059634304541216175,
+          "full32motor_rmse": 0.05082268454134464,
+          "late22motor_rmse": 0.05255485326051712,
+          "first10gripper_rmse": 0.3252397058531642,
+          "first10motor_mse": 0.002215738258324919
+        },
+        "3001": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.037884507328271866,
+          "future_latent_nmse": 0.06484095007181168,
+          "mixed_loss": 0.0041947883083122495,
+          "full32motor_rmse": 0.04110964201390743,
+          "late22motor_rmse": 0.04248170927166939,
+          "first10gripper_rmse": 0.019840830005705357,
+          "first10motor_mse": 0.0014419964536958318
+        },
+        "3002": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04623778164386749,
+          "future_latent_nmse": 0.04046963155269623,
+          "mixed_loss": 0.003857285087822035,
+          "full32motor_rmse": 0.049202991649508476,
+          "late22motor_rmse": 0.05049318075180054,
+          "first10gripper_rmse": 0.012668882962316275,
+          "first10motor_mse": 0.0021391660291992243
+        },
+        "3003": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04034389927983284,
+          "future_latent_nmse": 0.07630452513694763,
+          "mixed_loss": 0.004867514951967883,
+          "full32motor_rmse": 0.04214701056480408,
+          "late22motor_rmse": 0.04294147342443466,
+          "first10gripper_rmse": 0.014083239249885082,
+          "first10motor_mse": 0.0016280424421614842
+        },
+        "3004": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04636050574481487,
+          "future_latent_nmse": 0.06531904079020023,
+          "mixed_loss": 0.004924073510748805,
+          "full32motor_rmse": 0.04521934501826763,
+          "late22motor_rmse": 0.044668275862932205,
+          "first10gripper_rmse": 0.017639716155827045,
+          "first10motor_mse": 0.002150984540900576
+        },
+        "3005": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.05228075012564659,
+          "future_latent_nmse": 0.05213841795921326,
+          "mixed_loss": 0.004948339640044987,
+          "full32motor_rmse": 0.05082797817885876,
+          "late22motor_rmse": 0.05014235898852348,
+          "first10gripper_rmse": 0.015523865353316069,
+          "first10motor_mse": 0.002734827775833365
+        },
+        "3006": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04428069852292538,
+          "future_latent_nmse": 0.028813867829740047,
+          "mixed_loss": 0.003192087003388822,
+          "full32motor_rmse": 0.042731041088700294,
+          "late22motor_rmse": 0.04192150756716728,
+          "first10gripper_rmse": 0.015577941201627254,
+          "first10motor_mse": 0.0019688078784861687
+        },
+        "3007": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04633450321853161,
+          "future_latent_nmse": 0.04428481124341488,
+          "mixed_loss": 0.004026980196130727,
+          "full32motor_rmse": 0.04407791048288345,
+          "late22motor_rmse": 0.042858244851231575,
+          "first10gripper_rmse": 0.012147640809416771,
+          "first10motor_mse": 0.0021468894889605586
+        },
+        "3008": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.046488938853144646,
+          "future_latent_nmse": 0.04523106198757887,
+          "mixed_loss": 0.004098654418171592,
+          "full32motor_rmse": 0.055339861661195755,
+          "late22motor_rmse": 0.05828596651554108,
+          "first10gripper_rmse": 0.0208169212564826,
+          "first10motor_mse": 0.0021783910833938006
+        },
+        "3009": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.041090747341513634,
+          "future_latent_nmse": 0.03356156311929226,
+          "mixed_loss": 0.0031150553744978974,
+          "full32motor_rmse": 0.04025747999548912,
+          "late22motor_rmse": 0.03987262025475502,
+          "first10gripper_rmse": 0.013992009684443474,
+          "first10motor_mse": 0.0016902150925362305
+        },
+        "3010": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04953013174235821,
+          "future_latent_nmse": 0.10099663957953453,
+          "mixed_loss": 0.00674936455472757,
+          "full32motor_rmse": 0.057089850306510925,
+          "late22motor_rmse": 0.059966905042529106,
+          "first10gripper_rmse": 0.020126082934439182,
+          "first10motor_mse": 0.0024616000097870475
+        },
+        "3011": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.05617883428931236,
+          "future_latent_nmse": 0.14034567773342133,
+          "mixed_loss": 0.009183023300102507,
+          "full32motor_rmse": 0.05682380869984627,
+          "late22motor_rmse": 0.05705786868929863,
+          "first10gripper_rmse": 0.024762350134551525,
+          "first10motor_mse": 0.0032247139590563523
+        },
+        "3012": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.03457760438323021,
+          "future_latent_nmse": 0.03845651634037495,
+          "mixed_loss": 0.0028346250484629406,
+          "full32motor_rmse": 0.04077021777629852,
+          "late22motor_rmse": 0.043287595734000206,
+          "first10gripper_rmse": 0.015432671178132296,
+          "first10motor_mse": 0.0012019718436369203
+        },
+        "3013": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04233716242015362,
+          "future_latent_nmse": 0.06641202140599489,
+          "mixed_loss": 0.004612413915532177,
+          "full32motor_rmse": 0.04673052579164505,
+          "late22motor_rmse": 0.04857168532907963,
+          "first10gripper_rmse": 0.015006066765636206,
+          "first10motor_mse": 0.0017929229708041686
+        },
+        "3014": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.03715302795171738,
+          "future_latent_nmse": 0.025762571021914482,
+          "mixed_loss": 0.002474609849456658,
+          "full32motor_rmse": 0.037444306537508965,
+          "late22motor_rmse": 0.0375665295869112,
+          "first10gripper_rmse": 0.01672867313027382,
+          "first10motor_mse": 0.0013808720867533042
+        },
+        "3015": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04000116139650345,
+          "future_latent_nmse": 0.03163156006485224,
+          "mixed_loss": 0.002946821928494372,
+          "full32motor_rmse": 0.047358568757772446,
+          "late22motor_rmse": 0.050305383279919624,
+          "first10gripper_rmse": 0.018564597703516483,
+          "first10motor_mse": 0.0016039190129926856
+        },
+        "3016": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.03986266814172268,
+          "future_latent_nmse": 0.017288703937083483,
+          "mixed_loss": 0.002331151247867133,
+          "full32motor_rmse": 0.039142392575740814,
+          "late22motor_rmse": 0.0388066191226244,
+          "first10gripper_rmse": 0.014998593833297491,
+          "first10motor_mse": 0.0015971675026849666
+        },
+        "3017": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.036577551625669,
+          "future_latent_nmse": 0.021032774820923805,
+          "mixed_loss": 0.002277722069013771,
+          "full32motor_rmse": 0.038534266874194145,
+          "late22motor_rmse": 0.03927100822329521,
+          "first10gripper_rmse": 0.017076659947633743,
+          "first10motor_mse": 0.0013847855660338321
+        },
+        "3018": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04051032476127148,
+          "future_latent_nmse": 0.17038995772600174,
+          "mixed_loss": 0.008877079670924003,
+          "full32motor_rmse": 0.05317021906375885,
+          "late22motor_rmse": 0.05801856704056263,
+          "first10gripper_rmse": 0.0163036216981709,
+          "first10motor_mse": 0.001643254638793841
+        },
+        "3019": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.040072957053780556,
+          "future_latent_nmse": 0.038428712636232376,
+          "mixed_loss": 0.003240968447348804,
+          "full32motor_rmse": 0.040608929470181465,
+          "late22motor_rmse": 0.04084990732371807,
+          "first10gripper_rmse": 0.014082436915487051,
+          "first10motor_mse": 0.0016094956356263249
+        },
+        "3020": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.03845466673374176,
+          "future_latent_nmse": 0.060158681124448776,
+          "mixed_loss": 0.004062807881401431,
+          "full32motor_rmse": 0.0455696526914835,
+          "late22motor_rmse": 0.04838999919593334,
+          "first10gripper_rmse": 0.03321823198348284,
+          "first10motor_mse": 0.00150879953944405
+        },
+        "3021": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04414830729365349,
+          "future_latent_nmse": 0.08994085248559713,
+          "mixed_loss": 0.005767615485782499,
+          "full32motor_rmse": 0.04189790040254593,
+          "late22motor_rmse": 0.04082542285323143,
+          "first10gripper_rmse": 0.01652665063738823,
+          "first10motor_mse": 0.0019492191506670642
+        },
+        "3022": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04442075453698635,
+          "future_latent_nmse": 0.0322572635486722,
+          "mixed_loss": 0.0033611075036381324,
+          "full32motor_rmse": 0.04833122342824936,
+          "late22motor_rmse": 0.0499863475561142,
+          "first10gripper_rmse": 0.03346303105354309,
+          "first10motor_mse": 0.001991640642793925
+        },
+        "3023": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04112705588340759,
+          "future_latent_nmse": 0.03082857094705105,
+          "mixed_loss": 0.003001981533542682,
+          "full32motor_rmse": 0.04332779534161091,
+          "late22motor_rmse": 0.04429016821086407,
+          "first10gripper_rmse": 0.027939345687627792,
+          "first10motor_mse": 0.0016931691410882466
+        },
+        "3024": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.05618817359209061,
+          "future_latent_nmse": 0.11573514714837074,
+          "mixed_loss": 0.008247006875180098,
+          "full32motor_rmse": 0.04982435330748558,
+          "late22motor_rmse": 0.04649107716977596,
+          "first10gripper_rmse": 0.021741257049143314,
+          "first10motor_mse": 0.0033335259651992577
+        },
+        "3025": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.05420694500207901,
+          "future_latent_nmse": 0.1481824889779091,
+          "mixed_loss": 0.009230787574093995,
+          "full32motor_rmse": 0.11496250703930855,
+          "late22motor_rmse": 0.13372304290533066,
+          "first10gripper_rmse": 0.020464032888412476,
+          "first10motor_mse": 0.002939770119793794
+        },
+        "3026": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.047075770795345306,
+          "future_latent_nmse": 0.07127716392278671,
+          "mixed_loss": 0.0052498169838209085,
+          "full32motor_rmse": 0.047208722680807114,
+          "late22motor_rmse": 0.047268958762288094,
+          "first10gripper_rmse": 0.020398110151290894,
+          "first10motor_mse": 0.002223778715573735
+        },
+        "3027": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04569173976778984,
+          "future_latent_nmse": 0.034241266548633575,
+          "mixed_loss": 0.0035608139539838974,
+          "full32motor_rmse": 0.04400635324418545,
+          "late22motor_rmse": 0.04313281551003456,
+          "first10gripper_rmse": 0.32390004955232143,
+          "first10motor_mse": 0.0021071171845436637
+        },
+        "3028": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.0397802758961916,
+          "future_latent_nmse": 0.04318888485431671,
+          "mixed_loss": 0.0034210197134451363,
+          "full32motor_rmse": 0.043108945712447166,
+          "late22motor_rmse": 0.04453578405082226,
+          "first10gripper_rmse": 0.0233555156737566,
+          "first10motor_mse": 0.0015874560425665
+        },
+        "3029": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.03982695937156677,
+          "future_latent_nmse": 0.05715520493686199,
+          "mixed_loss": 0.0040127968722256145,
+          "full32motor_rmse": 0.047163356095552444,
+          "late22motor_rmse": 0.050122981891036034,
+          "first10gripper_rmse": 0.6283368170261383,
+          "first10motor_mse": 0.0015862996906624988
+        },
+        "3030": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.05771050974726677,
+          "future_latent_nmse": 0.1267903745174408,
+          "mixed_loss": 0.008896258497991137,
+          "full32motor_rmse": 0.04956396296620369,
+          "late22motor_rmse": 0.04508604481816292,
+          "first10gripper_rmse": 0.01705266907811165,
+          "first10motor_mse": 0.003513433141039607
+        },
+        "3031": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04124465771019459,
+          "future_latent_nmse": 0.04699936602264643,
+          "mixed_loss": 0.0037070830960949513,
+          "full32motor_rmse": 0.04372020252048969,
+          "late22motor_rmse": 0.0445890836417675,
+          "first10gripper_rmse": 0.3256427003070712,
+          "first10motor_mse": 0.0017117472502137868
+        },
+        "3032": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04654986038804054,
+          "future_latent_nmse": 0.0765385627746582,
+          "mixed_loss": 0.005453183075275902,
+          "full32motor_rmse": 0.04971436783671379,
+          "late22motor_rmse": 0.050766995176672935,
+          "first10gripper_rmse": 0.02499560173600912,
+          "first10motor_mse": 0.002203774608299694
+        },
+        "3033": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04500857554376125,
+          "future_latent_nmse": 0.05262184888124466,
+          "mixed_loss": 0.004275386898879181,
+          "full32motor_rmse": 0.04369198530912399,
+          "late22motor_rmse": 0.04303357191383839,
+          "first10gripper_rmse": 0.016625093761831522,
+          "first10motor_mse": 0.002041351203616905
+        },
+        "3034": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.045704687014222145,
+          "future_latent_nmse": 0.031677961349487305,
+          "mixed_loss": 0.0034387979009117635,
+          "full32motor_rmse": 0.04908609203994274,
+          "late22motor_rmse": 0.050252096727490425,
+          "first10gripper_rmse": 0.013554872013628483,
+          "first10motor_mse": 0.0020939250408265123
+        },
+        "3035": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.03780106641352177,
+          "future_latent_nmse": 0.026031598448753357,
+          "mixed_loss": 0.002536140620414801,
+          "full32motor_rmse": 0.040313951671123505,
+          "late22motor_rmse": 0.04140164516866207,
+          "first10gripper_rmse": 0.018305134028196335,
+          "first10motor_mse": 0.0014309814256002543
+        },
+        "3036": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.0374175775796175,
+          "future_latent_nmse": 0.03129162825644016,
+          "mixed_loss": 0.0027308017992554935,
+          "full32motor_rmse": 0.039368631318211555,
+          "late22motor_rmse": 0.04022017680108547,
+          "first10gripper_rmse": 0.01448268722742796,
+          "first10motor_mse": 0.0014023305278349843
+        },
+        "3037": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04867451824247837,
+          "future_latent_nmse": 0.06986643746495247,
+          "mixed_loss": 0.005336175377109582,
+          "full32motor_rmse": 0.0496511273086071,
+          "late22motor_rmse": 0.05007001385092735,
+          "first10gripper_rmse": 0.018069293815642595,
+          "first10motor_mse": 0.002370028833118716
+        },
+        "3038": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04240678995847702,
+          "future_latent_nmse": 0.03952615521848202,
+          "mixed_loss": 0.0034772134355698374,
+          "full32motor_rmse": 0.042398279532790184,
+          "late22motor_rmse": 0.042380742728710175,
+          "first10gripper_rmse": 0.020595844835042953,
+          "first10motor_mse": 0.0017991492182929947
+        },
+        "3039": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.05368337221443653,
+          "future_latent_nmse": 0.060800932347774506,
+          "mixed_loss": 0.0054632849830429965,
+          "full32motor_rmse": 0.047720739617943764,
+          "late22motor_rmse": 0.04465092904865742,
+          "first10gripper_rmse": 0.02288177516311407,
+          "first10motor_mse": 0.0028820101692922442
+        }
+      }
+    },
+    "candidate_R8_plus_VQ8": {
+      "queries": 80,
+      "cases": 40,
+      "seed_indices": [
+        0,
+        1
+      ],
+      "aggregation": "mean seeds within context, mean 10 contexts within suite, mean four suites equally",
+      "overall": {
+        "first10motor_rmse": 0.0464089903049171,
+        "future_latent_nmse": 0.06518704982008784,
+        "mixed_loss": 0.0049807998497271916,
+        "full32motor_rmse": 0.05061396504752338,
+        "late22motor_rmse": 0.051931984210386875,
+        "first10gripper_rmse": 0.06020808027824387,
+        "first10motor_mse": 0.0022133145277621223
+      },
+      "by_suite": {
+        "libero_spatial": {
+          "first10motor_rmse": 0.048821238614618775,
+          "future_latent_nmse": 0.05989181734621525,
+          "mixed_loss": 0.0050071757636032995,
+          "full32motor_rmse": 0.04937672913074494,
+          "late22motor_rmse": 0.04942737556993961,
+          "first10gripper_rmse": 0.05102438968606293,
+          "first10motor_mse": 0.002464497019536793
+        },
+        "libero_object": {
+          "first10motor_rmse": 0.04398930612951517,
+          "future_latent_nmse": 0.07229189900681376,
+          "mixed_loss": 0.005060677602887154,
+          "full32motor_rmse": 0.051042690128088,
+          "late22motor_rmse": 0.053440360724925993,
+          "first10gripper_rmse": 0.020168557576835156,
+          "first10motor_mse": 0.001991559291491285
+        },
+        "libero_goal": {
+          "first10motor_rmse": 0.04810306634753943,
+          "future_latent_nmse": 0.06737510366365314,
+          "mixed_loss": 0.005204254400450736,
+          "full32motor_rmse": 0.0564321992918849,
+          "late22motor_rmse": 0.059112648107111455,
+          "first10gripper_rmse": 0.11724449461326003,
+          "first10motor_mse": 0.0023438762640580536
+        },
+        "libero_10": {
+          "first10motor_rmse": 0.04472235012799501,
+          "future_latent_nmse": 0.061189379263669255,
+          "mixed_loss": 0.004651091631967574,
+          "full32motor_rmse": 0.04560424163937569,
+          "late22motor_rmse": 0.045747552439570426,
+          "first10gripper_rmse": 0.05239487923681736,
+          "first10motor_mse": 0.002053325535962358
+        }
+      },
+      "by_case": {
+        "3000": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.05422683246433735,
+          "future_latent_nmse": 0.07261290773749352,
+          "mixed_loss": 0.006040109321475029,
+          "full32motor_rmse": 0.050912002101540565,
+          "late22motor_rmse": 0.04930153489112854,
+          "first10gripper_rmse": 0.33050039038062096,
+          "first10motor_mse": 0.0029573625652119517
+        },
+        "3001": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04376986064016819,
+          "future_latent_nmse": 0.07577195391058922,
+          "mixed_loss": 0.005133901257067919,
+          "full32motor_rmse": 0.04461329244077206,
+          "late22motor_rmse": 0.044926129281520844,
+          "first10gripper_rmse": 0.026058120653033257,
+          "first10motor_mse": 0.0019170389859937131
+        },
+        "3002": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04233972169458866,
+          "future_latent_nmse": 0.03739573992788792,
+          "mixed_loss": 0.003414781764149666,
+          "full32motor_rmse": 0.045236121863126755,
+          "late22motor_rmse": 0.046359507367014885,
+          "first10gripper_rmse": 0.0173361049965024,
+          "first10motor_mse": 0.001827163330744952
+        },
+        "3003": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.0389452762901783,
+          "future_latent_nmse": 0.03704630210995674,
+          "mixed_loss": 0.0030895548406988382,
+          "full32motor_rmse": 0.04206575267016888,
+          "late22motor_rmse": 0.04319846257567406,
+          "first10gripper_rmse": 0.017075609881430864,
+          "first10motor_mse": 0.001516771677415818
+        },
+        "3004": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04600616171956062,
+          "future_latent_nmse": 0.058289553970098495,
+          "mixed_loss": 0.00460006226785481,
+          "full32motor_rmse": 0.04604407586157322,
+          "late22motor_rmse": 0.046044230461120605,
+          "first10gripper_rmse": 0.022964607924222946,
+          "first10motor_mse": 0.0021254069288261235
+        },
+        "3005": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.06594669260084629,
+          "future_latent_nmse": 0.06764327734708786,
+          "mixed_loss": 0.007367819314822555,
+          "full32motor_rmse": 0.05974600650370121,
+          "late22motor_rmse": 0.056703146547079086,
+          "first10gripper_rmse": 0.01806421671062708,
+          "first10motor_mse": 0.004496056004427373
+        },
+        "3006": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04769301973283291,
+          "future_latent_nmse": 0.02993110939860344,
+          "mixed_loss": 0.0035821194760501385,
+          "full32motor_rmse": 0.048433274030685425,
+          "late22motor_rmse": 0.04847998544573784,
+          "first10gripper_rmse": 0.022839175537228584,
+          "first10motor_mse": 0.0023114084033295512
+        },
+        "3007": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04855211637914181,
+          "future_latent_nmse": 0.11029638722538948,
+          "mixed_loss": 0.00704266969114542,
+          "full32motor_rmse": 0.048444999381899834,
+          "late22motor_rmse": 0.04831908084452152,
+          "first10gripper_rmse": 0.012697373051196337,
+          "first10motor_mse": 0.002360088750720024
+        },
+        "3008": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.05490359291434288,
+          "future_latent_nmse": 0.08141725696623325,
+          "mixed_loss": 0.006475280970335007,
+          "full32motor_rmse": 0.06460067443549633,
+          "late22motor_rmse": 0.06831535324454308,
+          "first10gripper_rmse": 0.025511572137475014,
+          "first10motor_mse": 0.003018749877810478
+        },
+        "3009": {
+          "suite": "libero_spatial",
+          "first10motor_rmse": 0.04582911171019077,
+          "future_latent_nmse": 0.02851368486881256,
+          "mixed_loss": 0.003325458732433617,
+          "full32motor_rmse": 0.04367109201848507,
+          "late22motor_rmse": 0.04262632504105568,
+          "first10gripper_rmse": 0.017196725588291883,
+          "first10motor_mse": 0.002114923670887947
+        },
+        "3010": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04567072540521622,
+          "future_latent_nmse": 0.10054828226566315,
+          "mixed_loss": 0.006372153526172042,
+          "full32motor_rmse": 0.057769862934947014,
+          "late22motor_rmse": 0.06207805685698986,
+          "first10gripper_rmse": 0.020860066637396812,
+          "first10motor_mse": 0.0021034239907748997
+        },
+        "3011": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04625573940575123,
+          "future_latent_nmse": 0.11948525533080101,
+          "mixed_loss": 0.007248674752190709,
+          "full32motor_rmse": 0.08350293710827827,
+          "late22motor_rmse": 0.09574566781520844,
+          "first10gripper_rmse": 0.02126623783260584,
+          "first10motor_mse": 0.0021759846713393927
+        },
+        "3012": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.045697255060076714,
+          "future_latent_nmse": 0.05989566259086132,
+          "mixed_loss": 0.004658000310882926,
+          "full32motor_rmse": 0.04595617391169071,
+          "late22motor_rmse": 0.04607011377811432,
+          "first10gripper_rmse": 0.02014427911490202,
+          "first10motor_mse": 0.00211515836417675
+        },
+        "3013": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.055350981652736664,
+          "future_latent_nmse": 0.08346676267683506,
+          "mixed_loss": 0.006869781529530883,
+          "full32motor_rmse": 0.0557473823428154,
+          "late22motor_rmse": 0.055731190368533134,
+          "first10gripper_rmse": 0.01709156669676304,
+          "first10motor_mse": 0.003326239821035415
+        },
+        "3014": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.0402426328510046,
+          "future_latent_nmse": 0.026302672922611237,
+          "mixed_loss": 0.0027398787206038833,
+          "full32motor_rmse": 0.04070542939007282,
+          "late22motor_rmse": 0.04086917079985142,
+          "first10gripper_rmse": 0.018138816580176353,
+          "first10motor_mse": 0.00162321119569242
+        },
+        "3015": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.041246773675084114,
+          "future_latent_nmse": 0.0411970317363739,
+          "mixed_loss": 0.0034511263947933912,
+          "full32motor_rmse": 0.04238732531666756,
+          "late22motor_rmse": 0.042833466082811356,
+          "first10gripper_rmse": 0.02483727503567934,
+          "first10motor_mse": 0.0017021260573528707
+        },
+        "3016": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.04171903431415558,
+          "future_latent_nmse": 0.025624707341194153,
+          "mixed_loss": 0.0028335158713161945,
+          "full32motor_rmse": 0.04026502184569836,
+          "late22motor_rmse": 0.03958230838179588,
+          "first10gripper_rmse": 0.017783924471586943,
+          "first10motor_mse": 0.0017456311616115272
+        },
+        "3017": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.041730722412467,
+          "future_latent_nmse": 0.0247785160318017,
+          "mixed_loss": 0.00279662583488971,
+          "full32motor_rmse": 0.04135381802916527,
+          "late22motor_rmse": 0.041179854422807693,
+          "first10gripper_rmse": 0.020041328854858875,
+          "first10motor_mse": 0.0017446656711399555
+        },
+        "3018": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.043311215937137604,
+          "future_latent_nmse": 0.2267390564084053,
+          "mixed_loss": 0.011502355337142944,
+          "full32motor_rmse": 0.06330851651728153,
+          "late22motor_rmse": 0.07054861262440681,
+          "first10gripper_rmse": 0.021022689063102007,
+          "first10motor_mse": 0.001876255904790014
+        },
+        "3019": {
+          "suite": "libero_object",
+          "first10motor_rmse": 0.03866798058152199,
+          "future_latent_nmse": 0.014881042763590813,
+          "mixed_loss": 0.002134663751348853,
+          "full32motor_rmse": 0.03943043388426304,
+          "late22motor_rmse": 0.039765166118741035,
+          "first10gripper_rmse": 0.020499391481280327,
+          "first10motor_mse": 0.0015028960769996047
+        },
+        "3020": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.05145830661058426,
+          "future_latent_nmse": 0.035915765911340714,
+          "mixed_loss": 0.004173369146883488,
+          "full32motor_rmse": 0.04884045757353306,
+          "late22motor_rmse": 0.047600604593753815,
+          "first10gripper_rmse": 0.03372259810566902,
+          "first10motor_mse": 0.002648582332767546
+        },
+        "3021": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04661506600677967,
+          "future_latent_nmse": 0.07356086373329163,
+          "mixed_loss": 0.0053064420353621244,
+          "full32motor_rmse": 0.04617868363857269,
+          "late22motor_rmse": 0.045955440029501915,
+          "first10gripper_rmse": 0.020903244614601135,
+          "first10motor_mse": 0.002183450444135815
+        },
+        "3022": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04411307908594608,
+          "future_latent_nmse": 0.037644158117473125,
+          "mixed_loss": 0.0035442193038761616,
+          "full32motor_rmse": 0.0524247121065855,
+          "late22motor_rmse": 0.05575037561357021,
+          "first10gripper_rmse": 0.03559314925223589,
+          "first10motor_mse": 0.0019460545154288411
+        },
+        "3023": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04640928655862808,
+          "future_latent_nmse": 0.036204214207828045,
+          "mixed_loss": 0.0036909288028255105,
+          "full32motor_rmse": 0.05086321383714676,
+          "late22motor_rmse": 0.0527635645121336,
+          "first10gripper_rmse": 0.03398406319320202,
+          "first10motor_mse": 0.0021538959117606282
+        },
+        "3024": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.05609488859772682,
+          "future_latent_nmse": 0.10266335681080818,
+          "mixed_loss": 0.0075323814526200294,
+          "full32motor_rmse": 0.05489109270274639,
+          "late22motor_rmse": 0.05429718643426895,
+          "first10gripper_rmse": 0.021957616321742535,
+          "first10motor_mse": 0.0031738573452457786
+        },
+        "3025": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.05563765577971935,
+          "future_latent_nmse": 0.18194260448217392,
+          "mixed_loss": 0.010824243538081646,
+          "full32motor_rmse": 0.11805355548858643,
+          "late22motor_rmse": 0.13717979565262794,
+          "first10gripper_rmse": 0.022844024933874607,
+          "first10motor_mse": 0.0030999562004581094
+        },
+        "3026": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04260413721203804,
+          "future_latent_nmse": 0.02563950326293707,
+          "mixed_loss": 0.002903801156207919,
+          "full32motor_rmse": 0.042039189487695694,
+          "late22motor_rmse": 0.0417775958776474,
+          "first10gripper_rmse": 0.027108258567750454,
+          "first10motor_mse": 0.0018152882112190127
+        },
+        "3027": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.04947700537741184,
+          "future_latent_nmse": 0.04734149947762489,
+          "mixed_loss": 0.004459313582628965,
+          "full32motor_rmse": 0.048192860558629036,
+          "late22motor_rmse": 0.04757193475961685,
+          "first10gripper_rmse": 0.3233622731640935,
+          "first10motor_mse": 0.0024494525277987123
+        },
+        "3028": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.0474812351167202,
+          "future_latent_nmse": 0.0674826018512249,
+          "mixed_loss": 0.0051299030892550945,
+          "full32motor_rmse": 0.05596318282186985,
+          "late22motor_rmse": 0.05897260643541813,
+          "first10gripper_rmse": 0.023873209953308105,
+          "first10motor_mse": 0.0022649611346423626
+        },
+        "3029": {
+          "suite": "libero_goal",
+          "first10motor_rmse": 0.0411400031298399,
+          "future_latent_nmse": 0.06535646878182888,
+          "mixed_loss": 0.004477941896766424,
+          "full32motor_rmse": 0.04687504470348358,
+          "late22motor_rmse": 0.04925737716257572,
+          "first10gripper_rmse": 0.629096508026123,
+          "first10motor_mse": 0.001703264017123729
+        },
+        "3030": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.058416811749339104,
+          "future_latent_nmse": 0.11060958355665207,
+          "mixed_loss": 0.008163890335708857,
+          "full32motor_rmse": 0.050171881914138794,
+          "late22motor_rmse": 0.04576914198696613,
+          "first10gripper_rmse": 0.02803627774119377,
+          "first10motor_mse": 0.0034680129028856754
+        },
+        "3031": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04632238484919071,
+          "future_latent_nmse": 0.06946935132145882,
+          "mixed_loss": 0.005120216170325875,
+          "full32motor_rmse": 0.047158099710941315,
+          "late22motor_rmse": 0.04721539281308651,
+          "first10gripper_rmse": 0.3280661581084132,
+          "first10motor_mse": 0.0021709277643822134
+        },
+        "3032": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04037045128643513,
+          "future_latent_nmse": 0.05416453443467617,
+          "mixed_loss": 0.003932358114980161,
+          "full32motor_rmse": 0.04385104216635227,
+          "late22motor_rmse": 0.045316413044929504,
+          "first10gripper_rmse": 0.029073703102767467,
+          "first10motor_mse": 0.0016328284982591867
+        },
+        "3033": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.03796520456671715,
+          "future_latent_nmse": 0.03792479634284973,
+          "mixed_loss": 0.003051601117476821,
+          "full32motor_rmse": 0.03905933350324631,
+          "late22motor_rmse": 0.03954282961785793,
+          "first10gripper_rmse": 0.02263585291802883,
+          "first10motor_mse": 0.0014415218029171228
+        },
+        "3034": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.03942560777068138,
+          "future_latent_nmse": 0.022577225230634212,
+          "mixed_loss": 0.0025156501214951277,
+          "full32motor_rmse": 0.04344926215708256,
+          "late22motor_rmse": 0.045127904042601585,
+          "first10gripper_rmse": 0.019262786023318768,
+          "first10motor_mse": 0.0015571446856483817
+        },
+        "3035": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04914449714124203,
+          "future_latent_nmse": 0.1342012770473957,
+          "mixed_loss": 0.008116308134049177,
+          "full32motor_rmse": 0.0591700728982687,
+          "late22motor_rmse": 0.06320177949965,
+          "first10gripper_rmse": 0.017982689663767815,
+          "first10motor_mse": 0.002418856485746801
+        },
+        "3036": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.03735077194869518,
+          "future_latent_nmse": 0.06979451514780521,
+          "mixed_loss": 0.00436605978757143,
+          "full32motor_rmse": 0.03924124501645565,
+          "late22motor_rmse": 0.040070706978440285,
+          "first10gripper_rmse": 0.015889074187725782,
+          "first10motor_mse": 0.0014029667945578694
+        },
+        "3037": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04496554844081402,
+          "future_latent_nmse": 0.05408860929310322,
+          "mixed_loss": 0.004337129998020828,
+          "full32motor_rmse": 0.04835223965346813,
+          "late22motor_rmse": 0.04970967397093773,
+          "first10gripper_rmse": 0.01844149548560381,
+          "first10motor_mse": 0.0020408236887305975
+        },
+        "3038": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.04167220555245876,
+          "future_latent_nmse": 0.024392710998654366,
+          "mixed_loss": 0.002772366045974195,
+          "full32motor_rmse": 0.04209820739924908,
+          "late22motor_rmse": 0.042284850031137466,
+          "first10gripper_rmse": 0.018400583881884813,
+          "first10motor_mse": 0.001736785052344203
+        },
+        "3039": {
+          "suite": "libero_10",
+          "first10motor_rmse": 0.05159001797437668,
+          "future_latent_nmse": 0.03467118926346302,
+          "mixed_loss": 0.004135336494073272,
+          "full32motor_rmse": 0.04349103197455406,
+          "late22motor_rmse": 0.03923683241009712,
+          "first10gripper_rmse": 0.026160171255469322,
+          "first10motor_mse": 0.0026633876841515303
+        }
+      }
+    }
+  },
+  "candidate_relative_change_percent": {
+    "first10motor_rmse": 4.768328847666292,
+    "future_latent_nmse": 7.079278867580663,
+    "mixed_loss": 8.310003595166293,
+    "full32motor_rmse": 6.553518581376583,
+    "late22motor_rmse": 7.013363241461046,
+    "first10gripper_rmse": 5.528180461448229,
+    "first10motor_mse": 9.889262758269313
+  },
+  "suite_relative_change_percent": {
+    "libero_spatial": {
+      "first10motor_rmse": 8.988802314209732,
+      "future_latent_nmse": 11.067230915809322,
+      "mixed_loss": 15.938490756955481,
+      "full32motor_rmse": 6.937156711714332,
+      "late22motor_rmse": 6.017235097815132,
+      "first10gripper_rmse": 9.13590049362687,
+      "first10motor_mse": 21.433350563572873
+    },
+    "libero_object": {
+      "first10motor_rmse": 5.540201211599594,
+      "future_latent_nmse": 11.090955719901752,
+      "mixed_loss": 11.155817378707166,
+      "full32motor_rmse": 11.526527789819351,
+      "late22motor_rmse": 12.814285983129192,
+      "first10gripper_rmse": 16.52619113587317,
+      "first10motor_mse": 11.255924771702809
+    },
+    "libero_goal": {
+      "first10motor_rmse": 6.677453045853343,
+      "future_latent_nmse": -1.3491878473565255,
+      "mixed_loss": 4.260758259456576,
+      "full32motor_rmse": 7.40790311673587,
+      "late22motor_rmse": 7.71910737860646,
+      "first10gripper_rmse": 2.010009509020283,
+      "first10motor_mse": 12.0358175294214
+    },
+    "libero_10": {
+      "first10motor_rmse": -1.96801441304979,
+      "future_latent_nmse": 8.849841104546385,
+      "mixed_loss": 2.640645352333215,
+      "full32motor_rmse": 0.17860805553315817,
+      "late22motor_rmse": 1.1104453719343654,
+      "first10gripper_rmse": 6.449157783026438,
+      "first10motor_mse": -4.268206080188253
+    }
+  },
+  "paired_case_win_loss": {
+    "first10motor_rmse": {
+      "cases": 40,
+      "improved": 16,
+      "worsened": 24,
+      "tied": 0
+    },
+    "future_latent_nmse": {
+      "cases": 40,
+      "improved": 19,
+      "worsened": 21,
+      "tied": 0
+    },
+    "mixed_loss": {
+      "cases": 40,
+      "improved": 16,
+      "worsened": 24,
+      "tied": 0
+    },
+    "full32motor_rmse": {
+      "cases": 40,
+      "improved": 13,
+      "worsened": 27,
+      "tied": 0
+    },
+    "late22motor_rmse": {
+      "cases": 40,
+      "improved": 14,
+      "worsened": 26,
+      "tied": 0
+    },
+    "first10gripper_rmse": {
+      "cases": 40,
+      "improved": 4,
+      "worsened": 36,
+      "tied": 0
+    },
+    "first10motor_mse": {
+      "cases": 40,
+      "improved": 16,
+      "worsened": 24,
+      "tied": 0
+    }
+  },
+  "provenance": {
+    "baseline_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+    "parent_receipt": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/training/rho1.5/training_receipt.json",
+    "baseline_validation": {
+      "protocol": "fastwam-vq-activation-clipping-v1",
+      "complete": true,
+      "queries": 80,
+      "purpose": "validation_only",
+      "pbs_jobid": "25848931.pbs101",
+      "source_job_id": "25848310.pbs101",
+      "source_exit_code": 1,
+      "failure": "Runtime.close AttributeError after complete numerical results",
+      "new_model_forwards": 0,
+      "recomputed_from_query_records": true,
+      "original_failure_artifacts_preserved": true
+    },
+    "shared_teacher": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/teacher",
+    "parent_replay": {
+      "saved_action_max_abs": 0.0,
+      "formal_infer_max_abs": 0.0
+    },
+    "deployment_parity": {
+      "formal_infer_max_abs": 0.0
+    },
+    "new_teacher_queries": 0,
+    "timing": {
+      "rotation_updates_seconds": 504.81598575692624,
+      "vq_updates_seconds": 264.1167050525546
+    },
+    "extra_rotation_training": true,
+    "equal_compute": false,
+    "execution": "original signed FWHT followed by U, both stages in FP32, to preserve baseline arithmetic at U=I; no folded-kernel claim"
+  },
+  "claim_scope": "Descriptive paired fixed-input decoded-BF16/A4 results on the frozen original-heldout cohort; no statistical-significance, closed-loop, or native-kernel claim."
+}

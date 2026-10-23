@@ -1,0 +1,72 @@
+{
+  "protocol": "fastwam-prism-visualization-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-prism-visualization-20261012",
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "micro_root": "/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011",
+  "rotation_root": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008",
+  "scalar_root": "/scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009",
+  "spinquant_bank": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/banks/spinquant_adapted_w4a4",
+  "scalar_bank": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006/results/full/banks/smooth05_hadamard_scalar",
+  "cases": [
+    1004,
+    1014
+  ],
+  "seed_index": 0,
+  "arms": [
+    "bf16",
+    "spinquant_native_w4a4",
+    "smooth_scalar_native_w4a4",
+    "row_scale_vq_a4",
+    "micro_scale_vq_a4"
+  ],
+  "paired_transforms": [
+    "raw",
+    "learned_spinquant",
+    "smooth05_hadamard"
+  ],
+  "blocks": [
+    0,
+    10,
+    20,
+    29
+  ],
+  "streams": [
+    "video_expert",
+    "action_expert"
+  ],
+  "module_suffixes": [
+    "self_attn.q",
+    "ffn.2"
+  ],
+  "snapshot_steps": [
+    0,
+    4,
+    9
+  ],
+  "token_start": 0,
+  "batch_index": 0,
+  "token_order": "First sample/CFG branch only. Flatten token or patch dimensions inside that sample, retaining original tensor shape; do not concatenate batch or CFG branches into the token axis.",
+  "capture_tokens": 128,
+  "plot_tokens": 64,
+  "channel_start": 0,
+  "plot_channels": 512,
+  "weight_output_start": 0,
+  "weight_output_count": 128,
+  "raw_data": "Signed unpooled activation windows with all channels, actual input/output shapes, stage/step/call IDs, token row IDs; signed exact weight windows and equivalent full-precision weight windows; transforms and source checkpoint identities. Transform full channel dimension before cropping. Clamp windows to actual dimensions; never pool, stride or reorder channels.",
+  "walltime": "02:00:00",
+  "soft_deadline_seconds": 6600,
+  "max_queries": 10,
+  "query_budget_scope": "10 data-capture queries. Compare saved same-arm actions when available; explicitly record an absent native reference rather than adding another forward or comparing against decoded-BF16 execution.",
+  "evaluation_episodes": 0,
+  "refit": false,
+  "training": false,
+  "context_scope": "Two known frozen observation cases and one saved sampler seed each; descriptive mechanism visualization, not a new accuracy benchmark.",
+  "plot_scope": "Shared linear heights and shared colors within each layer comparison; activation height is absolute value. Paired-local and actual end-to-end views remain distinct. Weight axes are output channel and input channel. VQ executes decoded BF16; native arms retain native INT4 execution. Raw signed values remain available independently of figures."
+}

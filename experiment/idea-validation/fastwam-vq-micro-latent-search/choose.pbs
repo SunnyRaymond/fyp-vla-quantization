@@ -1,0 +1,47 @@
+#!/bin/bash
+#PBS -N fwm14c1a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test -z "${PBS_GPUFILE:-}" || exit 64
+[[ "${FW_CHOICE_ROUND:-}" =~ ^[12]$ ]] || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/choice-r$FW_CHOICE_ROUND-$PBS_JOBID"
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; }
+trap finish EXIT
+test -s "$ROOT/choice_inputs_round$FW_CHOICE_ROUND.json"
+test -s "$ROOT/reference_summary.json"
+test ! -e "$OUT" || exit 73
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh choose.pbs choose.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+copy_small "$ROOT/choice_inputs_round$FW_CHOICE_ROUND.json" "$ARTIFACTS/choice_inputs.json"
+export FW_JOB_START_EPOCH=$(date +%s)
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=2
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/choose.py" --protocol "$ARTIFACTS/protocol.json" \
+  --inputs "$ARTIFACTS/choice_inputs.json" --round "$FW_CHOICE_ROUND" --out "$OUT"
+test -s "$OUT/summary.json" -a -s "$OUT/choice.json" -a -f "$OUT/CHOICE_COMPLETE"
+copy_small "$OUT/summary.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo "CHOICE_COMPLETE job_id=$PBS_JOBID round=$FW_CHOICE_ROUND"

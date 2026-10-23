@@ -1,0 +1,21 @@
+{
+  "protocol": "fastwam-vq-bilevel-stage2-v1",
+  "parent_protocol": "fastwam-vq-bilevel-rho-v1",
+  "numerics": "deterministic_v2",
+  "source_initial_checkpoint": "/scratch/users/ntu/yguo017/fastwam-vq-bilevel-rho-20261019/results/initial_state.pt",
+  "frozen_runtime_job": "25880277.pbs101",
+  "unit_rhos": {"stage2_rho1": 1.0, "stage2_rho225": 2.25},
+  "updates": 16,
+  "horizons": [1, 8, 16],
+  "outer_case_ids": [4000,4001,4002,4003,4004,4005,4006,4007],
+  "outer_seed_indices": [0],
+  "reference_arm": "current",
+  "reference_rho": 1.5,
+  "reference_available_updates": [16],
+  "evaluation_state_policy": "restore exact master parameters, Adam and RNG after every horizon evaluation before training continues",
+  "h1_preflight_replay_tolerance": 0.000001,
+  "relative_direction_deadband": 0.001,
+  "stage3_gate": {"minimum_primary_improvement_percent": 1.0, "maximum_secondary_regression_percent": 5.0},
+  "selection": "lowest final16 outer first10 motor RMSE among eligible candidates; ties lower rho; otherwise retain rho1.5",
+  "authorization": "execute stage2; stage3 only after a verified positive final16 outer gate; no C80 or activation clipping expansion"
+}

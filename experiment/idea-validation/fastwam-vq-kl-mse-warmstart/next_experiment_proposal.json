@@ -1,0 +1,38 @@
+{
+  "status": "prepared_not_submitted",
+  "goal_status": "active",
+  "question": "Does restricting additional update freedom prevent the heldout regression shared by dense MSE and dual-KL refinement?",
+  "source_checkpoint": "/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018/results/train_eval/checkpoint.pt",
+  "source_job": "25862598.pbs101",
+  "arms": [
+    "mse_nmse",
+    "dual_kl"
+  ],
+  "trainable": "614 clipping ratios only; retain original MSE80 per-channel D unchanged",
+  "gradient_sources": {
+    "mse_nmse": "/scratch/users/ntu/yguo017/fastwam-vq-kl-fullbatch-refine-20261020/results/mse_nmse/gradient_state.pt",
+    "dual_kl": "/scratch/users/ntu/yguo017/fastwam-vq-kl-direction-20261019/results/mse_dual/gradient_state.pt"
+  },
+  "new_gradients": 0,
+  "reused_gradient_queries_per_arm": 80,
+  "maximum_additional_logical_updates_per_arm": 1,
+  "candidate_grid": "saved/fresh Adam x [1,.5,.25] plus no-step; original ratio lr .01, bounds [.5,1]",
+  "selection": "minimum own-objective full C80, never heldout",
+  "new_C80_candidate_evaluations_per_arm": 480,
+  "final_C80_records_per_arm": 80,
+  "heldout_queries_per_arm": 80,
+  "shared_teacher": "reuse original BF16 files; zero new teacher queries",
+  "controls": "completed matched_mse_refined and warmstart_dual provide dense D+ratio common-MSE-start controls",
+  "gpu_walltime_cap": "01:59:00 per job",
+  "monitor": "gpt-6-luna/xhigh every600s, GPU telemetry15s",
+  "no_changes": [
+    "heldout80 and seeds",
+    "C80 cases/seed0",
+    "lambda and alpha",
+    "loss definitions",
+    "per-channel representation",
+    "books/indices/gains/exponents/backbone"
+  ],
+  "local_code_root": "experiment\\idea-validation\\fastwam-vq-kl-ratio-refine",
+  "runtime_validated": false
+}

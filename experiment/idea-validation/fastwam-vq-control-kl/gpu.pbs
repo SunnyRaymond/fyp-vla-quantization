@@ -1,0 +1,105 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) echo 'Refusing login-node workload'; exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-control-kl-20261021
+SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-softbin-relational-plus-20261020/artifacts/25886452.pbs101
+FORWARD=/scratch/users/ntu/yguo017/fastwam-vq-relational-kl-20261020/artifacts/25883750.pbs101
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+export ARTIFACTS
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+FW_JOB_START_EPOCH=$(date +%s)
+FW_SOFT_DEADLINE_SECONDS=6600
+FW_CPU_THREADS=8
+export FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS FW_CPU_THREADS
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID"
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+finish() {
+  rc=$?
+  trap - EXIT
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+cp "$SOURCE/"*.py "$ARTIFACTS/"
+cp "$FORWARD/softbin_loss.py" "$FORWARD/relational_loss.py" "$ARTIFACTS/"
+cp "$FORWARD/metrics_reference.py" "$FORWARD/latent_reference.py" "$FORWARD/clipping_reference.py" "$ARTIFACTS/"
+for name in control_common.py protocol.json future_adapter.py diagnostic_runtime.py sensor_worker.py frozen_reader.py selfcheck.py test_sensor.py reader_worker.py trajectory_worker.py calibration_worker.py aggregate.py control_losses.py test_control_losses.py parameter_gate.py parameter_gate_protocol.json test_parameter_gate.py c80_gate_protocol.json c80_gate_grad.py c80_gate_reduce.py c80_gate_eval.py test_c80_gate.py test_c80_gate_eval.py training_data_protocol.json training_teacher.py test_training_teacher.py training_objective.py control_training.py training_protocol.json; do
+  if [ -f "$NEW_ROOT/$name" ]; then cp "$NEW_ROOT/$name" "$ARTIFACTS/"; fi
+done
+for name in trained_deployment.py training_evaluation.py training_closedloop.py final_c80_eval.py; do
+  if [ -f "$NEW_ROOT/$name" ]; then cp "$NEW_ROOT/$name" "$ARTIFACTS/"; fi
+done
+cp "$SOURCE/environment.sh" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+case "$FW_CONTROL_UNIT" in
+  sensor_[01]|capture_mse_[01]|capture_rel_[01])
+    run_python "$ARTIFACTS/test_sensor.py"
+    run_python "$ARTIFACTS/sensor_worker.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  reader_[01])
+    run_python "$ARTIFACTS/selfcheck.py"
+    run_python "$ARTIFACTS/reader_worker.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  trajectory_[01])
+    run_python "$ARTIFACTS/trajectory_worker.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  calibration_[01])
+    run_python "$ARTIFACTS/calibration_worker.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  parameter_gate)
+    run_python "$ARTIFACTS/test_parameter_gate.py"
+    run_python "$ARTIFACTS/parameter_gate.py"
+    ;;
+  training_teacher)
+    run_python "$ARTIFACTS/test_training_teacher.py"
+    run_python "$ARTIFACTS/training_teacher.py"
+    ;;
+  train_*)
+    run_python "$ARTIFACTS/control_training.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  heldout_*)
+    run_python "$ARTIFACTS/training_evaluation.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  closedloop_*)
+    run_python "$ARTIFACTS/training_closedloop.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  final_c80_*)
+    run_python "$ARTIFACTS/final_c80_eval.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  c80_grad_*)
+    run_python "$ARTIFACTS/test_c80_gate.py"
+    run_python "$ARTIFACTS/c80_gate_grad.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  c80_eval_*)
+    if [ -f "$ARTIFACTS/test_c80_gate_eval.py" ]; then run_python "$ARTIFACTS/test_c80_gate_eval.py"; fi
+    run_python "$ARTIFACTS/c80_gate_eval.py" --unit "$FW_CONTROL_UNIT"
+    ;;
+  *) echo 'Unimplemented or unapproved unit'; exit 64;;
+esac
+touch "$ARTIFACTS/PHASE_COMPLETE"

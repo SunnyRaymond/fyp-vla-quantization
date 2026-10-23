@@ -1,0 +1,108 @@
+{
+  "status": "proposal_only_not_started",
+  "user_constraint": "先分析，再判断下一步怎么改；先不要启动新训练。",
+  "evidence": {
+    "aggregate_job": "25881527.pbs101",
+    "scope": "original full C80, frozen seed0 and teacher; no held-out selection",
+    "direction_decisions": {
+      "mse_dual": {
+        "known_mse_objective_same_formula": 0.0027439961963293077,
+        "best_including_no_step": {
+          "direction": "saved_adam",
+          "fraction": 1.0,
+          "objective": 0.0026860426762141286
+        },
+        "best_below_known_mse": true,
+        "predicted_down_actual_up": 5,
+        "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+      },
+      "dual_dual": {
+        "known_mse_objective_same_formula": 0.0027439961963293077,
+        "best_including_no_step": {
+          "direction": "saved_adam",
+          "fraction": 0.25,
+          "objective": 0.0026390677929157393
+        },
+        "best_below_known_mse": true,
+        "predicted_down_actual_up": 3,
+        "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+      },
+      "latent_latent": {
+        "known_mse_objective_same_formula": 0.002850204632670059,
+        "best_including_no_step": {
+          "direction": "saved_adam",
+          "fraction": 1.0,
+          "objective": 0.002899961954972241
+        },
+        "best_below_known_mse": false,
+        "predicted_down_actual_up": 3,
+        "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+      },
+      "action_action": {
+        "known_mse_objective_same_formula": 0.0027441146407660693,
+        "best_including_no_step": {
+          "direction": "saved_adam",
+          "fraction": 0.5,
+          "objective": 0.0027136843840708026
+        },
+        "best_below_known_mse": true,
+        "predicted_down_actual_up": 5,
+        "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+      }
+    }
+  },
+  "question": "Can matched full-C80 refinement with actual-loss step selection close the optimization gap and improve both original held-out metrics?",
+  "arms": [
+    "mse_nmse",
+    "dual_kl"
+  ],
+  "start": "Each arm retains its own original final80 parameters. Saved-state candidates retain that same source Adam state; fresh-state candidates reset m/v/step. Both candidate families are offered equally to all arms.",
+  "frozen": [
+    "80 original C80 cases and seed0",
+    "loss definitions, coefficients and lambda",
+    "614 clipping ratios and 1806863 channel log2 scales only",
+    "VQ books, indices, row gains, exponents and model weights",
+    "original heldout40 cases x seeds[0,1] and shared teacher"
+  ],
+  "refinement": {
+    "full_C80_gradient_queries_per_arm": 80,
+    "maximum_additional_optimizer_updates": 1,
+    "counterfactual_step_fractions": [
+      1,
+      0.5,
+      0.25
+    ],
+    "optimizer_state_families": [
+      "saved_adam",
+      "fresh_adam"
+    ],
+    "include_no_step": true,
+    "selection": "Minimum full-C80 own-objective mean, using no held-out values. If no candidate improves, retain source and report no improvement.",
+    "budget_label": "80 additional gradient queries in one full batch; this is not 80 additional optimizer updates."
+  },
+  "reuse": {
+    "kl_gradients_and_C80_candidate_metrics": "Reuse completed dual_dual gradient and six C80 candidate conditions if source/runtime replay passes; do not use mse_dual as the MSE-gradient control.",
+    "mse_control": "Must compute MSE+NMSE gradient at MSE final80 and offer the same six candidate conditions. mse_dual used a dual-KL gradient and is not this control."
+  },
+  "heldout": {
+    "new_teacher_queries": 0,
+    "new_development_set": false,
+    "evaluate_only_fixed_C80_selected_candidate_per_arm": true,
+    "reference": "Equally refined MSE control, plus original final80 as context.",
+    "joint_gate": "Both motor RMSE and latent NMSE below matched refined MSE; motor median paired delta<0 and at least24/40 cases improve. Report both KL components separately.",
+    "claim_gate_for_both_KLs": "Report action KL and latent KL against the equally refined MSE. Do not claim both information-loss terms improved if either is higher."
+  },
+  "compute": {
+    "gpu_job_hard_walltime_max": "01:59:00",
+    "gpu_telemetry_seconds": 15,
+    "monitor_model": "gpt-6-luna",
+    "monitor_reasoning": "xhigh",
+    "monitor_interval_seconds": 600
+  },
+  "deferred": "Do not enlarge calibration or change epsilon, lambda, KL construction or channel granularity in this refinement. If optimization improves but held-out does not, isolate standardization/energy weighting with a matched weighted-MSE control.",
+  "deferred_reference_arms": [
+    "action_kl",
+    "latent_kl"
+  ],
+  "arm_choice_reason": "Dual-KL saved-state quarter-step has negative C80 mean and median, 44/80 improved cases, and a strictly negative equal-suite leave-one-case-out mean range. Other units' best mean gains can change sign on one-case omission; prioritize dual-KL versus a matched MSE refinement to reduce GPU cost."
+}

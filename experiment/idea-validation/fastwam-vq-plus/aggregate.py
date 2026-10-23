@@ -5,7 +5,7 @@ import argparse
 import collections
 from pathlib import Path
 
-from evaluate import ARMS, PROTOCOL, load_manifest, read_json, recover_records, save, worker_arm, worker_indices
+from evaluate import ARMS, PROTOCOL, TIMING_FIELDS, load_manifest, read_json, recover_records, save, worker_arm, worker_indices
 
 
 def load_workers(results, p, rows):
@@ -63,6 +63,34 @@ def paired(candidate, reference, indices):
             'episodes': len(indices), 'success_rate_difference': (wins - losses) / len(indices)}
 
 
+def summarize_timing_by_implementation(records, stats):
+    groups = collections.defaultdict(list)
+    for record in records.values():
+        groups[record.get('transform_implementation', 'source_per_block_v1')].append(record)
+    result = {}
+    for implementation, episodes in sorted(groups.items()):
+        samples = {kind: {field: [] for field in TIMING_FIELDS}
+                   for kind in ('first_query_in_run', 'subsequent_queries')}
+        for record in episodes:
+            for metric in record['metrics']:
+                first = metric.get('first_query_in_run', metric['first_query_in_arm'])
+                kind = 'first_query_in_run' if first else 'subsequent_queries'
+                for field in TIMING_FIELDS:
+                    samples[kind][field].append(metric[field])
+        result[implementation] = {
+            'episodes': len(episodes),
+            'runs': sorted({record.get('pbs_job_id', 'legacy_source_job') for record in episodes}),
+            'query_timing': {
+                kind: {'queries': len(fields['full_query_wall_ms']),
+                       'continuous_denoising_gpu_interval_ms': stats(fields['denoising_latency_ms'], 'ms'),
+                       'full_action_query_wall_ms': stats(fields['full_query_wall_ms'], 'ms'),
+                       'memory': {field: stats(fields[field], 'GB') for field in TIMING_FIELDS if field.endswith('_GB')}}
+                for kind, fields in samples.items()},
+            'episode_wall_including_environment_ms': stats([r['episode_seconds'] * 1000 for r in episodes], 'ms'),
+        }
+    return {'by_implementation': result}
+
+
 def run(args):
     import runner
     runner.guard()
@@ -111,14 +139,15 @@ def run(args):
         summary['cells'] = {f'{suite}::{dim}': bucket([i for i, row in enumerate(rows)
                                   if row['suite'] == suite and row['dimension'] == dim])
                             for suite in summary['suites'] for dim in summary['dimensions']}
-        summary['timing'] = {arm: old.summarize_timing(by_arm[arm]) for arm in ARMS}
-        summary['timing_boundary'] = 'Different closed-loop trajectories/query counts; timings are not a same-input microbenchmark'
+        summary['timing'] = {arm: summarize_timing_by_implementation(by_arm[arm], old._stats) for arm in ARMS}
+        summary['timing_boundary'] = 'Grouped by transform implementation; first formal query excluded per PBS run; closed-loop trajectories/query counts differ'
         lines = ['# Row-scale VQ 与 Microscaling VQ：LIBERO-Plus 280 episodes / arm', '',
                  '| 配置 | 成功 / episodes | Success rate |', '|---|---:|---:|']
         for arm, value in summary['overall']['arms'].items():
             lines.append(f"| {arm} | {value['successes']}/{value['episodes']} | {value['success_rate']:.2%} |")
         lines += ['', '两组VQ均复用原614层bank及Smooth0.5/H128变换，decoded BF16 compute、动态A4、KV BF16；没有重新拟合。',
                   '共560个新增episodes，与已有四组的1120个episodes采用相同冻结variants、环境与sampler seeds、IDM/replan/控制步数配置。',
+                  '已完成的旧实现episodes保留用于success rate；耗时按逐block FWHT与批量H128分组，并单独统计每次续跑的首query。',
                   '模型加载、显存和耗时反映当前decoded VQ实现，不作为native低位宽kernel或同输入速度结论。']
         (args.results / 'RESULTS.zh.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     save(args.results / 'summary.json', summary)

@@ -1,0 +1,305 @@
+{
+  "protocol": "fastwam-vq-activation-ablation-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-ablation-20261017",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+  "source_protocol": {
+    "protocol": "fastwam-vq-activation-clipping-v1",
+    "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+    "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+    "parent_arm": "rho1.5",
+    "parent_updates": 8,
+    "parent_training_job": "25821658.pbs101",
+    "parent_validation_job": "25822474.pbs101",
+    "runtime_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/artifacts/25814264.pbs101",
+    "arms": [
+      "baseline",
+      "weight_only",
+      "clip_only",
+      "joint"
+    ],
+    "calibration": {
+      "root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+      "plan_file": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+      "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+      "case_ids": [
+        2000,
+        2019,
+        2021,
+        2025,
+        2051,
+        2057,
+        2066,
+        2070
+      ],
+      "seed_index": 0,
+      "source_job_id": "25789685.pbs101"
+    },
+    "training": {
+      "additional_updates": 8,
+      "epochs": 1,
+      "weight_learning_rate": 0.0005,
+      "clip_learning_rate": 0.01,
+      "optimizer": "Adam",
+      "fresh_optimizer_each_arm": true,
+      "optimizer_reset_after_update1": true,
+      "gradient_norm_clip": 1.0,
+      "rho": 1.5,
+      "normalization_c": 0.028303017887797623,
+      "loss": "first10 x6 motor MSE + rho * frozen normalization_c * clean future global NMSE excluding frame0",
+      "checkpoint_selection": "last exact update8 only; no held-out checkpoint selection"
+    },
+    "clipping": {
+      "scope": "one FP32 ratio per target Linear, shared across tokens and denoising steps",
+      "initial_ratio": 1.0,
+      "minimum_ratio": 0.5,
+      "maximum_ratio": 1.0,
+      "rule": "scale = absmax_per_token * ratio / 7; round and clamp [-7,7]; BF16 dequantized operand",
+      "backward": "input STE inside clipping range; LSQ-style scale surrogate normalized by sqrt(numel * 7); absmax treated constant",
+      "fixed": "Smooth0.5/H128 signs/scales, VQ indices, B32 uint8 exponents, bias, non-target model parameters, BF16 KV"
+    },
+    "evaluation": {
+      "case_ids": [
+        3000,
+        3001,
+        3002,
+        3003,
+        3004,
+        3005,
+        3006,
+        3007,
+        3008,
+        3009,
+        3010,
+        3011,
+        3012,
+        3013,
+        3014,
+        3015,
+        3016,
+        3017,
+        3018,
+        3019,
+        3020,
+        3021,
+        3022,
+        3023,
+        3024,
+        3025,
+        3026,
+        3027,
+        3028,
+        3029,
+        3030,
+        3031,
+        3032,
+        3033,
+        3034,
+        3035,
+        3036,
+        3037,
+        3038,
+        3039
+      ],
+      "seed_indices": [
+        0,
+        1
+      ],
+      "cases_per_suite": 10,
+      "queries_per_arm": 80,
+      "domain": "original",
+      "heldout": "same tasks, distinct demonstration IDs from calibration; no unseen-task claim",
+      "metrics": [
+        "first10motor_rmse",
+        "full32motor_rmse",
+        "late22motor_rmse",
+        "first10gripper_rmse",
+        "future_latent_nmse"
+      ],
+      "aggregation": "mean seeds within case, mean cases within suite, mean four suites equally",
+      "episodes": 0,
+      "actions_executed": 0,
+      "advance_gate": "clip_only or joint must improve BOTH first10motor_rmse and future_latent_nmse versus baseline; joint must also improve both versus equal-budget weight_only; all 80 queries required",
+      "gate_scope": "engineering screen on this fixed held-out cohort; not statistical superiority; next scaling stage needs independent confirmation"
+    },
+    "allocation": {
+      "queue": "normal",
+      "gpus": 1,
+      "ncpus": 16,
+      "memory_gb": 110,
+      "walltime": "01:59:00",
+      "soft_deadline_seconds": 6840,
+      "gpu_monitor_seconds": 15
+    },
+    "monitor": {
+      "model": "gpt-6-luna",
+      "reasoning_effort": "xhigh",
+      "interval_seconds": 600,
+      "unchanged_queue_or_running": "silent"
+    },
+    "claim_scope": "fixed-input decoded-BF16 VQ + A4 accuracy diagnostic; no closed-loop or native INT4 speed claim"
+  },
+  "source_jobs": {
+    "baseline": "25821658.pbs101",
+    "baseline_validation": "25822474.pbs101",
+    "weight_only": "25848988.pbs101",
+    "clip_only": "25848989.pbs101",
+    "joint": "25848990.pbs101",
+    "heldout_teacher": "25848310.pbs101",
+    "teacher_validation": "25848931.pbs101"
+  },
+  "units": {
+    "joint_w_ratio1": {
+      "heldout": {
+        "weights": "joint",
+        "ratios": "one"
+      },
+      "c8": [
+        "baseline",
+        "weight_only"
+      ]
+    },
+    "baseline_w_joint_ratios": {
+      "heldout": {
+        "weights": "baseline",
+        "ratios": "joint"
+      },
+      "c8": [
+        "clip_only",
+        "joint"
+      ]
+    }
+  },
+  "calibration": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+    "plan_file": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+    "case_ids": [
+      2000,
+      2019,
+      2021,
+      2025,
+      2051,
+      2057,
+      2066,
+      2070
+    ],
+    "seed_index": 0,
+    "source_job_id": "25789685.pbs101"
+  },
+  "evaluation": {
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "cases_per_suite": 10,
+    "queries_per_arm": 80,
+    "domain": "original",
+    "heldout": "same tasks, distinct demonstration IDs from calibration; no unseen-task claim",
+    "metrics": [
+      "first10motor_rmse",
+      "full32motor_rmse",
+      "late22motor_rmse",
+      "first10gripper_rmse",
+      "future_latent_nmse"
+    ],
+    "aggregation": "mean seeds within case, mean cases within suite, mean four suites equally",
+    "episodes": 0,
+    "actions_executed": 0,
+    "advance_gate": "clip_only or joint must improve BOTH first10motor_rmse and future_latent_nmse versus baseline; joint must also improve both versus equal-budget weight_only; all 80 queries required",
+    "gate_scope": "engineering screen on this fixed held-out cohort; not statistical superiority; next scaling stage needs independent confirmation"
+  },
+  "training_updates": 0,
+  "new_teacher_queries": 0,
+  "c8_evaluation": {
+    "case_ids": [
+      2000,
+      2019,
+      2021,
+      2025,
+      2051,
+      2057,
+      2066,
+      2070
+    ],
+    "seed_indices": [
+      0
+    ],
+    "queries_per_arm": 8,
+    "arms": [
+      "baseline",
+      "weight_only",
+      "clip_only",
+      "joint"
+    ],
+    "aggregation": "mean two contexts per suite; mean four suites equally",
+    "metrics": [
+      "first10motor_mse",
+      "first10motor_rmse",
+      "full32motor_rmse",
+      "late22motor_rmse",
+      "first10gripper_rmse",
+      "future_latent_nmse",
+      "mixed_loss"
+    ]
+  },
+  "allocation": {
+    "queue": "normal",
+    "gpus": 1,
+    "ncpus": 16,
+    "memory_gb": 110,
+    "walltime": "01:59:00",
+    "soft_deadline_seconds": 6840,
+    "gpu_monitor_seconds": 15
+  },
+  "monitor": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "xhigh",
+    "interval_seconds": 600,
+    "unchanged_queue_or_running": "silent"
+  },
+  "scope": "evaluation-only; original paired inputs and shared teachers; decoded BF16 VQ+A4; no closed-loop/native kernel claims",
+  "planned_evaluation_queries": 192,
+  "startup_checks": "one baseline reference-action parity query per allocation; reused for baseline C8 case2000 when available; counted separately"
+}

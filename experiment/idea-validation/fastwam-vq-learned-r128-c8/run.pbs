@@ -1,0 +1,121 @@
+#!/bin/bash
+#PBS -N fwlr128c8
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-learned-r128-c8-20261021
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RUNTIME_ARTIFACTS=$PARENT/artifacts/25814264.pbs101
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+test -n "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+test -s "$PBS_NODEFILE" || { echo 'PBS_NODEFILE is empty or unavailable' >&2; exit 64; }
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not in running state; refusing workload startup' >&2; exit 64;
+}
+
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+mkdir -p "$ARTIFACTS" "$RESULTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null
+    wait "$GPU_MONITOR_PID" 2>/dev/null
+  fi
+  if (( rc == 0 )); then
+    if [[ -s "$RESULTS/summary.json" ]] && cp "$RESULTS/summary.json" "$ARTIFACTS/worker_summary.json"; then
+      touch "$ARTIFACTS/PHASE_COMPLETE" || rc=65
+    else
+      echo 'Completed worker did not leave results/summary.json' >&2
+      rc=65
+    fi
+  fi
+  if (( rc != 0 )); then
+    rm -f "$ARTIFACTS/PHASE_COMPLETE"
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+printf 'PBS_JOBID=%s host=%s allocation_start_epoch=%s\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH"
+
+test -s "$ROOT/env_status.json" -a -s "$ROOT/runner.py" -a -s "$ROOT/quantization.py" -a -s "$ROOT/libero_state_loader.py"
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" -a -s "$SIF"
+test -s "$NEW_ROOT/run.pbs" -a -s "$NEW_ROOT/protocol.json" -a -s "$NEW_ROOT/environment.sh"
+test -s "$NEW_ROOT/worker.py" -a -s "$NEW_ROOT/selfcheck.py" -a -s "$NEW_ROOT/aggregate.py"
+test -s "$RUNTIME_ARTIFACTS/runner.py" -a -s "$RUNTIME_ARTIFACTS/quantization.py" -a -s "$RUNTIME_ARTIFACTS/libero_state_loader.py"
+test -s "$RUNTIME_ARTIFACTS/smooth_vq.py" -a -s "$RUNTIME_ARTIFACTS/codebook.py" -a -s "$RUNTIME_ARTIFACTS/micro_codebook.py"
+test -s "$RUNTIME_ARTIFACTS/sampler.py" -a -s "$RUNTIME_ARTIFACTS/latent_reference.py" -a -s "$RUNTIME_ARTIFACTS/checkpointing.py"
+test -s "$RUNTIME_ARTIFACTS/calibration_source.py" -a -s "$PARENT/train_banks.py" -a -s "$PARENT/batched_transform.py"
+
+shopt -s nullglob
+LOCAL_PY_FILES=("$NEW_ROOT"/*.py)
+test "${#LOCAL_PY_FILES[@]}" -gt 0 || { echo 'No local Python sources found' >&2; exit 65; }
+cp "${LOCAL_PY_FILES[@]}" "$NEW_ROOT/protocol.json" "$NEW_ROOT/run.pbs" "$NEW_ROOT/environment.sh" "$ARTIFACTS/"
+for file in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  if [[ ! -e "$ARTIFACTS/$file" ]]; then
+    cp "$RUNTIME_ARTIFACTS/$file" "$ARTIFACTS/$file"
+  else
+    printf 'PRESERVED_LOCAL_SOURCE=%s\n' "$file"
+  fi
+done
+if [[ ! -e "$ARTIFACTS/c8_train_banks.py" ]]; then
+  cp "$PARENT/train_banks.py" "$ARTIFACTS/c8_train_banks.py"
+fi
+if [[ ! -e "$ARTIFACTS/batched_transform.py" ]]; then
+  cp "$PARENT/batched_transform.py" "$ARTIFACTS/batched_transform.py"
+fi
+
+# The inherited helper's 2-minute internal reserve must match this job's 5-minute cutoff reserve.
+sed -i 's/FW_SAVE_RESERVE_SECONDS=120/FW_SAVE_RESERVE_SECONDS=300/' "$ARTIFACTS/environment.sh"
+grep -q 'FW_SAVE_RESERVE_SECONDS=300' "$ARTIFACTS/environment.sh" || {
+  echo 'Could not set the 5-minute checkpoint reserve in environment.sh' >&2; exit 65;
+}
+FW_CPU_THREADS=16
+FW_SOFT_DEADLINE_SECONDS=42900
+FW_SAVE_RESERVE_SECONDS=300
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS
+source "$ARTIFACTS/environment.sh"
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifier' >&2; exit 65; }
+[[ "$CUDA_VISIBLE_DEVICES" != *,* ]] || { echo 'Expected exactly one allocated GPU' >&2; exit 65; }
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || { echo 'Unable to resolve allocated GPU UUID' >&2; exit 65; }
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+printf 'ALLOCATED_GPU_UUID=%s\n' "$GPU_UUID"
+
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+run_python "$ARTIFACTS/worker.py" --protocol "$ARTIFACTS/protocol.json"

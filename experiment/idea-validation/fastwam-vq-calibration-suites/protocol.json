@@ -1,0 +1,198 @@
+{
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "model": "released Fast-WAM Optional-IDM clean checkpoint; idm mode",
+  "transform": {
+    "name": "smooth05_hadamard",
+    "alpha": 0.5,
+    "hadamard_block": 128,
+    "scale_bound": 16,
+    "source": "reuse exact saved transforms from original successful full banks; no refitting or alpha search"
+  },
+  "evaluation_seed_indices": [
+    0,
+    1
+  ],
+  "weight_scope": "all 614 target Linears; video306/action307/root-proprio1; no highprecision restoration branch",
+  "activation": "dynamic per-row signed symmetric absmax A4 qmax7; decoded BF16",
+  "unquantized": "KV cache, bias, normalization, nonlinearities, text encoder, VAE and other non-target modules",
+  "protocol": "fastwam-vq-calibration-suites-v1",
+  "phase": "calibration_comparison",
+  "date_local": "2026-10-13",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "walltime": "01:59:00",
+  "soft_deadline_seconds": 6300,
+  "target_linears": 614,
+  "vq": {
+    "dimension": 4,
+    "codebooks": 2,
+    "entries": 256,
+    "books_dtype": "bfloat16",
+    "row_scale_dtype": "bfloat16",
+    "samples": 8192,
+    "iterations": 8,
+    "seed": 20261006,
+    "local_tuning_steps": 0,
+    "action_lambda": 0
+  },
+  "microscaling": {
+    "scale_block": 32,
+    "axis": "input dimension within each output row",
+    "row_gain": "reuse exact existing BF16 row RMS",
+    "scale_rule": "r_i * 2**round(log2(block_RMS / r_i))",
+    "rms_tail_rule": "mean over real coordinates only",
+    "ratio_floor": 1e-12,
+    "exponent_storage": "uint8 exponent+127; 255 reserved",
+    "exponent_min": -127,
+    "exponent_max": 127,
+    "scales_frozen_during_fit": true,
+    "books_shared": "two books shared within each Linear",
+    "metric": "same A4 input diagonal second moment multiplied by actual block scale squared"
+  },
+  "reuse": {
+    "source_readonly": true,
+    "teacher_actions": "new shared teacher/results query_records on the fixed four-suite held-out demo cohort",
+    "control_banks": "source results/full/banks/row_scale_vq_a4",
+    "input_plans": "new data/plan.json; original-only demo observations",
+    "moments": "recompute per-context BF16W+A4 moments on new original-only cohorts; atomic checkpoint",
+    "local_diagnostics": "new moment-weighted weight errors only; no old Spatial teacher sensitivity captures"
+  },
+  "evaluation": {
+    "domain": "original",
+    "suites": [
+      "libero_spatial",
+      "libero_object",
+      "libero_goal",
+      "libero_10"
+    ],
+    "cases_per_suite": 10,
+    "case_count": 40,
+    "seed_indices": [
+      0,
+      1
+    ],
+    "query_count_per_cohort": 80,
+    "primary_metric": "first10 x6 motor RMSE versus same-input same-seed BF16; average seeds within case, cases within suite, then four suites equally",
+    "secondary_metrics": [
+      "gripper_rmse_first10_vs_bf16",
+      "motor_rmse_32_vs_bf16"
+    ],
+    "method_selection": "none; only c8 and c80 predetermined",
+    "episodes": 0,
+    "predicted_actions_executed": 0,
+    "sampler": "10 video + 10 action denoising;32x7 action chunk",
+    "heldout": "same tasks; different demonstration IDs for calibration/test, original-only; no unseen-task claim"
+  },
+  "claim_scope": "Calibration cohort comparison for decoded-BF16 B32 additive VQ; C8 vs C80 changes task/context/phase coverage; no unseen-task, native kernel, speed or closed-loop claim",
+  "source_micro_root": "/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011",
+  "source_micro_full_job": "25755896.pbs101",
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "calibration_cohorts": {
+    "c8": {
+      "contexts": 8,
+      "per_suite": 2,
+      "nested_in": "c80",
+      "distinct_tasks_per_suite": 2
+    },
+    "c80": {
+      "contexts": 80,
+      "per_suite": 20,
+      "tasks_per_suite": 10,
+      "demonstrations_per_task": 2,
+      "contexts_per_demonstration": 1
+    }
+  },
+  "data": {
+    "domain": "original",
+    "original_repo": "/scratch/users/ntu/yguo017/fastwam-smoke/libero",
+    "dataset_roots": [
+      "/scratch/users/ntu/yguo017/fastwam-smoke/libero/datasets",
+      "/scratch/users/ntu/yguo017/fastwam-smoke/datasets"
+    ],
+    "selection_seed": 20261013,
+    "task_order_index": 0,
+    "calibration_case_id_start": 2000,
+    "test_case_id_start": 3000,
+    "phase_positions": {
+      "early": 0.2,
+      "middle": 0.5,
+      "late": 0.8
+    },
+    "calibration_task_phase_pairs": [
+      [
+        "early",
+        "middle"
+      ],
+      [
+        "early",
+        "middle"
+      ],
+      [
+        "early",
+        "middle"
+      ],
+      [
+        "early",
+        "middle"
+      ],
+      [
+        "middle",
+        "late"
+      ],
+      [
+        "middle",
+        "late"
+      ],
+      [
+        "middle",
+        "late"
+      ],
+      [
+        "early",
+        "late"
+      ],
+      [
+        "early",
+        "late"
+      ],
+      [
+        "early",
+        "late"
+      ]
+    ],
+    "test_phases": [
+      "early",
+      "early",
+      "early",
+      "middle",
+      "middle",
+      "middle",
+      "middle",
+      "late",
+      "late",
+      "late"
+    ],
+    "minimum_distinct_demonstrations_per_task": 3,
+    "exclude_plus": true,
+    "input_source": "original demonstration states restored into original LIBERO environment; no initial-state substitution",
+    "plan_file": "data/plan.json",
+    "source_inventory_in_compute_only": true
+  },
+  "moments": {
+    "source_arm": "bf16w_a4",
+    "calibration_seed_index": 0,
+    "normalization": "each context normalize token-row sum by row count; equal context and equal suite weights",
+    "reuse": "same original C80 rendered input pool; C8 nested subset; transforms and VQ budget fixed"
+  }
+}

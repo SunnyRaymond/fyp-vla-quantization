@@ -1,0 +1,13 @@
+这是用户授权的离线 weight 分析监控，沿用当前 monitor chat，原任务为 01a12f37-9e3d-7a82-8af9-8abe57c3ee47。模型必须保持 gpt-6-luna、xhigh。原目标是复用现有 checkpoint 和 BF16 paired inputs，比较 learned SpinQuant / Row-scale VQ / microscaling VQ 的 weight 分布、B32 block 量化误差和固定输入下的 Linear 输出误差；不执行新的整模型 forward。原用户授权定时监控并在完成、失败或需要处理时唤醒原任务。每次 heartbeat 只检查一次便结束，不循环或常驻 sleep，不创建新 goal、chat、subagent 或重复 automation。
+
+目录 D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-prism-visualization。每轮重读 weight_handle.json，精确 job_id 以该文件为准。使用已有 control.py，通过 D:\Downloads\Final Year Project\nscc-access\.venv\Scripts\python.exe 执行 control.py status --phase weight。保存本地 weight_monitoring_state.json，保留先前 terminal evidence 与连续观察失败次数。远端 ROOT=/scratch/users/ntu/yguo017/fastwam-prism-visualization-20261012，artifact=artifacts/<精确job_id>，结果=results/full/weight_analysis。原 capture/plot 已完成，此次不再监控旧 capture/plot handles。
+
+普通 Q/R 或 queue comment 改变时保持安静，只更新本地快照并结束。一次 SSH/qstat 失败是观察未知，不将 timeout 或缺少 qstat 历史直接判为完成/失败，也不能重复提交；连续三轮观察失败且没有可信 terminal evidence 时才唤醒原任务处理。当前任务 CPU-only，每次 allocation <=2h，soft deadline6600s，完成 module/figure 可在同一目录续跑。
+
+完成必须同时满足：精确 handle PBS F/X、Exit_status=0，artifact exit_code.txt=0 和 PIPELINE_COMPLETE；results/full/weight_analysis/weight_analysis_data.json status=complete，覆盖16modules、48weight comparisons、96primary inputs和288output comparisons，decode/reference/basis-equivalence gates通过；plots/manifest.json status=complete，module_count=expected_module_count=16，families中distribution/block_error/output_error各complete=expected=16，全部预期figure完成，gallery文件存在。只读取不超过256KiB的小型 JSON 字段；schema以实际文件为准，记录字段不匹配时唤醒原任务，不自行改阈值或确认完成。不要读取 raw manifest、NPZ、checkpoint、weights 或大型日志。
+
+明确非零终态、真实失败、需要用户处理，或 wrapper0但PIPELINE_CHECKPOINTED与summary status=checkpointed，均唤醒原任务，让原任务修复/同目录续跑；监控无 qsub/qdel/qalter/resubmit 权限。完整成功也唤醒原任务，由其取回小预览、做 visual QA、解释收益并交付。通过 mcp__codex_app__send_message_to_thread 只向原任务01a12f37-9e3d-7a82-8af9-8abe57c3ee47发送，附精确handle、PBS/wrapper/marker、小summary字段及结果路径，请原任务继续当前 weight analysis goal。此消息得到用户直接授权，不向其他任务发消息。消息成功后记录handles/event防重复，再将已有 heartbeat fast-wam-prism-visualization-monitor设PAUSED并保留其他字段；发送失败则保存pending供下一轮重试，不声称已唤醒。不调用 create_goal/update_goal，不动 banked resets。
+
+只用已有可信 SSH controller，保留 host-key verification。若需轻量验证 marker/exit/summary，可经 control.command 读取明确文件，先限制size256KiB、日志尾部最多8KiB。ASPIRE2A login node仅允许连接、scheduler查询和小控制文件；禁止模型加载、推理、数值计算、benchmark、重I/O、大文件下载/传输/复制、hash、解压、编译、依赖安装或大目录扫描。所有实际 tensor/绘图工作仅在真实PBS compute allocation。监控不得改变 checkpoint/banks/cohort/protocol，不输出credentials。
+
+更新 automation 时用UTF-8读取 C:\Users\Raymond\.codex\automations\fast-wam-prism-visualization-monitor\automation.toml，保留完整name/rrule/target_thread_id等未请求改变字段。关联monitor chat为01a13009-4822-7ef0-b289-00fabf96b1e7，原唤醒目标如上。普通未变化Q/R保持安静，只在实质完成、失败、需要用户动作时通知。

@@ -1,0 +1,81 @@
+#!/bin/bash
+#PBS -N fwrc16prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=48gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-residual-capacity-20261016
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+LATENT=/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014
+DIAGNOSTIC=/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013
+INPUTS=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+case "${FW_PHASE:-}" in prepare|score|allocate|evaluate|analyze) ;; *) exit 64;; esac
+FW_SHARD=${FW_SHARD:-0}
+[[ "$FW_SHARD" =~ ^[0-7]$ ]] || exit 64
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+export FW_JOB_START_EPOCH=$(date +%s)
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+LOCK=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ -n "$LOCK" ]] && test -f "$LOCK" && test "$(cat "$LOCK")" = "$PBS_JOBID"; then rm -- "$LOCK"; fi
+}
+trap finish EXIT
+if [[ "$FW_PHASE" == score || "$FW_PHASE" == evaluate ]]; then
+  mkdir -p "$ROOT/results/$FW_PHASE-$FW_SHARD"
+  LOCK="$ROOT/results/$FW_PHASE-$FW_SHARD/writer.lock"
+  (set -o noclobber; printf '%s\n' "$PBS_JOBID" > "$LOCK")
+fi
+for name in protocol.json common.py allocation.py capacity.py prepare.py score.py evaluate.py summarize.py test_capacity.py environment.sh run.pbs; do
+  test "$(wc -c < "$ROOT/$name")" -le 262144 || exit 73
+  cp -- "$ROOT/$name" "$ARTIFACTS/$name"
+done
+for name in sampler.py train_banks.py latent_reference.py checkpointing.py; do
+  test "$(wc -c < "$LATENT/$name")" -le 262144 || exit 73
+  cp -- "$LATENT/$name" "$ARTIFACTS/$name"
+done
+for name in metrics.py future_adapter.py; do
+  test "$(wc -c < "$DIAGNOSTIC/$name")" -le 262144 || exit 73
+  cp -- "$DIAGNOSTIC/$name" "$ARTIFACTS/$name"
+done
+test "$(wc -c < "$INPUTS/run_diagnostic.py")" -le 262144 || exit 73
+cp -- "$INPUTS/run_diagnostic.py" "$ARTIFACTS/run_diagnostic.py"
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=8
+if [[ "$FW_PHASE" == score || "$FW_PHASE" == evaluate ]]; then FW_REQUIRE_GPU=1; fi
+source "$ARTIFACTS/environment.sh"
+if [[ "$FW_REQUIRE_GPU" == 1 ]]; then
+  test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+  (
+    while :; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+      nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+      sleep 15
+    done
+  ) &
+  GPU_MONITOR_PID=$!
+fi
+case "$FW_PHASE" in
+  prepare) run_python "$ARTIFACTS/prepare.py";;
+  score) run_python "$ARTIFACTS/score.py" --shard "$FW_SHARD";;
+  allocate|analyze) run_python "$ARTIFACTS/summarize.py" --phase "$FW_PHASE";;
+  evaluate) run_python "$ARTIFACTS/evaluate.py" --shard "$FW_SHARD";;
+esac
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACTS/summary.json")
+case "$status" in
+  complete) touch "$ARTIFACTS/PIPELINE_COMPLETE";;
+  resumable) touch "$ARTIFACTS/RESUME_READY";;
+  *) exit 65;;
+esac
+echo "CAPACITY_PHASE $status job_id=$PBS_JOBID phase=$FW_PHASE shard=$FW_SHARD"

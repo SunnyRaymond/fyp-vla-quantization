@@ -1,0 +1,271 @@
+{
+  "protocol": "fastwam-vq-per-channel-visited-diagnostic-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-per-channel-visited-diagnostic-20261018",
+  "visited_root": "/scratch/users/ntu/yguo017/fastwam-vq-rollout-c80-20261018",
+  "visited_protocol": "fastwam-vq-rollout-c80-v1",
+  "visited_prepare_job": "25862620.pbs101",
+  "c80_root": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017",
+  "c80_protocol": "fastwam-vq-c80-clip-joint-plus-v1",
+  "runtime_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/artifacts/25814264.pbs101",
+  "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+  "case_ids": [
+    2001,
+    2003,
+    2005,
+    2007,
+    2009,
+    2011,
+    2013,
+    2015,
+    2017,
+    2019,
+    2021,
+    2023,
+    2025,
+    2027,
+    2029,
+    2031,
+    2033,
+    2035,
+    2037,
+    2039,
+    2041,
+    2043,
+    2045,
+    2047,
+    2049,
+    2051,
+    2053,
+    2055,
+    2057,
+    2059,
+    2061,
+    2063,
+    2065,
+    2067,
+    2069,
+    2071,
+    2073,
+    2075,
+    2077,
+    2079
+  ],
+  "seed_index": 0,
+  "arms": [
+    "bf16",
+    "clip_only",
+    "joint",
+    "per_channel_clip"
+  ],
+  "variants": [
+    "base",
+    "image_plus",
+    "image_minus",
+    "proprio_plus",
+    "proprio_minus"
+  ],
+  "checkpoints": {
+    "clip_only": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017/results/training/clip_only/deployment.pt",
+    "joint": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017/results/training/joint/deployment.pt"
+  },
+  "perturbations": {
+    "image": {
+      "operator": "raw_uint8_brightness_both_cameras",
+      "epsilon": 0.00392156862745098,
+      "raw_uint8_step": 1,
+      "units": "normalized RGB intensity [0,1]",
+      "saturate": [
+        0,
+        255
+      ]
+    },
+    "proprio": {
+      "operator": "raw_eef_xyz_translation",
+      "epsilon": 0.005,
+      "direction": [
+        0.5773502691896258,
+        0.5773502691896258,
+        0.5773502691896258
+      ],
+      "units": "metres; total raw EEF xyz L2",
+      "rotation_and_gripper_qpos_unchanged": true
+    }
+  },
+  "motor_dimensions": [
+    "dx",
+    "dy",
+    "dz",
+    "d_rotation_x",
+    "d_rotation_y",
+    "d_rotation_z"
+  ],
+  "executed_steps": 10,
+  "output_action_horizon": 32,
+  "gripper_command_labels": {
+    "-1": "open",
+    "0": "zero at threshold",
+    "1": "close"
+  },
+  "gripper_conversion": "dataset-stat denormalize; g -> -(2*g-1); np.sign; threshold denormalized g=0.5",
+  "training_updates": 0,
+  "new_rollouts": 0,
+  "channel_scaling": true,
+  "expected_records": 800,
+  "expected_model_queries": 205,
+  "budget": {
+    "gpu_walltime": "01:59:00",
+    "soft_deadline_seconds": 6840,
+    "telemetry_interval_seconds": 15,
+    "monitor_interval_seconds": 600,
+    "monitor_model": "gpt-6-luna",
+    "monitor_reasoning_effort": "xhigh",
+    "automatic_gpu_resubmission": false
+  },
+  "scope": "same existing40 visited states, frozen5 inputs/seeds, per-channel final80 added without training or new rollout; 600 source endpoints reused, 200 new endpoints; two directional perturbations only",
+  "sensitivity_interpretation": "Compare response and directional derivative against BF16; smaller response alone is not better. Image brightness clipping and actual BF16 model-input deltas are reported.",
+  "aggregation": "one original seed per case; case means within suite, four suites equally weighted; perturbations and 10 control steps are repeated measurements, not additional independent cases",
+  "source_diagnostic_root": "/scratch/users/ntu/yguo017/fastwam-vq-visited-diagnostic-20261018",
+  "source_diagnostic_job": "25863989.pbs101",
+  "source_diagnostic_protocol": {
+    "protocol": "fastwam-vq-visited-diagnostic-v1",
+    "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-visited-diagnostic-20261018",
+    "visited_root": "/scratch/users/ntu/yguo017/fastwam-vq-rollout-c80-20261018",
+    "visited_protocol": "fastwam-vq-rollout-c80-v1",
+    "visited_prepare_job": "25862620.pbs101",
+    "c80_root": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017",
+    "c80_protocol": "fastwam-vq-c80-clip-joint-plus-v1",
+    "runtime_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/artifacts/25814264.pbs101",
+    "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+    "case_ids": [
+      2001,
+      2003,
+      2005,
+      2007,
+      2009,
+      2011,
+      2013,
+      2015,
+      2017,
+      2019,
+      2021,
+      2023,
+      2025,
+      2027,
+      2029,
+      2031,
+      2033,
+      2035,
+      2037,
+      2039,
+      2041,
+      2043,
+      2045,
+      2047,
+      2049,
+      2051,
+      2053,
+      2055,
+      2057,
+      2059,
+      2061,
+      2063,
+      2065,
+      2067,
+      2069,
+      2071,
+      2073,
+      2075,
+      2077,
+      2079
+    ],
+    "seed_index": 0,
+    "arms": [
+      "bf16",
+      "clip_only",
+      "joint"
+    ],
+    "variants": [
+      "base",
+      "image_plus",
+      "image_minus",
+      "proprio_plus",
+      "proprio_minus"
+    ],
+    "checkpoints": {
+      "clip_only": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017/results/training/clip_only/deployment.pt",
+      "joint": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017/results/training/joint/deployment.pt"
+    },
+    "perturbations": {
+      "image": {
+        "operator": "raw_uint8_brightness_both_cameras",
+        "epsilon": 0.00392156862745098,
+        "raw_uint8_step": 1,
+        "units": "normalized RGB intensity [0,1]",
+        "saturate": [
+          0,
+          255
+        ]
+      },
+      "proprio": {
+        "operator": "raw_eef_xyz_translation",
+        "epsilon": 0.005,
+        "direction": [
+          0.5773502691896258,
+          0.5773502691896258,
+          0.5773502691896258
+        ],
+        "units": "metres; total raw EEF xyz L2",
+        "rotation_and_gripper_qpos_unchanged": true
+      }
+    },
+    "motor_dimensions": [
+      "dx",
+      "dy",
+      "dz",
+      "d_rotation_x",
+      "d_rotation_y",
+      "d_rotation_z"
+    ],
+    "executed_steps": 10,
+    "output_action_horizon": 32,
+    "gripper_command_labels": {
+      "-1": "open",
+      "0": "zero at threshold",
+      "1": "close"
+    },
+    "gripper_conversion": "dataset-stat denormalize; g -> -(2*g-1); np.sign; threshold denormalized g=0.5",
+    "training_updates": 0,
+    "new_rollouts": 0,
+    "channel_scaling": false,
+    "expected_records": 600,
+    "cached_bf16_base_records": 39,
+    "expected_new_record_queries": 561,
+    "extra_reference_and_repeat_queries": 5,
+    "expected_model_queries": 566,
+    "budget": {
+      "gpu_walltime": "01:59:00",
+      "soft_deadline_seconds": 6840,
+      "telemetry_interval_seconds": 15,
+      "monitor_interval_seconds": 600,
+      "monitor_model": "gpt-6-luna",
+      "monitor_reasoning_effort": "xhigh",
+      "automatic_gpu_resubmission": false
+    },
+    "scope": "40 fixed existing C8-student-visited states; paired same seed and cached model input tensors across arms; first10 motor/gripper; two predeclared central directional perturbations; no full Jacobian, training or closed-loop claim",
+    "sensitivity_interpretation": "Compare response and directional derivative against BF16; smaller response alone is not better. Image brightness clipping and actual BF16 model-input deltas are reported.",
+    "aggregation": "one original seed per case; case means within suite, four suites equally weighted; perturbations and 10 control steps are repeated measurements, not additional independent cases"
+  },
+  "new_endpoint_records": 200,
+  "reused_endpoint_records": 600,
+  "new_teacher_queries": 0,
+  "channel": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018",
+    "results": "/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018/results/train_eval",
+    "training_job": "25862598.pbs101",
+    "deployment": "/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018/results/train_eval/deployment.pt",
+    "baseline_deployment": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/training/rho1.5/deployment.pt",
+    "reference_endpoint": "/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018/results/calibration/per_channel_clip/queries/2000_0.json",
+    "teacher_directory": "/scratch/users/ntu/yguo017/fastwam-vq-c80-activation-clipping-20261017/results/teacher/calibration"
+  },
+  "transition_matching": "report signed event sequences; delay only if the ordered direction sequences match, plus missed/extra open/close events; no previous-chunk-to-step0 event inference"
+}

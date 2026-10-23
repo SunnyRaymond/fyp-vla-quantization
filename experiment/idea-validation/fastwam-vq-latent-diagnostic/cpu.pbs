@@ -1,0 +1,43 @@
+#!/bin/bash
+#PBS -N fwz1013cpu
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ANALYSIS_SHARD="${FW_ANALYSIS_SHARD:-}"
+case "$ANALYSIS_SHARD" in
+  "") ANALYSIS_OUT="$ROOT/results/analysis" ;;
+  0|1)
+    ANALYSIS_OUT="$ROOT/results/analysis-shard-$ANALYSIS_SHARD"
+    ;;
+  *) echo "FW_ANALYSIS_SHARD must be empty, 0, or 1" >&2; exit 64 ;;
+esac
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+export FW_JOB_START_EPOCH=$(date +%s)
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'printf "%s\n" "$?" > "$ARTIFACTS/exit_code.txt"' EXIT
+for name in protocol.json environment.sh metrics.py analyze_results.py test_analysis_scope.py cpu.pbs; do
+  test "$(wc -c < "$ROOT/$name")" -le 262144 || exit 73
+  cp -- "$ROOT/$name" "$ARTIFACTS/$name"
+done
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=4
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/test_analysis_scope.py"
+if [[ -n "$ANALYSIS_SHARD" ]]; then
+  run_python "$ARTIFACTS/analyze_results.py" --protocol "$ARTIFACTS/protocol.json" --results-root "$ROOT/results" --out "$ANALYSIS_OUT" --shard "$ANALYSIS_SHARD"
+else
+  run_python "$ARTIFACTS/analyze_results.py" --protocol "$ARTIFACTS/protocol.json" --results-root "$ROOT/results" --out "$ANALYSIS_OUT"
+fi
+cp -- "$ANALYSIS_OUT/analysis.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo "ANALYSIS_COMPLETE job_id=$PBS_JOBID"

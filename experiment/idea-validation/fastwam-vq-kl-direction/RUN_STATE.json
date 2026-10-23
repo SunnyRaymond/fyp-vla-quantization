@@ -1,0 +1,89 @@
+{
+  "objective": "先做已有checkpoint的training/evaluation parity和梯度方向诊断，比较原步长、半步、四分之一步真实loss；定位已知更好MSE解为何未被新优化超过，再进行latent与action信息论loss下一轮实验；每个GPU作业<2h，subagent监控",
+  "goal_status": "active",
+  "stage": "Full diagnostics and CPU report complete; active goal authorizes next round after this stage.",
+  "handles": {
+    "mse_dual": {
+      "unit": "mse_dual",
+      "status": "confirmed",
+      "gpus": 1,
+      "walltime": "00:45:00",
+      "job_ids": [
+        "25880288.pbs101",
+        "25881167.pbs101"
+      ],
+      "created_utc": "2026-10-19T17:34:00.867755+00:00",
+      "job_id": "25881167.pbs101"
+    },
+    "dual_dual": {
+      "unit": "dual_dual",
+      "status": "confirmed",
+      "gpus": 1,
+      "walltime": "00:45:00",
+      "job_ids": [
+        "25880294.pbs101",
+        "25881169.pbs101"
+      ],
+      "created_utc": "2026-10-19T17:34:06.884212+00:00",
+      "job_id": "25881169.pbs101"
+    },
+    "latent_latent": {
+      "unit": "latent_latent",
+      "status": "confirmed",
+      "gpus": 1,
+      "walltime": "01:59:00",
+      "job_ids": [
+        "25880295.pbs101"
+      ],
+      "created_utc": "2026-10-19T15:09:22.391940+00:00",
+      "job_id": "25880295.pbs101"
+    },
+    "action_action": {
+      "unit": "action_action",
+      "status": "confirmed",
+      "gpus": 1,
+      "walltime": "00:45:00",
+      "job_ids": [
+        "25880296.pbs101",
+        "25881428.pbs101"
+      ],
+      "created_utc": "2026-10-19T18:28:30.077515+00:00",
+      "job_id": "25881428.pbs101"
+    },
+    "aggregate": {
+      "unit": "aggregate",
+      "status": "confirmed",
+      "gpus": 0,
+      "walltime": "00:10:00",
+      "job_ids": [
+        "25881527.pbs101",
+        "25881584.pbs101"
+      ],
+      "created_utc": "2026-10-19T18:56:22.325805+00:00",
+      "job_id": "25881584.pbs101"
+    }
+  },
+  "frozen_source": "fastwam-vq-dual-kl-v1",
+  "diagnostics_requirements": [
+    "same-state full-C80 checkpointed/no-grad action+future parity",
+    "full-C80 average surrogate gradient",
+    "fresh and saved Adam directions x fractions1/.5/.25 x full80 C80 real-loss evaluation",
+    "original parameters restored; no diagnostic trained checkpoint",
+    "periodic GPU telemetry and verified terminal receipts"
+  ],
+  "next_experiment_requirements": [
+    "diagnose and correct observed optimizer or path problem first",
+    "matched starting checkpoint and training budget control",
+    "both action and latent information-theoretic losses assessed",
+    "original C80 and heldout40cases x seeds0/1; no new development or teacher",
+    "full original metric and information-loss comparison; fixed final checkpoint",
+    "report numerical/closed-loop evidence boundaries"
+  ],
+  "monitor": "/root/kl_direction_monitor; gpt-6-luna/xhigh;600seconds",
+  "no_new_teacher_queries": 0,
+  "next_action": "Continue in fastwam-vq-kl-fullbatch-refine with the explicit current goal authorization for the next round; do not use unselected batch1/fresh-Adam continuation proposal.",
+  "latest_user_constraint": "2026-10-20: analyze existing complete C80 results first; do not launch new training.",
+  "new_training_authorized_now": true,
+  "prepared_continuation_status": "Unsubmitted and not selected. Do not assume warmstart plus fresh Adam or half learning rate is supported; assess all actual C80 step conditions first.",
+  "provisional_next_method": "Matched full-C80 gradient refinement with actual-objective step selection and an equally refined MSE control; recipe deferred until all diagnostics complete."
+}

@@ -20,7 +20,37 @@ from urllib.parse import quote
 MAX_PREVIEW_BYTES = 220 * 1024
 PRIMARY_RULE = "lowest call_index for (case_id,seed_index,arm,module,stage,step)"
 STAGE_BY_STREAM = {"video_expert": "video", "action_expert": "action"}
-RENDERER_SCHEMA = "fastwam-prism-renderer-v2"
+RENDERER_SCHEMA = "fastwam-prism-renderer-v3"
+METRICS_SCHEMA = "fastwam-prism-renderer-v2"
+ACTUAL_ARM_LABELS = {
+    "bf16": ("BF16", "identity", "raw"),
+    "spinquant_native_w4a4": ("SpinQuant-adapted", "native INT4", "learned R128"),
+    "smooth_scalar_native_w4a4": ("SmoothScalar", "native INT4", "Smooth+H128"),
+    "row_scale_vq_a4": ("Row-scale VQ", "decoded BF16", "Smooth+H128"),
+    "micro_scale_vq_a4": ("Micro-scale VQ", "decoded BF16", "Smooth+H128"),
+}
+
+
+def actual_arm_label(arm: str, basis: str | None = None) -> str:
+    name, representation, default_basis = ACTUAL_ARM_LABELS.get(
+        arm, (arm.replace("_", " "), "", "")
+    )
+    lines = [name]
+    if representation:
+        lines.append(representation)
+    resolved_basis = basis or default_basis
+    if resolved_basis:
+        lines.append(f"Basis: {resolved_basis}")
+    return "\n".join(lines)
+
+
+def activation_window_note(data_windows: dict) -> str:
+    shapes = {tuple(values.shape) for values in data_windows.values()}
+    max_rows = max(shape[0] for shape in shapes)
+    max_channels = max(shape[1] for shape in shapes)
+    if len(shapes) == 1:
+        return f"window {max_rows} token rows × {max_channels} channels"
+    return f"window up to {max_rows} token rows × {max_channels} channels (shape varies)"
 
 
 def window_shape(shape: tuple[int, ...], row_start: int, row_limit: int,
@@ -435,7 +465,6 @@ def import_plot_libraries():
     try:
         import matplotlib
         matplotlib.use("Agg")
-        import matplotlib.cm as cm
         import matplotlib.pyplot as plt
         import numpy as np
         from matplotlib.colors import Normalize
@@ -445,7 +474,7 @@ def import_plot_libraries():
         raise RuntimeError(
             "renderer needs the environment's NumPy and Matplotlib; do not install them on a login node"
         ) from exc
-    return np, plt, cm, Normalize, PdfPages, ScalarMappable
+    return np, plt, Normalize, PdfPages, ScalarMappable
 
 
 def numeric_matrix(np, data, key: str, record_id: str):
@@ -767,7 +796,8 @@ def set_pale_axes(ax) -> None:
 
 
 def draw_surface(ax, values, plt, cmap, norm, row_label: str, col_label: str,
-                 z_label: str, rcount: int | None = None, ccount: int | None = None):
+                 z_label: str, rcount: int | None = None, ccount: int | None = None,
+                 label_size: int = 6, tick_size: int = 5):
     height, width = values.shape
     if height < 2 or width < 2:
         raise RuntimeError(
@@ -783,11 +813,11 @@ def draw_surface(ax, values, plt, cmap, norm, row_label: str, col_label: str,
         cmap=cmap, norm=norm, linewidth=0, antialiased=False, shade=False,
         rasterized=True,
     )
-    ax.set_xlabel(col_label, fontsize=6, labelpad=1)
-    ax.set_ylabel(row_label, fontsize=6, labelpad=1)
-    ax.set_zlabel(z_label, fontsize=6, labelpad=1)
-    ax.tick_params(axis="both", labelsize=5, pad=0)
-    ax.tick_params(axis="z", labelsize=5, pad=0)
+    ax.set_xlabel(col_label, fontsize=label_size, labelpad=1)
+    ax.set_ylabel(row_label, fontsize=label_size, labelpad=1)
+    ax.set_zlabel(z_label, fontsize=label_size, labelpad=1)
+    ax.tick_params(axis="both", labelsize=tick_size, pad=0)
+    ax.tick_params(axis="z", labelsize=tick_size, pad=0)
     ax.view_init(elev=25, azim=-58)
     ax.set_box_aspect((1.3, 1.0, 0.48))
     set_pale_axes(ax)
@@ -800,12 +830,10 @@ def ensure_comparable(windows: list, label: str) -> tuple[int, int]:
     return next(iter(shapes))
 
 
-def make_activation_figure(np, plt, cm, Normalize, ScalarMappable,
+def make_activation_figure(np, plt, Normalize, ScalarMappable,
                            rows: list[tuple[str, list[tuple[dict, str]]]],
                            blocks: list[int], protocol: dict, title: str,
                            path_map: dict, category: str):
-    height = int_value(protocol.get("plot_tokens", 64), "plot_tokens")
-    width = int_value(protocol.get("plot_channels", 512), "plot_channels")
     data_windows = {}
     for label, cells in rows:
         for block, (row, key) in zip(blocks, cells):
@@ -814,12 +842,6 @@ def make_activation_figure(np, plt, cm, Normalize, ScalarMappable,
                 data_windows[(label, block)] = get_window(np, data, key, row, protocol, category)
             finally:
                 data.close()
-    for block in blocks:
-        ensure_comparable(
-            [data_windows[(label, block)] for label, _ in rows],
-            f"{title}, block {block}",
-        )
-
     col_max = {
         block: max(
             float(np.max(np.abs(data_windows[(label, block)])))
@@ -828,7 +850,7 @@ def make_activation_figure(np, plt, cm, Normalize, ScalarMappable,
     }
     fig = plt.figure(figsize=(22, 3.4 * len(rows) + 1.0), constrained_layout=True)
     axes = {}
-    cmap = cm.get_cmap("viridis")
+    cmap = plt.get_cmap("viridis")
     for row_index, (label, _) in enumerate(rows):
         for col_index, block in enumerate(blocks):
             ax = fig.add_subplot(len(rows), len(blocks), row_index * len(blocks) + col_index + 1,
@@ -841,7 +863,10 @@ def make_activation_figure(np, plt, cm, Normalize, ScalarMappable,
                 rcount=values.shape[0], ccount=values.shape[1],
             )
             ax.set_zlim(0.0, vmax)
-            ax.set_title(f"block {block}", fontsize=8, pad=1)
+            ax.set_title(
+                f"block {block} · {values.shape[0]}×{values.shape[1]}",
+                fontsize=8, pad=1,
+            )
             axes[(row_index, col_index)] = ax
         axes[(row_index, 0)].text2D(
             -0.12, 0.5, label, transform=axes[(row_index, 0)].transAxes,
@@ -853,7 +878,7 @@ def make_activation_figure(np, plt, cm, Normalize, ScalarMappable,
         fig.colorbar(mapper, ax=[axes[(r, col_index)] for r in range(len(rows))],
                      shrink=0.63, pad=0.01, aspect=24, label=f"|activation|, 0–{vmax:.3g}")
     fig.suptitle(
-        f"{title} | first {height} token rows × {width} channels; "
+        f"{title} | {activation_window_note(data_windows)}; "
         f"shared abs heights/colors within each depth",
         fontsize=12,
     )
@@ -896,7 +921,7 @@ def weight_scale_data(np, row, path_map, record_id: str):
     return values
 
 
-def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
+def make_weight_pages(np, plt, Normalize, ScalarMappable, PdfPages,
                       rows_by_arm: dict, arms: list[str], blocks: list[int],
                       protocol: dict, title: str, path_map: dict):
     weights = {}
@@ -939,7 +964,7 @@ def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
     surfaces = []
     fig = plt.figure(figsize=(22, 3.25 * len(arms) + 1), constrained_layout=True)
     axes = {}
-    cmap = cm.get_cmap("cividis")
+    cmap = plt.get_cmap("cividis")
     for r, arm in enumerate(arms):
         for c, block in enumerate(blocks):
             ax = fig.add_subplot(len(arms), len(blocks), r * len(blocks) + c + 1, projection="3d")
@@ -953,7 +978,7 @@ def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
             ax.set_title(f"block {block}", fontsize=7, pad=1)
             axes[(r, c)] = ax
         row_basis = basis_labels[(arm, blocks[0])]
-        row_label = arm.replace("_", " ") + (f" | {row_basis}" if row_basis else "")
+        row_label = actual_arm_label(arm, row_basis)
         axes[(r, 0)].text2D(
             -0.12, 0.5, row_label, transform=axes[(r, 0)].transAxes,
             ha="right", va="center", fontsize=7,
@@ -973,7 +998,7 @@ def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
     errors = []
     fig = plt.figure(figsize=(22, 3.0 * len(arms) + 1), constrained_layout=True)
     axes = {}
-    error_cmap = cm.get_cmap("magma")
+    error_cmap = plt.get_cmap("magma")
     for r, arm in enumerate(arms):
         for c, block in enumerate(blocks):
             ax = fig.add_subplot(len(arms), len(blocks), r * len(blocks) + c + 1)
@@ -985,7 +1010,7 @@ def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
             )
             axes[(r, c)] = ax
         row_basis = basis_labels[(arm, blocks[0])]
-        row_label = arm.replace("_", " ") + (f" | {row_basis}" if row_basis else "")
+        row_label = actual_arm_label(arm, row_basis)
         axes[(r, 0)].text(
             -0.12, 0.5, row_label, transform=axes[(r, 0)].transAxes,
             ha="right", va="center", fontsize=7,
@@ -1005,7 +1030,7 @@ def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
     if any(scale_values.values()):
         fig = plt.figure(figsize=(22, 2.8 * len(arms) + 1), constrained_layout=True)
         axes = {}
-        scale_cmap = cm.get_cmap("viridis")
+        scale_cmap = plt.get_cmap("viridis")
         scale_bounds = {}
         for block in blocks:
             all_values = [
@@ -1049,7 +1074,7 @@ def make_weight_pages(np, plt, cm, Normalize, ScalarMappable, PdfPages,
                         ax.tick_params(labelsize=5)
                 axes[(r, c)] = ax
             row_basis = basis_labels[(arm, blocks[0])]
-            row_label = arm.replace("_", " ") + (f" | {row_basis}" if row_basis else "")
+            row_label = actual_arm_label(arm, row_basis)
             axes[(r, 0)].text(
                 -0.12, 0.5, row_label, transform=axes[(r, 0)].transAxes,
                 ha="right", va="center", fontsize=7,
@@ -1158,20 +1183,6 @@ def make_bundle_specs(protocol: dict, main_rows: dict, weight_rows: dict,
         "learned_spinquant": "SpinQuant-adapted learned R128",
         "smooth05_hadamard": "Smooth0.5 Hadamard",
     }
-    actual_labels = {
-        "bf16": "BF16 raw; A4 skipped",
-        "spinquant_native_w4a4": "learned R128, SpinQuant-adapted; before A4",
-        "smooth_scalar_native_w4a4": "Smooth+H128 basis; before A4",
-        "row_scale_vq_a4": "Smooth+H128 basis; before decoded-BF16 A4",
-        "micro_scale_vq_a4": "Smooth+H128 basis; before decoded-BF16 A4",
-    }
-    post_labels = {
-        "bf16": "BF16 identity copy",
-        "spinquant_native_w4a4": "SpinQuant-adapted native INT4 QDQ",
-        "smooth_scalar_native_w4a4": "SmoothScalar native INT4 QDQ",
-        "row_scale_vq_a4": "Row-scale VQ decoded BF16 after A4",
-        "micro_scale_vq_a4": "Micro-scale VQ decoded BF16 after A4",
-    }
     for stream in streams:
         for suffix in suffixes:
             paired_rows = []
@@ -1201,8 +1212,8 @@ def make_bundle_specs(protocol: dict, main_rows: dict, weight_rows: dict,
                     row = main_rows["actual"][(stream, suffix)][(arm, block)]
                     cells.append((row, "pre_quant"))
                     actual_rows.append(row)
-                pre_rows.append((actual_labels.get(arm, arm.replace("_", " ")), cells))
-                post_rows.append((post_labels.get(arm, arm.replace("_", " ")),
+                pre_rows.append((actual_arm_label(arm), cells))
+                post_rows.append((actual_arm_label(arm),
                                   [(row, "post_quant") for row, _ in cells]))
             specs.append({
                 "id": f"activation_actual_{stream}_{suffix.replace('.', '_')}",
@@ -1231,13 +1242,13 @@ def make_bundle_specs(protocol: dict, main_rows: dict, weight_rows: dict,
     return specs
 
 
-def render_bundle(spec: dict, np, plt, cm, Normalize, PdfPages, ScalarMappable,
+def render_bundle(spec: dict, np, plt, Normalize, PdfPages, ScalarMappable,
                   protocol: dict, blocks: list[int], arms: list[str],
                   path_map: dict, plot_dir: Path, out_root: Path,
                   raw_root: Path) -> dict:
     if spec["kind"] == "paired":
         fig, _ = make_activation_figure(
-            np, plt, cm, Normalize, ScalarMappable, spec["plot_rows"], blocks,
+            np, plt, Normalize, ScalarMappable, spec["plot_rows"], blocks,
             protocol, spec["title"], path_map, "paired",
         )
         pages = [(fig, spec["page_descriptions"][0])]
@@ -1247,11 +1258,11 @@ def render_bundle(spec: dict, np, plt, cm, Normalize, PdfPages, ScalarMappable,
         )
     if spec["kind"] == "actual":
         pre_fig, _ = make_activation_figure(
-            np, plt, cm, Normalize, ScalarMappable, spec["pre_rows"], blocks,
+            np, plt, Normalize, ScalarMappable, spec["pre_rows"], blocks,
             protocol, spec["title"] + " | before A4", path_map, "actual",
         )
         post_fig, _ = make_activation_figure(
-            np, plt, cm, Normalize, ScalarMappable, spec["post_rows"], blocks,
+            np, plt, Normalize, ScalarMappable, spec["post_rows"], blocks,
             protocol, spec["title"] + " | after A4", path_map, "actual",
         )
         pages = [(pre_fig, spec["page_descriptions"][0]),
@@ -1262,7 +1273,7 @@ def render_bundle(spec: dict, np, plt, cm, Normalize, PdfPages, ScalarMappable,
         )
 
     pages, scales_meta = make_weight_pages(
-        np, plt, cm, Normalize, ScalarMappable, PdfPages, spec["rows_by_arm"],
+        np, plt, Normalize, ScalarMappable, PdfPages, spec["rows_by_arm"],
         arms, blocks, protocol, spec["title"], path_map,
     )
     descriptions = [
@@ -1276,6 +1287,190 @@ def render_bundle(spec: dict, np, plt, cm, Normalize, PdfPages, ScalarMappable,
         spec["source_rows"], out_root, raw_root, scales_meta,
         preview_page_numbers=spec["preview_page_numbers"],
     )
+
+
+def focus_bundle_spec(bundle_specs: list[dict], kind: str, stream: str,
+                      suffix: str) -> dict:
+    matches = [
+        spec for spec in bundle_specs
+        if spec["kind"] == kind and spec["stream"] == stream and spec["suffix"] == suffix
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected one existing {kind} bundle for {stream}/{suffix}, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def make_focus_activation_figure(np, plt, Normalize, rows: list[tuple[str, dict, str]],
+                                 protocol: dict, title: str, path_map: dict,
+                                 category: str):
+    windows = []
+    for label, row, key in rows:
+        data, _ = open_record(np, row, path_map, category)
+        try:
+            values = get_window(np, data, key, row, protocol, category)
+        finally:
+            data.close()
+        windows.append((label, values))
+
+    vmax = max(float(np.max(np.abs(values))) for _, values in windows) or 1.0
+    cmap = plt.get_cmap("viridis")
+    fig = plt.figure(figsize=(3.8 * len(windows), 4.5), constrained_layout=True)
+    for index, (label, values) in enumerate(windows, start=1):
+        ax = fig.add_subplot(1, len(windows), index, projection="3d")
+        draw_surface(
+            ax, values, plt, cmap, Normalize(0.0, vmax), "Token row", "Channel",
+            "|activation|", rcount=values.shape[0], ccount=values.shape[1],
+            label_size=9, tick_size=7,
+        )
+        ax.set_zlim(0.0, vmax)
+        ax.set_title(f"{label}\n{values.shape[0]}×{values.shape[1]}", fontsize=10, pad=3)
+    fig.suptitle(
+        f"{title} | {activation_window_note({str(i): values for i, (_, values) in enumerate(windows)})}; "
+        f"shared abs z/color range 0–{vmax:.3g}",
+        fontsize=11,
+    )
+    return fig
+
+
+def make_focus_weight_figure(np, plt, Normalize, arms: list[str], rows_by_arm: dict,
+                             block: int, protocol: dict, title: str, path_map: dict):
+    values_by_arm = {}
+    bases = {}
+    for arm in arms:
+        row = rows_by_arm[(arm, block)]
+        data, metadata = open_record(np, row, path_map, "weight")
+        try:
+            values_by_arm[arm] = get_window(np, data, "weight", row, protocol, "weight")
+        finally:
+            data.close()
+        basis = metadata.get("basis", row.get("basis"))
+        if basis is None and isinstance(metadata.get("metadata"), dict):
+            basis = metadata["metadata"].get("basis")
+        bases[arm] = str(basis) if basis is not None else None
+
+    vmax = max(float(np.max(np.abs(values))) for values in values_by_arm.values()) or 1.0
+    cmap = plt.get_cmap("cividis")
+    fig = plt.figure(figsize=(3.8 * len(arms), 4.5), constrained_layout=True)
+    for index, arm in enumerate(arms, start=1):
+        values = values_by_arm[arm]
+        ax = fig.add_subplot(1, len(arms), index, projection="3d")
+        draw_surface(
+            ax, values, plt, cmap, Normalize(0.0, vmax), "Output channel", "Input channel",
+            "|weight|", rcount=values.shape[0], ccount=values.shape[1],
+            label_size=9, tick_size=7,
+        )
+        ax.set_zlim(0.0, vmax)
+        ax.set_title(
+            f"{actual_arm_label(arm, bases[arm])}\n{values.shape[0]}×{values.shape[1]}",
+            fontsize=9, pad=3,
+        )
+    fig.suptitle(
+        f"{title} | x=input channel, y=output channel; signed NPZ retained, surface=|weight|; "
+        f"shared z/color range 0–{vmax:.3g}",
+        fontsize=11,
+    )
+    return fig
+
+
+def render_focus_figures(bundle_specs: list[dict], arms: list[str], blocks: list[int],
+                         protocol: dict, main_case: int, main_step: int,
+                         np, plt, Normalize, PdfPages,
+                         path_map: dict, plot_dir: Path, out_root: Path,
+                         raw_root: Path, soft_deadline: float) -> dict | None:
+    if main_case != 1004 or main_step != 4:
+        raise RuntimeError("single-layer focus figures require frozen main case 1004, step 4")
+    suffix = "ffn.2"
+    block = 10
+    if block not in blocks:
+        raise RuntimeError("single-layer focus figures require existing block 10 bundle cells")
+    block_index = blocks.index(block)
+    figure_rows = []
+
+    for stream in ("video_expert", "action_expert"):
+        paired = focus_bundle_spec(bundle_specs, "paired", stream, suffix)
+        actual = focus_bundle_spec(bundle_specs, "actual", stream, suffix)
+        weight = focus_bundle_spec(bundle_specs, "weight", stream, suffix)
+        targets = (
+            ("paired", paired["plot_rows"], "paired", "paired transforms"),
+            ("actual_pre", actual["pre_rows"], "actual", "actual pre-A4 arms"),
+            ("actual_post", actual["post_rows"], "actual", "actual post-A4 arms"),
+        )
+        for focus_kind, spec_rows, category, description in targets:
+            if time.time() >= soft_deadline:
+                return None
+            rows = [
+                (label, cells[block_index][0], cells[block_index][1])
+                for label, cells in spec_rows
+            ]
+            title = (
+                f"{stream} | {description} | case {main_case}, step {main_step}, "
+                f"{suffix}, block {block}"
+            )
+            fig = make_focus_activation_figure(
+                np, plt, Normalize, rows, protocol, title, path_map, category,
+            )
+            stem = f"focus_{stream}_{focus_kind}_{suffix.replace('.', '_')}_block{block}"
+            figure = save_bundle(
+                PdfPages, [(fig, description)], plot_dir, stem,
+                [row for _, row, _ in rows], out_root, raw_root,
+                extra={
+                    "title": title,
+                    "stream": stream,
+                    "focus_kind": focus_kind,
+                    "case_id": main_case,
+                    "step": main_step,
+                    "module": suffix,
+                    "block": block,
+                },
+                preview_page_numbers={1},
+            )
+            figure_rows.append(figure)
+
+        if time.time() >= soft_deadline:
+            return None
+        weight_rows = [weight["rows_by_arm"][(arm, block)] for arm in arms]
+        title = (
+            f"{stream} | actual weight arms | case {main_case}, step {main_step}, "
+            f"{suffix}, block {block}"
+        )
+        fig = make_focus_weight_figure(
+            np, plt, Normalize, arms, weight["rows_by_arm"], block,
+            protocol, title, path_map,
+        )
+        stem = f"focus_{stream}_weight_{suffix.replace('.', '_')}_block{block}"
+        figure_rows.append(save_bundle(
+            PdfPages, [(fig, "actual weight arms; surface is absolute weight")],
+            plot_dir, stem, weight_rows, out_root, raw_root,
+            extra={
+                "title": title,
+                "stream": stream,
+                "focus_kind": "weight",
+                "case_id": main_case,
+                "step": main_step,
+                "module": suffix,
+                "block": block,
+            },
+            preview_page_numbers={1},
+        ))
+
+    if len(figure_rows) != 8:
+        raise RuntimeError(f"expected 8 single-layer focus figures, rendered {len(figure_rows)}")
+    manifest = {
+        "renderer_schema": RENDERER_SCHEMA,
+        "status": "complete",
+        "focus": {
+            "case_id": main_case,
+            "step": main_step,
+            "module": suffix,
+            "block": block,
+            "streams": ["video_expert", "action_expert"],
+        },
+        "figures": figure_rows,
+    }
+    atomic_write_json(plot_dir / "focus_manifest.json", manifest)
+    return manifest
 
 
 def output_file_exists(plot_dir: Path, relative_path: str, max_bytes: int | None = None) -> bool:
@@ -1336,7 +1531,7 @@ def cached_metrics(plot_dir: Path, protocol: dict, source_identities: dict,
         value = read_json(path)
     except RuntimeError:
         return None
-    if value.get("renderer_schema") != RENDERER_SCHEMA:
+    if value.get("renderer_schema") != METRICS_SCHEMA:
         return None
     if value.get("protocol_snapshot") != protocol or value.get("source_identities") != source_identities:
         return None
@@ -1350,7 +1545,8 @@ def write_gallery(plot_dir: Path, protocol_path: Path, out_root: Path,
                   figures: list[dict], metrics_path: str, raw_manifest_path: Path,
                   additional_rows: list[dict], protocol: dict,
                   source_identities: dict, status: str,
-                  expected_bundle_count: int, metrics_ready: bool) -> None:
+                  expected_bundle_count: int, metrics_ready: bool,
+                  focus_manifest_ready: bool = False) -> None:
     protocol_copy = plot_dir / "protocol.json"
     shutil.copyfile(protocol_path, protocol_copy)
     manifest_doc = {
@@ -1389,10 +1585,15 @@ def write_gallery(plot_dir: Path, protocol_path: Path, out_root: Path,
         '<a href="manifest.json">visualization manifest</a>',
         "</p>",
     ]
+    manifest_link_index = lines.index('<a href="manifest.json">visualization manifest</a>')
     if metrics_ready:
-        lines[lines.index('<a href="manifest.json">visualization manifest</a>')] = (
+        lines[manifest_link_index] = (
             '<a href="metrics.json">per-record metrics</a> · '
             + '<a href="manifest.json">visualization manifest</a>'
+        )
+    if focus_manifest_ready:
+        lines[manifest_link_index] += (
+            ' · <a href="focus_manifest.json">single-layer focus figures</a>'
         )
     if status == "checkpointed":
         lines.append(
@@ -1470,7 +1671,7 @@ def main() -> int:
     main_rows, weight_rows, path_map, extras = preflight(
         protocol, manifest, records, out_root, raw_root
     )
-    np, plt, cm, Normalize, PdfPages, ScalarMappable = import_plot_libraries()
+    np, plt, Normalize, PdfPages, ScalarMappable = import_plot_libraries()
 
     plot_dir = out_root / "plots"
     preview_dir = plot_dir / "previews"
@@ -1546,7 +1747,7 @@ def main() -> int:
             return 0
         metric_doc = calculate_all_metrics(np, records, path_map, out_root, raw_root, protocol)
         metric_doc.update({
-            "renderer_schema": RENDERER_SCHEMA,
+            "renderer_schema": METRICS_SCHEMA,
             "protocol_snapshot": protocol,
             "source_identities": source_identities,
         })
@@ -1571,7 +1772,7 @@ def main() -> int:
             print(f"Render checkpointed after {len(ordered)}/{len(bundle_specs)} complete bundles.")
             return 0
         figure_map[spec["id"]] = render_bundle(
-            spec, np, plt, cm, Normalize, PdfPages, ScalarMappable, protocol,
+            spec, np, plt, Normalize, PdfPages, ScalarMappable, protocol,
             blocks, arms, path_map, plot_dir, out_root, raw_root,
         )
         ordered = [figure_map[item["id"]] for item in bundle_specs if item["id"] in figure_map]
@@ -1581,11 +1782,20 @@ def main() -> int:
             "checkpointed", len(bundle_specs), True,
         )
 
+    focus_manifest = render_focus_figures(
+        bundle_specs, arms, blocks, protocol, main_case, main_step,
+        np, plt, Normalize, PdfPages, path_map, plot_dir, out_root, raw_root,
+        soft_deadline,
+    )
+    if focus_manifest is None:
+        print("Render checkpointed after 12 bundles; single-layer focus figures will resume on rerun.")
+        return 0
+
     figures = [figure_map[spec["id"]] for spec in bundle_specs]
     write_gallery(
         plot_dir, protocol_path, out_root, figures, metrics_rel,
         raw_manifest_path, extras, protocol, source_identities,
-        "complete", len(bundle_specs), True,
+        "complete", len(bundle_specs), True, focus_manifest_ready=True,
     )
     print(
         f"Rendered/resumed {len(figures)} bundles; "

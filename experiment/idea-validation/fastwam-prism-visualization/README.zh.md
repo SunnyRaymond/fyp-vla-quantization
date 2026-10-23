@@ -1,5 +1,38 @@
 # Fast-WAM Prism 风格 activation / weight 可视化
 
+## 已完成结果（2026-10-12）
+
+[打开本机图集](retrieved/results/full/plots/gallery.html)：8 张单层放大图优先展示，12 组总览可展开查看，共 24 个本机 JPEG 预览。图集中也列出对应窗口的 channel/token RMS CV 与量化 NMSE。
+
+采集为 2 个冻结输入 × 5 个 arm，共 **10 次 forward**；保存 560 份实际 activation、112 份同输入 paired-local 记录和 80 份 weight 记录，共 752 份。16 个目标 Linear 覆盖两个 expert、两个位置和 block 0/10/20/29，scheduler snapshots 为 0/4/9；conditioning/prefill 另行保留。采集作业 `25770787.pbs101` 用时 36 分 48 秒，最终 CPU 交付作业 `25771972.pbs101` 成功完成。各 allocation 的 walltime 上限均为 2 小时。
+
+下面是主展示位置 **case 1004、step 4、ffn.2 block 10** 的同输入对照。Channel RMS CV 越低，说明该窗口内各通道的典型幅度越接近；max/RMS 越低，说明极端值相对整体幅度更弱。
+
+| 变换 | Video channel RMS CV | Action channel RMS CV | Video max/RMS | Video 候选 A4 NMSE |
+|---|---:|---:|---:|---:|
+| Raw | 0.492 | 0.673 | 16.52 | 0.2984 |
+| Learned SpinQuant R128 | 0.130 | 0.364 | 5.71 | 0.0396 |
+| Smooth0.5 + H128 | 0.122 | 0.494 | 4.76 | 0.0330 |
+
+这两个位置都显示尖峰减弱，但均匀程度与方向、位置有关：Video 此层中 Smooth+H128 的 channel CV 略低，Action 此层则是 learned SpinQuant 更低。SpinQuant 的 token RMS CV 基本维持原值，符合它沿 channel 旋转的作用；它不会自动让不同 token 的整体能量相同。这里的统计窗口是 Video 64×512、Action 32×512；不能将窗口结论推广到整个模型或所有输入。表中 A4 NMSE 是同输入变换后的局部 QDQ 候选误差，Smooth 的缩放会改变基底，不能据此直接排列完整模型的 accuracy。
+
+Row-scale VQ 和 Micro-scale VQ 使用同一 Smooth+H128 / A4 activation recipe。此层两者实际 activation 的 channel CV 几乎相同；Micro VQ 的优势主要应结合同基底 weight 误差看。Video weight NMSE 为 Row 0.012802、Micro 0.012743；Action 为 Row 0.019696、Micro 0.019163，Micro 在这两个窗口内略低。更平坦的表面并不自动意味着更准确，图集同时保留误差指标供比较。VQ 在本次采集中执行 decoded BF16，不能把这些结果当成 native VQ kernel 或速度证据。
+
+原始 signed float32 NPZ、变换、索引 metadata、完整 metrics 和 PNG/PDF 均保存在远端：
+
+```text
+/scratch/users/ntu/yguo017/fastwam-prism-visualization-20261012/results/full/
+  raw/manifest.json             # 每份原始数组的路径、shape、case/arm/stage/step/call
+  raw/                         # signed activation / paired-local / weight / transform NPZ
+  protocol.json                # 冻结输入、源 checkpoint 和窗口协议
+  plots/metrics.json           # 全部 752 份记录的完整窗口指标与 RMS profiles
+  plots/manifest.json          # 12 组总览及其 PNG/PDF/source-record 对应关系
+  plots/focus_manifest.json    # 8 张单层放大图及对应原始数组
+  plots/delivery_summary.json  # 本机图集使用的小型数值摘要
+```
+
+本机仅取回小型 JSON/JPEG，完整原始数组与原图仍在上述目录。[本机数值摘要](retrieved/results/full/plots/delivery_summary.json) 与 [冻结协议](retrieved/results/full/plots/protocol.json) 可直接查看。6 个 BF16/VQ query 与对应旧动作逐元素一致；4 个 native query 没有同执行路径的旧动作参考，已明确记录缺失，没有增加 forward 或替换参考。
+
 本目录提供冻结的 `protocol.json`、采集器和 renderer，用来观察选定 Fast-WAM Linear 的 activation 与 weight 数值形状。它是描述性机制图，不是 accuracy benchmark，也不能单独证明 quantization 带来 accuracy、latency 或 closed-loop control 改善。
 
 ## 主图如何比较

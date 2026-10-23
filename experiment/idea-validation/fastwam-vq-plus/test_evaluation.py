@@ -21,6 +21,7 @@ from evaluate import (  # noqa: E402
     worker_arm,
     worker_indices,
 )
+from aggregate import summarize_timing_by_implementation  # noqa: E402
 
 
 def fixture_manifest():
@@ -40,10 +41,20 @@ def fixture_manifest():
     return {"protocol": COHORT_PROTOCOL, "variants": variants}
 
 
-def valid_record(rows, index, worker_id, query_index, bank="frozen-bank"):
+def valid_record(rows, index, worker_id, query_index, bank="frozen-bank", *,
+                 implementation=None, run_id=None, first_in_run=None, timing=0.0):
     row = rows[index]
     arm = worker_arm(worker_id)
-    return {
+    metric = {
+        "query_index_in_arm": query_index,
+        "first_query_in_arm": query_index == 0,
+        "denoising_latency_ms": timing,
+        "full_query_wall_ms": timing,
+        "peak_allocated_gpu_GB": timing / 100,
+        "baseline_allocated_gpu_GB": timing / 100,
+        "peak_reserved_gpu_GB": timing / 100,
+    }
+    record = {
         "protocol": PROTOCOL,
         "arm": arm,
         "worker_id": worker_id,
@@ -73,16 +84,13 @@ def valid_record(rows, index, worker_id, query_index, bank="frozen-bank"):
             "kv_layer_reads": 0,
             "quantized_linear_calls": 614,
         },
-        "metrics": [{
-            "query_index_in_arm": query_index,
-            "first_query_in_arm": query_index == 0,
-            "denoising_latency_ms": 0.0,
-            "full_query_wall_ms": 0.0,
-            "peak_allocated_gpu_GB": 0.0,
-            "baseline_allocated_gpu_GB": 0.0,
-            "peak_reserved_gpu_GB": 0.0,
-        }],
+        "metrics": [metric],
     }
+    if implementation is not None:
+        record.update(transform_implementation=implementation, pbs_job_id=run_id)
+        metric.update(transform_implementation=implementation, pbs_job_id=run_id,
+                      first_query_in_run=first_in_run)
+    return record
 
 
 class EvaluationControlTests(unittest.TestCase):
@@ -149,6 +157,38 @@ class EvaluationControlTests(unittest.TestCase):
             saved_lines = path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(saved_lines), 2)
             self.assertEqual([json.loads(line)["index"] for line in saved_lines], indices[:2])
+
+    def test_resume_old_records_into_new_run_and_split_timing(self):
+        indices = worker_indices(0)
+        records = [
+            valid_record(self.rows, indices[0], 0, 0, timing=10.0),
+            valid_record(self.rows, indices[1], 0, 1, timing=20.0),
+            valid_record(self.rows, indices[2], 0, 2, implementation="batched_h128_v2",
+                         run_id="pbs-new", first_in_run=True, timing=100.0),
+            valid_record(self.rows, indices[3], 0, 3, implementation="batched_h128_v2",
+                         run_id="pbs-new", first_in_run=False, timing=200.0),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "episodes.jsonl"
+            path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+            resumed = recover_records(path, self.rows, 0, "frozen-bank")
+
+        self.assertEqual(list(resumed), indices[:4])
+        self.assertEqual(len(resumed), len({record["variant_id"] for record in resumed.values()}))
+        metrics = [metric for record in resumed.values() for metric in record["metrics"]]
+        self.assertEqual([metric["query_index_in_arm"] for metric in metrics], list(range(4)))
+        self.assertEqual([metric.get("first_query_in_run") for metric in metrics],
+                         [None, None, True, False])
+
+        summary = summarize_timing_by_implementation(
+            resumed, lambda values, _unit: list(values)
+        )["by_implementation"]
+        old = summary["source_per_block_v1"]["query_timing"]
+        new = summary["batched_h128_v2"]["query_timing"]
+        self.assertEqual(old["first_query_in_run"]["full_action_query_wall_ms"], [10.0])
+        self.assertEqual(old["subsequent_queries"]["full_action_query_wall_ms"], [20.0])
+        self.assertEqual(new["first_query_in_run"]["full_action_query_wall_ms"], [100.0])
+        self.assertEqual(new["subsequent_queries"]["full_action_query_wall_ms"], [200.0])
 
 
 if __name__ == "__main__":

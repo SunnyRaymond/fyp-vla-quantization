@@ -1,0 +1,60 @@
+#!/bin/bash
+#PBS -N fwlr128diag
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-learned-r128-c8-20261021
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+UPSTREAM_JOB=25902163.pbs101
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+test -n "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+test -s "$PBS_NODEFILE" || { echo 'PBS_NODEFILE is empty or unavailable' >&2; exit 64; }
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not running; refusing accounting startup' >&2; exit 64;
+}
+
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+WALLTIME_RECEIPT=$ARTIFACTS/upstream-walltime.txt
+UPSTREAM_QSTAT=$(timeout 15s qstat -xf "$UPSTREAM_JOB" 2>/dev/null || true)
+UPSTREAM_WALLTIME=$(awk -F= '/resources_used\.walltime[[:space:]]*=/ {
+  value=$2; gsub(/[[:space:]]/, "", value); sub(/\..*$/, "", value); print value; exit
+}' <<< "$UPSTREAM_QSTAT")
+if [[ "$UPSTREAM_WALLTIME" =~ ^[0-9]+:[0-5][0-9]:[0-5][0-9]$ ]]; then
+  printf 'available %s\n' "$UPSTREAM_WALLTIME" > "$WALLTIME_RECEIPT"
+else
+  printf 'unavailable\n' > "$WALLTIME_RECEIPT"
+fi
+exec > >(tee -a "$ARTIFACTS/diagnosis-job.log") 2>&1
+printf 'PBS_JOBID=%s host=%s upstream_job=%s\n' "$PBS_JOBID" "$HOST" "$UPSTREAM_JOB"
+
+test -s "$NEW_ROOT/diagnose_saved.py" -a -s "$NEW_ROOT/protocol.json" -a -s "$SIF"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+
+# CPU-only container execution: deliberately no --nv, CUDA binding, or model runtime.
+apptainer exec --cleanenv \
+  --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/.singularity.d/libs:${LD_LIBRARY_PATH:-}" \
+  --env "PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE,PBS_ALLOCATION_RECEIPT=$ARTIFACTS/allocation.txt,PBS_UPSTREAM_WALLTIME_RECEIPT=$WALLTIME_RECEIPT,PYTHONUNBUFFERED=1,OMP_NUM_THREADS=1,OPENBLAS_NUM_THREADS=1" \
+  "$SIF" "$BASE/venv/bin/python" "$NEW_ROOT/diagnose_saved.py" \
+  --root "$NEW_ROOT" --upstream-job "$UPSTREAM_JOB" --walltime-receipt "$WALLTIME_RECEIPT"
+
+printf 'SAVED_DIAGNOSIS_EXIT=0\n'

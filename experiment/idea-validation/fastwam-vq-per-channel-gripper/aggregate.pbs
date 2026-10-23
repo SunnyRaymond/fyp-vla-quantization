@@ -1,0 +1,54 @@
+#!/bin/bash
+#PBS -N fwpcgrag
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=1:mem=4gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-per-channel-gripper-20261018
+CLIP_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RUNTIME_ARTIFACTS=$PARENT/artifacts/25814264.pbs101
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution'; exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+export ARTIFACTS
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+for name in worker.py analysis.py gripper_loss.py protocol.json source_per_channel_protocol.json; do cp "$NEW_ROOT/$name" "$ARTIFACTS/"; done
+cp /scratch/users/ntu/yguo017/fastwam-vq-continuous-b32-scaling-clipping-20261017/continuous_banks.py "$ARTIFACTS/continuous_banks.py"
+cp "$CLIP_ROOT/experiment.py" "$ARTIFACTS/clipping_reference.py"
+for file in clip_banks.py selfcheck.py; do
+  cp "$CLIP_ROOT/$file" "$ARTIFACTS/"
+done
+for file in train_banks.py batched_transform.py transform_checks.py environment.sh; do
+  cp "$PARENT/$file" "$ARTIFACTS/"
+done
+for file in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  cp "$RUNTIME_ARTIFACTS/$file" "$ARTIFACTS/"
+done
+cp /scratch/users/ntu/yguo017/fastwam-vq-activation-ablation-20261017/evaluate.py "$ARTIFACTS/metrics_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-c80-activation-clipping-20261017/worker.py "$ARTIFACTS/c80_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-scaling-clipping-20261017/worker.py "$ARTIFACTS/discrete_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-continuous-b32-scaling-clipping-20261017/worker.py "$ARTIFACTS/uncoupled_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-absmax-coupling-20261018/coupled_banks.py "$ARTIFACTS/coupled_banks.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-absmax-coupling-20261018/worker.py "$ARTIFACTS/coupled_reference.py"
+VISITED_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-vq-visited-diagnostic-20261018/artifacts/25863989.pbs101
+for name in metrics.py test_metrics.py visited_common.py; do cp "$VISITED_ARTIFACTS/$name" "$ARTIFACTS/"; done
+cp "$VISITED_ARTIFACTS/worker.py" "$ARTIFACTS/source_worker.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-per-channel-visited-diagnostic-20261018/artifacts/25868350.pbs101/worker.py "$ARTIFACTS/visited_reference.py"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+python3 "$ARTIFACTS/worker.py" --unit aggregate --protocol "$ARTIFACTS/protocol.json"
+touch "$ARTIFACTS/PHASE_COMPLETE"

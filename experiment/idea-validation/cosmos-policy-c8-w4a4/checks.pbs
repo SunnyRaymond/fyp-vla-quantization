@@ -1,0 +1,106 @@
+#!/bin/bash -l
+#PBS -N cosp1015check
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" && test -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS/helpers" "$ARTIFACTS/tmp" "$ROOT/results/checks"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+for file in "$ROOT"/*.py "$ROOT"/*.pbs "$ROOT"/*.sh "$ROOT/protocol.json"; do cp "$file" "$ARTIFACTS/"; done
+for file in "$ARTIFACTS"/*.pbs "$ARTIFACTS"/*.sh; do /bin/bash -n "$file"; done
+cp /scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/rotation.py "$ARTIFACTS/helpers/"
+cp /scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014/micro_codebook.py "$ARTIFACTS/helpers/"
+cp /scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014/train_banks.py "$ARTIFACTS/helpers/"
+cp /scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009/artifacts/25743693.pbs101/codebook.py "$ARTIFACTS/helpers/"
+cp /scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006/smooth_vq.py "$ARTIFACTS/helpers/"
+cp /scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/batched_transform.py "$ARTIFACTS/helpers/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+PLUS=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+NATIVE=$PLUS/native/imagemagick-jammy
+NATIVE_LIB=$NATIVE/usr/lib/x86_64-linux-gnu
+REPO=$ROOT/vendor/cosmos-policy
+test -s "$SIF" -a -d "$REPO"
+mkdir -p "$ROOT/results/checks"
+DUMMY_CUDA_VISIBLE_DEVICES='GPU-00000000-0000-0000-0000-000000000001,GPU-00000000-0000-0000-0000-000000000002,GPU-00000000-0000-0000-0000-000000000003,GPU-00000000-0000-0000-0000-000000000004'
+APPTAINERENV_CUDA_VISIBLE_DEVICES="$DUMMY_CUDA_VISIBLE_DEVICES" apptainer exec --cleanenv \
+  --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$ARTIFACTS/tmp:/tmp" \
+  --pwd "$ARTIFACTS" \
+  "$SIF" "$ROOT/env/bin/python" -c '
+import json, os, sys
+expected = sys.argv[2]
+observed = os.environ.get("CUDA_VISIBLE_DEVICES")
+if observed != expected:
+    raise SystemExit(f"CUDA_VISIBLE_DEVICES was altered: expected={expected!r}, observed={observed!r}")
+receipt = {"status": "passed", "expected_cuda_visible_devices": expected,
+           "observed_cuda_visible_devices": observed, "uuid_count": expected.count(",") + 1,
+           "apptainer_cleanenv": True, "apptainer_nv": False, "model_loads": 0,
+           "gpu_forwards": 0}
+with open(sys.argv[1], "w", encoding="utf-8") as stream:
+    json.dump(receipt, stream, indent=2)
+print(json.dumps(receipt), flush=True)
+' "$ROOT/results/checks/container_env_preflight.json" "$DUMMY_CUDA_VISIBLE_DEVICES"
+apptainer exec --cleanenv --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind "$ARTIFACTS/tmp:/tmp" --bind "$PBS_NODEFILE:$PBS_NODEFILE:ro" \
+  --pwd "$ARTIFACTS" \
+  --env "ROOT=$ROOT,ARTIFACTS=$ARTIFACTS,PBS_JOBID=$PBS_JOBID,PBS_NODEFILE=$PBS_NODEFILE" \
+  --env "PYTHONPATH=$ARTIFACTS:$ARTIFACTS/helpers:$ROOT:$REPO:$PLUS/libero-plus-compat:$PLUS/LIBERO-plus:$PLUS/deps" \
+  --env "HF_HOME=$ROOT/cache/huggingface,HF_HUB_OFFLINE=1,TRANSFORMERS_OFFLINE=1,HF_HUB_DISABLE_TELEMETRY=1,TOKENIZERS_PARALLELISM=false" \
+  --env "LIBERO_CONFIG_PATH=$PLUS/libero-config,LD_LIBRARY_PATH=$NATIVE_LIB:$NATIVE/usr/lib:/usr/lib/x86_64-linux-gnu:/.singularity.d/libs" \
+  --env "MAGICK_HOME=$NATIVE/usr,MAGICK_CONFIGURE_PATH=$NATIVE/etc/ImageMagick-6:$NATIVE_LIB/ImageMagick-6.9.11/config-Q16" \
+  --env "MAGICK_CODER_MODULE_PATH=$NATIVE_LIB/ImageMagick-6.9.11/modules-Q16/coders,MAGICK_FILTER_MODULE_PATH=$NATIVE_LIB/ImageMagick-6.9.11/modules-Q16/filters" \
+  --env "MUJOCO_GL=osmesa,PYOPENGL_PLATFORM=osmesa,LIBGL_ALWAYS_SOFTWARE=1" \
+  --env "CUDA_VISIBLE_DEVICES=,OMP_NUM_THREADS=2,OPENBLAS_NUM_THREADS=2,LP_NUM_THREADS=2" \
+  "$SIF" "$ROOT/env/bin/python" - <<'PY'
+import json, os, pathlib, py_compile, unittest
+
+root = pathlib.Path(os.environ['ROOT'])
+protocol = json.loads((root/'protocol.json').read_text())
+container_env_preflight = json.loads((root/'results/checks/container_env_preflight.json').read_text())
+if container_env_preflight.get('status') != 'passed' or container_env_preflight.get('uuid_count') != 4:
+    raise RuntimeError(f'Apptainer environment propagation preflight failed: {container_env_preflight}')
+for path in pathlib.Path('.').glob('*.py'):
+    py_compile.compile(str(path), doraise=True)
+suite = unittest.defaultTestLoader.discover('.', pattern='test_*.py')
+result = unittest.TextTestRunner(verbosity=2).run(suite)
+noise_compatibility_path = root/'results/checks/libero_noise_compatibility.json'
+noise_compatibility = (json.loads(noise_compatibility_path.read_text())
+                       if noise_compatibility_path.is_file() else {'status': 'missing'})
+from calibrate import calibration_embedding_cache
+c8_cache = calibration_embedding_cache(protocol, root)
+
+summary = dict(status='complete' if result.wasSuccessful() else 'failed', tests=result.testsRun,
+               errors=len(result.errors), failures=len(result.failures), pbs_job_id=os.environ['PBS_JOBID'],
+               gpu_forwards=0, model_loads=0, independent_c8_text_cache=str(c8_cache),
+               container_env_preflight=container_env_preflight,
+               libero_noise_compatibility=noise_compatibility)
+if (noise_compatibility.get('status') != 'passed'
+        or noise_compatibility.get('pbs_job_id') != os.environ['PBS_JOBID']
+        or noise_compatibility.get('index') != 270
+        or noise_compatibility.get('noise_level') != 35
+        or noise_compatibility.get('fog_severity') != 5
+        or not noise_compatibility.get('fog_reset_and_step')
+        or noise_compatibility.get('plasma_fractal_calls', 0) < 1
+        or noise_compatibility.get('numpy_compatibility', {}).get('float_alias') != 'float64'
+        or noise_compatibility.get('model_loads') != 0
+        or noise_compatibility.get('gpu_forwards') != 0
+        or noise_compatibility.get('cuda_visible_devices') != ''):
+    summary['status'] = 'failed'
+path = root/'results/checks/summary.json'
+path.write_text(json.dumps(summary, indent=2)+'\n')
+print(json.dumps(summary), flush=True)
+if not result.wasSuccessful() or result.testsRun < 4 or summary['status'] != 'complete':
+    raise SystemExit(1)
+PY
+touch "$ARTIFACTS/CHECKS_COMPLETE"

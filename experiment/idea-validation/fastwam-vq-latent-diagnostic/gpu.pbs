@@ -1,0 +1,73 @@
+#!/bin/bash
+#PBS -N fwz1013s0a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+[[ "${FW_SHARD:-}" =~ ^[01]$ ]] || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+DISTILL_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/shard-$FW_SHARD"
+export FW_JOB_START_EPOCH=$(date +%s)
+mkdir -p "$ROOT/artifacts" "$ROOT/results" "$OUT"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+LOCK="$OUT/writer.lock"
+if test -e "$LOCK"; then
+  test -n "${FW_RESUME_JOB:-}" || exit 73
+  test "$(cat "$LOCK")" = "$FW_RESUME_JOB" || exit 73
+  rm -- "$LOCK"
+fi
+(set -o noclobber; printf '%s\n' "$PBS_JOBID" > "$LOCK")
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if test -f "$LOCK" && test "$(cat "$LOCK")" = "$PBS_JOBID"; then rm -- "$LOCK"; fi
+}
+trap finish EXIT
+copy_small() {
+  test -f "$1"
+  test "$(wc -c < "$1")" -le 262144 || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json control.py environment.sh gpu.pbs run_future.py future_adapter.py metrics.py checkpointing.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+test -f "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/exit_code.txt")" = 0
+test -f "$DISTILL_CAMPAIGN/artifacts/25764781.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$DISTILL_CAMPAIGN/artifacts/25764781.pbs101/exit_code.txt")" = 0
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python "$ARTIFACTS/run_future.py" --protocol "$ARTIFACTS/protocol.json" --out "$OUT" --shard "$FW_SHARD"
+copy_small "$OUT/summary.json" "$ARTIFACTS/summary.json"
+summary_status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$OUT/summary.json")
+case "$summary_status" in
+  resumable) touch "$ARTIFACTS/RESUME_READY"; echo "RUN_SUMMARY_RESUMABLE job_id=$PBS_JOBID";;
+  complete) touch "$ARTIFACTS/PIPELINE_COMPLETE"; echo "RUN_SUMMARY_COMPLETE job_id=$PBS_JOBID";;
+  *) exit 65;;
+esac

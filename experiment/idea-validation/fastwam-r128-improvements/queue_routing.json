@@ -1,0 +1,78 @@
+{
+  "checked_at": "2026-10-21T22:53:00+08:00",
+  "source": "Live qstat -Qf and qmgr print queue via fastwam-libero-plus-pilot/remote.py with verified SSH host key; no job submitted from this task.",
+  "submission_queue": {
+    "name": "normal",
+    "queue_type": "Route",
+    "enabled": true,
+    "started": true,
+    "route_destinations": [
+      "q1",
+      "q2",
+      "q3",
+      "q4",
+      "q5",
+      "q6",
+      "qlong",
+      "qdev",
+      "g1",
+      "g2",
+      "g3",
+      "g4",
+      "glong",
+      "gdev"
+    ],
+    "acl_users_or_projects": "not listed by qmgr print queue"
+  },
+  "execution_queues": {
+    "g1": {
+      "queue_type": "Execution",
+      "from_route_only": true,
+      "enabled": true,
+      "started": true,
+      "resources_min_ngpus": 1,
+      "resources_max_ngpus": 1,
+      "resources_min_walltime": "02:00:01",
+      "resources_max_walltime": "24:00:00"
+    },
+    "g2": {
+      "queue_type": "Execution",
+      "from_route_only": true,
+      "enabled": true,
+      "started": true,
+      "resources_min_ngpus": 2,
+      "resources_max_ngpus": 3,
+      "resources_min_walltime": "02:00:01",
+      "resources_max_walltime": "24:00:00"
+    },
+    "g3": {
+      "queue_type": "Execution",
+      "from_route_only": true,
+      "enabled": true,
+      "started": true,
+      "resources_min_ngpus": 4,
+      "resources_max_ngpus": 4,
+      "resources_min_walltime": "02:00:01",
+      "resources_max_walltime": "24:00:00"
+    }
+  },
+  "routing_plan": {
+    "path": {
+      "gpus": 1,
+      "walltime": "04:00:00",
+      "execution_queue": "g1"
+    },
+    "optimization": {
+      "gpus": 1,
+      "walltime": "04:00:00",
+      "execution_queue": "g1"
+    },
+    "coverage": {
+      "gpus": 1,
+      "walltime": "04:00:00",
+      "execution_queue": "g1",
+      "lane": "coverage_c80"
+    }
+  },
+  "decision": "Submit all three jobs through the normal routing queue because g1 is from_route_only. The live routing destinations include g1, and g1 accepts exactly one GPU with walltime from 02:00:01 to 24:00:00. The coverage job now runs only the frozen C80 lane. Actual execution-queue confirmation is pending until each submitted job is queried with qstat."
+}

@@ -1,0 +1,23 @@
+{
+  "protocol": "control-kl-c80-parameter-gate-v1",
+  "parent_protocol": "fastwam-vq-control-kl-v1",
+  "checkpoint_arm": "per_channel_clip",
+  "case_ids": [2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047, 2048, 2049, 2050, 2051, 2052, 2053, 2054, 2055, 2056, 2057, 2058, 2059, 2060, 2061, 2062, 2063, 2064, 2065, 2066, 2067, 2068, 2069, 2070, 2071, 2072, 2073, 2074, 2075, 2076, 2077, 2078, 2079],
+  "objectives": ["action_response_kl", "latent_control_kl"],
+  "objective_keys": {"response": "action_response_kl", "latent": "latent_control_kl"},
+  "shards": "same two 40-case shards as calibration_pairs definition; case_id ascending within shard",
+  "reduction": "mean of all80 pair losses; equal clean/noisy mean within latent-control pair; each original suite contributes20 contexts",
+  "fractions": [1.0, 0.1],
+  "optimizer": "fresh standard Adam, no saved moments, one reversible full-C80 proposal per isolated objective",
+  "ratio_learning_rate": 0.01,
+  "channel_learning_rate": 0.02,
+  "gradient_norm_clip": 1.0,
+  "direction_helper": "/scratch/users/ntu/yguo017/fastwam-vq-kl-direction-20261019/direction_utils.py",
+  "gradient_method": "chain-rule VJP, one student graph at a time; immutable CPU BF16 reader masters staged only for reader calls",
+  "projection": "original ratio and log2D bounds from parent protocol; g_dot_delta uses projected actual step",
+  "evaluation": "same all80 pairs, seeds and native cached-compensated deployment forward; original teacher outputs reused only for matching inputs",
+  "scope": "calibration-only surrogate-gradient versus actual finite-step objective check; temporary candidates, zero training and no heldout tuning",
+  "training_updates": 0,
+  "heldout_inputs_used": false,
+  "sensor_evaluation_inputs_used": false
+}

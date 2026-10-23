@@ -1,0 +1,35 @@
+#!/bin/bash
+#PBS -N fwvzl1014ana
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+[[ "${FW_EXPERIMENT_JOB:-}" =~ ^[0-9]+\.[A-Za-z0-9_.-]+$ ]] || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/analysis-$PBS_JOBID"
+OUT="$ROOT/results/analysis-$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+test -f "$ROOT/artifacts/$FW_EXPERIMENT_JOB/PIPELINE_COMPLETE"
+test "$(cat "$ROOT/artifacts/$FW_EXPERIMENT_JOB/exit_code.txt")" = 0
+for name in protocol.json environment.sh sampler.py metrics.py analyze_results.py test_action_latent_analysis.py; do
+  test "$(wc -c < "$ROOT/$name")" -le 262144 || exit 73
+  cp -- "$ROOT/$name" "$ARTIFACTS/$name"
+done
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=2
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/analyze_results.py" --protocol "$ARTIFACTS/protocol.json" --job "$FW_EXPERIMENT_JOB" --out "$OUT"
+test -f "$OUT/ANALYSIS_COMPLETE"
+test "$(wc -c < "$OUT/summary.json")" -le 262144 || exit 73
+cp -- "$OUT/summary.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo "ACTION_LATENT_ANALYSIS_COMPLETE job_id=$PBS_JOBID experiment=$FW_EXPERIMENT_JOB"

@@ -1,0 +1,158 @@
+#!/bin/bash
+#PBS -N fwvr128tr
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-transport-20261022
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RUNTIME_ARTIFACTS=$PARENT/artifacts/25814264.pbs101
+PROTOCOL_ID=fastwam-vq-r128-c80-transport-v1
+SOURCE_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-dual-20261022/artifacts/25912619.pbs101
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID required' >&2; exit 64; }
+test -n "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE required' >&2; exit 64; }
+test -s "$PBS_NODEFILE" || { echo 'PBS_NODEFILE is empty or unavailable' >&2; exit 64; }
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || {
+  echo 'Current host is not in the approved PBS allocation' >&2; exit 64;
+}
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS job is not in running state; refusing workload startup' >&2; exit 64;
+}
+grep -Eiq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g1([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || {
+  echo 'PBS did not route this normal-queue job to g1; refusing workload startup' >&2; exit 64;
+}
+
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+mkdir -p "$ARTIFACTS" "$RESULTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null
+    wait "$GPU_MONITOR_PID" 2>/dev/null
+  fi
+  if (( rc == 0 )) && [[ -s "$RESULTS/summary.json" ]] && \
+      cp "$RESULTS/summary.json" "$ARTIFACTS/worker_summary.json" && \
+      python3 - "$ARTIFACTS/worker_summary.json" "$PROTOCOL_ID" "$PBS_JOBID" <<'PY'
+import json, math, sys
+from pathlib import Path
+
+s=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+if not isinstance(s, dict) or s.get('status') != 'complete' or s.get('complete') is not True:
+    raise SystemExit('root summary is not complete')
+if s.get('protocol') != sys.argv[2] or s.get('pbs_jobid') != sys.argv[3]:
+    raise SystemExit('root summary protocol or PBS handle differs')
+if (s.get('target_linears') != 614 or s.get('new_teacher_queries') != 0
+        or s.get('source_dual_binding') is not True or s.get('allocation_gpus') != 1
+        or s.get('encoding_scope') != 'decoded_weight_transport_reference'):
+    raise SystemExit('source/representation/count gate failed')
+if (s.get('reused_reference') != dict(Uncomp8='Joint8',job='25912619.pbs101')
+        or (s.get('execution_amendment') or {}).get('mode') != 'comp_only_reuse_joint8'):
+    raise SystemExit('single-GPU historical-reference amendment missing')
+
+g=s.get('gates') or {}
+for name in ('source','fp32_invariance','gradient_coupling','initial_parity','frozen'):
+    if g.get(name) is not True:
+        raise SystemExit('required gate failed: '+name)
+for name,limit in (('formal_parity_max_error',1e-6),('deployment_reload_max_error',1e-6),('orthogonality_max_error',5e-5)):
+    value=g.get(name)
+    if type(value) not in (int,float) or not math.isfinite(value) or value>limit:
+        raise SystemExit('numeric gate failed: '+name)
+for arm in ('Comp8',):
+    r=(s.get('endpoints') or {}).get(arm) or {}
+    if any(r.get(k)!=v for k,v in dict(calibration=80,heldout=80,updates=8,exposures=80).items()):
+        raise SystemExit('training endpoint gate failed: '+arm)
+for arm in ('Seq_A4','Seq_to_Joint_A4','Joint_A4','Joint_to_Seq_A4','Seq_noA4','Seq_to_Joint_noA4','Joint_noA4','Joint_to_Seq_noA4'):
+    r=(s.get('probe_counts') or {}).get(arm) or {}
+    if r.get('calibration')!=80 or r.get('heldout')!=80:
+        raise SystemExit('probe endpoint gate failed: '+arm)
+if s.get('comparison_file')!='results/comparison.json' or s.get('comparison_complete') is not True:
+    raise SystemExit('final comparison missing')
+PY
+  then
+    touch "$ARTIFACTS/PHASE_COMPLETE" || rc=65
+  else
+    echo 'Exit was not successful or the root final summary failed verification; no PHASE_COMPLETE marker' >&2
+    (( rc != 0 )) || rc=65
+    rm -f "$ARTIFACTS/PHASE_COMPLETE"
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+printf 'PBS_JOBID=%s host=%s allocation_start_epoch=%s route=g1\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH"
+grep -E '^[[:space:]]*(job_state|queue|exec_host)[[:space:]]*=' <<< "$ALLOCATION_QSTAT" || true
+
+test -s "$ROOT/env_status.json" -a -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" -a -s "$SIF"
+test -s "$NEW_ROOT/protocol.json" -a -s "$NEW_ROOT/worker.py"
+test -s "$SOURCE_ARTIFACTS/worker.py" -a -s "$SOURCE_ARTIFACTS/rotation_bank.py"
+shopt -s nullglob
+LOCAL_PY_FILES=("$NEW_ROOT"/*.py)
+test "${#LOCAL_PY_FILES[@]}" -gt 0
+cp "${LOCAL_PY_FILES[@]}" "$NEW_ROOT/protocol.json" "$NEW_ROOT/execution.json" "$NEW_ROOT/run.pbs" "$NEW_ROOT/environment.sh" "$ARTIFACTS/"
+cp "$SOURCE_ARTIFACTS/worker.py" "$ARTIFACTS/base_worker.py"
+for file in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py rotation_bank.py rotation_selfcheck.py c8_train_banks.py batched_transform.py; do
+  test -s "$SOURCE_ARTIFACTS/$file" || { echo "Missing archived dependency: $file" >&2; exit 65; }
+  cp "$SOURCE_ARTIFACTS/$file" "$ARTIFACTS/$file"
+done
+
+FW_CPU_THREADS=16
+FW_SOFT_DEADLINE_SECONDS=14100
+FW_SAVE_RESERVE_SECONDS=300
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS
+source "$ARTIFACTS/environment.sh"
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPU identifiers' >&2; exit 65; }
+IFS=, read -r -a ALLOCATED_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#ALLOCATED_IDS[@]}" -eq 1 || { echo 'Expected exactly one allocated GPU' >&2; exit 65; }
+mapfile -t GPU_UUIDS < <(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader \
+  | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); if (length) print}')
+test "${#GPU_UUIDS[@]}" -eq 1 -a -n "${GPU_UUIDS[0]}" || {
+  echo 'Could not resolve the allocated GPU UUID' >&2; exit 65;
+}
+GPU_UUID0=${GPU_UUIDS[0]}
+printf 'ALLOCATED_GPU_UUIDS=%s\n' "$GPU_UUID0"
+(
+  while :; do
+    timestamp=$(date -Is)
+    nvidia-smi -i "$GPU_UUID0" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader \
+      | while IFS= read -r sample; do printf 'GPU_SAMPLE timestamp=%s %s\n' "$timestamp" "$sample"; done || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+launch_worker() {
+  local gpu_uuid=$1
+  shift
+  CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/worker.py" \
+    --protocol "$ARTIFACTS/protocol.json" --execution "$ARTIFACTS/execution.json" "$@"
+}
+# Rebind completed probe/gate metadata without repeating numerical/model work.
+launch_worker "$GPU_UUID0" --stage probe --shard 0
+launch_worker "$GPU_UUID0" --stage probe --shard 1
+launch_worker "$GPU_UUID0" --stage gate
+launch_worker "$GPU_UUID0" --stage arm --arm Comp8
+launch_worker "$GPU_UUID0" --stage finalize

@@ -1,0 +1,257 @@
+"""Bounded small-file control for the matched C80 reader experiment."""
+import argparse
+from datetime import datetime, timezone
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+
+HERE = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location(
+    'anchor_source_control', HERE.parent / 'fastwam-vq-relational-kl' / 'control.py')
+source = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(source)
+remote = source.remote
+P = json.loads((HERE / 'protocol.json').read_text(encoding='utf-8'))
+ROOT = P['remote_root']
+JOBS = {'prepare': 'fw80rkprep', 'reader_kl': 'fw80rktrain', 'az': 'fw80aztrain', 'aggregate': 'fw80rkagg', 'cached_analysis': 'fw80rkread'}
+DEPENDENCIES = {'prepare': [], 'reader_kl': ['prepare'], 'az': ['prepare'], 'aggregate': ['reader_kl', 'az'], 'cached_analysis': ['reader_kl']}
+
+
+def save(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + '.' + str(os.getpid()) + '.tmp')
+    temp.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n', encoding='utf-8')
+    temp.replace(path)
+
+
+def read_json(sftp, path):
+    try:
+        with sftp.file(path, 'rb') as stream:
+            data = stream.read(524289)
+    except OSError as error:
+        if error.errno == 2:
+            return None
+        raise
+    if len(data) > 524288:
+        raise RuntimeError('Control JSON exceeds the bounded 512 KiB limit')
+    return json.loads(data)
+
+
+def write_json(sftp, path, value):
+    return source.c.source.write_json(sftp, path, value)
+
+
+def observe(transport, sftp, unit, handle):
+    q = source.c.source.previous.scheduler(transport, handle['job_id'])
+    summary = read_json(sftp, ROOT + '/results/' + unit + '/summary.json') or {}
+    progress = read_json(sftp, ROOT + '/results/' + unit + '/progress.json') or {}
+    if progress.get('pbs_jobid') != handle['job_id']:
+        progress = {}
+    prefix = ROOT + '/artifacts/' + handle['job_id']
+    code, marker = None, False
+    try:
+        with sftp.file(prefix + '/exit_code.txt') as stream:
+            code = int(stream.read(32))
+    except OSError as error:
+        if error.errno != 2:
+            raise
+    try:
+        sftp.stat(prefix + '/PHASE_COMPLETE')
+        marker = True
+    except OSError as error:
+        if error.errno != 2:
+            raise
+    coverage = summary.get('complete') is True and summary.get('pbs_jobid') == handle['job_id']
+    if unit == 'prepare':
+        coverage &= (summary.get('passed') is True
+                     and summary.get('heldout_used') is False
+                     and summary.get('calibration_case_ids') == P['calibration']['case_ids'])
+    elif unit in ('reader_kl', 'az'):
+        coverage &= (summary.get('updates') == 80
+                     and summary.get('evaluation_queries') == 160
+                     and summary.get('reader_evaluation_queries') == 160
+                     and summary.get('new_teacher_queries') == 0
+                     and summary.get('baseline_new_model_queries') == 0)
+    elif unit in ('aggregate', 'cached_analysis'):
+        coverage &= (summary.get('baseline_records') == 160
+                     and summary.get('candidate_records') == 160)
+    passed = bool(q['query_rc'] == 0 and q['job_state'] in ('F', 'X')
+                  and q['Exit_status'] == '0' and code == 0 and marker and coverage)
+    return {'handle': handle, 'scheduler': q, 'summary': summary, 'progress': progress,
+            'artifact_exit_code': code, 'phase_complete_marker': marker, 'passed': passed}
+
+
+def resources(unit):
+    if unit in ('prepare', 'aggregate', 'cached_analysis'):
+        return 'cpu.pbs', P['cpu_allocation']['walltime'], 0
+    return 'gpu.pbs', P['allocation']['walltime'], 1
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', choices=('upload', 'submit', 'retry', 'status', 'logs', 'pull'))
+    parser.add_argument('--unit', choices=tuple(JOBS))
+    args = parser.parse_args()
+    jump, transport = remote.direct_connect()
+    try:
+        with remote.sftp_client(transport) as sftp:
+            if args.action == 'upload':
+                rc, out = remote.command(
+                    transport,
+                    'mkdir -p ' + shlex.quote(ROOT + '/control') + ' ' + shlex.quote(ROOT + '/artifacts'),
+                    timeout=20)
+                if rc:
+                    raise RuntimeError(out)
+                old = read_json(sftp, ROOT + '/protocol.json')
+                if old and old != P:
+                    raise RuntimeError('Remote protocol is frozen')
+                names = ['protocol.json', 'allocation.sh', 'cpu.pbs', 'gpu.pbs', 'anchor_selfcheck.py', 'selfcheck.py', 'reuse_reference.py', 'prepare.py', 'reader_loss.py', 'reader_runtime.py', 'frozen_reader.py', 'softbin_loss.py', 'worker.py', 'aggregate.py', 'analyze_completed_kl.py']
+                uploaded = []
+                for name in names:
+                    path = HERE / name
+                    if not path.is_file():
+                        continue
+                    data = path.read_bytes().replace(b'\r\n', b'\n')
+                    if len(data) > remote.LIMIT:
+                        raise RuntimeError('Only bounded small code/control uploads are allowed')
+                    with sftp.file(ROOT + '/' + name + '.tmp', 'wb') as stream:
+                        stream.write(data)
+                    sftp.posix_rename(ROOT + '/' + name + '.tmp', ROOT + '/' + name)
+                    uploaded.append(name)
+                for name in ('allocation.sh', 'cpu.pbs', 'gpu.pbs'):
+                    rc, out = remote.command(
+                        transport, 'bash -n ' + shlex.quote(ROOT + '/' + name), timeout=15)
+                    if rc:
+                        raise RuntimeError(out)
+                result = {'uploaded': uploaded, 'shell_syntax_passed': True}
+            else:
+                handles = read_json(sftp, ROOT + '/control/handles.json') or {}
+                if args.action in ('submit', 'retry'):
+                    unit = args.unit
+                    if not unit:
+                        parser.error('--unit is required')
+                    if read_json(sftp, ROOT + '/protocol.json') != P:
+                        raise RuntimeError('Local and remote frozen protocols differ')
+                    previous = handles.get(unit)
+                    if previous and args.action == 'submit':
+                        result = {'already_submitted': True, **previous}
+                    else:
+                        if args.action == 'retry':
+                            if previous is None:
+                                raise RuntimeError('Retry requires an existing authoritative handle')
+                            observed = observe(transport, sftp, unit, previous)
+                            q = observed['scheduler']
+                            if (q['query_rc'] != 0 or q['job_state'] not in ('F', 'X')
+                                    or q['Exit_status'] in (None, '0') or observed['passed']):
+                                raise RuntimeError(
+                                    'Retry requires a verified unsuccessful terminal job; '
+                                    'Q/R/query failure never authorizes retry')
+                            save(HERE / ('previous_' + unit + '_' + previous['job_id'] + '.json'), observed)
+                        if unit == 'az' and 'reader_kl' not in handles:
+                            raise RuntimeError('Submit reader_kl first as requested')
+                        dependencies = []
+                        for dependency in DEPENDENCIES[unit]:
+                            if dependency not in handles:
+                                raise RuntimeError('Missing prerequisite handle: ' + dependency)
+                            observed = observe(transport, sftp, dependency, handles[dependency])
+                            q = observed['scheduler']
+                            if dependency == 'prepare' and not observed['passed']:
+                                raise RuntimeError('Complete CPU definition validation required before GPU submission')
+                            if q['query_rc'] != 0 or (q['job_state'] in ('F', 'X') and not observed['passed']):
+                                raise RuntimeError('Prerequisite is failed, incomplete, or unknown: ' + dependency)
+                            dependencies.append(handles[dependency]['job_id'])
+                        script, walltime, gpus = resources(unit)
+                        attempt = (previous.get('attempt', 1) + 1) if previous else 1
+                        intent_path = ROOT + '/control/' + unit + '_attempt' + str(attempt) + '_intent.json'
+                        if read_json(sftp, intent_path):
+                            raise RuntimeError('Reconcile existing submission intent before retrying qsub')
+                        handle = {
+                            'unit': unit, 'attempt': attempt, 'job_name': JOBS[unit],
+                            'status': 'intent_before_qsub', 'gpus': gpus, 'walltime': walltime,
+                            'created_utc': datetime.now(timezone.utc).isoformat(),
+                            'afterok_job_ids': dependencies,
+                        }
+                        if previous:
+                            handle['previous_attempt'] = previous
+                        write_json(sftp, intent_path, handle)
+                        save(HERE / (unit + '_attempt' + str(attempt) + '_intent.json'), handle)
+                        afterok = (' -W ' + shlex.quote('depend=afterok:' + ':'.join(dependencies))
+                                   if dependencies else '')
+                        command = ('qsub -N ' + JOBS[unit] + afterok + ' -v '
+                                   + shlex.quote('FW_AK_UNIT=' + unit)
+                                   + ' -o ' + shlex.quote(
+                                       ROOT + '/artifacts/' + unit + '_attempt'
+                                       + str(attempt) + '.pbs.out')
+                                   + ' ' + shlex.quote(ROOT + '/' + script))
+                        rc, out = remote.command(transport, command, timeout=40)
+                        if rc or not re.fullmatch(r'\d+\.[A-Za-z0-9_.-]+', out.strip()):
+                            raise RuntimeError('Unknown qsub outcome; reconcile saved intent: ' + out[:400])
+                        handle.update(status='confirmed', job_id=out.strip())
+                        handles[unit] = handle
+                        write_json(sftp, intent_path, handle)
+                        write_json(sftp, ROOT + '/control/handles.json', handles)
+                        save(HERE / 'handles.json', handles)
+                        result = handle
+                else:
+                    observed = {unit: observe(transport, sftp, unit, handle)
+                                for unit, handle in handles.items()
+                                if not args.unit or unit == args.unit}
+                    snapshot = {'checked_utc': datetime.now(timezone.utc).isoformat(), 'units': observed}
+                    save(HERE / 'last_status.json', snapshot)
+                    if args.action == 'logs':
+                        if not args.unit:
+                            parser.error('--unit is required')
+                        rc, out = remote.command(
+                            transport,
+                            'tail -c 9000 ' + shlex.quote(
+                                ROOT + '/artifacts/' + handles[args.unit]['job_id'] + '/job.log'),
+                            timeout=20)
+                        result = {'query_rc': rc, 'tail': out}
+                    else:
+                        if args.action == 'pull':
+                            for unit, row in observed.items():
+                                if row['summary']:
+                                    save(HERE / 'results' / unit / 'summary.json', row['summary'])
+                            paired = read_json(sftp, ROOT + '/results/aggregate/paired_cases.json')
+                            if paired:
+                                save(HERE / 'results/aggregate/paired_cases.json', paired)
+                            paired = read_json(sftp, ROOT + '/results/cached_analysis/paired_cases.json')
+                            if paired:
+                                save(HERE / 'results/cached_analysis/paired_cases.json', paired)
+                            value = read_json(sftp, ROOT + '/results/comparison.json')
+                            if value:
+                                save(HERE / 'results' / 'comparison.json', value)
+                            try:
+                                with sftp.file(ROOT + '/results/ANALYSIS.zh.md', 'rb') as stream:
+                                    data = stream.read(remote.LIMIT + 1)
+                            except OSError as error:
+                                if error.errno != 2:
+                                    raise
+                            else:
+                                if len(data) > remote.LIMIT:
+                                    raise RuntimeError('Report exceeds bounded retrieval')
+                                (HERE / 'results').mkdir(parents=True, exist_ok=True)
+                                (HERE / 'results' / 'ANALYSIS.zh.md').write_bytes(data)
+                        result = {'checked_utc': snapshot['checked_utc'], 'units': {
+                            unit: {
+                                'job_id': row['handle']['job_id'], 'scheduler': row['scheduler'],
+                                'passed': row['passed'], 'phase': row['progress'].get('phase'),
+                                'updates': row['progress'].get('updates'),
+                                'queries': row['progress'].get('queries'),
+                                'initial_cases': row['progress'].get('initial_cases'),
+                                'reader_queries': row['progress'].get('reader_queries'),
+                                'beta': row['progress'].get('beta'),
+                                'error': row['progress'].get('error'),
+                            } for unit, row in observed.items()}}
+            print(json.dumps(result, indent=2))
+    finally:
+        transport.close()
+        if jump:
+            jump.close()
+
+
+if __name__ == '__main__':
+    main()

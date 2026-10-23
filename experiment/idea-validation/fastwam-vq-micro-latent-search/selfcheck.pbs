@@ -1,0 +1,78 @@
+#!/bin/bash
+#PBS -N fwm14sca
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test -z "${PBS_GPUFILE:-}" || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+mkdir -p "$ROOT/artifacts"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; }
+trap finish EXIT
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh selfcheck.pbs train_banks.py run_distill.py prepare_references.py micro_codebook.py test_micro_training.py test_micro_reference.py choose.py latent_reference.py metrics.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+export FW_JOB_START_EPOCH=$(date +%s)
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=2
+source "$ARTIFACTS/environment.sh"
+run_python - <<'PY'
+import json
+import os
+from pathlib import Path
+import socket
+
+host = socket.gethostname().split(".")[0]
+nodefile = os.environ.get("PBS_NODEFILE", "")
+if not os.environ.get("PBS_JOBID") or not nodefile or "login" in host.lower():
+    raise SystemExit("SELF_CHECK_REQUIRES_GUARDED_CPU_ALLOCATION")
+if host not in {line.split(".")[0] for line in Path(nodefile).read_text().split()}:
+    raise SystemExit("SELF_CHECK_HOST_NOT_IN_PBS_NODEFILE")
+if os.environ.get("PBS_GPUFILE"):
+    raise SystemExit("SELF_CHECK_MUST_USE_CPU_ALLOCATION")
+
+import torch
+import test_micro_training
+import test_micro_reference
+import choose
+
+test_micro_training.self_check()
+reference = test_micro_reference.self_check(torch)
+if (not isinstance(reference, dict) or reference.get("passed") is not True
+        or reference.get("schema_version") != 2
+        or reference.get("teacher_context_count") != 60
+        or reference.get("parent_context_count") != 16
+        or not isinstance(reference.get("normalization_c"), (int, float))
+        or reference["normalization_c"] <= 0):
+    raise RuntimeError("Reference self-check did not return its schema-2 coverage receipt")
+choose.self_check()
+summary = {
+    "status": "complete", "protocol": "fastwam-vq-micro-latent-search-v1",
+    "job_id": os.environ["PBS_JOBID"], "host": host,
+    "self_check": "passed", "training_self_check": "passed",
+    "reference_self_check": reference, "chooser_self_check": "passed",
+}
+Path(os.environ["ARTIFACTS"], "summary.json").write_text(
+    json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+print("MICRO_SEARCH_SELF_CHECK_PASSED", flush=True)
+PY
+test -s "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo "SELF_CHECK_COMPLETE job_id=$PBS_JOBID"

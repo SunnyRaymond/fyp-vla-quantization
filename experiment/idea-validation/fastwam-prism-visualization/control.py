@@ -12,7 +12,7 @@ import shlex
 HERE = Path(__file__).resolve().parent
 ROOT = "/scratch/users/ntu/yguo017/fastwam-prism-visualization-20261012"
 LIMIT = 256 * 1024
-FILES = ("protocol.json", "collect.py", "test_collect.py", "plot.py", "README.zh.md", "control.py", "environment.sh", "gpu.pbs", "plot.pbs")
+FILES = ("protocol.json", "collect.py", "test_collect.py", "plot.py", "delivery.py", "README.zh.md", "control.py", "environment.sh", "gpu.pbs", "plot.pbs", "weight_protocol.json", "weight_analysis.py", "weight_analysis_plot.py", "weight_analysis_gallery.py", "WEIGHT_ANALYSIS.zh.md", "weight.pbs")
 HANDLE = re.compile(r"^\d+(?:\[\d*\])?\.[A-Za-z0-9_.-]+$")
 spec = importlib.util.spec_from_file_location("prism_trusted_control", HERE.parent / "fastwam-rotation-baselines" / "control.py")
 trusted = importlib.util.module_from_spec(spec)
@@ -96,7 +96,7 @@ def status(phase, job=None):
 def submit(phase, attempt):
     if not re.fullmatch(r"[a-z][a-z0-9]{0,5}", attempt):
         raise ValueError("Invalid attempt label")
-    name = "fwpr1012" + ("g" if phase == "capture" else "c") + attempt
+    name = "fwpr1012" + {"capture": "g", "plot": "c", "weight": "w"}[phase] + attempt
     intent = HERE / (phase + "_intent_" + attempt + ".json")
     handle = HERE / (phase + "_handle.json")
     if intent.exists():
@@ -122,7 +122,7 @@ def submit(phase, attempt):
                "dependency": dependency}
     save(intent, receipt)
     dep = "-W " + shlex.quote("depend=afterok:" + dependency) + " " if dependency else ""
-    script = "gpu.pbs" if phase == "capture" else "plot.pbs"
+    script = {"capture": "gpu.pbs", "plot": "plot.pbs", "weight": "weight.pbs"}[phase]
     code, output = command("qsub " + dep + "-N " + shlex.quote(name) + " " + shlex.quote(ROOT + "/" + script), timeout=40)
     if code or not HANDLE.fullmatch(output.strip()):
         receipt["status"] = "unknown_or_rejected"
@@ -172,7 +172,7 @@ def verify(phase):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("upload", "submit", "status", "verify", "pull"))
-    parser.add_argument("--phase", choices=("capture", "plot"), default="capture")
+    parser.add_argument("--phase", choices=("capture", "plot", "weight"), default="capture")
     parser.add_argument("--attempt", default="a")
     parser.add_argument("--files", nargs="+")
     args = parser.parse_args()

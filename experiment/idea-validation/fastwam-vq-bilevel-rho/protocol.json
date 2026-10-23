@@ -1,0 +1,79 @@
+{
+  "protocol": "fastwam-vq-bilevel-rho-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-bilevel-rho-20261019",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "calibration_root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+  "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+  "runtime_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/artifacts/25814264.pbs101",
+  "heldout_teacher_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017/results/teacher",
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "calibration": {
+    "case_ids": [2000,2019,2021,2025,2051,2057,2066,2070],
+    "seed_index": 0,
+    "source_job_id": "25789685.pbs101",
+    "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4"
+  },
+  "development": {
+    "selection_seed": 20261019,
+    "outer_case_ids": [4000,4001,4002,4003,4004,4005,4006,4007],
+    "confirmation_case_ids": [5000,5001,5002,5003,5004,5005,5006,5007],
+    "outer_batches": [[4000,4002,4004,4006],[4001,4003,4005,4007]],
+    "outer_seeds": [0],
+    "confirmation_seeds": [0,1],
+    "demonstrations": "disjoint from all original C80 calibration and original40 heldout, and between outer and confirmation",
+    "phase_pairs": [["early","middle"],["middle","late"],["early","middle"],["middle","late"]]
+  },
+  "training": {
+    "updates": 16,
+    "learning_rate": 0.0005,
+    "gradient_norm_clip": 1.0,
+    "optimizer_reset_after_update1": true,
+    "normalization_c": 0.028303017887797623,
+    "seed": 20261019,
+    "loss": "first10 x6 motor MSE + rho * frozen c * clean future global NMSE excluding frame0",
+    "checkpoint_selection": "final exact update16 only",
+    "fixed_rhos": {"low": 0.1, "current": 1.5}
+  },
+  "bilevel": {
+    "rounds": 8,
+    "committed_updates_per_round": 2,
+    "virtual_updates_per_branch": 1,
+    "initial_rho": 1.5,
+    "minimum_rho": 0.03,
+    "maximum_rho": 3.0,
+    "probe_factor": 1.5,
+    "outer_step_factor": 1.5,
+    "relative_deadband": 0.001,
+    "objective": "four-suite equal mean first10 motor RMSE on alternating outer development batches",
+    "selection": "final round8 rho, then retrain fixed rho from common untrained C8 banks; no confirmation/test reselection"
+  },
+  "preflight": {
+    "states": ["initial", "rho1.5_update8"],
+    "restore": "exact master parameters, Adam state, RNG, cursor and reset flag; deployed action/future parity",
+    "repeat_branch": "repeat plus branch at nonempty-Adam update8 with identical state and RNG",
+    "maximum_replay_rmse_difference": 0.000001,
+    "maximum_restore_output_difference": 0.000001,
+    "signal_gate": "at least one state passes relative deadband and plus/minus contrast exceeds three times replay discrepancy; both states restore exactly"
+  },
+  "evaluation": {
+    "historical_case_ids": [3000,3001,3002,3003,3004,3005,3006,3007,3008,3009,3010,3011,3012,3013,3014,3015,3016,3017,3018,3019,3020,3021,3022,3023,3024,3025,3026,3027,3028,3029,3030,3031,3032,3033,3034,3035,3036,3037,3038,3039],
+    "historical_seed_indices": [0,1],
+    "arms": ["low","current","selected"],
+    "outer_queries_per_arm": 8,
+    "confirmation_queries_per_arm": 16,
+    "historical_queries_per_arm": 80,
+    "metrics": ["first10motor_rmse","full32motor_rmse","late22motor_rmse","first10gripper_rmse","future_latent_nmse"],
+    "fixed_comparator": "lowest complete outer-development first10 motor RMSE among low/current; ties prefer lower rho",
+    "advance_gate": "selected first10 motor RMSE at least1% lower on BOTH confirmation and historical; each other metric no more than5% worse on both",
+    "aggregation": "mean seeds within case, mean cases within suite, four suites equally",
+    "evidence": "single frozen C8 training trajectory, two inference seeds; pilot engineering gate, historical test already observed, decoded BF16/fake A4; no closed-loop or native kernel claim"
+  },
+  "allocation": {"queue":"normal","gpu_select":"1:ncpus=16:mem=110gb:ngpus=1","cpu_select":"1:ncpus=8:mem=32gb","walltime":"01:59:00","soft_deadline_seconds":6300,"gpu_monitor_seconds":15},
+  "monitor": {"model":"gpt-6-luna","reasoning_effort":"xhigh","interval_seconds":600,"unchanged_queue_or_running":"silent","read_only":true},
+  "authorization": "execute this frozen plan; preflight must pass before any full C8 pilot job submission; no C80 or clipping expansion"
+}

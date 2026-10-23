@@ -1,0 +1,186 @@
+#!/bin/bash
+#PBS -N fwm14r1r000a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+BANK_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-microscale-20261011
+RUN_ID=${FW_RUN_ID:-}
+RHO=${FW_RHO:-}
+ROUND=${FW_ROUND:-}
+MODE=${FW_MODE:-}
+SELECTED_RESULT_DIR=
+[[ "$MODE" == search || "$MODE" == final ]] || exit 64
+[[ "$RHO" =~ ^[0-9]+(\.[0-9]+)?$ ]] || exit 64
+if [[ "$MODE" == search ]]; then
+  [[ "$RUN_ID" =~ ^r[12]-r[0-9]{3}$ && "$ROUND" =~ ^[12]$ ]] || exit 64
+  [[ "${RUN_ID:1:1}" == "$ROUND" ]] || exit 64
+  if [[ "$ROUND" == 1 ]]; then
+    case "$RUN_ID:$RHO" in r1-r000:0.1|r1-r001:0.5|r1-r002:1.0|r1-r003:0.7|r1-r004:1.5) ;; *) exit 64;; esac
+  else
+    test -s "$ROOT/round2_candidates.json" || exit 64
+  fi
+else
+  [[ "$RUN_ID" == final && "$ROUND" == 2 && -s "${FW_FREEZE_FILE:-}" ]] || exit 64
+  SELECTED_RESULT_DIR=$(python3 - "$FW_FREEZE_FILE" "$RHO" "$ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert s.get("protocol") == "fastwam-vq-micro-latent-search-v1"
+assert s.get("rounds_complete") == 2 and float(s.get("rho")) == float(sys.argv[2])
+assert s.get("selected_run_id") and s.get("selected_job_id") and s.get("selected_epoch") in (0, 1, 2)
+assert s.get("selected_round") in (1, 2)
+assert s["selected_run_id"].startswith(f"r{s['selected_round']}-")
+assert s["selected_result_dir"] == f"{sys.argv[3]}/results/{s['selected_run_id']}-{s['selected_job_id']}"
+assert s.get("selection_job_id") and isinstance(s.get("selection_source_jobs"), list)
+protocol = json.loads((Path(sys.argv[3]) / "protocol.json").read_text(encoding="utf-8"))
+candidate_count = len(protocol["search"]["round1_rhos"]) + len(protocol.get("additional_round1_candidates", [])) + protocol["search"]["round2_count"]
+assert len(s["selection_source_jobs"]) == candidate_count and all(isinstance(job, str) and job for job in s["selection_source_jobs"])
+assert isinstance(s.get("normalization_c"), (int, float)) and s["normalization_c"] > 0
+assert isinstance(s.get("latent_weight"), (int, float)) and s["latent_weight"] >= 0
+print(s["selected_result_dir"])
+PY
+  )
+fi
+if [[ -n "${FW_RESUME_JOB:-}" ]]; then
+  [[ "$FW_RESUME_JOB" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || exit 64
+  if [[ "$MODE" == search ]]; then
+    RESUME_RESULT="$ROOT/results/$RUN_ID-$FW_RESUME_JOB"
+  else
+    RESUME_RESULT="$ROOT/results/final-$FW_RESUME_JOB"
+  fi
+  [[ "$MODE" == search || "$MODE" == final ]] || exit 64
+fi
+export FW_JOB_START_EPOCH=$(date +%s)
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+if [[ "$MODE" == search ]]; then
+  OUT="$ROOT/results/$RUN_ID-$PBS_JOBID"
+else
+  OUT="$ROOT/results/final-$PBS_JOBID"
+fi
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+test ! -e "$OUT" || exit 73
+test -f "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$SOURCE_CAMPAIGN/artifacts/25743693.pbs101/exit_code.txt")" = 0
+test -f "$BANK_ROOT/artifacts/25755896.pbs101/PIPELINE_COMPLETE"
+test "$(cat "$BANK_ROOT/artifacts/25755896.pbs101/exit_code.txt")" = 0
+test -s "$ROOT/reference_summary.json"
+if [[ -n "${FW_RESUME_JOB:-}" ]]; then
+  test -s "$RESUME_RESULT/summary.json"
+  test -f "$ROOT/artifacts/$FW_RESUME_JOB/RESUME_READY"
+  test -f "$RESUME_RESULT/CHECKPOINT_READY" -a -s "$RESUME_RESULT/checkpoint.pt" -a -s "$RESUME_RESULT/checkpoint_receipt.json"
+  if [[ "$MODE" == search ]]; then
+  python3 - "$RESUME_RESULT/summary.json" "$RUN_ID" "$ROUND" "$RHO" "$FW_RESUME_JOB" <<'PY'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert s.get("status") == "resumable" and s.get("run_id") == sys.argv[2]
+assert s.get("round") == int(sys.argv[3]) and float(s.get("rho")) == float(sys.argv[4])
+assert s.get("job_id") == sys.argv[5] and s.get("target_linears") == 614
+PY
+  else
+    python3 - "$RESUME_RESULT/summary.json" "$FW_FREEZE_FILE" "$FW_RESUME_JOB" <<'PY'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+f = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+assert s.get("status") == "resumable" and s.get("job_id") == sys.argv[3]
+for key in ("selected_run_id", "selected_job_id", "selected_result_dir", "selected_epoch",
+            "selected_round", "rho", "latent_weight", "normalization_c", "rounds_complete",
+            "selection_job_id", "selection_source_jobs"):
+    assert s.get(key) == f.get(key), key
+assert s.get("rounds_complete") == 2 and s.get("target_linears") == 614
+PY
+  fi
+fi
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh gpu.pbs sampler.py train_banks.py checkpointing.py test_checkpointing.py test_driver.py run_distill.py latent_reference.py test_latent_loss.py test_micro_training.py test_micro_reference.py micro_codebook.py metrics.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+if [[ "$MODE" == final ]]; then
+  copy_small "$FW_FREEZE_FILE" "$ARTIFACTS/optimal_selection.json"
+  FROZEN_FILE="$ARTIFACTS/optimal_selection.json"
+elif [[ "$ROUND" == 2 ]]; then
+  copy_small "$ROOT/round2_candidates.json" "$ARTIFACTS/round2_candidates.json"
+  FROZEN_FILE="$ARTIFACTS/round2_candidates.json"
+else
+  FROZEN_FILE=
+fi
+copy_small "$SOURCE_CAMPAIGN/codebook.py" "$ARTIFACTS/codebook.py"
+export FW_SOFT_DEADLINE_SECONDS=7110
+FW_REQUIRE_GPU=1
+FW_CPU_THREADS=8
+source "$ARTIFACTS/environment.sh"
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+run_python --version
+run_args=(--protocol "$ARTIFACTS/protocol.json" --out "$OUT" --run-id "$RUN_ID" --rho "$RHO" --round "$ROUND" --mode "$MODE")
+if [[ -n "${FW_RESUME_JOB:-}" ]]; then
+  run_args+=(--resume-dir "$RESUME_RESULT")
+fi
+if [[ -n "$FROZEN_FILE" ]]; then
+  run_args+=(--freeze-file "$FROZEN_FILE")
+fi
+if [[ "$MODE" == final ]]; then
+  if [[ -z "${FW_RESUME_JOB:-}" ]]; then run_args+=(--resume-dir "$SELECTED_RESULT_DIR"); fi
+fi
+run_python "$ARTIFACTS/run_distill.py" "${run_args[@]}"
+test -s "$OUT/summary.json"
+copy_small "$OUT/summary.json" "$ARTIFACTS/summary.json"
+summary_status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["status"])' "$OUT/summary.json")
+case "$summary_status" in
+  resumable)
+    test -f "$OUT/CHECKPOINT_READY" -a -s "$OUT/checkpoint.pt" -a -s "$OUT/checkpoint_receipt.json"
+    touch "$ARTIFACTS/RESUME_READY"
+    echo "RUN_SUMMARY_RESUMABLE job_id=$PBS_JOBID"
+    ;;
+  search_complete)
+    test "$MODE" = search
+    test -f "$OUT/SEARCH_COMPLETE"
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+    echo "SEARCH_COMPLETE job_id=$PBS_JOBID run_id=$RUN_ID"
+    ;;
+  complete)
+    test "$MODE" = final
+    touch "$OUT/FINAL_COMPLETE"
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+    echo "FINAL_COMPLETE job_id=$PBS_JOBID"
+    ;;
+  *)
+    echo "Unexpected summary status: $summary_status" >&2
+    exit 65
+    ;;
+esac

@@ -1,0 +1,19 @@
+{
+  "protocol": "control-kl-parameter-gate-v1",
+  "parent_protocol": "fastwam-vq-control-kl-v1",
+  "case_id": 2000,
+  "checkpoint_arm": "per_channel_clip",
+  "objectives": ["action_response_kl", "latent_control_kl"],
+  "latent_reduction": "mean of clean and noisy frozen-reader KL",
+  "fractions": [1.0, 0.1],
+  "optimizer": "fresh standard Adam, original learning rates and gradient-norm clipping",
+  "ratio_learning_rate": 0.01,
+  "channel_learning_rate": 0.02,
+  "gradient_norm_clip": 1.0,
+  "direction_helper": "/scratch/users/ntu/yguo017/fastwam-vq-kl-direction-20261019/direction_utils.py",
+  "gradient_method": "chain-rule VJP, one student graph at a time; frozen-reader graph released before student backward",
+  "scope": "one preselected C80 pair implementation probe; all candidate changes rolled back; not full-C80 optimization evidence",
+  "training_updates": 0,
+  "heldout_inputs_used": false,
+  "sensor_evaluation_inputs_used": false
+}

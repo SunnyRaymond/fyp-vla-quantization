@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -N fwvzl1014ckb
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+grep -Fqx "$HOST" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH="$(date +%s)"
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/cpu-check-$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+
+for name in cpu_analysis_check.py environment.sh; do
+  test "$(wc -c < "$ROOT/$name")" -le 262144 || exit 73
+done
+cp -- "$ROOT/cpu_analysis_check.py" "$ARTIFACTS/cpu_analysis_check.py"
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=2
+source "$ROOT/environment.sh"
+export ROOT SOURCE_CAMPAIGN ARTIFACTS FW_REQUIRE_GPU FW_CPU_THREADS CUDA_VISIBLE_DEVICES=''
+run_python "$ARTIFACTS/cpu_analysis_check.py" --worker --protocol "$ROOT/protocol.json"
+test -s "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/CPU_ANALYSIS_CHECK_COMPLETE"
+echo "CPU_ANALYSIS_CHECK_COMPLETE job_id=$PBS_JOBID"

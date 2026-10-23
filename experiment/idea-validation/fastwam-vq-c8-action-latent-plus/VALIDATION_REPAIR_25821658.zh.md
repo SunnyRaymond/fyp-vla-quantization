@@ -1,0 +1,11 @@
+# rho1.5 训练后校验修复
+
+GPU作业25821658.pbs101在gdev运行10m15s后以PBS/artifact exit1结束。失败发生在complete_validation：vq_adapter._c8_rows使用collections.Counter但未导入collections。
+
+train_c8已经完成：training_receipt complete、1epoch/8updates、614targets/connected/finite、共享C8 normalization_c=0.028303017887797623、reference sampler与actualinfer各1次且max_abs=0。deployment.pt和reference_action.json已导出。旧GPU作业仍保持真实F/exit1，不写入伪造成功marker。
+
+已补import collections，并加入直接执行真实adapter模块的标准库metadata测试（仅stub runner.Runtime，不加载模型或Torch）。测试通过。最新root源码已上传；仍运行的rho0.1作业25821660.pbs101的vq_adapter校验源码也已原子修补，原文件另存vq_adapter.before_collections_import.py，patch记录说明只改metadata validator导入、模型/optimizer未改变。
+
+rho1.5已提交CPU-only验证作业25822474.pbs101（fwav15r15、qdev、1CPU/4GB/10min、0GPU），读取已完成training metadata并运行相同validate_training_artifacts，不做新模型forward、训练或GPU申请。独立validation handle保留source_training_job_id=25821658.pbs101，原GPU handle归档。只有新验证作业真实exit0、验证marker和完整产物同时成立，才允许进入四卡闭环提交。
+
+CPU补验证结果：25822474.pbs101权威PBS F/Exit_status=0、artifact exit0、TRAINING_COMPLETE=true，原receipt为8updates/1epoch、614个modules，reference action parity max_abs=0；控制器完整gate通过。未加载模型或做新forward，旧GPU失败记录保持原样。

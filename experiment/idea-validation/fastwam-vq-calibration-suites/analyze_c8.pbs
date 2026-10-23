@@ -1,0 +1,72 @@
+#!/bin/bash
+#PBS -N fwvc13a8
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" || { echo "PBS_JOBID is required"; exit 64; }
+case "$(hostname -s)" in *login*) echo "Compute node required"; exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || { echo "PBS_NODEFILE is required"; exit 64; }
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || {
+  echo "Current host is absent from PBS_NODEFILE"; exit 64;
+}
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/c8_analysis"
+mkdir -p "$ROOT/artifacts" "$OUT"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+finish() {
+  rc=$?
+  set +e
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || {
+    echo "Refusing missing or oversized control file: $1"; exit 73;
+  }
+  cp -- "$1" "$2"
+}
+copy_small "$ROOT/protocol.json" "$ARTIFACTS/protocol.json"
+copy_small "$ROOT/analyze_c8.py" "$ARTIFACTS/analyze_c8.py"
+copy_small "$ROOT/compare_calibration.py" "$ARTIFACTS/compare_calibration.py"
+
+python3 "$ARTIFACTS/analyze_c8.py" \
+  --protocol "$ARTIFACTS/protocol.json" \
+  --root "$ROOT" \
+  --out "$OUT"
+
+copy_small "$OUT/analysis.json" "$ARTIFACTS/analysis.json"
+copy_small "$OUT/report.zh.md" "$ARTIFACTS/report.zh.md"
+copy_small "$OUT/summary.json" "$ARTIFACTS/summary.json"
+python3 - "$ARTIFACTS/summary.json" "$PBS_JOBID" <<'PY'
+import json, sys
+from pathlib import Path
+
+summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert summary.get("status") == "complete"
+assert summary.get("phase") == "c8_preliminary_analysis"
+assert summary.get("pbs_jobid") == sys.argv[2]
+assert (summary.get("case_count"), summary.get("query_count"),
+        summary.get("calibration_contexts"), summary.get("fitted_linears"),
+        summary.get("target_linears")) == (40, 80, 8, 614, 614)
+for name in ("analysis.json", "report.zh.md", "summary.json"):
+    assert (Path(sys.argv[1]).parent / name).stat().st_size < 256 * 1024
+PY
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo "C8_ANALYSIS_COMPLETE job_id=$PBS_JOBID output=$OUT"

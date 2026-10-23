@@ -1,0 +1,77 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=2
+#PBS -l walltime=24:00:00
+#PBS -j oe
+source /scratch/users/ntu/yguo017/fastwam-vq-teacher-anchor-kl-20261021/allocation.sh
+FW_SOFT_DEADLINE_SECONDS=85500
+FW_CPU_THREADS=8
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 2
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+ uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+ test -n "$uuid"
+ GPU_UUIDS+=("$uuid")
+done
+test "${GPU_UUIDS[0]}" != "${GPU_UUIDS[1]}"
+(
+ trap - EXIT
+ while :; do
+  for uuid in "${GPU_UUIDS[@]}"; do
+   printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+   nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+  done
+  sleep 15
+ done
+) &
+GPU_MONITOR_PID=$!
+WORKERS=()
+for worker in 0 1; do
+ (
+  trap - EXIT
+  child_pid=
+  trap 'if [ -n "$child_pid" ]; then kill -TERM "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; fi; exit 143' TERM INT
+  CUDA_VISIBLE_DEVICES="${GPU_UUIDS[$worker]}" run_python "$ARTIFACTS/closedloop.py" --protocol "$ARTIFACTS/protocol.json" --worker-id "$worker" &
+  child_pid=$!
+  set +e
+  wait "$child_pid"
+  rc=$?
+  set -e
+  printf '%s\n' "$rc" > "$ARTIFACTS/closedloop_${worker}.rc"
+  exit "$rc"
+ ) > "$ARTIFACTS/closedloop_${worker}.log" 2>&1 &
+ WORKERS+=("$!")
+done
+for ((done_count=0; done_count<2; )); do
+ done_count=0
+ for worker in 0 1; do
+  path="$ARTIFACTS/closedloop_${worker}.rc"
+  if [ -s "$path" ]; then
+   rc=$(<"$path")
+   if [ "$rc" -ne 0 ]; then
+    for pid in "${WORKERS[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
+    for pid in "${WORKERS[@]}"; do wait "$pid" 2>/dev/null || true; done
+    exit "$rc"
+   fi
+   done_count=$((done_count+1))
+  fi
+ done
+ if [ "$done_count" -lt 2 ]; then sleep 2; fi
+done
+for pid in "${WORKERS[@]}"; do wait "$pid"; done
+python3 - "$ARTIFACTS/protocol.json" <<'PY_SUMMARY'
+import json,os,sys
+from pathlib import Path
+p=json.loads(Path(sys.argv[1]).read_text())
+root=Path(p['remote_root'])/'results'
+workers={str(i):json.loads((root/f'closedloop_{i}/summary.json').read_text()) for i in (0,1)}
+if any(not row['complete'] or row['episodes']!=140 or row['pbs_jobid']!=os.environ['PBS_JOBID'] for row in workers.values()):
+ raise SystemExit('Both complete 140-episode shards are required')
+out=root/'closedloop';out.mkdir(exist_ok=True)
+value={'protocol':p['protocol'],'unit':'closedloop','complete':True,'episodes':280,'pbs_jobid':os.environ['PBS_JOBID'],'workers':workers}
+(out/'summary.json').write_text(json.dumps(value,indent=2)+'\n')
+PY_SUMMARY
+touch "$ARTIFACTS/PHASE_COMPLETE"

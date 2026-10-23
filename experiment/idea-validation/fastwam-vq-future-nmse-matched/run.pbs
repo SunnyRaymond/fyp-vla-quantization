@@ -1,0 +1,68 @@
+#!/bin/bash
+#PBS -N fwnm17prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-future-nmse-matched-20261017
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+DIAGNOSTIC=/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013
+case "${FW_PHASE:-}" in prepare|matched|analyze) ;; *) exit 64;; esac
+FW_SHARD=${FW_SHARD:-0}
+[[ "$FW_SHARD" =~ ^[01]$ ]] || exit 64
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+export FW_JOB_START_EPOCH=$(date +%s)
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+LOCK=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ -n "$LOCK" ]] && test -f "$LOCK" && test "$(cat "$LOCK")" = "$PBS_JOBID"; then rm -- "$LOCK"; fi
+}
+trap finish EXIT
+if [[ "$FW_PHASE" == matched ]]; then
+  mkdir -p "$ROOT/results/matched-$FW_SHARD"
+  LOCK="$ROOT/results/matched-$FW_SHARD/writer.lock"
+  (set -o noclobber; printf '%s\n' "$PBS_JOBID" > "$LOCK")
+fi
+for name in protocol.json common.py matching.py prepare.py run_reader.py analyze.py test_design.py environment.sh run.pbs; do
+  test "$(wc -c < "$ROOT/$name")" -le 262144 || exit 73
+  cp -- "$ROOT/$name" "$ARTIFACTS/$name"
+done
+for name in metrics.py future_adapter.py checkpointing.py; do
+  test "$(wc -c < "$DIAGNOSTIC/$name")" -le 262144 || exit 73
+  cp -- "$DIAGNOSTIC/$name" "$ARTIFACTS/$name"
+done
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=8
+if [[ "$FW_PHASE" == matched ]]; then FW_REQUIRE_GPU=1; fi
+source "$ARTIFACTS/environment.sh"
+if [[ "$FW_REQUIRE_GPU" == 1 ]]; then
+  test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+  (
+    while :; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+      nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+      sleep 15
+    done
+  ) &
+  GPU_MONITOR_PID=$!
+fi
+case "$FW_PHASE" in
+  prepare) run_python "$ARTIFACTS/test_design.py"; run_python "$ARTIFACTS/prepare.py";;
+  matched) run_python "$ARTIFACTS/run_reader.py" --shard "$FW_SHARD";;
+  analyze) run_python "$ARTIFACTS/analyze.py";;
+esac
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACTS/summary.json")
+case "$status" in complete) touch "$ARTIFACTS/PIPELINE_COMPLETE";; resumable) touch "$ARTIFACTS/RESUME_READY";; *) exit 65;; esac
+echo "NMSE_PHASE $status job_id=$PBS_JOBID phase=$FW_PHASE shard=$FW_SHARD"

@@ -1,0 +1,14 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=4:mem=16gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+source /scratch/users/ntu/yguo017/fastwam-vq-c8-latent-anchor-kl-20261021/allocation.sh
+NV_ARGS=()
+FW_CPU_THREADS=4
+FW_SOFT_DEADLINE_SECONDS=480
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+cp "$NEW_ROOT/mechanism_protocol.json" "$ARTIFACTS/"
+run_python "$ARTIFACTS/mechanism_analysis.py"
+touch "$ARTIFACTS/PHASE_COMPLETE"

@@ -1,0 +1,173 @@
+{
+  "protocol": "fastwam-vq-bilevel-rho-v1",
+  "goal_remains_active": false,
+  "stage": "complete_no_go",
+  "data_prepare_job": "25879274.pbs101",
+  "data_prepare_verified_complete_utc": "2026-10-19T13:18:55+00:00",
+  "preflight_job": "25879908.pbs101",
+  "preflight_last_verified_utc": "2026-10-19T15:05:57+00:00",
+  "preflight_last_verified_state": "F/Exit0; gate_passed",
+  "full_pilot_submitted": true,
+  "monitor_agent": "/root/bilevel_monitor_v2",
+  "monitor_model": "gpt-6-luna",
+  "monitor_reasoning_effort": "xhigh",
+  "monitor_interval_seconds": 600,
+  "controller": "nscc-access/.venv/Scripts/python.exe experiment/idea-validation/fastwam-vq-bilevel-rho/control.py",
+  "next_step": "No required pilot work remains. Retain fixed rho1.5 as development-selected comparator; do not expand C80/clipping or reselect using confirmation/historical.",
+  "local_control_tests": "9 passed before repair submit; 6 training-policy/control tests passed after consistent-numerics policy change",
+  "worker_python_syntax": "passed",
+  "reuse_candidates": {
+    "rho0.1": 16,
+    "rho1.5": 8,
+    "C8_teacher_queries": 8,
+    "historical_teacher_queries": 80
+  },
+  "reuse_boundary": "Original trained checkpoints validated and retained read-only for diagnostics; final controls must be retrained under deterministic_v2. Common initial banks and C8/outer/historical teacher caches reused after parity gate.",
+  "cluster_boundary": "All jobs01:59:00. Login only bounded control/query and small files. All checkpoint/model/HDF5 work inside verified compute allocations. GPU telemetry every15s in job.log.",
+  "queue_boundary": "Q/R without meaningful change stays quiet; query failures are inconclusive; never resubmit from queue comments. Do not pause or complete the goal while required gated pilot work remains.",
+  "updated_utc": "2026-10-19T19:18:08.371796+00:00",
+  "numerics": "deterministic_v2",
+  "original_preflight": {
+    "job_id": "25879403.pbs101",
+    "gate_passed": false,
+    "restoration_passed": true,
+    "replay_passed": false,
+    "branch_replay_difference": 0.011755925603210926
+  },
+  "pilot_jobs": {
+    "search": "25880277.pbs101",
+    "train_low": "25880278.pbs101",
+    "train_current": "25880279.pbs101",
+    "train_selected": "25880879.pbs101",
+    "outer_evaluation": "25881180.pbs101",
+    "evaluate_low": "25881362.pbs101",
+    "evaluate_current": "25881516.pbs101",
+    "evaluate_selected": "25881518.pbs101",
+    "aggregate": "25881659.pbs101"
+  },
+  "pilot_last_verified_utc": "2026-10-19T18:13:18+00:00",
+  "pilot_last_states": {
+    "search": "F/Exit0 verified8rounds16updates",
+    "train_low": "F/Exit0 verified16updates",
+    "train_current": "F/Exit0 verified16updates",
+    "train_selected": "F/Exit0 verified16updates",
+    "outer_evaluation": "F/Exit0 verified24queries; comparator frozen to rho1.5",
+    "evaluate_low": "F/Exit0 verified96queries and16newteacher",
+    "evaluate_current": "F/Exit0 verified96queries teacher0",
+    "evaluate_selected": "F/Exit0 verified96queries teacher0",
+    "aggregate": "F/Exit0 verified312endpoint_records"
+  },
+  "preflight_gate": {
+    "restoration_passed": true,
+    "replay_passed": true,
+    "finite_difference_signal_passed": true,
+    "repeated_update_state_exact": true,
+    "branch_replay_difference": 0.0,
+    "teacher_replay_max_abs": 0.0
+  },
+  "preflight_gpu_hours_all_attempts": 0.8872222222222222,
+  "completed_pilot_units": {
+    "train_low": {
+      "job_id": "25880278.pbs101",
+      "updates": 16,
+      "numerics": "deterministic_v2",
+      "walltime": "00:33:00",
+      "gpu_hours": 0.55,
+      "verified_history_case_order_C8_twice": true,
+      "verified_614_connected_finite_all_steps": true,
+      "optimizer_reset_updates": [
+        1
+      ]
+    },
+    "train_current": {
+      "job_id": "25880279.pbs101",
+      "updates": 16,
+      "rho": 1.5,
+      "numerics": "deterministic_v2",
+      "walltime": "00:48:30",
+      "gpu_hours": 0.8083333333333333,
+      "verified_history_case_order_C8_twice": true,
+      "verified_614_connected_finite_all_steps": true,
+      "optimizer_reset_updates": [
+        1
+      ]
+    },
+    "search": {
+      "job_id": "25880277.pbs101",
+      "rounds": 8,
+      "updates": 16,
+      "gradient_queries": 32,
+      "inference_queries": 64,
+      "teacher_queries": 0,
+      "rho_hat": 1.9999999999999998,
+      "numerics": "deterministic_v2",
+      "walltime": "01:32:29",
+      "gpu_hours": 1.541388888888889,
+      "trajectory_checks_passed": true
+    },
+    "train_selected": {
+      "job_id": "25880879.pbs101",
+      "updates": 16,
+      "rho": 1.9999999999999998,
+      "numerics": "deterministic_v2",
+      "walltime": "00:48:55",
+      "gpu_hours": 0.8152777777777778,
+      "verified_history_case_order_C8_twice": true,
+      "verified_614_connected_finite_all_steps": true,
+      "optimizer_reset_updates": [
+        1
+      ],
+      "reused_updates": 0
+    },
+    "outer_evaluation": {
+      "job_id": "25881180.pbs101",
+      "queries": 24,
+      "comparator_frozen": true,
+      "fixed_comparator": "current",
+      "walltime": "00:19:22",
+      "gpu_hours": 0.3227777777777778,
+      "numerics": "deterministic_v2"
+    },
+    "evaluate_low": {
+      "job_id": "25881362.pbs101",
+      "queries": 96,
+      "confirmation_queries": 16,
+      "historical_queries": 80,
+      "new_teacher_queries": 16,
+      "walltime": "00:29:17",
+      "gpu_hours": 0.4880555555555556,
+      "numerics": "deterministic_v2"
+    },
+    "evaluate_current": {
+      "job_id": "25881516.pbs101",
+      "queries": 96,
+      "walltime": "00:11:46",
+      "gpu_hours": 0.19611111111111112,
+      "new_teacher_queries": 0,
+      "numerics": "deterministic_v2"
+    },
+    "evaluate_selected": {
+      "job_id": "25881518.pbs101",
+      "queries": 96,
+      "walltime": "00:28:40",
+      "gpu_hours": 0.4777777777777778,
+      "new_teacher_queries": 0,
+      "numerics": "deterministic_v2"
+    }
+  },
+  "rho_hat": 1.9999999999999998,
+  "lambda_hat": 0.05660603577559524,
+  "finished_gpu_hours_all_attempts": 6.086944444444445,
+  "fixed_comparator": {
+    "arm": "current",
+    "rho": 1.5,
+    "frozen_by_job": "25881180.pbs101",
+    "outer_queries": 24,
+    "selected_first10motor_change_percent": 10.518502993098977,
+    "frozen_before_confirmation_submission": true
+  },
+  "aggregate_job": "25881659.pbs101",
+  "endpoint_records": 312,
+  "monitoring_active": false,
+  "advance_to_C80_or_clipping": false
+}

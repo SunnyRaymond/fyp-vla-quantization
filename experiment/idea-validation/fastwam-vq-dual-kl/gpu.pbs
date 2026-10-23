@@ -1,0 +1,75 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-dual-kl-20261019
+CLIP_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+RUNTIME_ARTIFACTS=$PARENT/artifacts/25814264.pbs101
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution'; exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+export ARTIFACTS
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID"
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+finish() {
+  rc=$?
+  trap - EXIT
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+for file in worker.py softbin_loss.py softbin_selfcheck.py channel_banks.py channel_selfcheck.py protocol.json source_protocol.json; do
+ cp "$NEW_ROOT/$file" "$ARTIFACTS/"
+done
+cp /scratch/users/ntu/yguo017/fastwam-vq-continuous-b32-scaling-clipping-20261017/continuous_banks.py "$ARTIFACTS/continuous_banks.py"
+cp "$CLIP_ROOT/experiment.py" "$ARTIFACTS/clipping_reference.py"
+for file in clip_banks.py selfcheck.py; do
+  cp "$CLIP_ROOT/$file" "$ARTIFACTS/"
+done
+for file in train_banks.py batched_transform.py transform_checks.py environment.sh; do
+  cp "$PARENT/$file" "$ARTIFACTS/"
+done
+for file in runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  cp "$RUNTIME_ARTIFACTS/$file" "$ARTIFACTS/"
+done
+cp /scratch/users/ntu/yguo017/fastwam-vq-activation-ablation-20261017/evaluate.py "$ARTIFACTS/metrics_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-c80-activation-clipping-20261017/worker.py "$ARTIFACTS/c80_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-scaling-clipping-20261017/worker.py "$ARTIFACTS/discrete_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-continuous-b32-scaling-clipping-20261017/worker.py "$ARTIFACTS/uncoupled_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-absmax-coupling-20261018/coupled_banks.py "$ARTIFACTS/coupled_banks.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-b32-absmax-coupling-20261018/worker.py "$ARTIFACTS/coupled_reference.py"
+source "$ARTIFACTS/environment.sh"
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=6840
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+run_python "$ARTIFACTS/softbin_selfcheck.py"
+run_python "$ARTIFACTS/channel_selfcheck.py"
+run_python "$ARTIFACTS/worker.py" --unit "$FW_KL_UNIT" --protocol "$ARTIFACTS/protocol.json"
+touch "$ARTIFACTS/PHASE_COMPLETE"

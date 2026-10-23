@@ -1,0 +1,52 @@
+#!/bin/bash
+#PBS -N fwvcnet
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=2gb
+#PBS -l walltime=00:05:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+host_net_names=()
+for name in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy \
+            SSL_CERT_FILE REQUESTS_CA_BUNDLE CURL_CA_BUNDLE GIT_SSL_CAINFO; do
+  [[ -n "${!name:-}" ]] && host_net_names+=("$name")
+done
+host_net_display=$(IFS=,; printf '%s' "${host_net_names[*]}")
+[[ -n "$host_net_display" ]] || host_net_display=none
+echo "HOST_NETWORK_ENV configured=$host_net_display"
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+ARTIFACTS="$ROOT/artifacts/net-probe-$PBS_JOBID"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh net_probe.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=1
+FW_ALLOW_DATA_HTTP=1
+source "$ARTIFACTS/environment.sh"
+set +e
+python3 "$ARTIFACTS/net_probe.py" --context host
+host_rc=$?
+run_python "$ARTIFACTS/net_probe.py" --context container
+container_rc=$?
+set -e
+printf 'host_probe_exit=%s\ncontainer_probe_exit=%s\n' "$host_rc" "$container_rc" > "$ARTIFACTS/probe_status.txt"
+touch "$ARTIFACTS/PROBE_COMPLETE"
+printf '0\n' > "$ARTIFACTS/exit_code.txt"

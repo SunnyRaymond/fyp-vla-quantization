@@ -1,0 +1,64 @@
+#!/bin/bash
+#PBS -N fwpr1012wa
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=96gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-prism-visualization-20261012
+export ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+OUT="$ROOT/results/full"
+LOCK="$ROOT/results/weight.writer-lock"
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+LOCK_HELD=0
+finish() {
+  rc=$?
+  set +e
+  if [[ "$LOCK_HELD" == 1 ]]; then rmdir -- "$LOCK" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+}
+trap finish EXIT
+mkdir "$LOCK" || exit 73
+LOCK_HELD=1
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+for name in protocol.json weight_protocol.json collect.py plot.py weight_analysis.py weight_analysis_plot.py weight_analysis_gallery.py WEIGHT_ANALYSIS.zh.md environment.sh weight.pbs; do cp -- "$ROOT/$name" "$ARTIFACTS/$name"; done
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=16
+source "$ARTIFACTS/environment.sh"
+shopt -s nullglob
+module_markers=("$OUT/weight_analysis/checkpoints"/module_m*.json)
+if [[ "${#module_markers[@]}" -eq 16 ]]; then
+  run_python "$ARTIFACTS/weight_analysis.py" --aggregate-only --protocol "$ARTIFACTS/protocol.json" --analysis-protocol "$ARTIFACTS/weight_protocol.json" --out "$OUT"
+else
+  run_python "$ARTIFACTS/weight_analysis.py" --selfcheck --protocol "$ARTIFACTS/protocol.json" --analysis-protocol "$ARTIFACTS/weight_protocol.json" --out "$OUT"
+  run_python "$ARTIFACTS/weight_analysis.py" --protocol "$ARTIFACTS/protocol.json" --analysis-protocol "$ARTIFACTS/weight_protocol.json" --out "$OUT"
+fi
+DATA="$OUT/weight_analysis/weight_analysis_data.json"
+test -s "$DATA"
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$DATA")
+if [[ "$status" == checkpointed ]]; then
+  cp -- "$DATA" "$ARTIFACTS/summary.json"
+  touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+  exit 0
+fi
+test "$status" = complete
+run_python "$ARTIFACTS/weight_analysis_plot.py" --protocol "$ARTIFACTS/weight_protocol.json" --out "$OUT/weight_analysis"
+SUMMARY="$OUT/weight_analysis/plots/manifest.json"
+test -s "$SUMMARY"
+cp -- "$SUMMARY" "$ARTIFACTS/summary.json"
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$SUMMARY")
+case "$status" in
+  complete)
+    run_python "$ARTIFACTS/weight_analysis_gallery.py" --plots "$OUT/weight_analysis/plots" --data "$DATA"
+    test -s "$OUT/weight_analysis/plots/gallery.html"
+    touch "$ARTIFACTS/PIPELINE_COMPLETE";;
+  checkpointed) touch "$ARTIFACTS/PIPELINE_CHECKPOINTED";;
+  *) exit 65;;
+esac

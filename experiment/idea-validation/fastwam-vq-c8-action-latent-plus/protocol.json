@@ -1,0 +1,150 @@
+{
+  "protocol": "fastwam-vq-c8-action-latent-plus-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+  "checkpoint": "libero_optional_idm_2cam224.clean.pt",
+  "inference": {
+    "mode": "idm",
+    "video_steps": 10,
+    "action_steps": 10,
+    "sigma_shift": 1.0,
+    "action_horizon": 32,
+    "execute_per_replan": 10,
+    "action_ensembler": false,
+    "settling_steps": 30,
+    "max_steps_normal": 400,
+    "max_steps_long": 700
+  },
+  "cohort": {
+    "manifest_protocol": "fastwam-rotation-baselines-v1",
+    "reference_manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "reference_evaluation_job_id": "25728285.pbs101",
+    "sampling_changed": false,
+    "variants_per_arm": 280,
+    "total_new_episodes": 560,
+    "suites": 4,
+    "dimensions": 7,
+    "variants_per_suite": 70,
+    "variants_per_dimension": 40,
+    "variants_per_cell": 10,
+    "state_id": 0,
+    "env_seed_base": 800000000,
+    "sampler_seed_base": 900000000,
+    "seed_stride": 1000,
+    "paired_seeds_across_arms": true
+  },
+  "arms": [
+    "rho0.1",
+    "rho1.5"
+  ],
+  "arm_configs": {
+    "rho0.1": {
+      "rho": 0.1,
+      "epochs": 2,
+      "updates": 16
+    },
+    "rho1.5": {
+      "rho": 1.5,
+      "epochs": 1,
+      "updates": 8
+    }
+  },
+  "calibration": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+    "plan_file": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "case_ids": [
+      2000,
+      2019,
+      2021,
+      2025,
+      2051,
+      2057,
+      2066,
+      2070
+    ],
+    "source_job_id": "25789685.pbs101",
+    "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+    "cohort": "c8",
+    "domain": "original",
+    "suites": 4,
+    "contexts": 8,
+    "per_suite": 2,
+    "seed_index": 0
+  },
+  "training": {
+    "learning_rate": 0.0005,
+    "gradient_norm_clip": 1.0,
+    "optimizer": "Adam",
+    "optimizer_reset_after_update1": true,
+    "loss": "first10 six motor MSE + rho * normalization_c * clean future global NMSE, excluding clamped frame0",
+    "normalization": "mean C8 initial Micro action MSE / mean C8 initial Micro future NMSE, shared across both rho arms",
+    "epoch_policy": "Fixed before closed-loop evaluation from historical per-rho best checkpoints: rho0.1 epoch2; rho1.5 epoch1",
+    "reference_max_abs_tolerance": 0.002,
+    "reference_rmse_tolerance": 0.001,
+    "save_reserve_seconds": 120
+  },
+  "quantization": {
+    "weights": "C8 B32 additive VQ with trained FP32 master books/log row gains; deploy BF16 stored values",
+    "activations": "Dynamic per-row A4 absmax qmax7, decoded BF16",
+    "kv_cache": "bf16",
+    "native_int4_kernel": false,
+    "fixed": "Indices, B32 uint8 exponents, Smooth0.5/H128 signs/scales, all other model parameters",
+    "transform_implementation": "batched_h128_v2"
+  },
+  "worker_assignment": {
+    "workers": 4,
+    "rho0.1": [
+      0,
+      1
+    ],
+    "rho1.5": [
+      2,
+      3
+    ],
+    "indices_per_worker": "index % 2 == worker_id % 2",
+    "variants_per_worker": 140,
+    "start_stagger_seconds": 20,
+    "evaluation_model_loads": 4,
+    "preparation_model_loads": 1,
+    "training_model_loads": 2,
+    "total_model_loads_without_retry": 7
+  },
+  "soft_deadline_seconds": 85500,
+  "source_parity_max_abs_tolerance": 1e-06,
+  "reference_case_id": 2000,
+  "reference_seed_index": 0,
+  "references": {
+    "rotation_results": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results",
+    "rotation_job_id": "25728285.pbs101",
+    "scalar_results": "/scratch/users/ntu/yguo017/fastwam-smooth-scalar-plus-20261009/results",
+    "scalar_job_id": "25734678.pbs101",
+    "arms": [
+      "bf16",
+      "quarot_adapted_w4a4",
+      "spinquant_adapted_w4a4",
+      "smooth05_hadamard_scalar_w4a4",
+      "row_scale_vq_a4",
+      "micro_scale_vq_a4"
+    ],
+    "reference_episode_slots": 1680,
+    "vq_results": "/scratch/users/ntu/yguo017/fastwam-vq-plus-20261012/results",
+    "expected_reference_slots": 1680
+  },
+  "roots": {
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "pilot_root": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+  "allocation": {
+    "jobs": 1,
+    "queue": "normal",
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 220,
+    "walltime": "24:00:00",
+    "gpu_monitor_seconds": 15,
+    "route": "normal to g3"
+  },
+  "historical_recipe_source": "/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014",
+  "calibration_reuse_boundary": "New C8 teacher targets and distillation; old 8cal checkpoints/normalization are not substituted",
+  "claim_scope": "Paired closed-loop comparison of two C8-trained complete configurations; decoded BF16/A4; rho and preselected epoch differ",
+  "reference_directory": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015/results/reference"
+}

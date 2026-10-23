@@ -1,0 +1,137 @@
+{
+  "protocol": "fastwam-vq-module-norm-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-module-norm-20261017",
+  "source_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009",
+  "source_full_job": "25743693.pbs101",
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "initial_arm": "row_output_vq_a4",
+  "target_linears": 614,
+  "calibration_cases": [
+    0,
+    2,
+    4,
+    6,
+    10,
+    12,
+    14,
+    16
+  ],
+  "selection_cases": [
+    1000,
+    1001,
+    1002,
+    1003
+  ],
+  "test_cases": [
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
+    1023,
+    1024,
+    1025
+  ],
+  "evaluation_seed_indices": [
+    0,
+    1
+  ],
+  "diagnostic_root": "/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013",
+  "diagnostic_jobs": [
+    "25787685.pbs101",
+    "25787687.pbs101"
+  ],
+  "distill_job": "25764781.pbs101",
+  "distill_result": "/scratch/users/ntu/yguo017/fastwam-vq-action-distill-20261011/results/full-25764781.pbs101",
+  "protected_job": "25798439.pbs101",
+  "protected_result": "/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014/results/full-25798439.pbs101",
+  "selected_epoch": 2,
+  "donors": [
+    "bf16",
+    "parent",
+    "action_only",
+    "action_latent"
+  ],
+  "teacher_reader": "Original BF16 video prepare/prefill, ActionDiT and proprio encoder; no A4 or VQ in any reader operation; regenerate K/V for each donor",
+  "cross_readers": [
+    "action_only",
+    "action_latent"
+  ],
+  "sampler": "Optional-IDM; 9 video frames; 32x7 actions; 10 video + 10 action steps; sigma_shift=1; CPU RNG; compile=false; original observation frame0 clamp",
+  "walltime_seconds": 7200,
+  "save_reserve_seconds": 150,
+  "shards": 2,
+  "contexts_per_shard": 30,
+  "total_contexts": 60,
+  "parity_max_abs_tolerance": 0.002,
+  "parity_rmse_tolerance": 0.001,
+  "teacher_replay_max_abs_tolerance": 0.002,
+  "teacher_replay_rmse_tolerance": 0.001,
+  "primary_metric": "first10motor_rmse; average paired seeds within case then cases equally; test n=22",
+  "claim_scope": "Paired internal module-budget attribution diagnostic using reused calibration gradients. Untied increases storage/capacity; no new assignment method, independent held-out confirmation, ground-truth dynamics or closed-loop claim.",
+  "latent_root": "/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014",
+  "future_reader_root": "/scratch/users/ntu/yguo017/fastwam-vq-future-reader-20261016",
+  "vectors_per_codeword": 32,
+  "sample_seed": 161022031,
+  "null_repeats": 5,
+  "capture_shards": 4,
+  "checkpoints": [
+    "parent",
+    "action_only",
+    "action_latent"
+  ],
+  "gradients": "Separate raw action MSE and future NMSE gradients; sum repeated Linear calls per weight vector before codeword statistics. Exact full-membership codebook gradients; deterministic uniform stratified samples for within-codeword member diagnostics.",
+  "diagnostic_scope": "All614 target Linears and every occupied codeword. Gradient capture uses all8 frozen calibration contexts, seed0, at all3 frozen checkpoints. No test-directed group selection. Sampled within-codeword statistics are not full-population conflict rates.",
+  "exact_selection": "Action-only calibration only: choose four modules ranked by the sum of top8 book0 population-weighted sampled member-gradient energy times squared sampled cancellation; all8 cases; no test-directed selection.",
+  "intervention": "No assignment implementation or new model training. Compare actual shared-codeword updates with same-support equal-decoded-weight-energy untied gradient diagnostic and random-direction control, at two frozen step norms. Untied intervention is a capacity-relaxation diagnostic, not a valid compressed model.",
+  "intervention_step_norms": [
+    0.005,
+    0.015
+  ],
+  "intervention_cohort": "All60 original contexts, paired seeds; fixed BF16 teacher-reader future evaluation and native actions; no executed episodes.",
+  "stages": [
+    "prepare",
+    "capture",
+    "analyze_capture",
+    "exact",
+    "analyze_exact",
+    "intervene",
+    "analyze"
+  ],
+  "step_norm_matching_relative_tolerance": 0.05,
+  "progression_rule": "No automatic assignment progression gate; interpret direction versus allocation effects and actual storage tradeoff jointly. Both previous module-budget profiles required, full original60contexts, both frozen epsilon levels.",
+  "previous_root": "/scratch/users/ntu/yguo017/fastwam-vq-codeword-conflict-20261016",
+  "allocation_profiles": [
+    "sbudget",
+    "ubudget"
+  ],
+  "profile_definition": "Per-module actual decoded BF16 delta norms from previous shared/untied calibration-derived probes, independently for each epsilon. No selection/test-driven budget choice. Before GPU outcomes: snap each requested module budget to nearest actually attainable shared-BF16 norm along fixed shared direction; cap relative adjustment at2%, then match both dense directions to that common actual norm. Report all adjustments. Reuse only bitwise identical weights.",
+  "module_norm_relative_tolerance": 0.005,
+  "pairwise_module_norm_relative_tolerance": 0.01,
+  "primary_step_norm": 0.005,
+  "secondary_step_norm": 0.015,
+  "primary_question": "At fixed per-module actual decoded update norms, does untied retain future and fixed-BF16-reader action benefit? Cross both prior allocation profiles with all3 directions.",
+  "analysis_rule": "Report each profile and epsilon, untied-shared/untied-random and allocation changes at fixed direction, paired case mean/median/wins and descriptive case bootstrap CIs. Primary epsilon0.005; epsilon0.015 stress check. No test-driven arm selection or confirmatory p-value. Include previous action+latent Z fixed-reader full-cohort results as zero-extra-bpw reference; no future/native metrics fabricated.",
+  "storage_rule": "Count actual encoded indices/books/scales and transform payload plus explicit metadata. Shared replaces same-size book values; untied/random add a round-trip-verified full-support BF16 overlay with module/code selectors inferred from retained base indices. Report added bytes and effective bpw over full614 target weights and selected modules/support; no compressed-resident or latency claim.",
+  "maximum_budget_snap_relative_change": 0.02,
+  "pre_forward_amendment": "CPU prepare25848072 failed before new forwards: ubudget_shared_0/text module nearest BF16 norm differs0.9749276%, above0.5% tolerance. Common attainable-norm targets replace unachievable fixed targets; per-arm0.5%/pairwise1% matching remains unchanged. No scientific outcomes read."
+}

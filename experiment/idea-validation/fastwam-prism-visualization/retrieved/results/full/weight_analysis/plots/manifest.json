@@ -1,0 +1,2476 @@
+{
+  "schema": "fastwam-weight-analysis-renderer-v2",
+  "status": "complete",
+  "identity": {
+    "renderer_schema": "fastwam-weight-analysis-renderer-v2",
+    "protocol": {
+      "protocol": "fastwam-weight-analysis-v1",
+      "capture_protocol": "fastwam-prism-visualization-v1",
+      "bf16_checkpoint": "/scratch/users/ntu/yguo017/fastwam-smoke/checkpoints/libero_optional_idm_2cam224.clean.pt",
+      "checkpoint_state_key": "mot",
+      "checkpoint_prefixes": {
+        "video_expert": "mixtures.video",
+        "action_expert": "mixtures.action"
+      },
+      "arms": [
+        "spinquant_native_w4a4",
+        "row_scale_vq_a4",
+        "micro_scale_vq_a4"
+      ],
+      "streams": [
+        "video_expert",
+        "action_expert"
+      ],
+      "blocks": [
+        0,
+        10,
+        20,
+        29
+      ],
+      "module_suffixes": [
+        "self_attn.q",
+        "ffn.2"
+      ],
+      "cases": [
+        1004,
+        1014
+      ],
+      "seed_index": 0,
+      "snapshot_steps": [
+        0,
+        4,
+        9
+      ],
+      "primary_call_rule": "lowest call_index for each module/case/stage/step",
+      "block_size": 32,
+      "weight_statistics_scope": "Complete selected Linear matrix; all input and output channels",
+      "output_statistics_scope": "All saved token rows of primary BF16 paired inputs and full output width",
+      "weight_plot_window": {
+        "output_start": 0,
+        "output_count": 128,
+        "input_start": 0,
+        "input_count": 512
+      },
+      "output_plot_window": {
+        "token_start": 0,
+        "token_count": 64,
+        "output_start": 0,
+        "output_count": 128
+      },
+      "focus_case": 1004,
+      "focus_step": 4,
+      "focus_block": 10,
+      "focus_suffix": "ffn.2",
+      "expected_modules": 16,
+      "expected_weight_comparisons": 48,
+      "expected_primary_inputs": 96,
+      "expected_output_comparisons": 288,
+      "new_whole_model_forwards": 0,
+      "training": false,
+      "refit": false,
+      "activation_quantization": false,
+      "output_error_definition": "Bias-free FP32 matrix products: X_basis @ (W_quantized - W_reference).T, normalized by squared norm of X_basis @ W_reference.T. Rebuild each X_basis in FP32 from the same saved BF16 paired_raw input and frozen transform. No A4.",
+      "native_boundary": "SpinQuant packed INT4 decoded offline; VQ banks decoded to their effective BF16 weights. This analysis does not execute native kernels or measure speed.",
+      "walltime": "02:00:00",
+      "soft_deadline_seconds": 6600,
+      "cpu_threads": 16,
+      "result_subdirectory": "weight_analysis"
+    },
+    "data_schema": "weight-analysis-v1",
+    "main_case": 1004,
+    "main_step": 4
+  },
+  "source_identities": [
+    {
+      "path": "weight_protocol.json"
+    },
+    {
+      "path": "weight_analysis_data.json",
+      "size": 177027,
+      "mtime_ns": 1791822480000000000
+    },
+    {
+      "path": "m0005.npz",
+      "size": 8149067,
+      "mtime_ns": 1791821247000000000
+    },
+    {
+      "path": "m0014.npz",
+      "size": 21109152,
+      "mtime_ns": 1791821280000000000
+    },
+    {
+      "path": "m0105.npz",
+      "size": 8147787,
+      "mtime_ns": 1791821286000000000
+    },
+    {
+      "path": "m0114.npz",
+      "size": 21094821,
+      "mtime_ns": 1791821335000000000
+    },
+    {
+      "path": "m0205.npz",
+      "size": 8143163,
+      "mtime_ns": 1791821343000000000
+    },
+    {
+      "path": "m0214.npz",
+      "size": 21050390,
+      "mtime_ns": 1791821374000000000
+    },
+    {
+      "path": "m0295.npz",
+      "size": 8156751,
+      "mtime_ns": 1791821382000000000
+    },
+    {
+      "path": "m0304.npz",
+      "size": 21122736,
+      "mtime_ns": 1791821413000000000
+    },
+    {
+      "path": "m0312.npz",
+      "size": 4766266,
+      "mtime_ns": 1791822046000000000
+    },
+    {
+      "path": "m0321.npz",
+      "size": 4918226,
+      "mtime_ns": 1791822049000000000
+    },
+    {
+      "path": "m0412.npz",
+      "size": 4787093,
+      "mtime_ns": 1791822050000000000
+    },
+    {
+      "path": "m0421.npz",
+      "size": 4939367,
+      "mtime_ns": 1791822053000000000
+    },
+    {
+      "path": "m0512.npz",
+      "size": 4776910,
+      "mtime_ns": 1791822055000000000
+    },
+    {
+      "path": "m0521.npz",
+      "size": 4927454,
+      "mtime_ns": 1791822057000000000
+    },
+    {
+      "path": "m0602.npz",
+      "size": 4785799,
+      "mtime_ns": 1791822059000000000
+    },
+    {
+      "path": "m0611.npz",
+      "size": 4915644,
+      "mtime_ns": 1791822062000000000
+    }
+  ],
+  "module_count": 16,
+  "expected_module_count": 16,
+  "focus_count": 2,
+  "aggregate_count": 4,
+  "figure_count": 80,
+  "expected_figure_count": 80,
+  "families": {
+    "distribution": {
+      "complete": 16,
+      "expected": 16
+    },
+    "block_error": {
+      "complete": 16,
+      "expected": 16
+    },
+    "input_output_rms": {
+      "complete": 16,
+      "expected": 16
+    },
+    "output_error": {
+      "complete": 16,
+      "expected": 16
+    },
+    "focus_output_error": {
+      "complete": 12,
+      "expected": 12
+    },
+    "aggregate": {
+      "complete": 4,
+      "expected": 4
+    }
+  },
+  "coverage": {
+    "distribution": 16,
+    "block_error": 16,
+    "input_output_rms": 16,
+    "output_error": 16,
+    "focus_output_error": 12,
+    "aggregate": 4
+  },
+  "page_count": 112,
+  "expected_page_count": 112,
+  "family_pages": {
+    "distribution": {
+      "complete": 48,
+      "expected": 48
+    },
+    "block_error": {
+      "complete": 16,
+      "expected": 16
+    },
+    "input_output_rms": {
+      "complete": 16,
+      "expected": 16
+    },
+    "output_error": {
+      "complete": 16,
+      "expected": 16
+    },
+    "focus_output_error": {
+      "complete": 12,
+      "expected": 12
+    },
+    "aggregate": {
+      "complete": 4,
+      "expected": 4
+    }
+  },
+  "figures": [
+    {
+      "id": "distribution:video_expert.blocks.0.self_attn.q",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.0.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.0.self_attn.q",
+      "pdf": "distribution_video_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 58236
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.0.self_attn.q__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.0.self_attn.q__page2.jpg",
+          "preview_bytes": 91361
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.0.self_attn.q__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.0.self_attn.q__page3.jpg",
+          "preview_bytes": 82021
+        }
+      ],
+      "png": "distribution_video_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 58236
+    },
+    {
+      "id": "block_error:video_expert.blocks.0.self_attn.q",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.0.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.0.self_attn.q",
+      "pdf": "block_error_video_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.0.self_attn.q · block_error",
+          "png": "block_error_video_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 146328
+        }
+      ],
+      "png": "block_error_video_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 146328
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.0.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.0.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.0.self_attn.q",
+      "pdf": "input_output_rms_video_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.0.self_attn.q · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 122184
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 122184
+    },
+    {
+      "id": "output_error:video_expert.blocks.0.self_attn.q",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.0.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.0.self_attn.q",
+      "pdf": "output_error_video_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.0.self_attn.q · output_error",
+          "png": "output_error_video_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 100399
+        }
+      ],
+      "png": "output_error_video_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 100399
+    },
+    {
+      "id": "distribution:video_expert.blocks.0.ffn.2",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.0.ffn.2",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.0.ffn.2",
+      "pdf": "distribution_video_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 59909
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.0.ffn.2__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.0.ffn.2__page2.jpg",
+          "preview_bytes": 89690
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.0.ffn.2__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.0.ffn.2__page3.jpg",
+          "preview_bytes": 90227
+        }
+      ],
+      "png": "distribution_video_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 59909
+    },
+    {
+      "id": "block_error:video_expert.blocks.0.ffn.2",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.0.ffn.2",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.0.ffn.2",
+      "pdf": "block_error_video_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.0.ffn.2 · block_error",
+          "png": "block_error_video_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 158076
+        }
+      ],
+      "png": "block_error_video_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 158076
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.0.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.0.ffn.2",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.0.ffn.2",
+      "pdf": "input_output_rms_video_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.0.ffn.2 · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 96587
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 96587
+    },
+    {
+      "id": "output_error:video_expert.blocks.0.ffn.2",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.0.ffn.2",
+      "stream": "video_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.0.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.0.ffn.2",
+      "pdf": "output_error_video_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.0.ffn.2 · output_error",
+          "png": "output_error_video_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 85611
+        }
+      ],
+      "png": "output_error_video_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 85611
+    },
+    {
+      "id": "distribution:video_expert.blocks.10.self_attn.q",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.10.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.10.self_attn.q",
+      "pdf": "distribution_video_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 60343
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.10.self_attn.q__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.10.self_attn.q__page2.jpg",
+          "preview_bytes": 79271
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.10.self_attn.q__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.10.self_attn.q__page3.jpg",
+          "preview_bytes": 84035
+        }
+      ],
+      "png": "distribution_video_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 60343
+    },
+    {
+      "id": "block_error:video_expert.blocks.10.self_attn.q",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.10.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.10.self_attn.q",
+      "pdf": "block_error_video_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.self_attn.q · block_error",
+          "png": "block_error_video_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 153288
+        }
+      ],
+      "png": "block_error_video_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 153288
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.10.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.10.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.10.self_attn.q",
+      "pdf": "input_output_rms_video_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.self_attn.q · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 98454
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 98454
+    },
+    {
+      "id": "output_error:video_expert.blocks.10.self_attn.q",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.10.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.10.self_attn.q",
+      "pdf": "output_error_video_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.self_attn.q · output_error",
+          "png": "output_error_video_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 74771
+        }
+      ],
+      "png": "output_error_video_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 74771
+    },
+    {
+      "id": "distribution:video_expert.blocks.10.ffn.2",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.10.ffn.2",
+      "pdf": "distribution_video_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 60645
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.10.ffn.2__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.10.ffn.2__page2.jpg",
+          "preview_bytes": 87388
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.10.ffn.2__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.10.ffn.2__page3.jpg",
+          "preview_bytes": 77659
+        }
+      ],
+      "png": "distribution_video_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 60645
+    },
+    {
+      "id": "block_error:video_expert.blocks.10.ffn.2",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.10.ffn.2",
+      "pdf": "block_error_video_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · block_error",
+          "png": "block_error_video_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 161718
+        }
+      ],
+      "png": "block_error_video_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 161718
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.10.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.10.ffn.2",
+      "pdf": "input_output_rms_video_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 119053
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 119053
+    },
+    {
+      "id": "output_error:video_expert.blocks.10.ffn.2",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.10.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.10.ffn.2",
+      "pdf": "output_error_video_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · output_error",
+          "png": "output_error_video_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 102620
+        }
+      ],
+      "png": "output_error_video_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 102620
+    },
+    {
+      "id": "distribution:video_expert.blocks.20.self_attn.q",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.20.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.20.self_attn.q",
+      "pdf": "distribution_video_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 61661
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.20.self_attn.q__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.20.self_attn.q__page2.jpg",
+          "preview_bytes": 84454
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.20.self_attn.q__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.20.self_attn.q__page3.jpg",
+          "preview_bytes": 91755
+        }
+      ],
+      "png": "distribution_video_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 61661
+    },
+    {
+      "id": "block_error:video_expert.blocks.20.self_attn.q",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.20.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.20.self_attn.q",
+      "pdf": "block_error_video_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.20.self_attn.q · block_error",
+          "png": "block_error_video_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 150096
+        }
+      ],
+      "png": "block_error_video_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 150096
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.20.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.20.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.20.self_attn.q",
+      "pdf": "input_output_rms_video_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.20.self_attn.q · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 100321
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 100321
+    },
+    {
+      "id": "output_error:video_expert.blocks.20.self_attn.q",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.20.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.20.self_attn.q",
+      "pdf": "output_error_video_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.20.self_attn.q · output_error",
+          "png": "output_error_video_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 102355
+        }
+      ],
+      "png": "output_error_video_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 102355
+    },
+    {
+      "id": "distribution:video_expert.blocks.20.ffn.2",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.20.ffn.2",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.20.ffn.2",
+      "pdf": "distribution_video_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 59321
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.20.ffn.2__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.20.ffn.2__page2.jpg",
+          "preview_bytes": 82055
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.20.ffn.2__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.20.ffn.2__page3.jpg",
+          "preview_bytes": 76509
+        }
+      ],
+      "png": "distribution_video_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 59321
+    },
+    {
+      "id": "block_error:video_expert.blocks.20.ffn.2",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.20.ffn.2",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.20.ffn.2",
+      "pdf": "block_error_video_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.20.ffn.2 · block_error",
+          "png": "block_error_video_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 146576
+        }
+      ],
+      "png": "block_error_video_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 146576
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.20.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.20.ffn.2",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.20.ffn.2",
+      "pdf": "input_output_rms_video_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.20.ffn.2 · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 97155
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 97155
+    },
+    {
+      "id": "output_error:video_expert.blocks.20.ffn.2",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.20.ffn.2",
+      "stream": "video_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.20.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.20.ffn.2",
+      "pdf": "output_error_video_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.20.ffn.2 · output_error",
+          "png": "output_error_video_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 101310
+        }
+      ],
+      "png": "output_error_video_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 101310
+    },
+    {
+      "id": "distribution:video_expert.blocks.29.self_attn.q",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.29.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.29.self_attn.q",
+      "pdf": "distribution_video_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 59034
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.29.self_attn.q__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.29.self_attn.q__page2.jpg",
+          "preview_bytes": 87959
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.29.self_attn.q__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.29.self_attn.q__page3.jpg",
+          "preview_bytes": 81450
+        }
+      ],
+      "png": "distribution_video_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 59034
+    },
+    {
+      "id": "block_error:video_expert.blocks.29.self_attn.q",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.29.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.29.self_attn.q",
+      "pdf": "block_error_video_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.29.self_attn.q · block_error",
+          "png": "block_error_video_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 142631
+        }
+      ],
+      "png": "block_error_video_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 142631
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.29.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.29.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.29.self_attn.q",
+      "pdf": "input_output_rms_video_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.29.self_attn.q · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 92326
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 92326
+    },
+    {
+      "id": "output_error:video_expert.blocks.29.self_attn.q",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.29.self_attn.q",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.29.self_attn.q",
+      "pdf": "output_error_video_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.29.self_attn.q · output_error",
+          "png": "output_error_video_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 92720
+        }
+      ],
+      "png": "output_error_video_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 92720
+    },
+    {
+      "id": "distribution:video_expert.blocks.29.ffn.2",
+      "family": "distribution",
+      "module_id": "video_expert.blocks.29.ffn.2",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_video_expert.blocks.29.ffn.2",
+      "pdf": "distribution_video_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_video_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/distribution_video_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 60039
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_video_expert.blocks.29.ffn.2__page2.png",
+          "preview": "previews/distribution_video_expert.blocks.29.ffn.2__page2.jpg",
+          "preview_bytes": 80612
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_video_expert.blocks.29.ffn.2__page3.png",
+          "preview": "previews/distribution_video_expert.blocks.29.ffn.2__page3.jpg",
+          "preview_bytes": 85987
+        }
+      ],
+      "png": "distribution_video_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/distribution_video_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 60039
+    },
+    {
+      "id": "block_error:video_expert.blocks.29.ffn.2",
+      "family": "block_error",
+      "module_id": "video_expert.blocks.29.ffn.2",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_video_expert.blocks.29.ffn.2",
+      "pdf": "block_error_video_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.29.ffn.2 · block_error",
+          "png": "block_error_video_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/block_error_video_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 154701
+        }
+      ],
+      "png": "block_error_video_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/block_error_video_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 154701
+    },
+    {
+      "id": "input_output_rms:video_expert.blocks.29.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "video_expert.blocks.29.ffn.2",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_video_expert.blocks.29.ffn.2",
+      "pdf": "input_output_rms_video_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.29.ffn.2 · input_output_rms",
+          "png": "input_output_rms_video_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_video_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 103874
+        }
+      ],
+      "png": "input_output_rms_video_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_video_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 103874
+    },
+    {
+      "id": "output_error:video_expert.blocks.29.ffn.2",
+      "family": "output_error",
+      "module_id": "video_expert.blocks.29.ffn.2",
+      "stream": "video_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "title": "video_expert.blocks.29.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_video_expert.blocks.29.ffn.2",
+      "pdf": "output_error_video_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.29.ffn.2 · output_error",
+          "png": "output_error_video_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/output_error_video_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 85393
+        }
+      ],
+      "png": "output_error_video_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/output_error_video_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 85393
+    },
+    {
+      "id": "distribution:action_expert.blocks.0.self_attn.q",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.0.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.0.self_attn.q",
+      "pdf": "distribution_action_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 58232
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.0.self_attn.q__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.0.self_attn.q__page2.jpg",
+          "preview_bytes": 81439
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.0.self_attn.q__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.0.self_attn.q__page3.jpg",
+          "preview_bytes": 79258
+        }
+      ],
+      "png": "distribution_action_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 58232
+    },
+    {
+      "id": "block_error:action_expert.blocks.0.self_attn.q",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.0.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.0.self_attn.q",
+      "pdf": "block_error_action_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.0.self_attn.q · block_error",
+          "png": "block_error_action_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 139291
+        }
+      ],
+      "png": "block_error_action_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 139291
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.0.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.0.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.0.self_attn.q",
+      "pdf": "input_output_rms_action_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.0.self_attn.q · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 124433
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 124433
+    },
+    {
+      "id": "output_error:action_expert.blocks.0.self_attn.q",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.0.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.0.self_attn.q",
+      "pdf": "output_error_action_expert.blocks.0.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.0.self_attn.q · output_error",
+          "png": "output_error_action_expert.blocks.0.self_attn.q__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.0.self_attn.q__page1.jpg",
+          "preview_bytes": 86637
+        }
+      ],
+      "png": "output_error_action_expert.blocks.0.self_attn.q__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.0.self_attn.q__page1.jpg",
+      "preview_bytes": 86637
+    },
+    {
+      "id": "distribution:action_expert.blocks.0.ffn.2",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.0.ffn.2",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.0.ffn.2",
+      "pdf": "distribution_action_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 61995
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.0.ffn.2__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.0.ffn.2__page2.jpg",
+          "preview_bytes": 85280
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.0.ffn.2__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.0.ffn.2__page3.jpg",
+          "preview_bytes": 80516
+        }
+      ],
+      "png": "distribution_action_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 61995
+    },
+    {
+      "id": "block_error:action_expert.blocks.0.ffn.2",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.0.ffn.2",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.0.ffn.2",
+      "pdf": "block_error_action_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.0.ffn.2 · block_error",
+          "png": "block_error_action_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 154823
+        }
+      ],
+      "png": "block_error_action_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 154823
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.0.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.0.ffn.2",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.0.ffn.2",
+      "pdf": "input_output_rms_action_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.0.ffn.2 · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 116758
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 116758
+    },
+    {
+      "id": "output_error:action_expert.blocks.0.ffn.2",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.0.ffn.2",
+      "stream": "action_expert",
+      "block_index": 0,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.0.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.0.ffn.2",
+      "pdf": "output_error_action_expert.blocks.0.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.0.ffn.2 · output_error",
+          "png": "output_error_action_expert.blocks.0.ffn.2__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.0.ffn.2__page1.jpg",
+          "preview_bytes": 72384
+        }
+      ],
+      "png": "output_error_action_expert.blocks.0.ffn.2__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.0.ffn.2__page1.jpg",
+      "preview_bytes": 72384
+    },
+    {
+      "id": "distribution:action_expert.blocks.10.self_attn.q",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.10.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.10.self_attn.q",
+      "pdf": "distribution_action_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 59153
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.10.self_attn.q__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.10.self_attn.q__page2.jpg",
+          "preview_bytes": 87479
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.10.self_attn.q__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.10.self_attn.q__page3.jpg",
+          "preview_bytes": 82499
+        }
+      ],
+      "png": "distribution_action_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 59153
+    },
+    {
+      "id": "block_error:action_expert.blocks.10.self_attn.q",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.10.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.10.self_attn.q",
+      "pdf": "block_error_action_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.self_attn.q · block_error",
+          "png": "block_error_action_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 131697
+        }
+      ],
+      "png": "block_error_action_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 131697
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.10.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.10.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.10.self_attn.q",
+      "pdf": "input_output_rms_action_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.self_attn.q · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 97489
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 97489
+    },
+    {
+      "id": "output_error:action_expert.blocks.10.self_attn.q",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.10.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.10.self_attn.q",
+      "pdf": "output_error_action_expert.blocks.10.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.self_attn.q · output_error",
+          "png": "output_error_action_expert.blocks.10.self_attn.q__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.10.self_attn.q__page1.jpg",
+          "preview_bytes": 79255
+        }
+      ],
+      "png": "output_error_action_expert.blocks.10.self_attn.q__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.10.self_attn.q__page1.jpg",
+      "preview_bytes": 79255
+    },
+    {
+      "id": "distribution:action_expert.blocks.10.ffn.2",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.10.ffn.2",
+      "pdf": "distribution_action_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 60521
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.10.ffn.2__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.10.ffn.2__page2.jpg",
+          "preview_bytes": 85241
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.10.ffn.2__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.10.ffn.2__page3.jpg",
+          "preview_bytes": 87491
+        }
+      ],
+      "png": "distribution_action_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 60521
+    },
+    {
+      "id": "block_error:action_expert.blocks.10.ffn.2",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.10.ffn.2",
+      "pdf": "block_error_action_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · block_error",
+          "png": "block_error_action_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 156207
+        }
+      ],
+      "png": "block_error_action_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 156207
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.10.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.10.ffn.2",
+      "pdf": "input_output_rms_action_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 115711
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 115711
+    },
+    {
+      "id": "output_error:action_expert.blocks.10.ffn.2",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.10.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.10.ffn.2",
+      "pdf": "output_error_action_expert.blocks.10.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · output_error",
+          "png": "output_error_action_expert.blocks.10.ffn.2__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.10.ffn.2__page1.jpg",
+          "preview_bytes": 94882
+        }
+      ],
+      "png": "output_error_action_expert.blocks.10.ffn.2__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.10.ffn.2__page1.jpg",
+      "preview_bytes": 94882
+    },
+    {
+      "id": "distribution:action_expert.blocks.20.self_attn.q",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.20.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.20.self_attn.q",
+      "pdf": "distribution_action_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 61523
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.20.self_attn.q__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.20.self_attn.q__page2.jpg",
+          "preview_bytes": 88525
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.20.self_attn.q__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.20.self_attn.q__page3.jpg",
+          "preview_bytes": 82781
+        }
+      ],
+      "png": "distribution_action_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 61523
+    },
+    {
+      "id": "block_error:action_expert.blocks.20.self_attn.q",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.20.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.20.self_attn.q",
+      "pdf": "block_error_action_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.20.self_attn.q · block_error",
+          "png": "block_error_action_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 131363
+        }
+      ],
+      "png": "block_error_action_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 131363
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.20.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.20.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.20.self_attn.q",
+      "pdf": "input_output_rms_action_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.20.self_attn.q · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 98868
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 98868
+    },
+    {
+      "id": "output_error:action_expert.blocks.20.self_attn.q",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.20.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.20.self_attn.q",
+      "pdf": "output_error_action_expert.blocks.20.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.20.self_attn.q · output_error",
+          "png": "output_error_action_expert.blocks.20.self_attn.q__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.20.self_attn.q__page1.jpg",
+          "preview_bytes": 89963
+        }
+      ],
+      "png": "output_error_action_expert.blocks.20.self_attn.q__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.20.self_attn.q__page1.jpg",
+      "preview_bytes": 89963
+    },
+    {
+      "id": "distribution:action_expert.blocks.20.ffn.2",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.20.ffn.2",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.20.ffn.2",
+      "pdf": "distribution_action_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 61028
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.20.ffn.2__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.20.ffn.2__page2.jpg",
+          "preview_bytes": 85445
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.20.ffn.2__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.20.ffn.2__page3.jpg",
+          "preview_bytes": 80507
+        }
+      ],
+      "png": "distribution_action_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 61028
+    },
+    {
+      "id": "block_error:action_expert.blocks.20.ffn.2",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.20.ffn.2",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.20.ffn.2",
+      "pdf": "block_error_action_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.20.ffn.2 · block_error",
+          "png": "block_error_action_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 148087
+        }
+      ],
+      "png": "block_error_action_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 148087
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.20.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.20.ffn.2",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.20.ffn.2",
+      "pdf": "input_output_rms_action_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.20.ffn.2 · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 109519
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 109519
+    },
+    {
+      "id": "output_error:action_expert.blocks.20.ffn.2",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.20.ffn.2",
+      "stream": "action_expert",
+      "block_index": 20,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.20.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.20.ffn.2",
+      "pdf": "output_error_action_expert.blocks.20.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.20.ffn.2 · output_error",
+          "png": "output_error_action_expert.blocks.20.ffn.2__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.20.ffn.2__page1.jpg",
+          "preview_bytes": 97068
+        }
+      ],
+      "png": "output_error_action_expert.blocks.20.ffn.2__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.20.ffn.2__page1.jpg",
+      "preview_bytes": 97068
+    },
+    {
+      "id": "distribution:action_expert.blocks.29.self_attn.q",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.29.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.self_attn.q · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.29.self_attn.q",
+      "pdf": "distribution_action_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 60620
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.29.self_attn.q__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.29.self_attn.q__page2.jpg",
+          "preview_bytes": 82061
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.29.self_attn.q__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.29.self_attn.q__page3.jpg",
+          "preview_bytes": 76364
+        }
+      ],
+      "png": "distribution_action_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 60620
+    },
+    {
+      "id": "block_error:action_expert.blocks.29.self_attn.q",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.29.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.self_attn.q · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.29.self_attn.q",
+      "pdf": "block_error_action_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.29.self_attn.q · block_error",
+          "png": "block_error_action_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 136103
+        }
+      ],
+      "png": "block_error_action_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 136103
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.29.self_attn.q",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.29.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.self_attn.q · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.29.self_attn.q",
+      "pdf": "input_output_rms_action_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.29.self_attn.q · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 92751
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 92751
+    },
+    {
+      "id": "output_error:action_expert.blocks.29.self_attn.q",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.29.self_attn.q",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "self_attn.q",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.self_attn.q · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.29.self_attn.q",
+      "pdf": "output_error_action_expert.blocks.29.self_attn.q.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.29.self_attn.q · output_error",
+          "png": "output_error_action_expert.blocks.29.self_attn.q__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.29.self_attn.q__page1.jpg",
+          "preview_bytes": 85345
+        }
+      ],
+      "png": "output_error_action_expert.blocks.29.self_attn.q__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.29.self_attn.q__page1.jpg",
+      "preview_bytes": 85345
+    },
+    {
+      "id": "distribution:action_expert.blocks.29.ffn.2",
+      "family": "distribution",
+      "module_id": "action_expert.blocks.29.ffn.2",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.ffn.2 · distribution",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "distribution_action_expert.blocks.29.ffn.2",
+      "pdf": "distribution_action_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "weight histogram by compared basis",
+          "png": "distribution_action_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/distribution_action_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 60597
+        },
+        {
+          "page": 2,
+          "description": "Prism-style |W| 3D surface window",
+          "png": "distribution_action_expert.blocks.29.ffn.2__page2.png",
+          "preview": "previews/distribution_action_expert.blocks.29.ffn.2__page2.jpg",
+          "preview_bytes": 85638
+        },
+        {
+          "page": 3,
+          "description": "full-matrix weight RMS profiles with precomputed channel CV",
+          "png": "distribution_action_expert.blocks.29.ffn.2__page3.png",
+          "preview": "previews/distribution_action_expert.blocks.29.ffn.2__page3.jpg",
+          "preview_bytes": 75138
+        }
+      ],
+      "png": "distribution_action_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/distribution_action_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 60597
+    },
+    {
+      "id": "block_error:action_expert.blocks.29.ffn.2",
+      "family": "block_error",
+      "module_id": "action_expert.blocks.29.ffn.2",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.ffn.2 · block_error",
+      "context_index": 1,
+      "render_version": 2,
+      "stem": "block_error_action_expert.blocks.29.ffn.2",
+      "pdf": "block_error_action_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.29.ffn.2 · block_error",
+          "png": "block_error_action_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/block_error_action_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 151653
+        }
+      ],
+      "png": "block_error_action_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/block_error_action_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 151653
+    },
+    {
+      "id": "input_output_rms:action_expert.blocks.29.ffn.2",
+      "family": "input_output_rms",
+      "module_id": "action_expert.blocks.29.ffn.2",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.ffn.2 · input_output_rms",
+      "context_index": 1,
+      "stem": "input_output_rms_action_expert.blocks.29.ffn.2",
+      "pdf": "input_output_rms_action_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.29.ffn.2 · input_output_rms",
+          "png": "input_output_rms_action_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/input_output_rms_action_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 122840
+        }
+      ],
+      "png": "input_output_rms_action_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/input_output_rms_action_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 122840
+    },
+    {
+      "id": "output_error:action_expert.blocks.29.ffn.2",
+      "family": "output_error",
+      "module_id": "action_expert.blocks.29.ffn.2",
+      "stream": "action_expert",
+      "block_index": 29,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "title": "action_expert.blocks.29.ffn.2 · output_error",
+      "context_index": 1,
+      "stem": "output_error_action_expert.blocks.29.ffn.2",
+      "pdf": "output_error_action_expert.blocks.29.ffn.2.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.29.ffn.2 · output_error",
+          "png": "output_error_action_expert.blocks.29.ffn.2__page1.png",
+          "preview": "previews/output_error_action_expert.blocks.29.ffn.2__page1.jpg",
+          "preview_bytes": 92357
+        }
+      ],
+      "png": "output_error_action_expert.blocks.29.ffn.2__page1.png",
+      "preview": "previews/output_error_action_expert.blocks.29.ffn.2__page1.jpg",
+      "preview_bytes": 92357
+    },
+    {
+      "id": "focus_output_error:video_expert.blocks.10.ffn.2:1004_video_0",
+      "family": "focus_output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|0",
+      "context_index": 0,
+      "title": "video_expert.blocks.10.ffn.2 · focus · 1004|video|0",
+      "stem": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_0",
+      "pdf": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_0.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · focus · 1004|video|0",
+          "png": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_0__page1.png",
+          "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1004_video_0__page1.jpg",
+          "preview_bytes": 102588
+        }
+      ],
+      "png": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_0__page1.png",
+      "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1004_video_0__page1.jpg",
+      "preview_bytes": 102588
+    },
+    {
+      "id": "focus_output_error:video_expert.blocks.10.ffn.2:1004_video_4",
+      "family": "focus_output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|4",
+      "context_index": 1,
+      "title": "video_expert.blocks.10.ffn.2 · focus · 1004|video|4",
+      "stem": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_4",
+      "pdf": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_4.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · focus · 1004|video|4",
+          "png": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_4__page1.png",
+          "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1004_video_4__page1.jpg",
+          "preview_bytes": 102620
+        }
+      ],
+      "png": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_4__page1.png",
+      "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1004_video_4__page1.jpg",
+      "preview_bytes": 102620
+    },
+    {
+      "id": "focus_output_error:video_expert.blocks.10.ffn.2:1004_video_9",
+      "family": "focus_output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|video|9",
+      "context_index": 2,
+      "title": "video_expert.blocks.10.ffn.2 · focus · 1004|video|9",
+      "stem": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_9",
+      "pdf": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_9.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · focus · 1004|video|9",
+          "png": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_9__page1.png",
+          "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1004_video_9__page1.jpg",
+          "preview_bytes": 102625
+        }
+      ],
+      "png": "focus_output_error_video_expert.blocks.10.ffn.2_1004_video_9__page1.png",
+      "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1004_video_9__page1.jpg",
+      "preview_bytes": 102625
+    },
+    {
+      "id": "focus_output_error:video_expert.blocks.10.ffn.2:1014_video_0",
+      "family": "focus_output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1014|video|0",
+      "context_index": 3,
+      "title": "video_expert.blocks.10.ffn.2 · focus · 1014|video|0",
+      "stem": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_0",
+      "pdf": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_0.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · focus · 1014|video|0",
+          "png": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_0__page1.png",
+          "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1014_video_0__page1.jpg",
+          "preview_bytes": 108375
+        }
+      ],
+      "png": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_0__page1.png",
+      "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1014_video_0__page1.jpg",
+      "preview_bytes": 108375
+    },
+    {
+      "id": "focus_output_error:video_expert.blocks.10.ffn.2:1014_video_4",
+      "family": "focus_output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1014|video|4",
+      "context_index": 4,
+      "title": "video_expert.blocks.10.ffn.2 · focus · 1014|video|4",
+      "stem": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_4",
+      "pdf": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_4.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · focus · 1014|video|4",
+          "png": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_4__page1.png",
+          "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1014_video_4__page1.jpg",
+          "preview_bytes": 108377
+        }
+      ],
+      "png": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_4__page1.png",
+      "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1014_video_4__page1.jpg",
+      "preview_bytes": 108377
+    },
+    {
+      "id": "focus_output_error:video_expert.blocks.10.ffn.2:1014_video_9",
+      "family": "focus_output_error",
+      "module_id": "video_expert.blocks.10.ffn.2",
+      "stream": "video_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1014|video|9",
+      "context_index": 5,
+      "title": "video_expert.blocks.10.ffn.2 · focus · 1014|video|9",
+      "stem": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_9",
+      "pdf": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_9.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "video_expert.blocks.10.ffn.2 · focus · 1014|video|9",
+          "png": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_9__page1.png",
+          "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1014_video_9__page1.jpg",
+          "preview_bytes": 108381
+        }
+      ],
+      "png": "focus_output_error_video_expert.blocks.10.ffn.2_1014_video_9__page1.png",
+      "preview": "previews/focus_output_error_video_expert.blocks.10.ffn.2_1014_video_9__page1.jpg",
+      "preview_bytes": 108381
+    },
+    {
+      "id": "focus_output_error:action_expert.blocks.10.ffn.2:1004_action_0",
+      "family": "focus_output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|0",
+      "context_index": 0,
+      "title": "action_expert.blocks.10.ffn.2 · focus · 1004|action|0",
+      "stem": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_0",
+      "pdf": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_0.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · focus · 1004|action|0",
+          "png": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_0__page1.png",
+          "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1004_action_0__page1.jpg",
+          "preview_bytes": 84809
+        }
+      ],
+      "png": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_0__page1.png",
+      "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1004_action_0__page1.jpg",
+      "preview_bytes": 84809
+    },
+    {
+      "id": "focus_output_error:action_expert.blocks.10.ffn.2:1004_action_4",
+      "family": "focus_output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|4",
+      "context_index": 1,
+      "title": "action_expert.blocks.10.ffn.2 · focus · 1004|action|4",
+      "stem": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_4",
+      "pdf": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_4.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · focus · 1004|action|4",
+          "png": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_4__page1.png",
+          "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1004_action_4__page1.jpg",
+          "preview_bytes": 94882
+        }
+      ],
+      "png": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_4__page1.png",
+      "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1004_action_4__page1.jpg",
+      "preview_bytes": 94882
+    },
+    {
+      "id": "focus_output_error:action_expert.blocks.10.ffn.2:1004_action_9",
+      "family": "focus_output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1004|action|9",
+      "context_index": 2,
+      "title": "action_expert.blocks.10.ffn.2 · focus · 1004|action|9",
+      "stem": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_9",
+      "pdf": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_9.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · focus · 1004|action|9",
+          "png": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_9__page1.png",
+          "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1004_action_9__page1.jpg",
+          "preview_bytes": 83889
+        }
+      ],
+      "png": "focus_output_error_action_expert.blocks.10.ffn.2_1004_action_9__page1.png",
+      "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1004_action_9__page1.jpg",
+      "preview_bytes": 83889
+    },
+    {
+      "id": "focus_output_error:action_expert.blocks.10.ffn.2:1014_action_0",
+      "family": "focus_output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1014|action|0",
+      "context_index": 3,
+      "title": "action_expert.blocks.10.ffn.2 · focus · 1014|action|0",
+      "stem": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_0",
+      "pdf": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_0.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · focus · 1014|action|0",
+          "png": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_0__page1.png",
+          "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1014_action_0__page1.jpg",
+          "preview_bytes": 84807
+        }
+      ],
+      "png": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_0__page1.png",
+      "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1014_action_0__page1.jpg",
+      "preview_bytes": 84807
+    },
+    {
+      "id": "focus_output_error:action_expert.blocks.10.ffn.2:1014_action_4",
+      "family": "focus_output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1014|action|4",
+      "context_index": 4,
+      "title": "action_expert.blocks.10.ffn.2 · focus · 1014|action|4",
+      "stem": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_4",
+      "pdf": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_4.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · focus · 1014|action|4",
+          "png": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_4__page1.png",
+          "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1014_action_4__page1.jpg",
+          "preview_bytes": 85148
+        }
+      ],
+      "png": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_4__page1.png",
+      "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1014_action_4__page1.jpg",
+      "preview_bytes": 85148
+    },
+    {
+      "id": "focus_output_error:action_expert.blocks.10.ffn.2:1014_action_9",
+      "family": "focus_output_error",
+      "module_id": "action_expert.blocks.10.ffn.2",
+      "stream": "action_expert",
+      "block_index": 10,
+      "suffix": "ffn.2",
+      "context_id": "1014|action|9",
+      "context_index": 5,
+      "title": "action_expert.blocks.10.ffn.2 · focus · 1014|action|9",
+      "stem": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_9",
+      "pdf": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_9.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "action_expert.blocks.10.ffn.2 · focus · 1014|action|9",
+          "png": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_9__page1.png",
+          "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1014_action_9__page1.jpg",
+          "preview_bytes": 94370
+        }
+      ],
+      "png": "focus_output_error_action_expert.blocks.10.ffn.2_1014_action_9__page1.png",
+      "preview": "previews/focus_output_error_action_expert.blocks.10.ffn.2_1014_action_9__page1.jpg",
+      "preview_bytes": 94370
+    },
+    {
+      "id": "aggregate_output_nmse",
+      "family": "aggregate",
+      "title": "Output NMSE · all modules and contexts",
+      "stem": "aggregate_output_nmse",
+      "pdf": "aggregate_output_nmse.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "Output NMSE · all modules and contexts",
+          "png": "aggregate_output_nmse__page1.png",
+          "preview": "previews/aggregate_output_nmse__page1.jpg",
+          "preview_bytes": 82635
+        }
+      ],
+      "png": "aggregate_output_nmse__page1.png",
+      "preview": "previews/aggregate_output_nmse__page1.jpg",
+      "preview_bytes": 82635
+    },
+    {
+      "id": "aggregate_weight_nmse",
+      "family": "aggregate",
+      "title": "Weight NMSE · all modules",
+      "stem": "aggregate_weight_nmse",
+      "pdf": "aggregate_weight_nmse.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "Weight NMSE · all modules",
+          "png": "aggregate_weight_nmse__page1.png",
+          "preview": "previews/aggregate_weight_nmse__page1.jpg",
+          "preview_bytes": 38067
+        }
+      ],
+      "png": "aggregate_weight_nmse__page1.png",
+      "preview": "previews/aggregate_weight_nmse__page1.jpg",
+      "preview_bytes": 38067
+    },
+    {
+      "id": "aggregate_weight_vs_output",
+      "family": "aggregate",
+      "title": "Weight NMSE versus output NMSE",
+      "stem": "aggregate_weight_vs_output",
+      "pdf": "aggregate_weight_vs_output.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "Weight NMSE versus output NMSE",
+          "png": "aggregate_weight_vs_output__page1.png",
+          "preview": "previews/aggregate_weight_vs_output__page1.jpg",
+          "preview_bytes": 45459
+        }
+      ],
+      "png": "aggregate_weight_vs_output__page1.png",
+      "preview": "previews/aggregate_weight_vs_output__page1.jpg",
+      "preview_bytes": 45459
+    },
+    {
+      "id": "aggregate_micro_vs_row",
+      "family": "aggregate",
+      "title": "MicroVQ relative to Row-scale VQ",
+      "stem": "aggregate_micro_vs_row",
+      "pdf": "aggregate_micro_vs_row.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "description": "MicroVQ relative to Row-scale VQ",
+          "png": "aggregate_micro_vs_row__page1.png",
+          "preview": "previews/aggregate_micro_vs_row__page1.jpg",
+          "preview_bytes": 61177
+        }
+      ],
+      "png": "aggregate_micro_vs_row__page1.png",
+      "preview": "previews/aggregate_micro_vs_row__page1.jpg",
+      "preview_bytes": 61177
+    }
+  ],
+  "preview_max_bytes": 225280
+}

@@ -1,0 +1,80 @@
+#!/bin/bash
+#PBS -N fwcc16prepare
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=00:20:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-codeword-conflict-20261016
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+LATENT=/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014
+DIAGNOSTIC=/scratch/users/ntu/yguo017/fastwam-vq-latent-diagnostic-20261013
+case "${FW_PHASE:-}" in selfcheck|prepare|capture|analyze_capture|exact|analyze_exact|intervene|analyze) ;; *) exit 64;; esac
+FW_SHARD=${FW_SHARD:-0}
+[[ "$FW_SHARD" =~ ^[0-3]$ ]] || exit 64
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+export FW_JOB_START_EPOCH=$(date +%s)
+mkdir -p "$ROOT/artifacts" "$ROOT/results"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+GPU_MONITOR_PID=
+LOCK=
+finish() {
+  rc=$?
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  if [[ -n "$LOCK" ]] && test -f "$LOCK" && test "$(cat "$LOCK")" = "$PBS_JOBID"; then rm -- "$LOCK"; fi
+}
+trap finish EXIT
+if [[ "$FW_PHASE" == capture || "$FW_PHASE" == exact || "$FW_PHASE" == intervene ]]; then
+  mkdir -p "$ROOT/results/$FW_PHASE-$FW_SHARD"
+  LOCK="$ROOT/results/$FW_PHASE-$FW_SHARD/writer.lock"
+  (set -o noclobber; printf '%s\n' "$PBS_JOBID" > "$LOCK")
+fi
+for name in protocol.json common.py stats.py prepare.py capture.py test_stats.py environment.sh run.pbs analyze.py intervene.py fast_a4.py batched_transform.py transform_checks.py; do
+  test "$(wc -c < "$ROOT/$name")" -le 262144 || exit 73
+  cp -- "$ROOT/$name" "$ARTIFACTS/$name"
+done
+for name in sampler.py train_banks.py latent_reference.py; do cp -- "$LATENT/$name" "$ARTIFACTS/$name"; done
+for name in future_adapter.py checkpointing.py metrics.py; do cp -- "$DIAGNOSTIC/$name" "$ARTIFACTS/$name"; done
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=4
+if [[ "$FW_PHASE" == capture || "$FW_PHASE" == exact || "$FW_PHASE" == intervene ]]; then FW_REQUIRE_GPU=1; FW_CPU_THREADS=8; fi
+source "$ARTIFACTS/environment.sh"
+if [[ "$FW_REQUIRE_GPU" == 1 ]]; then
+  test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+  (
+    while :; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+      nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+      sleep 15
+    done
+  ) &
+  GPU_MONITOR_PID=$!
+fi
+if [[ "$FW_PHASE" == selfcheck ]]; then run_python "$ARTIFACTS/test_stats.py"; fi
+case "$FW_PHASE" in
+  selfcheck) run_python -c 'import os; from pathlib import Path; from common import PROTOCOL,save; save(Path(os.environ["ARTIFACTS"])/"summary.json",dict(protocol=PROTOCOL,phase="selfcheck",job_id=os.environ["PBS_JOBID"],status="complete",model_forward_count=0,checkpoint_observer_verified=True))';;
+  prepare) run_python "$ARTIFACTS/prepare.py";;
+  capture|exact) run_python "$ARTIFACTS/capture.py" --phase "$FW_PHASE" --shard "$FW_SHARD";;
+  analyze_capture|analyze_exact|analyze)
+    cp -- "$ROOT/analyze.py" "$ARTIFACTS/analyze.py"
+    cp -- "$ROOT/intervene.py" "$ARTIFACTS/intervene.py"
+    run_python "$ARTIFACTS/analyze.py" --phase "$FW_PHASE";;
+  intervene)
+    cp -- "$ROOT/intervene.py" "$ARTIFACTS/intervene.py"
+    cp -- /scratch/users/ntu/yguo017/fastwam-vq-future-reader-20261016/run_reader.py "$ARTIFACTS/reader_support.py"
+    run_python "$ARTIFACTS/intervene.py" --shard "$FW_SHARD";;
+esac
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACTS/summary.json")
+case "$status" in
+  complete) touch "$ARTIFACTS/PIPELINE_COMPLETE";;
+  resumable) touch "$ARTIFACTS/RESUME_READY";;
+  *) exit 65;;
+esac
+echo "RUN_PHASE $status job_id=$PBS_JOBID phase=$FW_PHASE shard=$FW_SHARD"

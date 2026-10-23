@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -N fwvzl1014ts
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=4gb
+#PBS -l walltime=00:05:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) exit 64;; esac
+grep -Fqx "$HOST" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH="$(date +%s)"
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-action-latent-20261014
+SOURCE_CAMPAIGN=/scratch/users/ntu/yguo017/fastwam-vq-action-aware-20261009
+ARTIFACTS="$ROOT/artifacts/tail-$PBS_JOBID"
+OUT="$ROOT/results/tail-$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"' EXIT
+
+test "$(wc -c < "$ROOT/tail_sensitivity.py")" -le 262144 || exit 73
+cp -- "$ROOT/tail_sensitivity.py" "$ARTIFACTS/tail_sensitivity.py"
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=1
+source "$ROOT/environment.sh"
+export ROOT SOURCE_CAMPAIGN ARTIFACTS FW_REQUIRE_GPU FW_CPU_THREADS CUDA_VISIBLE_DEVICES=''
+run_python "$ARTIFACTS/tail_sensitivity.py" --worker
+
+for name in tail_sensitivity.json tail_sensitivity.zh.md paired_recovery_case_ids.png summary.json; do
+  test "$(wc -c < "$OUT/$name")" -le 262144 || exit 73
+done
+cp -- "$OUT/summary.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/TAIL_SENSITIVITY_COMPLETE"
+echo "TAIL_SENSITIVITY_COMPLETE job_id=$PBS_JOBID"

@@ -1,0 +1,63 @@
+{
+  "protocol": "fastwam-vq-learned-r128-c8-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-learned-r128-c8-20261021",
+  "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015",
+  "baseline_root": "/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017",
+  "calibration": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013",
+    "plan_file": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "bank_directory": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/results/c8/banks/micro_scale_vq_a4",
+    "source_job_id": "25789685.pbs101",
+    "case_ids": [2000, 2019, 2021, 2025, 2051, 2057, 2066, 2070],
+    "seed_indices": [0]
+  },
+  "evaluation": {
+    "case_ids": [3000,3001,3002,3003,3004,3005,3006,3007,3008,3009,3010,3011,3012,3013,3014,3015,3016,3017,3018,3019,3020,3021,3022,3023,3024,3025,3026,3027,3028,3029,3030,3031,3032,3033,3034,3035,3036,3037,3038,3039],
+    "seed_indices": [0,1],
+    "queries": 80,
+    "aggregation": "average seeds within context, contexts within suite, then four suites equally",
+    "checkpoint_selection": "fixed final R8 and VQ8; no heldout selection",
+    "episodes": 0
+  },
+  "suites": ["libero_spatial", "libero_object", "libero_goal", "libero_10"],
+  "target_linears": 614,
+  "checkpoint": "libero_optional_idm_2cam224.clean.pt",
+  "training": {
+    "rho": 1.5,
+    "normalization_c": 0.028303017887797623,
+    "latent_weight": 0.04245452683169643,
+    "action_loss": "mean squared error first10 x6 motor dimensions versus same-input same-seed BF16 teacher",
+    "latent_loss": "global clean-future NMSE excluding clamped frame0; student-generated future remains connected to action",
+    "rotation_updates": 8,
+    "rotation_learning_rate": 0.001,
+    "rotation_optimizer_reset_after_update1": false,
+    "vq_updates": 8,
+    "vq_learning_rate": 0.0005,
+    "vq_optimizer_reset_after_update1": true,
+    "gradient_norm_clip": 1.0,
+    "optimizer": "Adam",
+    "random_seed": 20261021
+  },
+  "rotation": {
+    "block": 128,
+    "sharing": "one Cayley residual per eligible video/action/proprio stream; original signs retained per layer and block",
+    "parameterization": "R=H128 U; U=solve(I-.5(A-A.T),I+.5(A-A.T)); A initially zero",
+    "execution": "original signed FWHT followed by U, both stages in FP32, to preserve baseline arithmetic at U=I; no folded-kernel claim",
+    "tails": "keep original fixed signed power-of-two transforms below 128",
+    "weight_precision_during_rotation": "BF16 transformed W, dynamic A4, BF16 KV",
+    "freeze_after_update": 8
+  },
+  "quantization": {
+    "smooth": "reuse exact frozen Smooth0.5 scales and signs from source banks",
+    "D": 1,
+    "clipping_ratio": 1,
+    "activations": "dynamic per-token signed symmetric A4 qmax7, BF16 decoded operands",
+    "weights": "d4 two additive 256-entry BF16 codebooks; BF16 row gains; B32 uint8 power-of-two exponents",
+    "kv_cache": "BF16",
+    "native_kernel": false
+  },
+  "fitting": {"samples": 8192, "iterations": 8, "seed": 20261006, "moments": "new R8 BF16W+A4 moments; normalize each context by token rows then equal contexts/suites"},
+  "allocation": {"queue": "normal", "gpus": 1, "ncpus": 16, "memory_gb": 110, "walltime": "12:00:00", "soft_deadline_seconds": 42900, "gpu_monitor_seconds": 15},
+  "comparison_arms": ["H+VQ8", "R8+VQ8"],
+  "scope": "paired fixed-input decoded-BF16/fake-A4 numerical comparison; extra R8 training and refitting cost reported; no equal-compute or closed-loop/native speed claim"
+}

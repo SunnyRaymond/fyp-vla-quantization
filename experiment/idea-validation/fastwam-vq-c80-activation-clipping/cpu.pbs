@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -N fw80data
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-c80-activation-clipping-20261017
+SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+export FW_JOB_START_EPOCH=$(date +%s)
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+cp "$ROOT/protocol.json" "$ROOT/prepare_data.py" "$ROOT/cpu.pbs" "$ARTIFACTS/"
+cp "$SOURCE/prepare_calibration.py" "$ARTIFACTS/render_reference.py"
+cp "$SOURCE/environment.sh" "$ARTIFACTS/environment.sh"
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=8
+FW_ALLOW_DATA_HTTP=1
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/prepare_data.py"
+touch "$ARTIFACTS/PHASE_COMPLETE"

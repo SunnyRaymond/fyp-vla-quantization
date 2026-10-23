@@ -1,0 +1,98 @@
+{
+  "complete": true,
+  "heldout_used": false,
+  "sampling_scope": "C80",
+  "method": "full_C80_gradient_actual_loss_selection",
+  "source_diagnostic_aggregate": "25881584.pbs101",
+  "evidence_root": "/scratch/users/ntu/yguo017/fastwam-vq-kl-direction-20261019",
+  "diagnostic_decisions": {
+    "mse_dual": {
+      "known_mse_objective_same_formula": 0.0027439961963293077,
+      "best_including_no_step": {
+        "direction": "saved_adam",
+        "fraction": 1.0,
+        "objective": 0.0026860426762141286
+      },
+      "best_below_known_mse": true,
+      "predicted_down_actual_up": 5,
+      "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+    },
+    "dual_dual": {
+      "known_mse_objective_same_formula": 0.0027439961963293077,
+      "best_including_no_step": {
+        "direction": "saved_adam",
+        "fraction": 0.25,
+        "objective": 0.0026390677929157393
+      },
+      "best_below_known_mse": true,
+      "predicted_down_actual_up": 3,
+      "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+    },
+    "latent_latent": {
+      "known_mse_objective_same_formula": 0.002850204632670059,
+      "best_including_no_step": {
+        "direction": "saved_adam",
+        "fraction": 1.0,
+        "objective": 0.002899961954972241
+      },
+      "best_below_known_mse": false,
+      "predicted_down_actual_up": 3,
+      "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+    },
+    "action_action": {
+      "known_mse_objective_same_formula": 0.0027441146407660693,
+      "best_including_no_step": {
+        "direction": "saved_adam",
+        "fraction": 0.5,
+        "objective": 0.0027136843840708026
+      },
+      "best_below_known_mse": true,
+      "predicted_down_actual_up": 5,
+      "scope": "C80-only finite counterfactual step probes; no deployment checkpoint saved, no held-out selection"
+    }
+  },
+  "gradient_variation": {
+    "mse_dual": {
+      "full_mean_gradient_norm": 6.256797945469724e-05,
+      "mean_query_gradient_norm": 0.0002123168584830637,
+      "rms_query_gradient_norm": 0.00045839644061600014,
+      "mean_norm_over_mean_query_norm": 0.2946915280384493,
+      "rms_query_deviation_over_mean_norm": 7.257806921206375,
+      "scope": "80 frozen C80 per-query surrogate gradients at one fixed checkpoint; descriptive, not independent training replicates"
+    },
+    "dual_dual": {
+      "full_mean_gradient_norm": 3.6108375372132514e-05,
+      "mean_query_gradient_norm": 0.0002892771142796846,
+      "rms_query_gradient_norm": 0.0006932009663013822,
+      "mean_norm_over_mean_query_norm": 0.124822786144159,
+      "rms_query_deviation_over_mean_norm": 19.171726498463883,
+      "scope": "80 frozen C80 per-query surrogate gradients at one fixed checkpoint; descriptive, not independent training replicates"
+    },
+    "latent_latent": {
+      "full_mean_gradient_norm": 5.830986849585166e-05,
+      "mean_query_gradient_norm": 0.000308796990952942,
+      "rms_query_gradient_norm": 0.0008280562398121704,
+      "mean_norm_over_mean_query_norm": 0.18882913436399895,
+      "rms_query_deviation_over_mean_norm": 14.165709586722185,
+      "scope": "80 frozen C80 per-query surrogate gradients at one fixed checkpoint; descriptive, not independent training replicates"
+    },
+    "action_action": {
+      "full_mean_gradient_norm": 1.8293470693575492e-05,
+      "mean_query_gradient_norm": 0.00012081619356649754,
+      "rms_query_gradient_norm": 0.00016089651510976707,
+      "mean_norm_over_mean_query_norm": 0.15141571798905185,
+      "rms_query_deviation_over_mean_norm": 8.738263914564655,
+      "scope": "80 frozen C80 per-query surrogate gradients at one fixed checkpoint; descriptive, not independent training replicates"
+    }
+  },
+  "rationale": "All320 same-parameter training/eval outputs match. 16/24 tested finite candidate steps increase real full-C80 objective despite negative surrogate g-dot-delta. Dual quarterstep with saved state lowers full-C80 objective below original MSE with negative case median and strictly negative equal-suite LOCO range. Test one full-batch refinement with an equally refined MSE control; do not assume fresh Adam or half learning rate helps.",
+  "budget": "80 additional gradient queries per arm, at most1 additional optimizer update; three prior single-KL references not retrained",
+  "authorization": "Active goal explicitly permits the next round after parity and direction diagnostics. Diagnostics and CPU aggregation have completed before preparing this training round.",
+  "no_changes": [
+    "teacher",
+    "calibration and heldout cases/seeds",
+    "loss definitions, alpha and lambda",
+    "quantizer, clipping/scaling parameterization and bounds",
+    "books/indices/gains/exponents/backbone"
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "goal_objective": "Diagnose VQ KL C8 fit, per-component gradients, and 8-update adequacy without new training",
+  "phase": "cached_C8_fit_complete_gradient_job_queued",
+  "complete": false,
+  "previous_goal_turn_classification": "verified_wait",
+  "authoritative_handle": {
+    "status": "confirmed",
+    "created_utc": "2026-10-21T00:51:46.486995+00:00",
+    "gpus": 1,
+    "walltime": "01:59:00",
+    "purpose": "read-only C8 checkpoint/gradient diagnosis",
+    "training_updates": 0,
+    "optimizer_steps": 0,
+    "heldout_used": false,
+    "job_id": "25895153.pbs101"
+  },
+  "new_training_updates": 0,
+  "optimizer_steps": 0,
+  "new_teacher_queries": 0,
+  "new_development_sets": 0,
+  "heldout_used": false,
+  "new_student_model_queries_expected": 24,
+  "checkpoints": [
+    "raw C8",
+    "MSE VQ final8",
+    "KL VQ final8"
+  ],
+  "cases": [
+    2000,
+    2019,
+    2021,
+    2025,
+    2051,
+    2057,
+    2066,
+    2070
+  ],
+  "gradient_terms": [
+    "action softbin KL",
+    "action temporal KL",
+    "latent softbin KL",
+    "latent spatiotemporal KL",
+    "action MSE",
+    "weighted latent NMSE"
+  ],
+  "monitor": {
+    "agent": "/root/vq_kl_monitor",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "xhigh",
+    "interval_seconds": 600
+  },
+  "remaining": [
+    "complete C8 checkpoint evaluations and six component gradient VJPs",
+    "analyze fitting, gradient scales/conflicts, optimizer state and evidence about update budget",
+    "save detailed report and recommend next changes without starting training"
+  ],
+  "cached_diagnosis_evidence": "vq_cached_diagnosis_status.json",
+  "cached_summary": "results/vq_diagnosis/cached_summary.json",
+  "key_finding_so_far": "KL VQ fits C8 and beats MSE VQ8 on C8 RMSE/NMSE, but loses on original heldout; no conclusion on gradient cause yet",
+  "last_verified_scheduler": {
+    "checked_utc": "2026-10-21T01:00:16.979453+00:00",
+    "job_id": "25895153.pbs101",
+    "scheduler": {
+      "job_id": "25895153.pbs101",
+      "query_rc": 0,
+      "job_state": "Q",
+      "Exit_status": null,
+      "Job_Name": "fwvqkldiag",
+      "exec_host": null,
+      "comment": "Not Running: would exceed overall limit on resource ngpus in queu",
+      "resources_used.walltime": null
+    },
+    "exit_code": null,
+    "marker": false,
+    "passed": false,
+    "progress": {}
+  },
+  "report": "results/vq_diagnosis/ANALYSIS.zh.md",
+  "last_verified_monitor": {
+    "monitor": "vq-diagnosis-25895153",
+    "model": "gpt-6-luna",
+    "effort": "xhigh",
+    "checked_utc": "2026-10-21T01:14:24.960783+00:00",
+    "job_id": "25895153.pbs101",
+    "query_rc": 0,
+    "jobstate": "Q",
+    "exit_status": null,
+    "phase": null,
+    "updates": null,
+    "eval_split": null,
+    "queries": null,
+    "new_model_queries": null,
+    "new_training_updates": null,
+    "optimizer_step_calls": null,
+    "new_teacher_queries": null,
+    "artifact_exit_code": null,
+    "marker": false,
+    "summary_complete": false,
+    "passed": false,
+    "queue_comment": "Not Running: would exceed overall limit on resource ngpus in queu",
+    "latest_gpu_sample": null,
+    "secondary_job": {
+      "job_id": "25895158.pbs101",
+      "jobstate": "F",
+      "summary_path": "results/vq_diagnosis/cached_summary.json",
+      "checked_utc": "2026-10-21T09:03:23.98508+08:00",
+      "query_rc": 0,
+      "exit_status": 0,
+      "summary_complete": true,
+      "summary_job_id": "25895158.pbs101",
+      "new_model_queries": 0,
+      "new_training_updates": 0,
+      "new_teacher_queries": 0,
+      "optimizer_step_calls": null,
+      "heldout_used": null,
+      "arm_record_counts": {
+        "raw": 8,
+        "mse8": 8,
+        "kl8": 8
+      },
+      "exit_code": 0,
+      "marker": true,
+      "passed": null,
+      "missing_summary_fields": [
+        "optimizer_step_calls"
+      ],
+      "source": "parent reports submitted; checked qstat and cached summary",
+      "uses_heldout": false,
+      "optimizer_step_source_verified": true,
+      "parent_confirmation": "Parent independently confirmed cached script has no optimizer/step calls; summary uses_heldout=false.",
+      "no_optimizer_or_step_calls": true
+    },
+    "primary_checked_utc": "2026-10-21T01:14:24.960783+00:00"
+  }
+}

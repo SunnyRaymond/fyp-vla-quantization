@@ -1,0 +1,65 @@
+#!/bin/bash
+#PBS -N fwpcvisit
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-per-channel-visited-diagnostic-20261018
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+CLIP_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-activation-clipping-20261017
+VISITED=/scratch/users/ntu/yguo017/fastwam-vq-rollout-c80-20261018
+C80=/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017
+RUNTIME=$PARENT/artifacts/25814264.pbs101
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+test -n "${CUDA_VISIBLE_DEVICES:-}"
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS" "$NEW_ROOT/results"
+export ARTIFACTS
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+FW_JOB_START_EPOCH=$(date +%s)
+FW_SOFT_DEADLINE_SECONDS=6840
+export FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID"
+(
+  while :; do
+    sample=$(nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader 2>&1) || true
+    printf 'GPU_SAMPLE timestamp=%s %s\n' "$(date -Is)" "$sample"
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+finish() {
+  rc=$?
+  trap - EXIT
+  kill "$GPU_MONITOR_PID" 2>/dev/null || true
+  wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+SOURCE_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-vq-visited-diagnostic-20261018/artifacts/25863989.pbs101
+CHANNEL_ARTIFACTS=/scratch/users/ntu/yguo017/fastwam-vq-per-channel-scaling-clipping-20261018/artifacts/25862598.pbs101
+for name in worker.py protocol.json source_channel_protocol.json run.pbs test_extra.py; do cp "$NEW_ROOT/$name" "$ARTIFACTS/"; done
+for name in metrics.py test_metrics.py visited_common.py runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py calibration_source.py batched_transform.py transform_checks.py environment.sh clip_banks.py train_banks.py selfcheck.py; do cp "$SOURCE_ARTIFACTS/$name" "$ARTIFACTS/"; done
+cp "$SOURCE_ARTIFACTS/worker.py" "$ARTIFACTS/source_worker.py"
+for name in channel_banks.py sampler.py latent_reference.py metrics_reference.py clipping_reference.py; do cp "$CHANNEL_ARTIFACTS/$name" "$ARTIFACTS/"; done
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+FW_CPU_THREADS=8
+export FW_CPU_THREADS
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/test_metrics.py"
+run_python "$ARTIFACTS/test_extra.py"
+run_python "$ARTIFACTS/worker.py" --unit run --protocol "$ARTIFACTS/protocol.json"
+touch "$ARTIFACTS/PHASE_COMPLETE"

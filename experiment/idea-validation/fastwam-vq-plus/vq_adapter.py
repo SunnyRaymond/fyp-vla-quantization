@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import time
 
@@ -18,7 +19,7 @@ class VQRuntime(pilot.Runtime):
     def __init__(self, out, protocol, arm):
         pilot.guard()
         import torch
-        import smooth_vq as core
+        import batched_transform as core
         import codebook
         import micro_codebook
         if arm not in ARMS:
@@ -28,6 +29,8 @@ class VQRuntime(pilot.Runtime):
         self.arm('bf16')
         self.current_arm = arm
         self.protocol, self.arm_name = protocol, arm
+        self.transform_implementation = core.IMPLEMENTATION
+        self.run_queries = 0
         self.seen, self.linear_calls, self.transforms, self.forwards = set(), 0, {}, {}
         source = protocol['sources'][arm]
         source_root, bank_root = Path(source['root']), Path(source['bank'])
@@ -98,6 +101,10 @@ class VQRuntime(pilot.Runtime):
             raise RuntimeError(f'Only {len(self.seen)}/614 VQ targets called in this query')
         if self.q._native_int4_gemm_calls != 0 or self.q._kv_active:
             raise RuntimeError('Frozen VQ reference unexpectedly enabled native INT4 or KV4')
+        if measure:
+            result[1].update(transform_implementation=self.transform_implementation,
+                             pbs_job_id=os.environ['PBS_JOBID'], first_query_in_run=self.run_queries == 0)
+            self.run_queries += 1
         return result
 
     def validate_reference(self):
@@ -130,6 +137,7 @@ class VQRuntime(pilot.Runtime):
         max_abs = float((action.detach().float().cpu() - reference).abs().max())
         tolerance = p.get('source_parity_max_abs_tolerance', 1e-6)
         receipt = {'arm': arm, 'case_id': case, 'seed_index': seed_index,
+                   'pbs_job_id': os.environ['PBS_JOBID'], 'transform_implementation': self.transform_implementation,
                    'sampler_seed': sampler_seed, 'max_abs_vs_frozen_action': max_abs,
                    'tolerance': tolerance, 'passed': max_abs <= tolerance,
                    'observed_modules': len(self.seen), 'install_metadata': self.install_metadata}
@@ -179,6 +187,7 @@ class VQRuntime(pilot.Runtime):
             'env_seed': pilot.seed_for(index, environment=True), 'sampler_seed': pilot.seed_for(index),
             'state_id': 0, 'initial_state_path': self.init_states_path,
             'description': self.description, 'metrics': metrics, 'first_action_chunks': action_sample,
+            'transform_implementation': self.transform_implementation, 'pbs_job_id': os.environ['PBS_JOBID'],
             'vq_evidence': evidence,
         }
 

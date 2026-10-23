@@ -1,0 +1,272 @@
+#!/bin/bash
+#PBS -N c80eval0001
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=4
+#PBS -l walltime=24:00:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" -a -n "${PBS_JOBNAME:-}" -a -s "${PBS_NODEFILE:-}" || { echo 'PBS allocation variables required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || { echo 'Host outside PBS allocation' >&2; exit 64; }
+case "${FW_EVAL_ARM:-}" in clip_only|joint) ;; *) echo 'FW_EVAL_ARM must be clip_only or joint' >&2; exit 64;; esac
+case "$PBS_JOBNAME" in
+ c80eclip[0-9][0-9][0-9][0-9]) [[ "$FW_EVAL_ARM" == clip_only ]] || exit 64 ;;
+ c80ejoint[0-9][0-9][0-9][0-9]) [[ "$FW_EVAL_ARM" == joint ]] || exit 64 ;;
+ *) echo 'Unexpected evaluation job name' >&2; exit 64;;
+esac
+case "${FW_EVAL_RESUME:-0}" in 0|1) ;; *) echo 'FW_EVAL_RESUME must be 0 or 1' >&2; exit 64;; esac
+FW_EVAL_RESUME=${FW_EVAL_RESUME:-0}
+export FW_EVAL_RESUME
+if [[ "${FW_EVAL_RESUME:-0}" == 1 ]]; then
+  [[ -n "${FW_EVAL_SOURCE_JOB_ID:-}" && "$FW_EVAL_SOURCE_JOB_ID" =~ ^[0-9]+\.[A-Za-z0-9_.-]+$ ]] || {
+    echo 'Evaluation resume requires a valid FW_EVAL_SOURCE_JOB_ID' >&2; exit 64;
+  }
+elif [[ -n "${FW_EVAL_SOURCE_JOB_ID:-}" ]]; then
+  echo 'FW_EVAL_SOURCE_JOB_ID requires FW_EVAL_RESUME=1' >&2; exit 64
+fi
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || { echo 'PBS job is not running' >&2; exit 64; }
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=85500
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_EVAL_ARM
+mkdir -p "$ARTIFACTS" "$RESULTS/evaluations/$FW_EVAL_ARM"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+PIPELINE_READY=0
+PIPELINE_CHECKPOINTED=0
+GPU_MONITOR_PID=
+WORKERS=()
+write_phase() {
+ local phase="$1" stamp
+ stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+ printf '{"protocol":"fastwam-vq-c80-clip-joint-plus-v1","arm":"%s","pbs_jobid":"%s","job_name":"%s","phase":"%s","updated_utc":"%s"}\n' "$FW_EVAL_ARM" "$PBS_JOBID" "$PBS_JOBNAME" "$phase" "$stamp" > "$ARTIFACTS/RUN_PHASE.json.tmp"
+ mv -f "$ARTIFACTS/RUN_PHASE.json.tmp" "$ARTIFACTS/RUN_PHASE.json"
+}
+finish() {
+ rc=$?
+ trap - EXIT TERM INT
+ if (( rc != 0 )); then for pid in "${WORKERS[@]:-}"; do kill -TERM "$pid" 2>/dev/null || true; done; fi
+ if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+ if (( rc == 0 && PIPELINE_READY == 1 )); then
+  write_phase complete || rc=65
+  if (( rc == 0 )); then touch "$ARTIFACTS/PIPELINE_COMPLETE"; rm -f "$ARTIFACTS/PIPELINE_CHECKPOINTED"; fi
+ elif (( rc == 0 && PIPELINE_CHECKPOINTED == 1 )); then
+  write_phase checkpointed || rc=65
+  if (( rc == 0 )); then touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"; rm -f "$ARTIFACTS/PIPELINE_COMPLETE"; fi
+ fi
+ if (( rc != 0 )); then write_phase failed || true; rm -f "$ARTIFACTS/PIPELINE_COMPLETE" "$ARTIFACTS/PIPELINE_CHECKPOINTED"; fi
+ printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+ exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+if [[ "$FW_EVAL_RESUME" == 1 ]]; then
+  python3 - "$NEW_ROOT" "$FW_EVAL_ARM" "$FW_EVAL_SOURCE_JOB_ID" <<'PY_RESUME_GATE'
+import json, sys
+from pathlib import Path
+root, arm, source = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+artifact = root / 'artifacts' / source
+summary = root / 'results' / 'evaluations' / arm / 'summary.json'
+if ((artifact / 'exit_code.txt').read_text().strip() != '0'
+        or not (artifact / 'PIPELINE_CHECKPOINTED').is_file()
+        or (artifact / 'PIPELINE_COMPLETE').exists()):
+    raise SystemExit('Evaluation resume source is not a completed checkpointed PBS attempt')
+phase = json.loads((artifact / 'RUN_PHASE.json').read_text())
+value = json.loads(summary.read_text())
+if (phase.get('protocol') != 'fastwam-vq-c80-clip-joint-plus-v1' or phase.get('arm') != arm
+        or value.get('protocol') != phase['protocol'] or value.get('arm') != arm
+        or value.get('status') != 'checkpointed' or value.get('complete') is not False
+        or not 0 <= value.get('episode_slots', -1) < 280
+        or value.get('reference_episode_slots') != 2240):
+    raise SystemExit('Evaluation resume source aggregate is not an exact checkpointed result')
+PY_RESUME_GATE
+fi
+write_phase allocation_verified
+
+for file in protocol.json run.pbs backward_check.py vq_adapter.py evaluate.py aggregate.py batched_transform.py transform_checks.py environment.sh; do
+ test -s "$NEW_ROOT/$file" || { echo "Missing uploaded source: $file" >&2; exit 65; }
+done
+mapfile -t S < <(python3 - "$NEW_ROOT/protocol.json" <<'PY_PATHS'
+import json, sys
+from pathlib import Path
+p=json.loads(Path(sys.argv[1]).read_text()); s=p['sources']; r=p['references']
+roots=p['source_c80_protocol']['roots']; scalar=Path(r['scalar_results'])
+for x in (roots['pilot'],s['baseline_root'],roots['old_banks'],roots['old_inputs'],roots['base'],
+          s['clip_root'],s['runtime_artifacts'],s['evaluation_runtime_artifacts'],
+          Path(r['rotation_results']).parent,scalar.parent/'artifacts'/r['scalar_job_id'],
+          p['calibration']['root'],p['calibration']['plan_file'],p['calibration']['bank_directory'],
+          p['cohort']['reference_manifest']): print(x)
+PY_PATHS
+)
+test "${#S[@]}" -eq 14 || { echo 'Could not resolve runtime paths' >&2; exit 65; }
+ROOT=${S[0]}; PARENT=${S[1]}; SMOOTH_ROOT=${S[2]}; SOURCE_ROOT=${S[3]}
+BASE=${S[4]}; CLIP_ROOT=${S[5]}; RUNTIME_ARTIFACTS=${S[6]}; EVAL_RUNTIME_ARTIFACTS=${S[7]}
+ROTATION_ROOT=${S[8]}; SCALAR_ARTIFACTS=${S[9]}; CALIBRATION_ROOT=${S[10]}
+PLAN_FILE=${S[11]}; BANK_DIRECTORY=${S[12]}; MANIFEST=${S[13]}; DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+test -s "$ROOT/env_status.json" -a -s "$PARENT/train_banks.py"
+for f in runner.py quantization.py libero_state_loader.py environment.sh; do test -s "$EVAL_RUNTIME_ARTIFACTS/$f"; done
+for f in smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do test -s "$RUNTIME_ARTIFACTS/$f"; done
+test -s "$CLIP_ROOT/clip_banks.py" -a -s "$SCALAR_ARTIFACTS/aggregate.py"
+test -s "$PLAN_FILE" -a -d "$BANK_DIRECTORY" -a -s "$MANIFEST"
+test -d "$BASE/FastWAM" -a -d "$BASE/checkpoints" -a -s "$SIF"
+
+cp "$NEW_ROOT/run.pbs" "$NEW_ROOT/protocol.json" "$NEW_ROOT/backward_check.py" "$NEW_ROOT/vq_adapter.py" \
+ "$NEW_ROOT/evaluate.py" "$NEW_ROOT/aggregate.py" "$NEW_ROOT/batched_transform.py" \
+ "$NEW_ROOT/transform_checks.py" "$NEW_ROOT/environment.sh" "$ARTIFACTS/"
+cp "$PARENT/train_banks.py" "$ARTIFACTS/"
+cp "$EVAL_RUNTIME_ARTIFACTS/runner.py" "$EVAL_RUNTIME_ARTIFACTS/quantization.py" "$EVAL_RUNTIME_ARTIFACTS/libero_state_loader.py" "$ARTIFACTS/"
+cp "$EVAL_RUNTIME_ARTIFACTS/environment.sh" "$ARTIFACTS/source_environment.sh"
+cp "$SCALAR_ARTIFACTS/aggregate.py" "$ARTIFACTS/reference_aggregate.py"
+cp "$CLIP_ROOT/clip_banks.py" "$ARTIFACTS/"
+cp "$RUNTIME_ARTIFACTS/smooth_vq.py" "$RUNTIME_ARTIFACTS/codebook.py" "$RUNTIME_ARTIFACTS/micro_codebook.py" \
+ "$RUNTIME_ARTIFACTS/sampler.py" "$RUNTIME_ARTIFACTS/latent_reference.py" "$RUNTIME_ARTIFACTS/checkpointing.py" \
+ "$RUNTIME_ARTIFACTS/calibration_source.py" "$ARTIFACTS/"
+cp -n "$MANIFEST" "$RESULTS/manifest.json"
+cmp -s "$MANIFEST" "$RESULTS/manifest.json" || { echo 'Frozen cohort manifest mismatch' >&2; exit 65; }
+cp -n "$NEW_ROOT/protocol.json" "$RESULTS/protocol.json"
+cmp -s "$ARTIFACTS/protocol.json" "$RESULTS/protocol.json" || { echo 'Frozen protocol mismatch' >&2; exit 65; }
+
+source "$ARTIFACTS/environment.sh"
+export NEW_ROOT CLIP_ROOT PARENT ROOT DIAG_ROOT SMOOTH_ROOT SOURCE_ROOT BASE SIF
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'No allocated GPUs' >&2; exit 65; }
+IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#GPU_IDS[@]}" -eq 4 || { echo 'Expected four allocated GPU identifiers' >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+ uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+ test -n "$uuid" || exit 65
+ for prev in "${GPU_UUIDS[@]:-}"; do test "$uuid" != "$prev" || exit 65; done
+ GPU_UUIDS+=("$uuid")
+done
+(
+ while :; do
+  for uuid in "${GPU_UUIDS[@]}"; do
+   printf 'GPU_SAMPLE timestamp=%s gpu_uuid=%s ' "$(date -Is)" "$uuid"
+   nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+  done
+  sleep 15
+ done
+) & GPU_MONITOR_PID=$!
+
+write_phase transform_checks
+CUDA_VISIBLE_DEVICES="${GPU_UUIDS[0]}" run_python "$ARTIFACTS/transform_checks.py" --out "$ARTIFACTS/transform_check.json"
+run_python - "$ARTIFACTS/transform_check.json" <<'PY_GATE'
+import json,sys
+from pathlib import Path
+r=json.loads(Path(sys.argv[1]).read_text())
+if r.get('passed') is not True or r.get('bitwise_equal') is not True or r.get('forward_inverse_checked') is not True:
+ raise SystemExit('Transform/A4 bitwise gate failed')
+PY_GATE
+write_phase validating_training
+CUDA_VISIBLE_DEVICES="${GPU_UUIDS[0]}" run_python - "$ARTIFACTS/protocol.json" "$RESULTS/training/$FW_EVAL_ARM" "$FW_EVAL_ARM" "$RESULTS/backward_check.json" <<'PY_TRAIN'
+import json,sys
+from pathlib import Path
+from vq_adapter import validate_training_artifacts
+p=json.loads(Path(sys.argv[1]).read_text()); b=json.loads(Path(sys.argv[4]).read_text())
+if (b.get('passed') is not True or b.get('implementation')!='bounded_vector_chunks_v2'
+    or b.get('max_vectors_per_chunk')!=1048576): raise SystemExit('Backward check gate failed')
+validate_training_artifacts(p,sys.argv[3],Path(sys.argv[2]))
+PY_TRAIN
+
+write_phase evaluating
+for worker in 0 1 2 3; do
+ gpu_uuid="${GPU_UUIDS[$worker]}"
+ rc_path="$ARTIFACTS/worker_${worker}.rc"
+ rm -f "$rc_path" "$rc_path.tmp"
+ (
+  child_pid=
+  stop_worker() {
+   if [[ -n "$child_pid" ]]; then
+    kill -TERM "$child_pid" 2>/dev/null || true
+    wait "$child_pid" 2>/dev/null || true
+   fi
+   printf '143\n' > "$rc_path.tmp"
+   mv -f "$rc_path.tmp" "$rc_path"
+   exit 143
+  }
+  trap stop_worker TERM INT
+  CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/evaluate.py" \
+   --protocol "$ARTIFACTS/protocol.json" --manifest "$RESULTS/manifest.json" \
+   --arm "$FW_EVAL_ARM" --worker-id "$worker" \
+   --out "$RESULTS/evaluations/$FW_EVAL_ARM/worker_$worker" &
+  child_pid=$!
+  set +e
+  wait "$child_pid"
+  rc=$?
+  set -e
+  printf '%s\n' "$rc" > "$rc_path.tmp"
+  mv -f "$rc_path.tmp" "$rc_path"
+  exit "$rc"
+ ) > "$ARTIFACTS/worker_$worker.log" 2>&1 &
+ WORKERS+=("$!")
+ echo "WORKER_STARTED worker=$worker gpu_uuid=$gpu_uuid pid=$!"
+ if (( worker < 3 )); then sleep 20; fi
+done
+
+declare -A WORKER_DONE=()
+while (( ${#WORKER_DONE[@]} < 4 )); do
+ failed_worker=
+ failed_rc=0
+ for worker in 0 1 2 3; do
+  [[ -z "${WORKER_DONE[$worker]:-}" ]] || continue
+  rc_path="$ARTIFACTS/worker_${worker}.rc"
+  if [[ -s "$rc_path" ]]; then
+   rc=$(<"$rc_path")
+   WORKER_DONE[$worker]=1
+   if (( rc != 0 )); then failed_worker=$worker; failed_rc=$rc; break; fi
+  fi
+ done
+ if [[ -n "$failed_worker" ]]; then
+  echo "WORKER_FAILED worker=$failed_worker exit_code=$failed_rc; stopping remaining workers" >&2
+  for worker in 0 1 2 3; do
+   [[ -n "${WORKER_DONE[$worker]:-}" ]] && continue
+   kill -TERM "${WORKERS[$worker]}" 2>/dev/null || true
+  done
+  for pid in "${WORKERS[@]}"; do wait "$pid" 2>/dev/null || true; done
+  exit "$failed_rc"
+ fi
+ (( ${#WORKER_DONE[@]} == 4 )) || sleep 2
+done
+for pid in "${WORKERS[@]}"; do wait "$pid"; done
+WORKERS=()
+
+write_phase aggregating
+run_python "$ARTIFACTS/aggregate.py" --protocol "$ARTIFACTS/protocol.json" \
+ --manifest "$RESULTS/manifest.json" --results "$RESULTS" --arm "$FW_EVAL_ARM"
+run_python - "$RESULTS/evaluations/$FW_EVAL_ARM" "$FW_EVAL_ARM" "$RESULTS" <<'PY_RESULT'
+import json,sys
+from pathlib import Path
+root,arm,results=Path(sys.argv[1]),sys.argv[2],Path(sys.argv[3])
+s=json.loads((root/'summary.json').read_text())
+if (s.get('protocol')!='fastwam-vq-c80-clip-joint-plus-v1' or s.get('arm')!=arm
+    or s.get('reference_episode_slots')!=2240): raise SystemExit('Invalid per-arm summary')
+if s.get('status')=='complete':
+ m=json.loads((root/'PIPELINE_COMPLETE').read_text())
+ if (s.get('complete') is not True or s.get('episode_slots')!=280 or s.get('arm_episodes')!={arm:280}
+     or m.get('complete') is not True or m.get('episode_slots')!=280
+     or m.get('reference_episode_slots')!=2240): raise SystemExit('Per-arm 280/2240 gate failed')
+ combined=results/'summary.json'
+ if combined.is_file():
+  c=json.loads(combined.read_text()); cm=json.loads((results/'PIPELINE_COMPLETE').read_text())
+  if (c.get('protocol')!='fastwam-vq-c80-clip-joint-plus-v1' or c.get('status')!='complete'
+      or c.get('complete') is not True or c.get('episode_slots')!=560
+      or c.get('arm_episodes')!={'clip_only':280,'joint':280}
+      or c.get('reference_episode_slots')!=2240 or cm.get('complete') is not True
+      or cm.get('episode_slots')!=560 or cm.get('arm_episodes')!={'clip_only':280,'joint':280}
+      or cm.get('reference_episode_slots')!=2240):
+   raise SystemExit('Combined 560/2240 gate failed')
+ print('ARM_COMPLETE '+arm+' 280/2240',flush=True)
+elif s.get('status')=='checkpointed' and s.get('complete') is False:
+ print('ARM_CHECKPOINTED '+arm+' '+str(s.get('episode_slots'))+'/280',flush=True)
+else: raise SystemExit('Aggregate is neither complete nor checkpointed')
+PY_RESULT
+arm_status=$(python3 -c "import json; print(json.load(open('$RESULTS/evaluations/$FW_EVAL_ARM/summary.json'))['status'])")
+if [[ "$arm_status" == complete ]]; then PIPELINE_READY=1; else PIPELINE_CHECKPOINTED=1; fi

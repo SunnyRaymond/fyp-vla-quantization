@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -N fwm14pa2a
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test -z "${PBS_GPUFILE:-}" || exit 64
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-micro-latent-search-20261014
+ARTIFACTS="$ROOT/artifacts/partial-$PBS_JOBID"
+OUT="$ROOT/results/partial-$PBS_JOBID"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+finish() { rc=$?; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; }
+trap finish EXIT
+for name in protocol.json choose.py analyze_partial.py partial_analysis.pbs; do
+  test -s "$ROOT/$name"
+  test "$(wc -c < "$ROOT/$name")" -le 262144
+  cp -- "$ROOT/$name" "$ARTIFACTS/$name"
+done
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11
+export CUDA_VISIBLE_DEVICES=''
+python3 "$ARTIFACTS/analyze_partial.py" --protocol "$ARTIFACTS/protocol.json" --out "$OUT"
+test -s "$OUT/summary.json" -a -s "$OUT/report.zh.md" -a -f "$OUT/PARTIAL_ANALYSIS_COMPLETE"
+cp -- "$OUT/summary.json" "$ARTIFACTS/summary.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo "PIPELINE_COMPLETE job_id=$PBS_JOBID stage=partial-analysis"

@@ -1,0 +1,74 @@
+#!/bin/bash
+#PBS -N fwvc13p
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+test -n "${PBS_JOBID:-}" || exit 64
+case "$(hostname -s)" in *login*) exit 64;; esac
+test -s "${PBS_NODEFILE:-}" || exit 64
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+export FW_JOB_START_EPOCH=$(date +%s)
+ROOT=/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013
+ARTIFACTS="$ROOT/artifacts/$PBS_JOBID"
+DATA="$ROOT/data"
+LOCK="$DATA/.writer-lock"
+mkdir -p "$ROOT/artifacts" "$DATA"
+mkdir "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+LOCK_HELD=0
+finish() {
+  rc=$?
+  set +e
+  if [[ "$LOCK_HELD" == 1 && -f "$LOCK/owner_job_id" && "$(cat "$LOCK/owner_job_id")" == "$PBS_JOBID" ]]; then
+    rm -f -- "$LOCK/owner_job_id"
+    rmdir -- "$LOCK" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+qstat -f "$PBS_JOBID" > "$ARTIFACTS/allocation.txt"
+
+if ! mkdir "$LOCK" 2>/dev/null; then
+  owner_file="$LOCK/owner_job_id"
+  test -s "$owner_file" || { echo "Unowned data lock; refusing cleanup"; exit 73; }
+  owner=$(cat "$owner_file")
+  [[ "$owner" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || { echo "Invalid data-lock owner"; exit 73; }
+  previous=$(qstat -xf "$owner" 2>&1) || { echo "Cannot confirm prior lock owner is terminal"; exit 73; }
+  state=$(awk -F' = ' '/^[[:space:]]*job_state = / {print $2; exit}' <<< "$previous")
+  [[ "$state" == F || "$state" == X ]] || { echo "Data lock belongs to nonterminal job $owner ($state)"; exit 73; }
+  test "$(cat "$owner_file")" = "$owner" || { echo "Data-lock owner changed during recovery"; exit 73; }
+  rm -f -- "$owner_file"
+  rmdir -- "$LOCK" || { echo "Unable to remove confirmed stale data lock"; exit 73; }
+  mkdir "$LOCK"
+fi
+printf '%s\n' "$PBS_JOBID" > "$LOCK/owner_job_id"
+LOCK_HELD=1
+
+copy_small() {
+  local bytes
+  test -f "$1"
+  bytes=$(wc -c < "$1")
+  [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -le 262144 ]] || exit 73
+  cp -- "$1" "$2"
+}
+for name in protocol.json environment.sh cpu.pbs prepare_calibration.py control.py; do
+  copy_small "$ROOT/$name" "$ARTIFACTS/$name"
+done
+FW_REQUIRE_GPU=0
+FW_CPU_THREADS=8
+FW_ALLOW_DATA_HTTP=1
+source "$ARTIFACTS/environment.sh"
+run_python "$ARTIFACTS/prepare_calibration.py" --protocol "$ARTIFACTS/protocol.json" --out "$DATA"
+run_python -c 'import json,sys; from pathlib import Path; root=Path(sys.argv[1]); job=sys.argv[2]; p=json.loads((root/"plan.json").read_text()); rows=p.get("inputs",[]); ids=[int(x["case_id"]) for x in rows]; c=p.get("calibration_cohorts",{}); c8=c.get("c8",[]); c80=c.get("c80",[]); complete=p.get("status")=="complete"; checkpoint=p.get("status")=="preparing"; assert complete or checkpoint; npz={x.stem for x in (root/"inputs").glob("case_*.npz")}; meta={x.stem for x in (root/"inputs").glob("case_*.json")}; assert npz==meta and len(npz)<=120; completed={int(x.removeprefix("case_")) for x in npz}; cp=p.get("checkpoint",{}); assert not checkpoint or (cp.get("completed_context_count")==len(completed) and set(cp.get("completed_case_ids",[]))==completed); s={"status":"complete" if complete else "checkpointed","phase":"cpu_prepare","protocol":p["protocol"],"pbs_jobid":job,"input_count":120,"completed_contexts":len(completed),"calibration_count":80,"test_count":40,"c8_context_count":8,"c80_context_count":80,"episodes":0,"predicted_actions_executed":0}; assert (not complete) or (ids==list(range(2000,2080))+list(range(3000,3040)) and p.get("input_count")==120 and p.get("calibration_count")==80 and p.get("test_count")==40 and len(c8)==8 and len(set(c8))==8 and len(c80)==80 and c80==list(range(2000,2080)) and set(c8)<=set(c80) and completed==set(ids)); Path(sys.argv[3]).write_text(json.dumps(s,indent=2)+"\n",encoding="utf-8")' "$DATA" "$PBS_JOBID" "$ARTIFACTS/summary.json"
+status=$(run_python -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8"))["status"])' "$ARTIFACTS/summary.json")
+if [[ "$status" == complete ]]; then
+  touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  echo "CALIBRATION_INPUTS_COMPLETE job_id=$PBS_JOBID"
+else
+  touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+  echo "CALIBRATION_INPUTS_CHECKPOINTED job_id=$PBS_JOBID"
+fi

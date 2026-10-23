@@ -1,0 +1,37 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=4:mem=16gb:ngpus=0
+#PBS -l walltime=00:10:00
+#PBS -j oe
+set -euo pipefail
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-kl-mse-warmstart-20261020
+PARENT=/scratch/users/ntu/yguo017/fastwam-vq-c8-action-latent-plus-20261015
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+DIAG_ROOT=$NEW_ROOT
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+test -n "${PBS_JOBID:-}" -a -n "${PBS_NODEFILE:-}"
+case "$(hostname -s)" in *login*) exit 64;; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE"
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)'
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+export ARTIFACTS
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+finish() { rc=$?; trap - EXIT; printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"; exit "$rc"; }
+trap finish EXIT
+for file in analysis.py protocol.json; do cp "$NEW_ROOT/$file" "$ARTIFACTS/"; done
+cp /scratch/users/ntu/yguo017/fastwam-vq-dual-kl-20261019/analysis.py "$ARTIFACTS/comparison_reference.py"
+cp /scratch/users/ntu/yguo017/fastwam-vq-kl-fullbatch-refine-20261020/artifacts/25882215.pbs101/analysis.py "$ARTIFACTS/refinement_analysis.py"
+source "$PARENT/environment.sh"
+NV_ARGS=()
+FW_CPU_THREADS=4
+FW_SOFT_DEADLINE_SECONDS=480
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+run_python "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json"
+touch "$ARTIFACTS/PHASE_COMPLETE"

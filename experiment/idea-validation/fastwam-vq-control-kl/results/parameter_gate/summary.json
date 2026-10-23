@@ -1,0 +1,104 @@
+{
+  "protocol": "fastwam-vq-control-kl-v1",
+  "probe_protocol": {
+    "protocol": "control-kl-parameter-gate-v1",
+    "parent_protocol": "fastwam-vq-control-kl-v1",
+    "case_id": 2000,
+    "checkpoint_arm": "per_channel_clip",
+    "objectives": [
+      "action_response_kl",
+      "latent_control_kl"
+    ],
+    "latent_reduction": "mean of clean and noisy frozen-reader KL",
+    "fractions": [
+      1.0,
+      0.1
+    ],
+    "optimizer": "fresh standard Adam, original learning rates and gradient-norm clipping",
+    "ratio_learning_rate": 0.01,
+    "channel_learning_rate": 0.02,
+    "gradient_norm_clip": 1.0,
+    "direction_helper": "/scratch/users/ntu/yguo017/fastwam-vq-kl-direction-20261019/direction_utils.py",
+    "gradient_method": "chain-rule VJP, one student graph at a time; frozen-reader graph released before student backward",
+    "scope": "one preselected C80 pair implementation probe; all candidate changes rolled back; not full-C80 optimization evidence",
+    "training_updates": 0,
+    "heldout_inputs_used": false,
+    "sensor_evaluation_inputs_used": false
+  },
+  "unit": "parameter_gate",
+  "pbs_jobid": "25894526.pbs101",
+  "complete": false,
+  "new_student_full_queries": 6,
+  "new_bf16_reader_passes": 3,
+  "new_teacher_full_queries": 0,
+  "training_updates": 0,
+  "heldout_inputs_used": false,
+  "sensor_evaluation_inputs_used": false,
+  "components": [
+    {
+      "objective": "action_response_kl",
+      "baseline_loss": 0.1846305876970291,
+      "surrogate_gradient": {
+        "ratio": {
+          "parameter_tensors": 614,
+          "connected_tensors": 614,
+          "nonzero_tensors": 614,
+          "norm": 0.005804756656289101
+        },
+        "channel": {
+          "parameter_tensors": 614,
+          "connected_tensors": 614,
+          "nonzero_tensors": 614,
+          "norm": 0.011035239323973656
+        }
+      },
+      "gradient_clip_factor": 1.0,
+      "complete": true,
+      "candidates": [
+        {
+          "fraction": 1.0,
+          "surrogate_g_dot_delta": -0.020331032398016882,
+          "actual_loss": 0.1647159308195114,
+          "actual_loss_delta": -0.0199146568775177,
+          "actual_descent": true,
+          "projected_step_l2": 23.765548706054688
+        },
+        {
+          "fraction": 0.1,
+          "surrogate_g_dot_delta": -0.0020352346517944356,
+          "actual_loss": 0.13530170917510986,
+          "actual_loss_delta": -0.04932887852191925,
+          "actual_descent": true,
+          "projected_step_l2": 2.3765621185302734
+        }
+      ],
+      "scope": "single fixed C80 pair; zero gradients can reflect weak signal"
+    }
+  ],
+  "native_parity": [
+    {
+      "objective": "action_response_kl",
+      "variant": "clean",
+      "action": 0.0,
+      "future": 0.0
+    },
+    {
+      "objective": "action_response_kl",
+      "variant": "noisy",
+      "action": 0.0,
+      "future": 0.0
+    }
+  ],
+  "reader_native_parity": [
+    {
+      "variant": "clean",
+      "action": 0.0
+    }
+  ],
+  "reader_gpu_loads": 1,
+  "memory_strategy": "immutable CPU BF16 masters; reader GPU residency only during reader calls",
+  "teacher_response_rms": 0.04843989387154579,
+  "objective": "latent_control_kl",
+  "phase": "failed",
+  "failure": "OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 39.49 GiB of which 14.12 MiB is free. Including non-PyTorch memory, this process has 39.47 GiB memory in use. Of the allocated memory 38.77 GiB is allocated by PyTorch, and 192.27 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)"
+}

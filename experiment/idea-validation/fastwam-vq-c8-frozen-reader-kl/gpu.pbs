@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=04:00:00
+#PBS -j oe
+source /scratch/users/ntu/yguo017/fastwam-vq-c8-frozen-reader-kl-20261022/allocation.sh
+FW_SOFT_DEADLINE_SECONDS=13800
+qstat -f "$PBS_JOBID" | grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g1([[:space:]]|$)' || { echo 'Expected g1 execution queue'; exit 64; }
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID"
+(
+  trap - EXIT
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+export CUDA_VISIBLE_DEVICES="$GPU_UUID"
+FW_CPU_THREADS=8
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+run_python "$ARTIFACTS/selfcheck.py"
+run_python "$ARTIFACTS/worker.py" --protocol "$ARTIFACTS/protocol.json" --unit "$FW_AK_UNIT"
+touch "$ARTIFACTS/PHASE_COMPLETE"
