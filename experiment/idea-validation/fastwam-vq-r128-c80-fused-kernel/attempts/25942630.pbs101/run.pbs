@@ -1,0 +1,100 @@
+#!/bin/bash
+#PBS -N vqfu0002
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=120gb:ngpus=1
+#PBS -l walltime=06:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) echo 'Refusing login-node computation' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test "${PBS_JOBNAME:-}" = vqfu0002 || exit 64
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g1([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-fused-kernel-20261023-r2
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+SRC_EVAL=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/artifacts/25925636.pbs101
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=21300
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+READY=0
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if (( rc == 0 && READY == 1 )); then
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  else
+    (( rc != 0 )) || rc=65
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+IFS=, read -r -a IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#IDS[@]}" -eq 1 || exit 65
+GPU_UUID=$(nvidia-smi -i "${IDS[0]}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || exit 65
+export CUDA_VISIBLE_DEVICES=$GPU_UUID
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+for f in run.pbs environment.sh protocol.json reference_profile.py export_runtime.py fused_input.py fused_vq.py kernel_runtime.py kernel_worker.py finalize.py; do
+  test -s "$NEW_ROOT/$f" || { echo "Missing source $f" >&2; exit 65; }
+  cp "$NEW_ROOT/$f" "$ARTIFACTS/"
+done
+# All source staging and any large tensor I/O occur only after allocation checks.
+test -s "$SRC_EVAL/exit_code.txt" -a "$(<"$SRC_EVAL/exit_code.txt")" = 0 \
+  -a -e "$SRC_EVAL/PIPELINE_COMPLETE" || { echo 'Current checkpoint evaluation did not complete' >&2; exit 65; }
+cp "$SRC_EVAL/runtime.py" "$ARTIFACTS/source_runtime.py"
+for f in runner.py quantization.py libero_state_loader.py previous_vq_adapter.py rotation_bank.py \
+  batched_transform.py smooth_vq.py codebook.py micro_codebook.py c8_train_banks.py \
+  sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$SRC_EVAL/$f" || { echo "Missing frozen dependency $f" >&2; exit 65; }
+  cp "$SRC_EVAL/$f" "$ARTIFACTS/"
+done
+cp "$NEW_ROOT/protocol.json" "$RESULTS/protocol.json"
+# Reuse the completed immutable export; all receipt I/O stays inside this allocation.
+REUSE_RESULTS=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results
+test -s "$REUSE_RESULTS/export/inference_bundle.pt" -a -s "$REUSE_RESULTS/storage.json" || exit 65
+mkdir -p "$RESULTS/per_layer"
+cp "$REUSE_RESULTS/storage.json" "$RESULTS/storage.json"
+cp "$REUSE_RESULTS"/per_layer/storage_*.json "$RESULTS/per_layer/"
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+run_python "$ARTIFACTS/kernel_worker.py" --mode selftest
+for mode in eager input_fused packed_fused packed_direct bf16; do
+  echo "PROFILE_MODE_BEGIN $mode"
+  run_python "$ARTIFACTS/kernel_worker.py" --mode "$mode"
+  echo "PROFILE_MODE_COMPLETE $mode"
+done
+run_python "$ARTIFACTS/finalize.py"
+READY=1

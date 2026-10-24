@@ -1,0 +1,152 @@
+{
+  "status": "implementation_plan_from_measured_profile",
+  "native_kernel_implemented": false,
+  "source_job": "25921795.pbs101",
+  "preserve_checkpoint": true,
+  "new_training_updates": 0,
+  "priority_shapes": [
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 3072,
+      "K": 3072,
+      "calls": 1991,
+      "gpu_ms": 385.6149759590626
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 3072,
+      "K": 1024,
+      "calls": 1200,
+      "gpu_ms": 227.50265610218048
+    },
+    {
+      "stream": "video",
+      "M": 129,
+      "N": 3072,
+      "K": 3072,
+      "calls": 671,
+      "gpu_ms": 128.50815990567207
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 1024,
+      "K": 3072,
+      "calls": 600,
+      "gpu_ms": 119.69062419235706
+    },
+    {
+      "stream": "action",
+      "M": 129,
+      "N": 3072,
+      "K": 1024,
+      "calls": 600,
+      "gpu_ms": 113.99183990061283
+    },
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 14336,
+      "K": 3072,
+      "calls": 330,
+      "gpu_ms": 109.6161921620369
+    },
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 3072,
+      "K": 14336,
+      "calls": 330,
+      "gpu_ms": 102.09919986128807
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 1024,
+      "K": 4096,
+      "calls": 300,
+      "gpu_ms": 59.72355197370052
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 4096,
+      "K": 1024,
+      "calls": 300,
+      "gpu_ms": 56.36851194500923
+    },
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 18432,
+      "K": 3072,
+      "calls": 11,
+      "gpu_ms": 3.6256319880485535
+    },
+    {
+      "stream": "video",
+      "M": 129,
+      "N": 3072,
+      "K": 4096,
+      "calls": 11,
+      "gpu_ms": 2.048671990633011
+    },
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 3072,
+      "K": 256,
+      "calls": 11,
+      "gpu_ms": 2.0470399856567383
+    }
+  ],
+  "non_target_gemm_bottlenecks": [
+    {
+      "stream": "other",
+      "M": 128,
+      "N": 4096,
+      "K": 4096,
+      "calls": 96,
+      "gpu_ms": 17.441215977072716
+    },
+    {
+      "stream": "other",
+      "M": 128,
+      "N": 10240,
+      "K": 4096,
+      "calls": 48,
+      "gpu_ms": 9.548863992094994
+    },
+    {
+      "stream": "other",
+      "M": 128,
+      "N": 4096,
+      "K": 10240,
+      "calls": 24,
+      "gpu_ms": 5.082016006112099
+    },
+    {
+      "stream": "other",
+      "M": 1,
+      "N": 4096,
+      "K": 8,
+      "calls": 1,
+      "gpu_ms": 0.23280000686645508
+    }
+  ],
+  "measured_components_gpu_ms": {
+    "smooth_signed_h": 5923.336063683033,
+    "a4_quant_dequant": 2362.363200455904,
+    "learned_r": 1293.8753925152123
+  },
+  "phase1": "Keep the verified FP32 Smooth/signed-H128/U and A4 rounding. Replace dense F.linear with a packed VQ weight consumer.",
+  "weight_decoder": "Load two uint8 indices per d4 vector; FP32 codeword addition; apply original ldexp(BF16 row gain, B32 exponent-127) in FP32; cast each decoded weight to BF16 before MMA.",
+  "kernel": "Tile-decode directly in registers/shared memory, BF16 Tensor Core MMA with FP32 accumulation and bias epilogue. Never materialize a full decoded weight in global memory.",
+  "layout": "Offline reorder indices for measured N/K tiles; K tile multiple of32 and d4 alignment; 4096-byte BF16 codebooks reusable per layer. Padding must preserve masked tails.",
+  "phase2": "Use measured Smooth/H/U/A4 cost to decide input-transform fusion; preserve operation order and separately validate changed floating-point accumulation.",
+  "phase3": "Consider INT8/INT4/FP4 only as a separately calibrated decoder; current arbitrary BF16 VQ values cannot be sent directly to integer MMA.",
+  "acceptance": "Full80 paired action replay plus saved full action/future anchor, actual compressed residency, profiler evidence of no full-weight decode, kernel and full-policy latency on the same GPU.",
+  "limitation": "No speedup is predicted from bit count. Large-M video GEMMs may be compute-bound; small-M action GEMMs and large-M video GEMMs need separate dispatch decisions."
+}

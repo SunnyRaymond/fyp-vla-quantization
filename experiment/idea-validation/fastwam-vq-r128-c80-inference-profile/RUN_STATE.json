@@ -1,0 +1,135 @@
+{
+  "protocol": "fastwam-vq-r128-c80-inference-profile-v1",
+  "goal_thread": "01a167e5-84ea-7133-a45f-de17f7cb4280",
+  "goal_status": "complete",
+  "status": "complete",
+  "job_id": "25938083.pbs101",
+  "job_name": "vpinf0003",
+  "source_job": "25921795.pbs101",
+  "source_arm": "reader_kl",
+  "walltime": "04:00:00",
+  "gpus": 1,
+  "new_training_updates": 0,
+  "monitor": {
+    "agent": "/root/inference_profile_watch",
+    "configured_model": "gpt-6-luna",
+    "configured_reasoning_effort": "xhigh",
+    "interval_seconds": 300,
+    "status": "stopped_verified_complete",
+    "unchanged_Q_R": "silent"
+  },
+  "local_validation": {
+    "stdlib_tests_passed": 13,
+    "python_syntax": true,
+    "pbs_bash_syntax": true
+  },
+  "remaining_required_work": [],
+  "created_utc": "2026-10-23T08:53:52.839962+00:00",
+  "verified_scheduler_state": "F",
+  "verified_queue": "g1",
+  "phase": "complete",
+  "last_verified_utc": "2026-10-23T12:44:32.674768+00:00",
+  "previous_attempts": [
+    {
+      "job_id": "25937187.pbs101",
+      "state": "F",
+      "exit_status": 1,
+      "walltime": "00:15:05",
+      "cause": "Hydra output_dir resolution",
+      "source_action_anchor_max_abs": 0.0,
+      "source_future_anchor_max_abs": 0.0,
+      "formal_infer_max_abs": 0.0
+    },
+    {
+      "job_id": "25937618.pbs101",
+      "state": "F",
+      "exit_status": 1,
+      "walltime": "00:35:40",
+      "cause": "parity comparison CPU/CUDA device mismatch",
+      "export_complete": true,
+      "completed_legacy_queries": 80,
+      "completed_bf16_queries": 80,
+      "bundle_reused": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt"
+    }
+  ],
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r3",
+  "repair": {
+    "previous_job": "25937618.pbs101",
+    "previous_remote_root": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2",
+    "cause": "CPU formal infer action compared directly to CUDA sampler replay",
+    "scientific_protocol_changed": false,
+    "checkpoint_changed": false,
+    "new_training_updates": 0,
+    "reuse": "completed inference bundle and storage receipts; rerun all timed modes on one allocation GPU"
+  },
+  "export_complete": true,
+  "storage_receipt": "pulled/25937618.pbs101/storage.json",
+  "partial_evidence": {
+    "legacy_queries": 80,
+    "legacy_wall_p50_ms": 6557.7102361712605,
+    "legacy_denoising_p50_ms": 6491.9306640625,
+    "legacy_peak_allocated_GB": 28.474889728,
+    "legacy_resident_allocated_GB": 28.210057728,
+    "storage_complete": true,
+    "full_export_replay_pending": false,
+    "bf16_queries": 80,
+    "bf16_wall_p50_ms": 1369.883292587474,
+    "bf16_peak_allocated_GB": 25.130502144,
+    "legacy_slowdown_vs_bf16": 4.78705760677238,
+    "performance_evidence_job": "25937618.pbs101",
+    "final_export_primary_panel_pending": false,
+    "resolved_by_job": "25938083.pbs101"
+  },
+  "analysis_findings": [
+    "Profile event timings are intrusive and roughly double the uninstrumented query; never use them as primary latency",
+    "Current Smooth/H and A4 issue many small ops: legacy diagnostic aten::cat45653; input transforms6436",
+    "Prioritize input-transform/quantization fusion together with packed VQ tile decode; preserve FP32 transform and BF16 weight rounding",
+    "Raw analyzer includes non-target F.linear other shapes; use postprocess_report.py to filter candidate video/action target streams",
+    "Inspect actual final inference_dense profile before deciding final kernel priorities"
+  ],
+  "report_helper": "postprocess_report.py",
+  "queue_race": {
+    "long": {
+      "job_id": "25938083.pbs101",
+      "queue": "g1",
+      "walltime": "04:00:00",
+      "controller": "control.py"
+    },
+    "short": {
+      "job_id": "25938321.pbs101",
+      "queue": "gdev",
+      "walltime": "01:59:00",
+      "controller": "short_control.py"
+    },
+    "policy": "first confirmed started wins; cancel other exact handle and verify F",
+    "monitor_interval_seconds": 30,
+    "state_file": "race_status.json",
+    "user_authorized": true,
+    "status": "race_resolved",
+    "winner_job_id": "25938083.pbs101",
+    "loser_job_id": "25938321.pbs101",
+    "qdel_return_code": 0,
+    "loser_terminal_verified": true
+  },
+  "gpu_uuid": "608ccc40-fdcc-5e93-962f-25699bc8ac18",
+  "parity_passed": true,
+  "profile_complete": true,
+  "final_report": "pulled/25938083.pbs101/FINAL_REPORT.zh.md",
+  "kernel_design": "KERNEL_DESIGN.zh.md",
+  "kernel_plan": "pulled/25938083.pbs101/REVIEWED_KERNEL_PLAN.json",
+  "completion_evidence": "pulled/25938083.pbs101/completion_evidence.json",
+  "final_evidence": {
+    "primary_queries_per_mode": 80,
+    "packed_diagnostic_queries": 2,
+    "action_parity_max_abs": 0,
+    "full_future_anchor_max_abs": 0,
+    "torch_peak_allocated_GB": {
+      "bf16": 25.130502144,
+      "legacy": 28.474889728,
+      "inference_dense": 25.139489792,
+      "stream_decode": 17.088416768
+    },
+    "native_kernel_implemented": false,
+    "closed_loop_episodes_added": 0
+  }
+}

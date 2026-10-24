@@ -1,0 +1,6652 @@
+{
+  "schema": "fastwam_decoder_tuning_v1",
+  "protocol": "fastwam-vq-r128-c80-c-decoder-buffer-v1",
+  "pbs_jobid": "25959865.pbs101",
+  "mode": "c_decoder",
+  "checkpoint_identity": {
+    "source_job": "25921795.pbs101",
+    "source_protocol": "fastwam-vq-r128-c80-loss-pair-v1",
+    "source_export_job": "25937618.pbs101",
+    "bundle_path": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt"
+  },
+  "format": "fastwam_additive_vq_microscale_v1",
+  "scope": "independent VQ decode into BF16 scratch; existing cuBLAS Linear unchanged",
+  "expected_modules": 614,
+  "module_count": 614,
+  "device": {
+    "name": "NVIDIA A100-SXM4-40GB",
+    "capability": [
+      8,
+      0
+    ]
+  },
+  "reference": {
+    "name": "fused_vq._decode_kernel:block256_w4",
+    "block": 256,
+    "warps": 4
+  },
+  "candidate_configs": [
+    {
+      "name": "block128_w4",
+      "block": 128,
+      "warps": 4
+    },
+    {
+      "name": "block256_w4",
+      "block": 256,
+      "warps": 4
+    },
+    {
+      "name": "block512_w4",
+      "block": 512,
+      "warps": 4
+    },
+    {
+      "name": "block512_w8",
+      "block": 512,
+      "warps": 8
+    },
+    {
+      "name": "block1024_w8",
+      "block": 1024,
+      "warps": 8
+    }
+  ],
+  "benchmark": {
+    "method": "CUDA Graph replay; per decode",
+    "graph_capture_replays": 8,
+    "timing_replays_per_round": 12,
+    "rounds": 5
+  },
+  "call_frequency_status": "complete",
+  "call_frequency_source": "candidate per-module logical calls including graph replay",
+  "frequency_panel": {
+    "query_count": 80,
+    "logical_decode_calls_full_panel": 420640,
+    "logical_decode_calls_per_query": 5258.0
+  },
+  "frequency_weighted": {
+    "query_count": 80,
+    "logical_decode_calls_full_panel": 420640,
+    "reference_decode_ms_full_panel": 21131.493808689218,
+    "selected_decode_ms_full_panel": 13889.73717879504,
+    "reference_decode_ms_per_query": 264.14367260861525,
+    "selected_decode_ms_per_query": 173.621714734938,
+    "selected_over_reference": 0.6573002980548216,
+    "scope": "weighted decoder-only estimate; existing cuBLAS GEMM excluded"
+  },
+  "reuse_source": null,
+  "modules": [
+    {
+      "name": "video_expert.text_embedding.0",
+      "shape": [
+        3072,
+        4096
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.text_embedding.2",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.time_embedding.0",
+      "shape": [
+        3072,
+        256
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.time_embedding.2",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.time_projection.1",
+      "shape": [
+        18432,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.0.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.0.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.0.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.1.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.1.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.1.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.2.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.2.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.2.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.3.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.3.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.3.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.4.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.4.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.4.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.5.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.5.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.5.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.6.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.6.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.6.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.7.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.7.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.7.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.8.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.8.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.8.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.9.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.9.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.9.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.10.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.10.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.10.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.11.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.11.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.11.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.12.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.12.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.12.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.13.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.13.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.13.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.14.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.14.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.14.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.15.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.15.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.15.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.16.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.16.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.16.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.17.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.17.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.17.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.18.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.18.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.18.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.19.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.19.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.19.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.20.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.20.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.20.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.21.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.21.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.21.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.22.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.22.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.22.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.23.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.23.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.23.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.24.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.24.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.24.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.25.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.25.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.25.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.26.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.26.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.26.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.27.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.27.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.27.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.28.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.28.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.28.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.self_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.self_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.self_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.self_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.cross_attn.q",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.cross_attn.k",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.29.cross_attn.v",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 80
+    },
+    {
+      "name": "video_expert.blocks.29.cross_attn.o",
+      "shape": [
+        3072,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.ffn.0",
+      "shape": [
+        14336,
+        3072
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.blocks.29.ffn.2",
+      "shape": [
+        3072,
+        14336
+      ],
+      "calls": 880
+    },
+    {
+      "name": "video_expert.head.head",
+      "shape": [
+        192,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.action_encoder",
+      "shape": [
+        1024,
+        7
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.text_embedding.0",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.text_embedding.2",
+      "shape": [
+        1024,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.time_embedding.0",
+      "shape": [
+        1024,
+        256
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.time_embedding.2",
+      "shape": [
+        1024,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.time_projection.1",
+      "shape": [
+        6144,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.0.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.0.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.0.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.1.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.1.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.1.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.2.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.2.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.2.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.3.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.3.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.3.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.4.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.4.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.4.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.5.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.5.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.5.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.6.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.6.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.6.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.7.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.7.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.7.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.8.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.8.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.8.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.9.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.9.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.9.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.10.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.10.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.10.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.11.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.11.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.11.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.12.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.12.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.12.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.13.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.13.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.13.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.14.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.14.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.14.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.15.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.15.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.15.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.16.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.16.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.16.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.17.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.17.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.17.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.18.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.18.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.18.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.19.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.19.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.19.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.20.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.20.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.20.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.21.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.21.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.21.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.22.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.22.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.22.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.23.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.23.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.23.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.24.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.24.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.24.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.25.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.25.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.25.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.26.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.26.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.26.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.27.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.27.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.27.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.28.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.28.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.28.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.self_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.self_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.self_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.self_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.cross_attn.q",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.cross_attn.k",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.29.cross_attn.v",
+      "shape": [
+        3072,
+        1024
+      ],
+      "calls": 80
+    },
+    {
+      "name": "action_expert.blocks.29.cross_attn.o",
+      "shape": [
+        1024,
+        3072
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.ffn.0",
+      "shape": [
+        4096,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.blocks.29.ffn.2",
+      "shape": [
+        1024,
+        4096
+      ],
+      "calls": 800
+    },
+    {
+      "name": "action_expert.head",
+      "shape": [
+        7,
+        1024
+      ],
+      "calls": 800
+    },
+    {
+      "name": "proprio_encoder",
+      "shape": [
+        4096,
+        8
+      ],
+      "calls": 80
+    }
+  ],
+  "shapes": [
+    {
+      "shape": [
+        7,
+        1024
+      ],
+      "module_count": 1,
+      "call_count": 800,
+      "reference": {
+        "median_ms": 0.0025173334094385305,
+        "samples_ms": [
+          0.00257066668321689,
+          0.002528000002106031,
+          0.0025173334094385305,
+          0.002496000068883101,
+          0.0025066666615506015
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.0024746667283276715,
+          "samples_ms": [
+            0.002485333320995172,
+            0.0024746667283276715,
+            0.0024639999804397426,
+            0.0024639999804397426,
+            0.0024746667283276715
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.0024213332993288836,
+          "samples_ms": [
+            0.0024320000472168126,
+            0.0024213332993288836,
+            0.0024213332993288836,
+            0.0024213332993288836,
+            0.002410666706661383
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.002410666706661383,
+          "samples_ms": [
+            0.0024320000472168126,
+            0.002410666706661383,
+            0.002410666706661383,
+            0.002399999958773454,
+            0.002399999958773454
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.002410666706661383,
+          "samples_ms": [
+            0.002442666639884313,
+            0.0024213332993288836,
+            0.002410666706661383,
+            0.002410666706661383,
+            0.002399999958773454
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.002528000002106031,
+          "samples_ms": [
+            0.0025599999353289604,
+            0.002528000002106031,
+            0.002528000002106031,
+            0.0025173334094385305,
+            0.002528000002106031
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        192,
+        3072
+      ],
+      "module_count": 1,
+      "call_count": 800,
+      "reference": {
+        "median_ms": 0.00516266655176878,
+        "samples_ms": [
+          0.005173333299656709,
+          0.00516266655176878,
+          0.005152000114321709,
+          0.00516266655176878,
+          0.00514133336643378
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.00721066693464915,
+          "samples_ms": [
+            0.007178666690985362,
+            0.007221333061655362,
+            0.007231999809543292,
+            0.00720000018676122,
+            0.00721066693464915
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.005077333189547062,
+          "samples_ms": [
+            0.005066666752099991,
+            0.005066666752099991,
+            0.005077333189547062,
+            0.005087999937434991,
+            0.005077333189547062
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.004554666578769684,
+          "samples_ms": [
+            0.004608000007768472,
+            0.004565333326657613,
+            0.004554666578769684,
+            0.004554666578769684,
+            0.004554666578769684
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.005013333323101203,
+          "samples_ms": [
+            0.005034666818877061,
+            0.005045333256324132,
+            0.005013333323101203,
+            0.005013333323101203,
+            0.005002666575213273
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.005749333028992017,
+          "samples_ms": [
+            0.005717333406209946,
+            0.005749333028992017,
+            0.005749333028992017,
+            0.005749333028992017,
+            0.005749333028992017
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        1024,
+        7
+      ],
+      "module_count": 1,
+      "call_count": 800,
+      "reference": {
+        "median_ms": 0.002496000068883101,
+        "samples_ms": [
+          0.002528000002106031,
+          0.002496000068883101,
+          0.0025066666615506015,
+          0.002496000068883101,
+          0.002496000068883101
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.0033493333806594214,
+          "samples_ms": [
+            0.0033706665659944215,
+            0.003338666632771492,
+            0.0033493333806594214,
+            0.0033493333806594214,
+            0.003338666632771492
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.003626666652659575,
+          "samples_ms": [
+            0.003648000148435434,
+            0.003626666652659575,
+            0.0036373334005475044,
+            0.003615999904771646,
+            0.003615999904771646
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.0037226667627692223,
+          "samples_ms": [
+            0.0037546666959921518,
+            0.0037226667627692223,
+            0.003712000014881293,
+            0.0037333332002162933,
+            0.003712000014881293
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.004864000094433625,
+          "samples_ms": [
+            0.004906666775544484,
+            0.004885333279768626,
+            0.004842666598657767,
+            0.004864000094433625,
+            0.004853333346545696
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.00516266655176878,
+          "samples_ms": [
+            0.00516266655176878,
+            0.005194666795432568,
+            0.005173333299656709,
+            0.00516266655176878,
+            0.00516266655176878
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "reference",
+      "decision_reason": "no bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        1024,
+        256
+      ],
+      "module_count": 1,
+      "call_count": 800,
+      "reference": {
+        "median_ms": 0.003765333443880081,
+        "samples_ms": [
+          0.0037973333771030107,
+          0.003765333443880081,
+          0.0037546666959921518,
+          0.003765333443880081,
+          0.003765333443880081
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.004810666665434837,
+          "samples_ms": [
+            0.004789333480099837,
+            0.004821333413322766,
+            0.004810666665434837,
+            0.004810666665434837,
+            0.004810666665434837
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.0038826667393247285,
+          "samples_ms": [
+            0.0038826667393247285,
+            0.00386133324354887,
+            0.0038826667393247285,
+            0.003893333487212658,
+            0.003850666806101799
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.003925333420435588,
+          "samples_ms": [
+            0.003925333420435588,
+            0.003925333420435588,
+            0.003903999924659729,
+            0.003925333420435588,
+            0.003893333487212658
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.004671999874214332,
+          "samples_ms": [
+            0.004671999874214332,
+            0.004671999874214332,
+            0.004639999940991402,
+            0.004650666688879331,
+            0.004671999874214332
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.004959999894102414,
+          "samples_ms": [
+            0.004970666641990344,
+            0.004959999894102414,
+            0.004970666641990344,
+            0.004949333456655343,
+            0.004938666708767414
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "reference",
+      "decision_reason": "no bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        1024,
+        1024
+      ],
+      "module_count": 2,
+      "call_count": 880,
+      "reference": {
+        "median_ms": 0.00559999980032444,
+        "samples_ms": [
+          0.00559999980032444,
+          0.00559999980032444,
+          0.00559999980032444,
+          0.00559999980032444,
+          0.00559999980032444
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.008234666660428047,
+          "samples_ms": [
+            0.008223999912540117,
+            0.008245333408315977,
+            0.008234666660428047,
+            0.008234666660428047,
+            0.008234666660428047
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.005269333099325498,
+          "samples_ms": [
+            0.005258666972319285,
+            0.0052799998472134275,
+            0.0052799998472134275,
+            0.005269333099325498,
+            0.005269333099325498
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.004511999897658825,
+          "samples_ms": [
+            0.004533333393434684,
+            0.004511999897658825,
+            0.004501333460211754,
+            0.004501333460211754,
+            0.004511999897658825
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.0052480002244313555,
+          "samples_ms": [
+            0.0052373334765434265,
+            0.005258666972319285,
+            0.005258666972319285,
+            0.0052480002244313555,
+            0.0052480002244313555
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.006144000217318535,
+          "samples_ms": [
+            0.006144000217318535,
+            0.006133333469430606,
+            0.006144000217318535,
+            0.006154666965206464,
+            0.006165333092212677
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        1024,
+        3072
+      ],
+      "module_count": 60,
+      "call_count": 48000,
+      "reference": {
+        "median_ms": 0.016085332880417507,
+        "samples_ms": [
+          0.016042667130629223,
+          0.016117333124081295,
+          0.016095999628305435,
+          0.016074666132529575,
+          0.016085332880417507
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.02603733291228612,
+          "samples_ms": [
+            0.026005332668622334,
+            0.02605866640806198,
+            0.02603733291228612,
+            0.02603733291228612,
+            0.026026666164398193
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.01461333284775416,
+          "samples_ms": [
+            0.014602666099866232,
+            0.01461333284775416,
+            0.01461333284775416,
+            0.01462399959564209,
+            0.014602666099866232
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.012565333396196365,
+          "samples_ms": [
+            0.012543999900420507,
+            0.012565333396196365,
+            0.012565333396196365,
+            0.012565333396196365,
+            0.012682666381200155
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.01452800010641416,
+          "samples_ms": [
+            0.0145066666106383,
+            0.01452800010641416,
+            0.01451733335852623,
+            0.014549333602190018,
+            0.01452800010641416
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.017685333887736004,
+          "samples_ms": [
+            0.017653333644072216,
+            0.017685333887736004,
+            0.017632000148296356,
+            0.017727999637524288,
+            0.0176959993938605
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        1024,
+        4096
+      ],
+      "module_count": 31,
+      "call_count": 24080,
+      "reference": {
+        "median_ms": 0.021194666624069214,
+        "samples_ms": [
+          0.021162666380405426,
+          0.021194666624069214,
+          0.021194666624069214,
+          0.021183999876181286,
+          0.021194666624069214
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.03370666752258936,
+          "samples_ms": [
+            0.03368533402681351,
+            0.033717334270477295,
+            0.03370666752258936,
+            0.033717334270477295,
+            0.03370666752258936
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.01842133328318596,
+          "samples_ms": [
+            0.01841066653529803,
+            0.01844266677896182,
+            0.01841066653529803,
+            0.018432000031073887,
+            0.01842133328318596
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.015861333658297855,
+          "samples_ms": [
+            0.015861333658297855,
+            0.015872000406185787,
+            0.015861333658297855,
+            0.01590399940808614,
+            0.015850666910409927
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.01838933303952217,
+          "samples_ms": [
+            0.018378666291634243,
+            0.01838933303952217,
+            0.0183999997874101,
+            0.018432000031073887,
+            0.018378666291634243
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.022624000906944275,
+          "samples_ms": [
+            0.022602667411168415,
+            0.022634667654832203,
+            0.022656001150608063,
+            0.022624000906944275,
+            0.022592000663280487
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        3072,
+        256
+      ],
+      "module_count": 1,
+      "call_count": 880,
+      "reference": {
+        "median_ms": 0.006346666564544042,
+        "samples_ms": [
+          0.006335999816656113,
+          0.0063786668082078295,
+          0.006346666564544042,
+          0.0063786668082078295,
+          0.006346666564544042
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.009248000259200731,
+          "samples_ms": [
+            0.009248000259200731,
+            0.009269333134094873,
+            0.009248000259200731,
+            0.009248000259200731,
+            0.009237333511312803
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.006239999706546466,
+          "samples_ms": [
+            0.006239999706546466,
+            0.006261333202322324,
+            0.006239999706546466,
+            0.006271999950210254,
+            0.006239999706546466
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.006389333556095759,
+          "samples_ms": [
+            0.0063680000603199005,
+            0.006400000303983688,
+            0.006389333556095759,
+            0.006389333556095759,
+            0.006389333556095759
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.00843733362853527,
+          "samples_ms": [
+            0.00842666688064734,
+            0.00843733362853527,
+            0.008447999755541483,
+            0.00843733362853527,
+            0.008458666503429413
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.008512000242869059,
+          "samples_ms": [
+            0.00847999999920527,
+            0.008512000242869059,
+            0.008522666369875273,
+            0.008522666369875273,
+            0.00850133349498113
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block256_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        3072,
+        1024
+      ],
+      "module_count": 180,
+      "call_count": 100800,
+      "reference": {
+        "median_ms": 0.01653333380818367,
+        "samples_ms": [
+          0.016522667060295742,
+          0.016554666062196095,
+          0.01653333380818367,
+          0.01653333380818367,
+          0.01653333380818367
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.02606933315594991,
+          "samples_ms": [
+            0.02603733291228612,
+            0.02609066665172577,
+            0.02606933315594991,
+            0.02605866640806198,
+            0.02607999990383784
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.014602666099866232,
+          "samples_ms": [
+            0.014581333845853806,
+            0.014602666099866232,
+            0.014602666099866232,
+            0.014602666099866232,
+            0.01462399959564209
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.012618667135636011,
+          "samples_ms": [
+            0.012565333396196365,
+            0.012618667135636011,
+            0.012618667135636011,
+            0.012586666891972223,
+            0.012618667135636011
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.014602666099866232,
+          "samples_ms": [
+            0.014549333602190018,
+            0.01461333284775416,
+            0.014592000593741735,
+            0.014602666099866232,
+            0.014645333091417948
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.017717332889636356,
+          "samples_ms": [
+            0.017685333887736004,
+            0.017749333133300144,
+            0.01770666614174843,
+            0.017717332889636356,
+            0.017759999881188076
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        3072,
+        3072
+      ],
+      "module_count": 242,
+      "call_count": 164160,
+      "reference": {
+        "median_ms": 0.042709335684776306,
+        "samples_ms": [
+          0.042709335684776306,
+          0.04277333120505015,
+          0.04275199770927429,
+          0.042709335684776306,
+          0.04269866645336151
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.07302399973074596,
+          "samples_ms": [
+            0.07300266623497009,
+            0.0730453332265218,
+            0.07302399973074596,
+            0.07303466896216075,
+            0.07300266623497009
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.0382080003619194,
+          "samples_ms": [
+            0.038165333370367684,
+            0.03826133410135905,
+            0.0382080003619194,
+            0.03819733361403147,
+            0.03822933385769526
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.031199999153614044,
+          "samples_ms": [
+            0.031146667897701263,
+            0.031199999153614044,
+            0.031199999153614044,
+            0.031189332405726116,
+            0.031221332649389904
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.037632000943024956,
+          "samples_ms": [
+            0.03761066744724909,
+            0.03766400118668874,
+            0.037621334195137024,
+            0.03766400118668874,
+            0.037632000943024956
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.04740266501903534,
+          "samples_ms": [
+            0.047370667258898415,
+            0.04744533201058706,
+            0.047370667258898415,
+            0.04740266501903534,
+            0.04740266501903534
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        3072,
+        4096
+      ],
+      "module_count": 1,
+      "call_count": 80,
+      "reference": {
+        "median_ms": 0.05938133100668589,
+        "samples_ms": [
+          0.05932799975077311,
+          0.059392000238100685,
+          0.05938133100668589,
+          0.05937066674232483,
+          0.05938133100668589
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.09670399626096089,
+          "samples_ms": [
+            0.09667199850082397,
+            0.09670399626096089,
+            0.09670399626096089,
+            0.09670399626096089,
+            0.09670399626096089
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.05123200019200643,
+          "samples_ms": [
+            0.051221330960591636,
+            0.05126399795214335,
+            0.051274667183558144,
+            0.05123200019200643,
+            0.051221330960591636
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.041109333435694374,
+          "samples_ms": [
+            0.041109333435694374,
+            0.04113066693147024,
+            0.04114133367935816,
+            0.04109866668780645,
+            0.041109333435694374
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.052853330969810486,
+          "samples_ms": [
+            0.052789335449536644,
+            0.052895997961362205,
+            0.052832002441088356,
+            0.052853330969810486,
+            0.052853330969810486
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.061887999375661217,
+          "samples_ms": [
+            0.061887999375661217,
+            0.061834668119748436,
+            0.06193066636721293,
+            0.06190933287143707,
+            0.061887999375661217
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        3072,
+        14336
+      ],
+      "module_count": 30,
+      "call_count": 26400,
+      "reference": {
+        "median_ms": 0.20060799519220987,
+        "samples_ms": [
+          0.20058667659759521,
+          0.20060799519220987,
+          0.20062933365503946,
+          0.20061866442362467,
+          0.20059732596079508
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.30109866460164386,
+          "samples_ms": [
+            0.30107732613881427,
+            0.30109866460164386,
+            0.3011733293533325,
+            0.30113067229588825,
+            0.30107732613881427
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.14800000190734863,
+          "samples_ms": [
+            0.14797866344451904,
+            0.14801067113876343,
+            0.14802133043607077,
+            0.14798933267593384,
+            0.14800000190734863
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.10985599954922994,
+          "samples_ms": [
+            0.10980266332626343,
+            0.10991999506950378,
+            0.10985599954922994,
+            0.10986666878064473,
+            0.10984533031781514
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.15125333269437155,
+          "samples_ms": [
+            0.15125333269437155,
+            0.15128533045450845,
+            0.15125333269437155,
+            0.15122133493423462,
+            0.15122133493423462
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.1623360017935435,
+          "samples_ms": [
+            0.1623253325621287,
+            0.1623360017935435,
+            0.16219733158747354,
+            0.1623360017935435,
+            0.16237866878509521
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        4096,
+        8
+      ],
+      "module_count": 1,
+      "call_count": 80,
+      "reference": {
+        "median_ms": 0.0024746667283276715,
+        "samples_ms": [
+          0.002485333320995172,
+          0.0024746667283276715,
+          0.0024639999804397426,
+          0.0024639999804397426,
+          0.0024746667283276715
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.0058666666348775225,
+          "samples_ms": [
+            0.005834666391213735,
+            0.005877333382765452,
+            0.0058559998869895935,
+            0.0058666666348775225,
+            0.005877333382765452
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.006346666564544042,
+          "samples_ms": [
+            0.006335999816656113,
+            0.0063573333124319715,
+            0.006346666564544042,
+            0.0063573333124319715,
+            0.006346666564544042
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.006389333556095759,
+          "samples_ms": [
+            0.006346666564544042,
+            0.006400000303983688,
+            0.006389333556095759,
+            0.0063786668082078295,
+            0.006400000303983688
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.009226666763424873,
+          "samples_ms": [
+            0.009194666519761086,
+            0.009248000259200731,
+            0.009226666763424873,
+            0.009226666763424873,
+            0.009237333511312803
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.009130666653315226,
+          "samples_ms": [
+            0.009098666409651438,
+            0.009152000149091085,
+            0.009141333401203156,
+            0.009130666653315226,
+            0.009119999905427298
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "reference",
+      "decision_reason": "no bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        4096,
+        1024
+      ],
+      "module_count": 30,
+      "call_count": 24000,
+      "reference": {
+        "median_ms": 0.021216000119845074,
+        "samples_ms": [
+          0.021205333371957142,
+          0.021205333371957142,
+          0.021216000119845074,
+          0.021226666867733,
+          0.021226666867733
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.033728001018365227,
+          "samples_ms": [
+            0.033728001018365227,
+            0.03374933451414108,
+            0.033717334270477295,
+            0.03373866776625315,
+            0.033728001018365227
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.018453333526849747,
+          "samples_ms": [
+            0.018432000031073887,
+            0.018453333526849747,
+            0.018485333770513535,
+            0.018474667022625606,
+            0.018453333526849747
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.015872000406185787,
+          "samples_ms": [
+            0.015829333414634068,
+            0.01590399940808614,
+            0.015872000406185787,
+            0.015850666910409927,
+            0.015872000406185787
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.0183999997874101,
+          "samples_ms": [
+            0.018378666291634243,
+            0.01841066653529803,
+            0.0183999997874101,
+            0.01836799954374631,
+            0.01841066653529803
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.022709332406520844,
+          "samples_ms": [
+            0.022677332162857056,
+            0.02274133265018463,
+            0.022730665902296703,
+            0.022709332406520844,
+            0.02266666789849599
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        6144,
+        1024
+      ],
+      "module_count": 1,
+      "call_count": 800,
+      "reference": {
+        "median_ms": 0.03073066721359889,
+        "samples_ms": [
+          0.030720000465710957,
+          0.030741333961486816,
+          0.03073066721359889,
+          0.030720000465710957,
+          0.030741333961486816
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.0491839994986852,
+          "samples_ms": [
+            0.049141332507133484,
+            0.0491839994986852,
+            0.049226666490236916,
+            0.0491839994986852,
+            0.0491946687301
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.026208000878492992,
+          "samples_ms": [
+            0.026208000878492992,
+            0.02624000112215678,
+            0.026208000878492992,
+            0.02622933437426885,
+            0.026208000878492992
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.021941334009170532,
+          "samples_ms": [
+            0.021920000513394673,
+            0.021941334009170532,
+            0.02197333425283432,
+            0.021941334009170532,
+            0.021941334009170532
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.025962665677070618,
+          "samples_ms": [
+            0.02593066543340683,
+            0.025962665677070618,
+            0.026005332668622334,
+            0.025973332424958546,
+            0.02593066543340683
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.032469332218170166,
+          "samples_ms": [
+            0.0324799989660581,
+            0.0324799989660581,
+            0.03243733445803324,
+            0.032469332218170166,
+            0.032458665470282234
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        14336,
+        3072
+      ],
+      "module_count": 30,
+      "call_count": 26400,
+      "reference": {
+        "median_ms": 0.19326933224995932,
+        "samples_ms": [
+          0.19326933224995932,
+          0.19328000148137411,
+          0.19328000148137411,
+          0.19324799378712973,
+          0.19288533926010132
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.29266132911046344,
+          "samples_ms": [
+            0.29356799523035687,
+            0.2936319907506307,
+            0.29266132911046344,
+            0.2799466649691264,
+            0.2799253265062968
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.1586240033308665,
+          "samples_ms": [
+            0.15864533185958862,
+            0.1585919956366221,
+            0.1586240033308665,
+            0.15863466262817383,
+            0.1586026648680369
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.11615999539693196,
+          "samples_ms": [
+            0.11611732840538025,
+            0.11607467134793599,
+            0.11615999539693196,
+            0.11620266238848369,
+            0.1162453293800354
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.1609813372294108,
+          "samples_ms": [
+            0.160970667997996,
+            0.16102400422096252,
+            0.1609493295351664,
+            0.16102400422096252,
+            0.1609813372294108
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.17441066106160483,
+          "samples_ms": [
+            0.17441066106160483,
+            0.17437867323557535,
+            0.17437867323557535,
+            0.17442133029301962,
+            0.1744426687558492
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    },
+    {
+      "shape": [
+        18432,
+        3072
+      ],
+      "module_count": 1,
+      "call_count": 880,
+      "reference": {
+        "median_ms": 0.24154667059580484,
+        "samples_ms": [
+          0.24151466290156046,
+          0.24158932765324911,
+          0.24155733982721964,
+          0.24152533213297525,
+          0.24154667059580484
+        ],
+        "method": "CUDA Graph replay; per decode"
+      },
+      "candidates": [
+        {
+          "name": "block128_w4",
+          "block": 128,
+          "warps": 4,
+          "median_ms": 0.3351786533991496,
+          "samples_ms": [
+            0.3351680040359497,
+            0.3351786533991496,
+            0.3352213303248088,
+            0.33515731493632,
+            0.3352533181508382
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block256_w4",
+          "block": 256,
+          "warps": 4,
+          "median_ms": 0.19183999300003052,
+          "samples_ms": [
+            0.19178666671117148,
+            0.1918826699256897,
+            0.19183999300003052,
+            0.19183999300003052,
+            0.1918826699256897
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w4",
+          "block": 512,
+          "warps": 4,
+          "median_ms": 0.13871999581654867,
+          "samples_ms": [
+            0.13860266407330832,
+            0.13871999581654867,
+            0.13871999581654867,
+            0.13874133427937826,
+            0.13871999581654867
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block512_w8",
+          "block": 512,
+          "warps": 8,
+          "median_ms": 0.19377066691716513,
+          "samples_ms": [
+            0.19367466370264688,
+            0.19377066691716513,
+            0.19381332397460938,
+            0.19374932845433554,
+            0.19381332397460938
+          ],
+          "bitwise": true
+        },
+        {
+          "name": "block1024_w8",
+          "block": 1024,
+          "warps": 8,
+          "median_ms": 0.2058239976565043,
+          "samples_ms": [
+            0.20580265919367471,
+            0.20590933163960776,
+            0.20576000213623047,
+            0.2058239976565043,
+            0.2058346668879191
+          ],
+          "bitwise": true
+        }
+      ],
+      "selected": "block512_w4",
+      "decision_reason": "fastest bitwise candidate beat reference"
+    }
+  ],
+  "parity": {
+    "checked_modules": 614,
+    "bitwise_passed": 614,
+    "candidate_failures": []
+  },
+  "tuning_method": "bounded per-shape candidate tuning",
+  "edge_cases": [
+    {
+      "shape": [
+        3,
+        1
+      ],
+      "candidate_configs_checked": 5
+    },
+    {
+      "shape": [
+        3,
+        31
+      ],
+      "candidate_configs_checked": 5
+    },
+    {
+      "shape": [
+        3,
+        32
+      ],
+      "candidate_configs_checked": 5
+    },
+    {
+      "shape": [
+        3,
+        33
+      ],
+      "candidate_configs_checked": 5
+    },
+    {
+      "shape": [
+        3,
+        63
+      ],
+      "candidate_configs_checked": 5
+    },
+    {
+      "shape": [
+        3,
+        64
+      ],
+      "candidate_configs_checked": 5
+    },
+    {
+      "shape": [
+        3,
+        65
+      ],
+      "candidate_configs_checked": 5
+    }
+  ],
+  "selected_by_shape": {
+    "7x1024": "block512_w4",
+    "192x3072": "block512_w4",
+    "1024x7": "reference",
+    "1024x256": "reference",
+    "1024x1024": "block512_w4",
+    "1024x3072": "block512_w4",
+    "1024x4096": "block512_w4",
+    "3072x256": "block256_w4",
+    "3072x1024": "block512_w4",
+    "3072x3072": "block512_w4",
+    "3072x4096": "block512_w4",
+    "3072x14336": "block512_w4",
+    "4096x8": "reference",
+    "4096x1024": "block512_w4",
+    "6144x1024": "block512_w4",
+    "14336x3072": "block512_w4",
+    "18432x3072": "block512_w4"
+  }
+}

@@ -1,0 +1,61 @@
+#!/bin/bash
+#PBS -N vqcdp002
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -l walltime=02:00:01
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+[[ "${PBS_JOBNAME:-}" == "vqcdp002" ]] || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node computation' >&2; exit 64;; esac
+grep -Fqx "$HOST" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*q1([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+
+POST_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-post-r1-long
+SOURCE_ROOT_POST=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$SOURCE_ROOT_POST
+NEW_ROOT=$SOURCE_ROOT_POST
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+SOURCE_RESULTS=$SOURCE_ROOT_POST/results
+SOURCE_ARTIFACTS=$SOURCE_ROOT_POST/artifacts/25960283.pbs101
+ARTIFACTS=$POST_ROOT/artifacts/$PBS_JOBID
+RESULTS=$POST_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=1
+FW_SOFT_DEADLINE_SECONDS=1100
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+READY=0
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"; if [[ "$rc" -eq 0 && "$READY" -eq 1 ]]; then touch "$ARTIFACTS/PIPELINE_COMPLETE"; fi; exit "$rc"' EXIT
+
+cp "$POST_ROOT/protocol.json" "$ARTIFACTS/post_protocol.json"
+cp "$POST_ROOT/postprocess.py" "$ARTIFACTS/postprocess.py"
+cp "$POST_ROOT/patchedfinalize.py" "$ARTIFACTS/patchedfinalize.py"
+cp "$POST_ROOT/reference_profile.py" "$ARTIFACTS/reference_profile.py"
+
+# Reuse the established container environment, but deliberately omit Apptainer --nv.
+source "$SOURCE_ARTIFACTS/environment.sh"
+NV_ARGS=()
+CUDA_VISIBLE_DEVICES=''
+export CUDA_VISIBLE_DEVICES
+ARTIFACTS="$POST_ROOT/artifacts/$PBS_JOBID"
+RESULTS="$POST_ROOT/results"
+export ARTIFACTS RESULTS
+cd "$ARTIFACTS"
+run_python "$ARTIFACTS/postprocess.py" \
+  --source-protocol "$SOURCE_ARTIFACTS/protocol.json" \
+  --post-protocol "$ARTIFACTS/post_protocol.json" \
+  --source-results "$SOURCE_RESULTS" \
+  --patched-finalize "$ARTIFACTS/patchedfinalize.py" \
+  --post-results "$RESULTS"
+READY=1

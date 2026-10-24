@@ -1,0 +1,144 @@
+{
+  "protocol": "fastwam-vq-r128-c80-inference-profile-v1",
+  "profile_job": "25938083.pbs101",
+  "source_job": "25921795.pbs101",
+  "checkpoint_preserved": true,
+  "new_training_updates": 0,
+  "native_kernel_implemented": false,
+  "evidence": {
+    "full_panel_queries": 80,
+    "action_max_abs": 0,
+    "full_future_anchor_max_abs": 0,
+    "target_modules": 614,
+    "target_linear_calls": 6436,
+    "packed_residency_diagnostic_queries": 2
+  },
+  "implementation_order": [
+    "Fuse FP32 Smooth/sign/H128; retain current FP32 U GEMM; fuse per-token whole-row A4 reduction/round/clamp/BF16 cast",
+    "Packed VQ tile-decode to BF16 Tensor Core GEMM with FP32 accumulation; do not materialize full decoded weights",
+    "Remove dense factory initialization for target weights and redundant base-weight reload; preserve all unquantized state",
+    "Consider INT8/INT4 only in a separate calibrated format baseline"
+  ],
+  "priority_gemm_shapes": [
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 3072,
+      "K": 3072,
+      "calls": 1991,
+      "gpu_ms": 385.6149759590626
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 3072,
+      "K": 1024,
+      "calls": 1200,
+      "gpu_ms": 227.50265610218048
+    },
+    {
+      "stream": "video",
+      "M": 129,
+      "N": 3072,
+      "K": 3072,
+      "calls": 671,
+      "gpu_ms": 128.50815990567207
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 1024,
+      "K": 3072,
+      "calls": 600,
+      "gpu_ms": 119.69062419235706
+    },
+    {
+      "stream": "action",
+      "M": 129,
+      "N": 3072,
+      "K": 1024,
+      "calls": 600,
+      "gpu_ms": 113.99183990061283
+    },
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 14336,
+      "K": 3072,
+      "calls": 330,
+      "gpu_ms": 109.6161921620369
+    },
+    {
+      "stream": "video",
+      "M": 294,
+      "N": 3072,
+      "K": 14336,
+      "calls": 330,
+      "gpu_ms": 102.09919986128807
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 1024,
+      "K": 4096,
+      "calls": 300,
+      "gpu_ms": 59.72355197370052
+    },
+    {
+      "stream": "action",
+      "M": 32,
+      "N": 4096,
+      "K": 1024,
+      "calls": 300,
+      "gpu_ms": 56.36851194500923
+    }
+  ],
+  "known_tiny_fallbacks": [
+    {
+      "stream": "proprio",
+      "M": 1,
+      "N": 4096,
+      "K": 8,
+      "calls": 1,
+      "gpu_ms": 0.23280000686645508,
+      "module": "proprio_encoder"
+    }
+  ],
+  "non_target_gemms": [
+    {
+      "stream": "other",
+      "M": 128,
+      "N": 4096,
+      "K": 4096,
+      "calls": 96,
+      "gpu_ms": 17.441215977072716
+    },
+    {
+      "stream": "other",
+      "M": 128,
+      "N": 10240,
+      "K": 4096,
+      "calls": 48,
+      "gpu_ms": 9.548863992094994
+    },
+    {
+      "stream": "other",
+      "M": 128,
+      "N": 4096,
+      "K": 10240,
+      "calls": 24,
+      "gpu_ms": 5.082016006112099
+    }
+  ],
+  "decoder": "FP32(book0[index0])+FP32(book1[index1]); FP32 ldexp(BF16 row_gain, uint8 B32 exponent-127); multiply; BF16 round before MMA; FP32 accumulate and original bias/output dtype",
+  "layout": "two uint8 indices per d4; block K multiple32; masked tails; optional offline N/K tile reorder; 4096-byte codebooks per layer",
+  "activation_scope": "Keep original whole-K per-token A4; do not silently replace with B32 microscaling or clipping",
+  "validation": "Decoder BF16 bitwise parity, operand numerical checks, same full80 action replay and full action/future anchor; new GEMM accumulation differences require explicit numerical and later closed-loop validation",
+  "limits": [
+    "No kernel speedup claimed",
+    "Intrusive CUDA events overlap and contain launch gaps",
+    "Packed resident n2 is diagnostic and is not a full80 latency result",
+    "Archive excludes external runtime cache"
+  ],
+  "bookkeeping_correction": "Raw other/M1/N4096/K8/calls1 is target proprio_encoder; reviewed plan keeps it as tiny BF16 fallback. Future analyzer classification fixed without rerunning inference."
+}

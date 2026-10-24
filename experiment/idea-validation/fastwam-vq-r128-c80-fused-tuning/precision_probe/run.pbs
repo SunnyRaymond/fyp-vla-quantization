@@ -1,0 +1,84 @@
+#!/bin/bash
+#PBS -N vqfp0002
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) echo 'Refusing login-node computation' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test "${PBS_JOBNAME:-}" = vqfp0002 || exit 64
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*gdev([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-fused-precision-20261024-r2
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+SRC_EVAL=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/artifacts/25925636.pbs101
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=1500
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+READY=0
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if (( rc == 0 && READY == 1 )); then
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  else
+    (( rc != 0 )) || rc=65
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+IFS=, read -r -a IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#IDS[@]}" -eq 1 || exit 65
+GPU_UUID=$(nvidia-smi -i "${IDS[0]}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || exit 65
+export CUDA_VISIBLE_DEVICES=$GPU_UUID
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+for f in run.pbs environment.sh protocol.json precision_worker.py; do
+  test -s "$NEW_ROOT/$f" || exit 65
+  cp "$NEW_ROOT/$f" "$ARTIFACTS/"
+done
+PROBE_SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-fused-tuning-20261023-r2/artifacts/25943391.pbs101
+for f in fused_vq.py reference_profile.py export_runtime.py micro_codebook.py codebook.py; do
+  test -s "$PROBE_SOURCE/$f" || exit 65
+  cp "$PROBE_SOURCE/$f" "$ARTIFACTS/"
+done
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+run_python "$ARTIFACTS/precision_worker.py"
+test -s "$RESULTS/precision.json" || exit 65
+cp "$RESULTS/precision.json" "$RESULTS/summary.json"
+READY=1

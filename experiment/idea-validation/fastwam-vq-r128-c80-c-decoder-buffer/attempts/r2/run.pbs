@@ -1,0 +1,240 @@
+#!/bin/bash
+#PBS -N vqcdl002
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=06:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+HOST=$(hostname -s)
+case "$HOST" in *login*) echo 'Refusing login-node computation' >&2; exit 64;; esac
+grep -Fqx "$HOST" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+case "${PBS_JOBNAME:-}" in
+  vqcdl002) LANE=long; EXPECTED_QUEUE=g1; WALLTIME=06:00:00;;
+  vqcds002) LANE=short; EXPECTED_QUEUE=gdev; WALLTIME=01:59:00;;
+  *) echo 'Unexpected PBS job name' >&2; exit 64;;
+esac
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*$EXPECTED_QUEUE([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || exit 64
+
+RACE_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r2
+NEW_ROOT=$RACE_ROOT-$LANE
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+DIAG_ROOT=$NEW_ROOT
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+SRC_EVAL=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/artifacts/25925636.pbs101
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=8
+FW_SOFT_DEADLINE_SECONDS=21300
+if [[ "$LANE" == short ]]; then FW_SOFT_DEADLINE_SECONDS=6900; fi
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS RACE_ROOT LANE
+export FW_JOB_START_EPOCH FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS
+
+# Claim the shared race before model, tensor, dependency, or compilation I/O.
+mkdir -p "$RACE_ROOT/control"
+if mkdir "$RACE_ROOT/control/winner.lock" 2>/dev/null; then
+  python3 - "$RACE_ROOT/control/winner.json" <<'PYWIN'
+import json, os, socket, sys
+from datetime import datetime, timezone
+from pathlib import Path
+p = Path(sys.argv[1])
+tmp = p.with_suffix(".tmp")
+value = dict(protocol="fastwam-vq-r128-c80-c-decoder-buffer-v1",
+             job_id=os.environ["PBS_JOBID"], job_name=os.environ["PBS_JOBNAME"],
+             lane=os.environ["LANE"], hostname=socket.gethostname(),
+             started_utc=datetime.now(timezone.utc).isoformat())
+tmp.write_text(json.dumps(value, indent=2) + chr(10))
+tmp.replace(p)
+PYWIN
+  echo "RACE_WINNER $PBS_JOBID $LANE"
+else
+  echo "RACE_LOST $PBS_JOBID $LANE; no model or tensor was loaded"
+  exit 73
+fi
+
+mkdir -p "$ARTIFACTS" "$RESULTS"
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+READY=0
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  if (( rc == 0 && READY == 1 )); then
+    touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  else
+    (( rc != 0 )) || rc=65
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || exit 65
+IFS=, read -r -a IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#IDS[@]}" -eq 1 || exit 65
+GPU_UUID=$(nvidia-smi -i "${IDS[0]}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || exit 65
+export CUDA_VISIBLE_DEVICES=$GPU_UUID
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+for f in run.pbs environment.sh protocol.json reference_profile.py export_runtime.py fused_input.py fused_vq.py kernel_runtime.py layer_runtime.py condition_cache.py abc_runtime.py graph_runtime.py decoder_runtime.py inventory.py profile_worker.py finalize.py; do
+  test -s "$NEW_ROOT/$f" || { echo "Missing source $f" >&2; exit 65; }
+  cp "$NEW_ROOT/$f" "$ARTIFACTS/"
+done
+test -s "$SRC_EVAL/exit_code.txt" -a "$(<"$SRC_EVAL/exit_code.txt")" = 0 \
+  -a -e "$SRC_EVAL/PIPELINE_COMPLETE" || { echo 'Frozen source evaluation did not complete' >&2; exit 65; }
+cp "$SRC_EVAL/runtime.py" "$ARTIFACTS/source_runtime.py"
+for f in runner.py quantization.py libero_state_loader.py previous_vq_adapter.py rotation_bank.py \
+  batched_transform.py smooth_vq.py codebook.py micro_codebook.py c8_train_banks.py \
+  sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$SRC_EVAL/$f" || { echo "Missing frozen dependency $f" >&2; exit 65; }
+  cp "$SRC_EVAL/$f" "$ARTIFACTS/"
+done
+cp "$NEW_ROOT/protocol.json" "$RESULTS/protocol.json"
+
+PRIMARY_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-layerdecode-bf16-20261024-r3-long
+PRIMARY_RESULTS=$PRIMARY_ROOT/results
+PRIMARY_ARTIFACTS=$PRIMARY_ROOT/artifacts/25954757.pbs101
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-fused-tuning-20261023-r2
+BASELINE_RESULTS=$BASELINE_ROOT/results
+BASELINE_ARTIFACTS=$BASELINE_ROOT/artifacts/25943391.pbs101
+test -s "$PRIMARY_ARTIFACTS/exit_code.txt" -a "$(<"$PRIMARY_ARTIFACTS/exit_code.txt")" = 0 \
+  -a -e "$PRIMARY_ARTIFACTS/PIPELINE_COMPLETE" || { echo 'Frozen layer_decode_fp32 job did not complete' >&2; exit 65; }
+test -s "$BASELINE_ARTIFACTS/exit_code.txt" -a "$(<"$BASELINE_ARTIFACTS/exit_code.txt")" = 0 \
+  -a -e "$BASELINE_ARTIFACTS/PIPELINE_COMPLETE" || { echo 'Frozen fused-tuning job did not complete' >&2; exit 65; }
+python3 - "$PRIMARY_RESULTS/layer_decode_fp32/summary.json" "$BASELINE_RESULTS" <<'PYREF'
+import json, sys
+from pathlib import Path
+primary = json.loads(Path(sys.argv[1]).read_text())
+if (primary.get("protocol") != "fastwam-vq-r128-c80-layerdecode-bf16-v1"
+        or primary.get("pbs_jobid") != "25954757.pbs101"
+        or primary.get("mode") != "layer_decode_fp32"
+        or primary.get("complete") is not True or primary.get("queries") != 80):
+    raise SystemExit("Frozen primary reference receipt mismatch")
+base = Path(sys.argv[2])
+for mode in ("bf16", "eager", "input_fused"):
+    row = json.loads((base / mode / "summary.json").read_text())
+    if (row.get("protocol") != "fastwam-vq-r128-c80-fused-tuning-v1"
+            or row.get("pbs_jobid") != "25943391.pbs101"
+            or row.get("mode") != mode or row.get("complete") is not True
+            or row.get("queries") != 80):
+        raise SystemExit("Frozen reused reference receipt mismatch: " + mode)
+PYREF
+for receipt in summary.json samples.json actions.pt validation.json; do
+  test -s "$PRIMARY_RESULTS/layer_decode_fp32/$receipt" || exit 65
+done
+test -s "$PRIMARY_RESULTS/storage.json" || { echo 'Frozen primary storage receipt is missing' >&2; exit 65; }
+cp "$PRIMARY_RESULTS/storage.json" "$RESULTS/storage.json"
+mkdir -p "$RESULTS/layer_decode_fp32"
+cp "$PRIMARY_RESULTS/layer_decode_fp32"/{summary.json,samples.json,actions.pt,validation.json} "$RESULTS/layer_decode_fp32/"
+for reference_mode in bf16 eager input_fused; do
+  mkdir -p "$RESULTS/$reference_mode"
+  for receipt in summary.json samples.json actions.pt; do
+    test -s "$BASELINE_RESULTS/$reference_mode/$receipt" || exit 65
+    cp "$BASELINE_RESULTS/$reference_mode/$receipt" "$RESULTS/$reference_mode/"
+  done
+  if [[ -s "$BASELINE_RESULTS/$reference_mode/validation.json" ]]; then
+    cp "$BASELINE_RESULTS/$reference_mode/validation.json" "$RESULTS/$reference_mode/"
+  fi
+done
+REUSE_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-runtime-abc-20261024-r1-long
+REUSE_RESULTS=$REUSE_ROOT/results
+REUSE_JOB=25956803.pbs101
+REUSE_ARTIFACTS=$REUSE_ROOT/artifacts/$REUSE_JOB
+
+test -s "$REUSE_ARTIFACTS/allocation.txt" -a -s "$REUSE_RESULTS/stage_gates.json" || exit 65
+python3 - "$REUSE_RESULTS" "$REUSE_ARTIFACTS/allocation.txt" "$REUSE_JOB" <<'PYREUSE'
+import json, re, sys
+from pathlib import Path
+root, allocation_path, job_id = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+allocation = allocation_path.read_text()
+if not re.search(r"(?m)^Job Id:\s*" + re.escape(job_id) + r"\s*$", allocation):
+    raise SystemExit("Frozen C allocation job differs")
+if not re.search(r"(?m)^\s*Job_Name\s*=\s*vqab0001\s*$", allocation):
+    raise SystemExit("Frozen C allocation name differs")
+gates = json.loads((root / 'stage_gates.json').read_text())
+if gates.get('protocol') != 'fastwam-vq-r128-c80-runtime-abc-v1' or gates.get('pbs_jobid') != job_id:
+    raise SystemExit('Frozen C stage-gate provenance differs')
+gate = gates.get('modes', {}).get('runtime_c', {})
+if not all(gate.get(k) is True for k in ('passed',)) or not all(
+        gate.get(k, {}).get('passed') is True for k in ('parity_vs_primary', 'validation_checks')):
+    raise SystemExit('Frozen C individual gate did not pass')
+summary = json.loads((root / 'runtime_c/summary.json').read_text())
+parity = json.loads((root / 'runtime_c/parity.json').read_text())
+samples = json.loads((root / 'runtime_c/samples.json').read_text())
+if (summary.get('protocol') != gates['protocol'] or summary.get('pbs_jobid') != job_id
+        or summary.get('mode') != 'runtime_c' or summary.get('complete') is not True
+        or summary.get('queries') != 80 or len(samples) != 80):
+    raise SystemExit('Frozen C mode incomplete')
+for field in ('full80_action_max_abs_vs_layer_decode_fp32', 'full80_action_rmse_vs_layer_decode_fp32',
+              'anchor_action_max_abs', 'anchor_future_max_abs'):
+    if parity.get(field) != 0:
+        raise SystemExit('Frozen C output parity failed: ' + field)
+if parity.get('full80_queries') != 80:
+    raise SystemExit('Frozen C panel incomplete')
+PYREUSE
+mkdir -p "$RESULTS/runtime_c"
+for receipt in summary.json samples.json actions.pt validation.json parity.json; do
+  test -s "$REUSE_RESULTS/runtime_c/$receipt" || exit 65
+  cp "$REUSE_RESULTS/runtime_c/$receipt" "$RESULTS/runtime_c/"
+done
+cp "$REUSE_RESULTS/stage_gates.json" "$RESULTS/runtime_c/source_stage_gates.json"
+if [[ -s "$REUSE_RESULTS/runtime_c/operators.json" ]]; then
+  cp "$REUSE_RESULTS/runtime_c/operators.json" "$RESULTS/runtime_c/"
+fi
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+
+# Heavy tensor I/O and all model work only occur below the verified allocation guard.
+run_python -c 'from reference_profile import guard; guard(); from decoder_runtime import smoke; smoke()'
+INVENTORY_RESULTS=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r1-long/results
+for receipt in "$INVENTORY_RESULTS"/storage_inventory*.json "$INVENTORY_RESULTS/inventory.md"; do
+  test -s "$receipt" || exit 65
+  cp "$receipt" "$RESULTS/"
+done
+python3 - "$RESULTS/storage_inventory.json" "$PBS_JOBID" <<'PYINVENTORY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1]); row = json.loads(path.read_text())
+if (row.get('pbs_jobid') != '25959495.pbs101' or row.get('expected_bytes_match') is not True
+        or row.get('model_state', {}).get('unique_storage_bytes') != 12779984326
+        or row.get('source_job') != '25921795.pbs101'):
+    raise SystemExit('Reused inventory provenance differs')
+row['reused_by_pbs_jobid'] = sys.argv[2]
+row['inventory_reused'] = True
+row['reuse_source_result_root'] = str(path.parent).replace('r2-long', 'r1-long').replace('r2-short', 'r1-long')
+path.write_text(json.dumps(row, indent=2) + chr(10))
+PYINVENTORY
+run_python "$ARTIFACTS/profile_worker.py" --mode c_decoder
+run_python "$ARTIFACTS/finalize.py" --stage-gate c_decoder
+run_python "$ARTIFACTS/profile_worker.py" --mode c_buffer
+run_python "$ARTIFACTS/finalize.py" --stage-gate c_buffer
+run_python "$ARTIFACTS/finalize.py" --phase final
+python3 - "$RESULTS/summary.json" <<'PYDONE'
+import json, sys
+from pathlib import Path
+row = json.loads(Path(sys.argv[1]).read_text())
+if row.get('complete') is not True:
+    raise SystemExit('Required candidate/inventory gates incomplete')
+PYDONE
+READY=1

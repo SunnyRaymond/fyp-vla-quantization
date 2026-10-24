@@ -1,0 +1,284 @@
+#!/bin/bash
+#PBS -N r128qc0001
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:59:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-qclip-20261023
+PARENT_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022
+PARENT_RUNTIME=$PARENT_ROOT/artifacts/25921795.pbs101
+SOURCE_CHECKPOINT=$PARENT_ROOT/results/arms/reader_kl/deployment.pt
+SOURCE_ANCHOR=$PARENT_ROOT/results/arms/reader_kl/anchor.pt
+SOURCE_SUMMARY=$PARENT_ROOT/results/arms/reader_kl/summary.json
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+PROTOCOL_ID=fastwam-vq-r128-c80-qclip-v1
+CONTROL=$NEW_ROOT/control
+ARTIFACTS=$NEW_ROOT/artifacts
+RESULTS=$NEW_ROOT/results
+
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" || die 'PBS_JOBID is required'
+[[ "$PBS_JOBID" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || die 'PBS_JOBID is not scheduler-issued'
+test -n "${PBS_NODEFILE:-}" -a -s "$PBS_NODEFILE" -a -r "$PBS_NODEFILE" || die 'PBS_NODEFILE is missing or unreadable'
+HOST=$(hostname -s)
+case "${HOST,,}" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Current host is outside the PBS allocation'
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS job is not running'
+JOB_NAME=$(awk -F= '/^[[:space:]]*Job_Name[[:space:]]*=/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' <<< "$ALLOCATION_QSTAT")
+case "$JOB_NAME" in r128qc0001) JOB_LABEL=short; EXPECTED_WALLTIME=01:59:00;; r128qc0002) JOB_LABEL=long; EXPECTED_WALLTIME=12:00:00;; r128qc0003) JOB_LABEL=resume; EXPECTED_WALLTIME=12:00:00;; *) die 'PBS job name is outside the frozen Q-Clip job set';; esac
+QUEUE=$(awk -F= '/^[[:space:]]*queue[[:space:]]*=/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' <<< "$ALLOCATION_QSTAT")
+[[ "$QUEUE" == normal || "$QUEUE" == gdev || "$QUEUE" =~ ^g[0-9]+$ ]] || die "Unexpected 1-GPU route: $QUEUE"
+grep -Eq "^[[:space:]]*Resource_List\.walltime[[:space:]]*=[[:space:]]*$EXPECTED_WALLTIME([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die 'PBS walltime differs from the selected Q-Clip attempt'
+grep -Eq '^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*16([[:space:]]|$)|Resource_List\.select.*ncpus=16' <<< "$ALLOCATION_QSTAT" || die 'PBS allocation does not contain 16 CPUs'
+grep -Eiq '^[[:space:]]*Resource_List\.mem[[:space:]]*=[[:space:]]*110g(b)?([[:space:]]|$)|Resource_List\.select.*mem=110g(b)?([:]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS allocation does not contain 110 GB memory'
+grep -Eq '^[[:space:]]*Resource_List\.ngpus[[:space:]]*=[[:space:]]*1([[:space:]]|$)|Resource_List\.select.*ngpus=1([:]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS allocation does not contain one GPU'
+awk -F= -v host="$HOST" '/^[[:space:]]*exec_host[[:space:]]*=/ {v=$2; sub(/^[[:space:]]*/, "", v); split(v, a, /[\/+]/); if (a[1] == host) found=1} END {exit !found}' <<< "$ALLOCATION_QSTAT" || die 'PBS execution host differs from the running node'
+
+# All allocation checks precede checkpoint reads, source copies, and model loading.
+test -n "${CUDA_VISIBLE_DEVICES:-}" || die 'CUDA_VISIBLE_DEVICES is empty'
+IFS=, read -r -a ALLOCATED_GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#ALLOCATED_GPU_IDS[@]}" -eq 1 || die 'Expected exactly one allocated GPU'
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+mkdir -p "$CONTROL" "$ARTIFACTS/$PBS_JOBID" "$RESULTS"
+JOB_ARTIFACTS=$ARTIFACTS/$PBS_JOBID
+exec > >(tee -a "$JOB_ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$JOB_ARTIFACTS/allocation.txt"
+printf 'PBS_JOBID=%s host=%s queue=%s walltime=%s\n' "$PBS_JOBID" "$HOST" "$QUEUE" "$EXPECTED_WALLTIME"
+
+write_winner() {
+  local status=$1 exit_code=${2:-}
+  python3 - "$CONTROL/winner.json" "$PROTOCOL_ID" "$PBS_JOBID" "$JOB_NAME" "$EXPECTED_WALLTIME" "$status" "$exit_code" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+target=Path(sys.argv[1]); protocol, job, name, walltime, status, exit_code=sys.argv[2:]
+previous={}
+if target.exists():
+    try: previous=json.loads(target.read_text(encoding="utf-8"))
+    except Exception: previous={}
+if previous.get("winner_job_id") not in (None, job):
+    if status != "running" or previous.get("winner_job_id") != os.environ.get("QCLIP_PREVIOUS_WINNER"):
+        raise SystemExit("winner receipt belongs to another writer")
+value={"protocol":protocol, "winner_job_id":job, "winner_job_name":name,
+       "walltime":walltime, "status":status, "updated_utc":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+if previous.get("winner_job_id") and previous.get("winner_job_id") != job:
+    value["previous_winner_job_id"]=previous["winner_job_id"]
+if exit_code:
+    value["worker_exit_code"]=int(exit_code)
+fd, tmp=tempfile.mkstemp(prefix=target.name+".", dir=str(target.parent))
+with os.fdopen(fd,"w",encoding="utf-8") as f:
+    json.dump(value,f,indent=2); f.write("\n")
+os.replace(tmp,target)
+PY
+}
+
+write_phase() {
+  python3 - "$JOB_ARTIFACTS/RUN_PHASE.json" "$PROTOCOL_ID" "$PBS_JOBID" "$1" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+target=Path(sys.argv[1]); value={"protocol":sys.argv[2],"pbs_jobid":sys.argv[3],"phase":sys.argv[4]}
+fd, name=tempfile.mkstemp(prefix=target.name+".",dir=str(target.parent))
+with os.fdopen(fd,"w",encoding="utf-8") as stream:
+    json.dump(value,stream,indent=2); stream.write("\n")
+os.replace(name,target)
+PY
+}
+
+cancel_siblings() {
+  python3 - "$CONTROL/submission.json" "$PBS_JOBID" <<'PY' | while IFS=' ' read -r sibling name; do
+import json, re, sys
+from pathlib import Path
+path=Path(sys.argv[1]); current=sys.argv[2]
+try: state=json.loads(path.read_text(encoding="utf-8"))
+except Exception: raise SystemExit(0)
+names={"short":"r128qc0001","long":"r128qc0002","resume":"r128qc0003"}
+for label, row in state.get("jobs",{}).items():
+    handle=(row or {}).get("handle") or {}
+    job=handle.get("job_id"); name=handle.get("job_name")
+    if label in names and job != current and name == names[label] and re.fullmatch(r"\d+(?:\[\d*\])?\.[A-Za-z0-9_.-]+",str(job)):
+        print(job,name)
+PY
+    test -n "$sibling" || continue
+    qstat_output=$(qstat -xf "$sibling" 2>/dev/null) || continue
+    grep -Eq "^[[:space:]]*Job_Name[[:space:]]*=[[:space:]]*$name([[:space:]]|$)" <<< "$qstat_output" || continue
+    if grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*(Q|R)([[:space:]]|$)' <<< "$qstat_output"; then
+      qdel "$sibling" && printf 'SIBLING_CANCELLED job_id=%s name=%s\n' "$sibling" "$name" || true
+    fi
+  done
+}
+
+resume_preflight() {
+  python3 - "$CONTROL/winner.json" "$RESULTS/failure.json" "$RESULTS/checkpoint.pt" "$RESULTS/endpoints" "$CONTROL/submission.json" "$PROTOCOL_ID" <<'PY'
+import json, os, re, subprocess, sys
+from pathlib import Path
+winner_path, failure_path, checkpoint, endpoints, submission_path, protocol=sys.argv[1:]
+def load(path):
+    with open(path,encoding="utf-8") as f: return json.load(f)
+winner=load(winner_path); failure=load(failure_path); state=load(submission_path)
+job=winner.get("winner_job_id"); name=winner.get("winner_job_name")
+if (winner.get("protocol")!=protocol or winner.get("status")!="interrupted"
+        or name not in ("r128qc0001","r128qc0002")
+        or not re.fullmatch(r"\d+(?:\[\d*\])?\.[A-Za-z0-9_.-]+",str(job))):
+    raise SystemExit("no prior checkpointed short/long writer is resumable")
+if (failure.get("protocol")!=protocol or failure.get("pbs_jobid")!=job
+        or failure.get("error")!="TimeoutError" or failure.get("checkpointed") is not True):
+    raise SystemExit("worker failure receipt is not a checkpointed timeout")
+qstat=subprocess.run(["qstat","-xf",job],capture_output=True,universal_newlines=True)
+if qstat.returncode: raise SystemExit("cannot verify prior writer PBS terminal state")
+fields={}
+for line in qstat.stdout.splitlines():
+    if "=" in line:
+        k,v=line.split("=",1); fields[k.strip()]=v.strip()
+if fields.get("Job_Name")!=name or fields.get("job_state") not in ("F","X") or fields.get("Exit_status")!="75":
+    raise SystemExit("prior writer must be terminal with PBS Exit_status=75")
+for label, row in state.get("jobs",{}).items():
+    if label not in ("short","long"): continue
+    handle=(row or {}).get("handle") or {}
+    other=handle.get("job_id")
+    if not other or other==job: continue
+    check=subprocess.run(["qstat","-xf",other],capture_output=True,universal_newlines=True)
+    if check.returncode: raise SystemExit("cannot verify original sibling terminal state")
+    f={}
+    for line in check.stdout.splitlines():
+        if "=" in line:
+            k,v=line.split("=",1); f[k.strip()]=v.strip()
+    if f.get("job_state") not in ("F","X"): raise SystemExit("original sibling is not terminal")
+has_checkpoint=os.path.isfile(checkpoint) and os.path.getsize(checkpoint)>0
+has_endpoint=False
+for arm in ("q0","qclip"):
+    for split in ("calibration","heldout"):
+        folder=Path(endpoints)/arm/split
+        try:
+            with os.scandir(folder) as entries:
+                if next((entry for entry in entries if entry.is_file(follow_symlinks=False) and entry.name.endswith(".json")),None):
+                    has_endpoint=True; break
+        except FileNotFoundError: pass
+    if has_endpoint: break
+if not (has_checkpoint or has_endpoint):
+    raise SystemExit("resume requires a checkpoint or at least one committed endpoint JSON")
+print(job)
+PY
+}
+
+if [[ "$JOB_LABEL" == resume ]]; then
+  QCLIP_PREVIOUS_WINNER=$(resume_preflight) || die 'Resume preflight failed'
+  export QCLIP_PREVIOUS_WINNER
+else
+  QCLIP_PREVIOUS_WINNER=
+fi
+
+exec 9>"$CONTROL/writer.lock"
+if ! flock -n 9; then
+  echo 'Another allocation owns the Q-Clip writer lock; leaving this attempt idle.'
+  for _ in {1..10}; do test -s "$CONTROL/winner.json" && exit 0; sleep 1; done
+  die 'Writer lock is held but no winner receipt appeared'
+fi
+if [[ "$JOB_LABEL" == resume ]]; then
+  test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["winner_job_id"])' "$CONTROL/winner.json")" = "$QCLIP_PREVIOUS_WINNER" || die 'Winner changed during resume startup'
+else
+  test ! -s "$CONTROL/winner.json" || { echo 'An earlier Q-Clip writer already owns the shared results; exiting.'; exit 0; }
+fi
+write_winner running
+write_phase running
+cancel_siblings
+
+GPU_MONITOR_PID=
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  if (( rc == 0 )); then
+    if python3 - "$RESULTS/summary.json" "$PROTOCOL_ID" "$PBS_JOBID" <<'PY'
+import json, math, sys
+with open(sys.argv[1],encoding="utf-8") as f: s=json.load(f)
+finite=lambda x: isinstance(x,(int,float)) and not isinstance(x,bool) and math.isfinite(x) and 0<=x<=1e-6
+arms=s.get("arms")
+if (s.get("protocol")!=sys.argv[2] or s.get("pbs_jobid")!=sys.argv[3]
+        or s.get("complete") is not True or s.get("status")!="complete"
+        or s.get("updates")!=80 or s.get("exposures")!=80 or s.get("target_linears")!=614
+        or s.get("heldout_queries_per_arm")!=80 or s.get("calibration_queries_per_arm")!=80
+        or s.get("new_teacher_queries")!=0 or s.get("closedloop_episodes")!=0
+        or s.get("weights_frozen") is not True or s.get("rotation_frozen") is not True
+        or not finite(s.get("initial_parity_max_abs")) or not finite(s.get("formal_parity_max_abs"))
+        or not isinstance(arms,dict) or set(arms)!={"q0","qclip"}):
+    raise SystemExit("root summary failed the frozen Q-Clip completion contract")
+for arm in ("q0","qclip"):
+    row=arms[arm]
+    if not isinstance(row,dict) or not isinstance(row.get("calibration"),dict) or not isinstance(row.get("heldout"),dict):
+        raise SystemExit(arm+" summary lacks calibration/heldout statistics")
+PY
+    then
+      write_winner complete 0
+      write_phase complete
+      touch "$JOB_ARTIFACTS/PHASE_COMPLETE"
+      cancel_siblings
+      rc=0
+    else
+      echo 'Final summary validation failed; no PHASE_COMPLETE marker.' >&2
+      rc=65
+    fi
+  fi
+  if (( rc != 0 )); then
+    rm -f "$JOB_ARTIFACTS/PHASE_COMPLETE"
+    if (( rc == 75 )); then write_winner interrupted "$rc"; write_phase interrupted || true
+    else write_winner failed "$rc"; write_phase failed || true; fi
+  fi
+  printf '%s\n' "$rc" > "$JOB_ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+printf '%s\n' "$PBS_JOBID" > "$JOB_ARTIFACTS/pbs_jobid.txt"
+printf '%s\n' "$JOB_LABEL" > "$JOB_ARTIFACTS/attempt.txt"
+
+shopt -s nullglob
+for file in protocol.json worker.py clip_bank.py run.pbs environment.sh control.py; do
+  test -s "$NEW_ROOT/$file" || { echo "Uploaded Q-Clip source missing: $file" >&2; exit 65; }
+done
+cp "$NEW_ROOT/protocol.json" "$NEW_ROOT/worker.py" "$NEW_ROOT/clip_bank.py" "$NEW_ROOT/run.pbs" "$NEW_ROOT/environment.sh" "$NEW_ROOT/control.py" "$JOB_ARTIFACTS/"
+test -s "$PARENT_RUNTIME/protocol.json" || { echo 'Frozen parent runtime protocol is unavailable' >&2; exit 65; }
+cp "$PARENT_RUNTIME/protocol.json" "$JOB_ARTIFACTS/parent_protocol.json"
+test -s "$SOURCE_CHECKPOINT" -a -s "$SOURCE_ANCHOR" -a -s "$SOURCE_SUMMARY" || { echo 'Frozen reader_kl checkpoint, anchor, or summary is unavailable' >&2; exit 65; }
+test -d "$PARENT_RUNTIME" || { echo 'Frozen parent runtime directory is unavailable' >&2; exit 65; }
+cp "$PARENT_RUNTIME/worker.py" "$JOB_ARTIFACTS/q0_worker.py"
+for file in source_worker.py rotation_bank.py c8_train_banks.py batched_transform.py runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py frozen_reader.py reader_runtime.py reader_loss.py softbin_loss.py; do
+  test -s "$PARENT_RUNTIME/$file" || { echo "Frozen parent runtime artifact is missing: $file" >&2; exit 65; }
+  cp "$PARENT_RUNTIME/$file" "$JOB_ARTIFACTS/$file"
+done
+
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+export ROOT BASE DIAG_ROOT NEW_ROOT SMOOTH_ROOT SOURCE_ROOT R128_ROOT
+FW_CPU_THREADS=16
+FW_SAVE_RESERVE_SECONDS=300
+IFS=: read -r wall_h wall_m wall_s <<< "$EXPECTED_WALLTIME"
+FW_SOFT_DEADLINE_SECONDS=$((10#$wall_h * 3600 + 10#$wall_m * 60 + 10#$wall_s))
+export FW_CPU_THREADS FW_SAVE_RESERVE_SECONDS FW_SOFT_DEADLINE_SECONDS
+source "$JOB_ARTIFACTS/environment.sh"
+
+mapfile -t GPU_UUIDS < <(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | awk 'NF {gsub(/^[ \t]+|[ \t]+$/, ""); print}')
+test "${#GPU_UUIDS[@]}" -eq 1 -a -n "${GPU_UUIDS[0]}" || { echo 'Could not resolve the single allocated GPU UUID' >&2; exit 65; }
+GPU_UUID=${GPU_UUIDS[0]}
+printf 'ALLOCATED_GPU_UUID=%s\n' "$GPU_UUID"
+(
+  while :; do
+    timestamp=$(date -Is)
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader \
+      | while IFS= read -r sample; do printf 'GPU_SAMPLE timestamp=%s %s\n' "$timestamp" "$sample"; done || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+run_python "$JOB_ARTIFACTS/worker.py" --protocol "$JOB_ARTIFACTS/protocol.json"
