@@ -1,0 +1,54 @@
+Fast-WAM / WAM quantization result inventory
+Checked: 2026-10-24, local saved reports only. No training, inference, SSH, or cluster operation was performed.
+
+Reading note
+- Every LIBERO-Plus row below is a paired 280-variant cohort: 4 suites x 7 perturbation dimensions x 10 variants. It is not the original unperturbed LIBERO benchmark.
+- The current Fast-WAM engine reference is the R128/C80 A+Z+reader-KL final-8 checkpoint: 208/280. The Q-Clip evaluation uses a separate checkpoint and got 207/280, so it does not replace the current reference.
+- Suite order below is Spatial / Object / Goal / LIBERO-10. Each suite has n=70.
+- Success differences are descriptive for the frozen cohort; the source reports no significance test or extra-seed repeat.
+
+1) Fast-WAM LIBERO-Plus: completed primary method comparison
+| Method | Precision / target coverage / execution | Local adaptation boundary | Success; suite counts (S/O/G/L10) | Evidence |
+|---|---|---|---|---|
+| BF16 reference | BF16 | Local reference arm | 216/280; 56/55/51/54 | D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-plus\results\RESULTS.zh.md:7-15,33-40 |
+| QuaRot adapted | W4A4, 614 canonical target Linears; dynamic signed per-row A4, BF16 KV; native packed S4 exercised in rotation baseline | Fixed randomized signed block-Hadamard with local shared R128 and same RTN quantizer; not claimed as full published recipe | 195/280; 51/52/45/47 | Results: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-plus\results\RESULTS.zh.md:10,35-40; boundary/runtime: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\protocol.json:31-49; native runtime/completion: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\formal_completion_receipt.json:44-53 |
+| SpinQuant adapted | W4A4, 614 canonical target Linears; dynamic signed per-row A4, BF16 KV; native packed S4 exercised in rotation baseline | Learned shared local R128=Cayley parameterization; explicitly not the published LLaMA residual-R1/full R1/R2/R3/R4 recipe | 203/280; 55/51/48/49 | Results: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-plus\results\RESULTS.zh.md:11,35-40; boundary: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\protocol.json:41-49 |
+| Smooth/Hadamard scalar | W4A4, 614 target Linears, dynamic per-row A4, BF16 KV; native S4 Tensor Core MMA | Local scalar baseline | 200/280; 53/52/47/48 | D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-smooth-scalar-plus\RESULTS.zh.md:9-23,68-76 |
+| Row-scale VQ + A4 | VQ W4 encoding, decoded dense BF16 weights, dynamic A4, BF16 KV; 614 target Linears | Local VQ method | 202/280; 54/53/47/48 | D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-plus\results\RESULTS.zh.md:13,35-40,69 |
+| Microscaling VQ B32 + A4 | VQ W4 encoding, decoded dense BF16 weights, dynamic A4, BF16 KV; 614 target Linears | Local microscaling VQ method | 204/280; 56/51/46/51 | Same: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-plus\results\RESULTS.zh.md:14,35-40,69 |
+| SVDQuant adapted | W4A4 plus BF16 low-rank residual; target effective 4.4250 bpw; decoded BF16 inference | Rank-16 direct randomized SVD, fixed alpha; omits full DeepCompressor smoothing grid/refinement | 108/280; 38/35/10/25 | D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-diffusion-baselines\RESULTS.zh.md:8-13,17-34,62-67; recipe: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-diffusion-baselines\README.zh.md:13-20 |
+| ViDiT-Q adapted | W4A4; target effective 4.3250 bpw; decoded BF16 inference | Adapts author channel balance/Hadamard/token-dynamic A4; no official W8A8/FP protected layers and no full-H28 for 14336-wide layers | 203/280; 54/49/48/52 | Results: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-diffusion-baselines\RESULTS.zh.md:8-13,17-34,62-67; recipe: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-diffusion-baselines\README.zh.md:13-20 |
+
+2) Fast-WAM R128/C80 matched loss comparison
+| Checkpoint | Precision / protocol | Success; suite counts (S/O/G/L10) | Interpretation and evidence |
+|---|---|---|---|
+| A+Z final 8 | Same frozen R0 and VQ init; W4 VQ / A4 / BF16 KV; 8 updates, 80 context exposures; decoded BF16 dense MXVQ4 execution | 204/280; 53/55/44/52 | Parent arm for the paired KL run. D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-r128-c80-loss-pair-plus\RESULTS.zh.md:3-16,20-25,39 |
+| A+Z+reader KL (current Q0 final 8) | Same matched init/protocol, only reader-KL term changed; same decoded BF16 dense execution | 208/280; 55/55/47/51 | +4 net successes over A+Z in this cohort; not a significance or cross-seed claim. Same source :3-18,20-25,39; protocol coverage/setup: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-r128-c80-loss-pair-plus\protocol.json:82-109,123-145,227,481-498 |
+| Q-Clip final80 checkpoint | Separate child checkpoint from Q0; reuses 614 learned clip ratios, freezes R0/VQ/other parameters; 0 new updates in Plus evaluation | 207/280; 55/55/48/49 | 11 wins / 12 losses / 257 ties vs Q0, net -1; not current engine. D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-r128-c80-qclip-plus\RESULTS.zh.md:3-19,23-40,91-95; checkpoint distinction: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-vq-r128-c80-qclip-plus\README.zh.md:3-7 |
+
+No new held-out fixed-input RMSE was run for the final R128/C80 loss-pair or Q-Clip Plus evaluations; both sources say this directly: loss-pair RESULTS.zh.md:39; qclip RESULTS.zh.md:91.
+
+3) Rotation baseline result and gate caveat
+- Same 280 Plus variants per arm: BF16 216/280; QuaRot adapted W4A4 195/280; SpinQuant adapted W4A4 203/280. Suite results are BF16 (56,55,51,54), QuaRot (51,52,45,47), SpinQuant (55,51,48,49), in S/O/G/L10 order.
+- Machine-readable result: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\results\summary.json:185-395. W4A4/coverage/adaptation: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\protocol.json:31-49. Completion and native-INT4 evidence: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\formal_completion_receipt.json:44-53.
+- The native-vs-dense 32-action RMSE preparation gate recorded 0.0543945 against a 0.05 threshold; the final evaluation proceeded only after explicit human waiver. This is a meaningful numeric-parity limitation, not a failed or missing closed-loop cohort: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-rotation-baselines\protocol.json:168-179. The result is not the untouched official QuaRot or SpinQuant recipe.
+
+4) Fixed-input RMSE result (not a closed-loop result)
+- SpinQuant adapted native W4A4 test first-10 motor RMSE: 0.057373, across 22 fixed-input test cases (10 original-LIBERO observations and 12 Plus variants, each with two sampler seeds). 10-original subset RMSE 0.049749; 12-Plus subset 0.063727.
+- This local native INT4 SpinQuant was compared against cached decoded-BF16 VQ and Scalar outputs, so it is not an implementation-matched algorithm-only comparison. No closed-loop episodes or latency test in this run.
+- Evidence: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-spinquant-rmse\RESULTS.zh.md:3,9-20,34,38-48.
+
+5) Cosmos Policy is a different model, not a Fast-WAM row
+- Model: nvidia/Cosmos-Policy-LIBERO-Predict2-2B; official direct policy. Frozen 280 Plus variants per arm: BF16 233/280, SpinQuant-adapted W4A4 221/280, action+latent-aware microscaling VQ A4 226/280. Suite counts in L10/Goal/Object/Spatial order: BF16 58/54/62/59; SpinQuant 60/46/61/54; VQ 58/49/62/57 (each /70).
+- Calibration used Cosmos's own C8: 8 contexts, five timestep packets; this is not Fast-WAM R128/C80. The SpinQuant and VQ budgets/objectives differ, so this is not an action-vs-latent loss ablation. Quant weights decode to BF16; native INT4 is false.
+- Evidence: D:\Downloads\Final Year Project\experiment\idea-validation\cosmos-policy-c8-w4a4\RESULTS.zh.md:1-15,23-32,48-55,59-71.
+
+6) Original LIBERO and reproduction boundaries
+- Complete original LIBERO-Goal result found locally: 10 tasks x 50 initial states, BF16 487/500; RTN W4A8 486/500; independent-dither W4A8 483/500; locked learned-phase W4A8 481/500. This is floating-GEMM fake-quant evidence, not native packed-kernel speed or storage. Evidence: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-phase-dither\libero-goal-suite\RESULTS.zh.md:3-10,33-39; preregistered cohort and W4/A8 recipe: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-phase-dither\libero-goal-suite\PREREG.zh.md:3-9. No complete original-LIBERO W4A4 closed-loop suite result was found in the local result documents checked.
+- The full Fast-WAM official-code/checkpoint reproduction is only a one-episode original Goal smoke (first_frame/direct mode, task 0, 1/1); it is not IDM mode or a suite score. Evidence: D:\Downloads\Final Year Project\experiment\reproduction\fastwam-smoke\RESULT.md:3,51-58; scope: D:\Downloads\Final Year Project\experiment\reproduction\fastwam-smoke\README.md:1-5.
+- Fast-WAM LIBERO-Plus pilot's latest report is incomplete: 232 paired variants/arm and 928 primary episodes versus a planned 1,400-variant/5,600-slot benchmark; the reported primary subset is Spatial only. Snapshot: BF16 182/232, W4A8 189/232, W4A4 0/232, W4A4KV4 0/232. First-10 predicted motor-action median normalized RMSE: W4A8 vs BF16 0.022809; W4A4 0.326077; W4A4KV4 0.326858. These values are partial pilot evidence, not a complete Plus result. Evidence: D:\Downloads\Final Year Project\experiment\idea-validation\fastwam-libero-plus-pilot\artifacts\25699421.pbs101\results\report.md:3-28,30-36.
+- OTC-PTQ reproduction is only single-site W4 fake-RTN sensitivity ranking over two Goal tasks / 8 episodes / 256 scores; it does not provide full-model success rates: D:\Downloads\Final Year Project\experiment\reproduction\otc-ptq-phase1\RESULT.zh.md:7-14,20-35.
+- GPTQ reproduction is official OPT-6.7B / WikiText-2, not a WAM policy result: D:\Downloads\Final Year Project\experiment\reproduction\gptq-reproduction\RESULTS.md:1-24.
+
+Caveat on actual agent model configuration: local experiment protocol files record some historical gpt-6-luna/xhigh monitor settings, but this workspace tool context does not expose the current subagent runtime model/effort for independent verification.
+
