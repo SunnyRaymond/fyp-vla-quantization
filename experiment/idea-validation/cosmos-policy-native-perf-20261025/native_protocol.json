@@ -1,0 +1,105 @@
+{
+  "protocol": "cosmos_native_performance_v1",
+  "source_protocol": "cosmos-policy-vqwam-v1",
+  "source_root": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024",
+  "remote_root": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025",
+  "model": "nvidia/Cosmos-Policy-LIBERO-Predict2-2B",
+  "ours_source_job": "25968675.pbs101",
+  "ours_completed_updates": 8,
+  "new_training_updates": 0,
+  "new_closed_loop_episodes": 0,
+  "arms": [
+    "bf16",
+    "spinquant_w4a4",
+    "quarot_w4a4",
+    "svdquant_w4a4",
+    "viditq_w4a4",
+    "ours_vqwam"
+  ],
+  "selected_variants": {
+    "bf16": "current",
+    "spinquant_w4a4": "current",
+    "quarot_w4a4": "current",
+    "svdquant_w4a4": "current",
+    "viditq_w4a4": "current",
+    "ours_vqwam": "optimized"
+  },
+  "selection_status": "ready_for_formal_panel",
+  "panel": {
+    "case_ids_start": 3000,
+    "case_ids_end_inclusive": 3039,
+    "seed_indices": [
+      0
+    ],
+    "queries": 40,
+    "blocks": 1,
+    "repetitions": 1,
+    "samples_per_arm_per_scope": 40,
+    "batch_size": 1,
+    "nfe": 5
+  },
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-40GB",
+    "capability": [
+      8,
+      0
+    ],
+    "torch": "2.7.0+cu128",
+    "cuda_runtime": "12.8",
+    "record_gpu_uuid": true,
+    "formal_comparison_requires_same_gpu_uuid": false,
+    "formal_comparison_hardware_match": "same A100-SXM4-40GB, SM80, Torch and CUDA runtime; physical GPU UUID recorded for provenance only",
+    "user_clarification_utc": "2026-10-25T06:17:12.309375+00:00"
+  },
+  "scopes": {
+    "sampler": "synchronized real five-NFE sampler wall interval; runtime memory includes resident tokenizer and endpoint setup temporaries",
+    "dit_replay": "five DiT forwards from fixed BF16-captured network inputs; generic CUDA graph replay and CUDA-event timing; only DiT-required modules resident on GPU"
+  },
+  "statistics": [
+    "mean",
+    "median",
+    "p95",
+    "max"
+  ],
+  "speedup": "paired-scope BF16 mean divided by method mean; median ratio also reported separately",
+  "peak": "maximum allocated bytes across matched measurements divided by 1e9; no subtraction of arbitrary resident bytes",
+  "storage": "unique whole-DiT inference tensor payload bytes divided by 2^30, including backend padding and scales, transforms and unquantized DiT weights; excludes workspace and file-container overhead",
+  "gates": {
+    "native_layer_nrmse_max": 0.01,
+    "native_normalized_motor_rmse_max": 0.01,
+    "native_normalized_motor_definition": "RMS difference divided by reference RMS, first six motor dimensions only; gripper excluded from denominator and full-action maxabs also recorded",
+    "native_future_nrmse_max": 0.01,
+    "ours_optimized_action_future_max_abs": 1e-06,
+    "full_panel_queries": 80,
+    "finite_outputs_required": true,
+    "kernel_execution_proof_required": true,
+    "checkpoint_codes_and_scale_values_unchanged": true,
+    "thresholds_frozen_before_native_gpu_results": true
+  },
+  "publication_boundary": "Native performance measurements; baseline numerical differences and incomplete/failed fidelity panels are reported rather than treated as pass. Existing closed-loop scores belong only to prior decoded-reference execution. No new training or closed-loop.",
+  "baseline_fidelity_policy": "report_only",
+  "baseline_fidelity_policy_authorization": {
+    "user_instruction": "\u4ecd\u9700\u6d4b\u8bd5\u5404\u65b9\u6cd5\u539f\u751f\u8868\u73b0\uff1b\u8bef\u5dee\u8f83\u5927\u4e0d\u7528\u5173\u6ce8\uff0c\u4e0d\u963b\u65ad\u6027\u80fd\u6d4b\u8bd5",
+    "recorded_utc": "2026-10-25T13:38:14.713560+00:00",
+    "applies_to": [
+      "spinquant_w4a4",
+      "quarot_w4a4",
+      "svdquant_w4a4",
+      "viditq_w4a4"
+    ],
+    "ours_remains_strict": true
+  },
+  "selection_note": "Four baseline current native INT4 adapters; recorded numerical gate failures are non-blocking by explicit user instruction. SVD fused unsafe candidate excluded. Ours optimized bothfull80 passed.",
+  "performance_design": "40ctx_once_v3",
+  "performance_results_directory": "results/native_performance_n40",
+  "performance_design_authorization": {
+    "user_instruction": "\u6bcf\u65b9\u6cd5\u6bcf\u53e3\u5f8440\u4e2acontext\u54041\u6b21\uff1b\u5df2\u5b8c\u6210720\u53e3\u5f84\u53ef\u76f4\u63a5\u540c\u53f0\uff0c\u7981\u6b62\u91cd\u8dd1",
+    "recorded_utc": "2026-10-25T13:53:51.933545+00:00",
+    "timed_samples_per_arm_scope": 40,
+    "untimed_warmup_queries": 3,
+    "old720_results_preserved": true,
+    "performance_context_selection": "all40cases3000-3039 eachseed0",
+    "complete_legacy720_accepted": true
+  },
+  "performance_scope_reuse": "Prefer complete legacy720 perarm/scope;only missing scopes use new40;real N/cohort shown perrow"
+}

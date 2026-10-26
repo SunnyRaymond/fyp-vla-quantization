@@ -1,0 +1,342 @@
+{
+  "format": "nunchaku_packing_diagnostic_v1",
+  "status": "complete",
+  "mode": "random_operator_only_no_policy_checkpoint_training_or_closed_loop",
+  "pbs_job_id": "25978617.pbs101",
+  "host": "x1000c2s7b0n0",
+  "created_utc": "2026-10-25T08:02:09+00:00",
+  "seed": 777,
+  "hardware": {
+    "gpu_uuid": "f6553dd6-7d7f-be9a-f4ee-3434b4ac6132",
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "total_memory_bytes": 42406903808,
+    "capability": [
+      8,
+      0
+    ],
+    "device_index": 0
+  },
+  "build": {
+    "path": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/results/preparation/native_diffusion_build.json",
+    "pbs_job_id": "25977147.pbs101",
+    "source_commit": "302e0e97024ebd68688fe890e5df83731edf7b54",
+    "module": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/native_extensions/svdquant_w4a4/nunchaku_svdq_native.so"
+  },
+  "extension": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/native_extensions/svdquant_w4a4/nunchaku_svdq_native.so",
+  "pinned_scale_layout": {
+    "source_commit": "302e0e97024ebd68688fe890e5df83731edf7b54",
+    "source": "src/kernels/zgemm/gemm_base.cuh: ASCALES_PACK_SIZE=2, ASCALES_VALID_LANES=16; pack_ascales writes one half2 per valid lane",
+    "activation_index": "((block_m*groups+group)*8+warp_m)*16+lane; each packed pair stores input row local then local+8",
+    "weight_source": "same gemm_base.cuh pack_wscales, four FP16 values per lane"
+  },
+  "scale_layout_check": {
+    "activation": {
+      "cases": [
+        {
+          "rows": 256,
+          "groups": 4,
+          "output_numel": 1024,
+          "official_pinned_layout_match": true,
+          "index_writes": 1024,
+          "expected_unique_destination_halves": 1024
+        },
+        {
+          "rows": 1792,
+          "groups": 4,
+          "output_numel": 7168,
+          "official_pinned_layout_match": true,
+          "index_writes": 7168,
+          "expected_unique_destination_halves": 7168
+        }
+      ]
+    },
+    "weight": {
+      "shape": [
+        4,
+        256
+      ],
+      "output_numel": 1024,
+      "official_pinned_layout_match": true
+    },
+    "distinct_scale_values": true
+  },
+  "cases": {
+    "constant_codes_scales": {
+      "max_abs_error": 0.0,
+      "nrmse": 0.0,
+      "reference_rms": 183.1283721923828,
+      "tolerance": {
+        "atol": 0.125,
+        "rtol": 0.002
+      },
+      "within_tolerance": true,
+      "first_bad_locations": [],
+      "M": 129,
+      "padded_M": 256,
+      "N": 131,
+      "padded_N": 256,
+      "K": 256,
+      "native_matmul_calls": 1,
+      "result_shape": [
+        129,
+        256
+      ]
+    },
+    "seed777_random_reproduction": {
+      "max_abs_error": 0.2939453125,
+      "nrmse": 0.0002881849464008994,
+      "reference_rms": 82.4859390258789,
+      "tolerance": {
+        "atol": 0.125,
+        "rtol": 0.002
+      },
+      "within_tolerance": true,
+      "first_bad_locations": [],
+      "M": 129,
+      "padded_M": 256,
+      "N": 131,
+      "padded_N": 256,
+      "K": 256,
+      "native_matmul_calls": 1,
+      "result_shape": [
+        129,
+        256
+      ],
+      "scale_semantics": "checkpoint G128 scales are preserved and duplicated into the two official G64 groups; per-token activation scale is repeated over all G64 groups"
+    },
+    "single_one_hot_m_n_k": [
+      {
+        "max_abs_error": 0.0,
+        "nrmse": 0.0,
+        "reference_rms": 0.0001719630672596395,
+        "tolerance": {
+          "atol": 0.125,
+          "rtol": 0.002
+        },
+        "within_tolerance": true,
+        "first_bad_locations": [],
+        "M": 129,
+        "padded_M": 256,
+        "N": 131,
+        "padded_N": 256,
+        "K": 256,
+        "native_matmul_calls": 1,
+        "result_shape": [
+          129,
+          256
+        ],
+        "one_hot_selected_value": {
+          "m": 0,
+          "n": 0,
+          "k": 0,
+          "g128_group": 0,
+          "g64_group": 0,
+          "actual": 0.03125,
+          "expected": 0.03125,
+          "max_abs_error": 0.0,
+          "atol": 0.001,
+          "passed": true
+        },
+        "one_hot_m": 0,
+        "one_hot_n": 0,
+        "one_hot_k": 0,
+        "g128_group": 0,
+        "g64_group": 0
+      },
+      {
+        "max_abs_error": 0.0,
+        "nrmse": 0.0,
+        "reference_rms": 0.0006448614876717329,
+        "tolerance": {
+          "atol": 0.125,
+          "rtol": 0.002
+        },
+        "within_tolerance": true,
+        "first_bad_locations": [],
+        "M": 129,
+        "padded_M": 256,
+        "N": 131,
+        "padded_N": 256,
+        "K": 256,
+        "native_matmul_calls": 1,
+        "result_shape": [
+          129,
+          256
+        ],
+        "one_hot_selected_value": {
+          "m": 0,
+          "n": 130,
+          "k": 63,
+          "g128_group": 0,
+          "g64_group": 0,
+          "actual": 0.1171875,
+          "expected": 0.1171875,
+          "max_abs_error": 0.0,
+          "atol": 0.001,
+          "passed": true
+        },
+        "one_hot_m": 0,
+        "one_hot_n": 130,
+        "one_hot_k": 63,
+        "g128_group": 0,
+        "g64_group": 0
+      },
+      {
+        "max_abs_error": 0.0,
+        "nrmse": 0.0,
+        "reference_rms": 0.0004514030588325113,
+        "tolerance": {
+          "atol": 0.125,
+          "rtol": 0.002
+        },
+        "within_tolerance": true,
+        "first_bad_locations": [],
+        "M": 129,
+        "padded_M": 256,
+        "N": 131,
+        "padded_N": 256,
+        "K": 256,
+        "native_matmul_calls": 1,
+        "result_shape": [
+          129,
+          256
+        ],
+        "one_hot_selected_value": {
+          "m": 128,
+          "n": 0,
+          "k": 64,
+          "g128_group": 0,
+          "g64_group": 1,
+          "actual": 0.08203125,
+          "expected": 0.08203125,
+          "max_abs_error": 0.0,
+          "atol": 0.001,
+          "passed": true
+        },
+        "one_hot_m": 128,
+        "one_hot_n": 0,
+        "one_hot_k": 64,
+        "g128_group": 0,
+        "g64_group": 1
+      },
+      {
+        "max_abs_error": 0.0,
+        "nrmse": 0.0,
+        "reference_rms": 0.0016927614342421293,
+        "tolerance": {
+          "atol": 0.125,
+          "rtol": 0.002
+        },
+        "within_tolerance": true,
+        "first_bad_locations": [],
+        "M": 129,
+        "padded_M": 256,
+        "N": 131,
+        "padded_N": 256,
+        "K": 256,
+        "native_matmul_calls": 1,
+        "result_shape": [
+          129,
+          256
+        ],
+        "one_hot_selected_value": {
+          "m": 128,
+          "n": 130,
+          "k": 127,
+          "g128_group": 0,
+          "g64_group": 1,
+          "actual": 0.3076171875,
+          "expected": 0.3076171875,
+          "max_abs_error": 0.0,
+          "atol": 0.001,
+          "passed": true
+        },
+        "one_hot_m": 128,
+        "one_hot_n": 130,
+        "one_hot_k": 127,
+        "g128_group": 0,
+        "g64_group": 1
+      },
+      {
+        "max_abs_error": 0.0,
+        "nrmse": 0.0,
+        "reference_rms": 0.000687852269038558,
+        "tolerance": {
+          "atol": 0.125,
+          "rtol": 0.002
+        },
+        "within_tolerance": true,
+        "first_bad_locations": [],
+        "M": 129,
+        "padded_M": 256,
+        "N": 131,
+        "padded_N": 256,
+        "K": 256,
+        "native_matmul_calls": 1,
+        "result_shape": [
+          129,
+          256
+        ],
+        "one_hot_selected_value": {
+          "m": 0,
+          "n": 130,
+          "k": 128,
+          "g128_group": 1,
+          "g64_group": 2,
+          "actual": 0.125,
+          "expected": 0.125,
+          "max_abs_error": 0.0,
+          "atol": 0.001,
+          "passed": true
+        },
+        "one_hot_m": 0,
+        "one_hot_n": 130,
+        "one_hot_k": 128,
+        "g128_group": 1,
+        "g64_group": 2
+      },
+      {
+        "max_abs_error": 0.0,
+        "nrmse": 0.0,
+        "reference_rms": 0.0018056122353300452,
+        "tolerance": {
+          "atol": 0.125,
+          "rtol": 0.002
+        },
+        "within_tolerance": true,
+        "first_bad_locations": [],
+        "M": 129,
+        "padded_M": 256,
+        "N": 131,
+        "padded_N": 256,
+        "K": 256,
+        "native_matmul_calls": 1,
+        "result_shape": [
+          129,
+          256
+        ],
+        "one_hot_selected_value": {
+          "m": 128,
+          "n": 0,
+          "k": 255,
+          "g128_group": 1,
+          "g64_group": 3,
+          "actual": 0.328125,
+          "expected": 0.328125,
+          "max_abs_error": 0.0,
+          "atol": 0.001,
+          "passed": true
+        },
+        "one_hot_m": 128,
+        "one_hot_n": 0,
+        "one_hot_k": 255,
+        "g128_group": 1,
+        "g64_group": 3
+      }
+    ]
+  },
+  "native_matmul_calls": 8,
+  "training_updates": 0,
+  "policy_forward_calls": 0,
+  "closed_loop_episodes": 0
+}

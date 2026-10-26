@@ -1,0 +1,991 @@
+{
+  "format": "cosmos_native_performance_v1",
+  "protocol": "cosmos-policy-vqwam-v1",
+  "status": "complete",
+  "complete": true,
+  "arm": "ours_vqwam",
+  "variant": "optimized",
+  "scope": "dit_replay",
+  "hardware": {
+    "gpu_uuid": "2c4aaa13-69aa-baac-0ffa-b526d3e2b2c9",
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "total_memory_bytes": 42406903808,
+    "capability": [
+      8,
+      0
+    ],
+    "torch_version": "2.7.0+cu128",
+    "cuda_version": "12.8",
+    "hostname": "x1000c0s7b0n0",
+    "pbs_job_id": "25984119.pbs101"
+  },
+  "backend_binding": {
+    "execution_scope": "all five actual DiT evaluations graphed; packed VQ decode and BF16 GEMM; cross K/V recomputed",
+    "native_int4_kernel_used": false,
+    "native_vq_kernel": false,
+    "engine_variant": "all_nfe_graph_recompute_cross_kv_v1",
+    "artifact_dir": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/ours/deployment",
+    "arm": "ours_vqwam",
+    "requested_variant": "optimized",
+    "dit_replay_dispatch": "raw model.net.forward CUDA graphs; Ours all-NFE/Cross-KV scheduling bypassed in DiT scope"
+  },
+  "install_metadata": {
+    "arm": "ours_vqwam",
+    "artifact_format": "cosmos_vqwam_deployment_v1",
+    "target_module_count": 280,
+    "source_job": "25968675.pbs101",
+    "completed_updates": 8,
+    "protocol": "cosmos-policy-vqwam-v1",
+    "artifact_dir": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/ours/deployment",
+    "target_weight_numel": 1761607680,
+    "packed_storage_bytes": 1333674917,
+    "packed_storage_unit": "bytes",
+    "packed_storage_scope": "whole DiT tensor payload including packed targets, Smooth/H128 transforms, and shared U; excludes scratch and file-container overhead",
+    "unquantized_dit_tensor_bytes": 389612453,
+    "packed_gpu_resident": true,
+    "dense_target_weights": false,
+    "native_vq_kernel": false,
+    "native_integer_gemm": false,
+    "native_int4_kernel_used": false,
+    "layer_decode": true,
+    "weight_decode": "shape-tuned Triton VQ decoder into shared BF16 scratch",
+    "decoder_tuning_status": "passed",
+    "decoder_tuning_receipt": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/ours/engine/NVIDIA_A100-SXM4-40GB_sm80/decoder_tuning.json",
+    "decoder_unique_shapes": 4,
+    "linear": "BF16 activation by decoded BF16 weight through PyTorch cuBLAS Linear",
+    "arithmetic": "original FP32 Smooth/H128/U/A4, output quantized to BF16",
+    "execution_scope": "all five actual DiT evaluations graphed; packed VQ decode and BF16 GEMM; cross K/V recomputed",
+    "activation_workspace": {
+      "scratch_bytes": 33554432,
+      "activation_a4_bytes": 0,
+      "h_u_alias_weight_scratch": true,
+      "a4_independent_buffer": true,
+      "graph_workspace_count": 0
+    },
+    "condition_cache": {
+      "enabled": true,
+      "candidate_modules": 56,
+      "query_id": 0,
+      "active": false,
+      "confirmed_hits": 0,
+      "buffer_bytes": 0,
+      "dynamic_modules": []
+    },
+    "cuda_graph": {
+      "status": "pending_graph_validation",
+      "boundary": "Cosmos model.net.forward one DiT; native denoise and sampler eager",
+      "branch_graphs": 0,
+      "denoise_calls": 0,
+      "graph_captures": 0,
+      "graph_replays": 0,
+      "condition_changes": 0,
+      "capture_errors": [],
+      "single_request_single_stream": true
+    },
+    "parity_status": "pending_new_full80_gate",
+    "export_storage": {
+      "format": "cosmos_vqwam_export_v1",
+      "arm": "ours_vqwam",
+      "source_job": "25968675.pbs101",
+      "completed_updates": 8,
+      "target_module_count": 280,
+      "target_weight_numel": 1761607680,
+      "target_packed_and_transform_tensor_bytes": 944062464,
+      "target_effective_bpw": 4.287276785714286,
+      "unquantized_dit_parameter_numel": 194805760,
+      "whole_dit_parameter_numel": 1956413440,
+      "whole_dit_effective_bpw": 5.453546604137007,
+      "unquantized_dit_state_unique_tensor_bytes": 389612453,
+      "unquantized_dit_parameter_unique_tensor_bytes": 389611520,
+      "unique_tensor_payload_bytes": 1333674917,
+      "deployment_files_gib": 1.2431805189698935,
+      "deployment_files_bytes": 1334854918,
+      "copied_bank_serialized_bytes": 944948088,
+      "dense_target_weights_in_export": false,
+      "teacher_optimizer_training_masters_in_export": false,
+      "files": [
+        "dit_state.pt",
+        "manifest.json",
+        "rotation.pt",
+        "bank/*.pt"
+      ],
+      "accounting": "unique backing storage within tensors; serialized file bytes include container overhead"
+    },
+    "serialized_deployment_bytes": 1334854918,
+    "backend": "ours_C_decoder_buffer_BF16_GEMM",
+    "engine_variant": "all_nfe_graph_recompute_cross_kv_v1",
+    "optimized_cuda_graph": {
+      "boundary": "model.net.forward from NFE 1",
+      "captures": 0,
+      "replays": 0,
+      "calls": 0,
+      "graphs": 0,
+      "cross_kv_policy": "recomputed within graph at every NFE",
+      "single_request_single_stream": true
+    }
+  },
+  "performance_design": "40ctx_once_v3",
+  "coverage": {
+    "queries": 40,
+    "samples": 40,
+    "expected_samples": 40,
+    "reused_samples": 0,
+    "blocks": 1,
+    "repetitions": 1
+  },
+  "warmup_queries": [
+    [
+      3000,
+      0
+    ],
+    [
+      3001,
+      0
+    ],
+    [
+      3002,
+      0
+    ]
+  ],
+  "warmup_forwards_per_query": 5,
+  "graph_capture_count": 5,
+  "graph_backend": "generic_net_forward_cuda_graph",
+  "graph_pool_contract": "five CUDA graphs share one graph_pool_handle; replay is strictly serial in NFE 0..4 order; each NFE has independent static inputs and an external output buffer",
+  "dit_replay_dispatch": "raw model.net.forward CUDA graphs; Ours all-NFE/Cross-KV scheduling bypassed in DiT scope",
+  "sample_hardware_provenance": {
+    "sample_count": 40,
+    "devices": [
+      {
+        "gpu_uuid": "2c4aaa13-69aa-baac-0ffa-b526d3e2b2c9",
+        "hostnames": [
+          "x1000c0s7b0n0"
+        ],
+        "pbs_job_ids": [
+          "25984119.pbs101"
+        ]
+      }
+    ]
+  },
+  "forward_input_signatures": [
+    {
+      "args": [],
+      "kwargs": [
+        {
+          "path": "kwargs.condition_video_input_mask_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            7056,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.crossattn_emb",
+          "kind": "tensor",
+          "shape": [
+            1,
+            512,
+            1024
+          ],
+          "stride": [
+            524288,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.data_type",
+          "kind": "enum",
+          "module": "cosmos_policy._src.predict2.conditioner",
+          "qualname": "DataType",
+          "member": "VIDEO"
+        },
+        {
+          "path": "kwargs.fps",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.gt_frames",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.padding_mask",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            224,
+            224
+          ],
+          "stride": [
+            50176,
+            50176,
+            224,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.timesteps_B_T",
+          "kind": "tensor",
+          "shape": [
+            1,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.use_video_condition",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bool"
+        },
+        {
+          "path": "kwargs.x_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "output": [
+        {
+          "path": "output",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ]
+    },
+    {
+      "args": [],
+      "kwargs": [
+        {
+          "path": "kwargs.condition_video_input_mask_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            7056,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.crossattn_emb",
+          "kind": "tensor",
+          "shape": [
+            1,
+            512,
+            1024
+          ],
+          "stride": [
+            524288,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.data_type",
+          "kind": "enum",
+          "module": "cosmos_policy._src.predict2.conditioner",
+          "qualname": "DataType",
+          "member": "VIDEO"
+        },
+        {
+          "path": "kwargs.fps",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.gt_frames",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.padding_mask",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            224,
+            224
+          ],
+          "stride": [
+            50176,
+            50176,
+            224,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.timesteps_B_T",
+          "kind": "tensor",
+          "shape": [
+            1,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.use_video_condition",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bool"
+        },
+        {
+          "path": "kwargs.x_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "output": [
+        {
+          "path": "output",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ]
+    },
+    {
+      "args": [],
+      "kwargs": [
+        {
+          "path": "kwargs.condition_video_input_mask_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            7056,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.crossattn_emb",
+          "kind": "tensor",
+          "shape": [
+            1,
+            512,
+            1024
+          ],
+          "stride": [
+            524288,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.data_type",
+          "kind": "enum",
+          "module": "cosmos_policy._src.predict2.conditioner",
+          "qualname": "DataType",
+          "member": "VIDEO"
+        },
+        {
+          "path": "kwargs.fps",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.gt_frames",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.padding_mask",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            224,
+            224
+          ],
+          "stride": [
+            50176,
+            50176,
+            224,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.timesteps_B_T",
+          "kind": "tensor",
+          "shape": [
+            1,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.use_video_condition",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bool"
+        },
+        {
+          "path": "kwargs.x_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "output": [
+        {
+          "path": "output",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ]
+    },
+    {
+      "args": [],
+      "kwargs": [
+        {
+          "path": "kwargs.condition_video_input_mask_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            7056,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.crossattn_emb",
+          "kind": "tensor",
+          "shape": [
+            1,
+            512,
+            1024
+          ],
+          "stride": [
+            524288,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.data_type",
+          "kind": "enum",
+          "module": "cosmos_policy._src.predict2.conditioner",
+          "qualname": "DataType",
+          "member": "VIDEO"
+        },
+        {
+          "path": "kwargs.fps",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.gt_frames",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.padding_mask",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            224,
+            224
+          ],
+          "stride": [
+            50176,
+            50176,
+            224,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.timesteps_B_T",
+          "kind": "tensor",
+          "shape": [
+            1,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.use_video_condition",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bool"
+        },
+        {
+          "path": "kwargs.x_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "output": [
+        {
+          "path": "output",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ]
+    },
+    {
+      "args": [],
+      "kwargs": [
+        {
+          "path": "kwargs.condition_video_input_mask_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            7056,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.crossattn_emb",
+          "kind": "tensor",
+          "shape": [
+            1,
+            512,
+            1024
+          ],
+          "stride": [
+            524288,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.data_type",
+          "kind": "enum",
+          "module": "cosmos_policy._src.predict2.conditioner",
+          "qualname": "DataType",
+          "member": "VIDEO"
+        },
+        {
+          "path": "kwargs.fps",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.gt_frames",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.float32"
+        },
+        {
+          "path": "kwargs.padding_mask",
+          "kind": "tensor",
+          "shape": [
+            1,
+            1,
+            224,
+            224
+          ],
+          "stride": [
+            50176,
+            50176,
+            224,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.timesteps_B_T",
+          "kind": "tensor",
+          "shape": [
+            1,
+            9
+          ],
+          "stride": [
+            9,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        },
+        {
+          "path": "kwargs.use_video_condition",
+          "kind": "tensor",
+          "shape": [
+            1
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bool"
+        },
+        {
+          "path": "kwargs.x_B_C_T_H_W",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ],
+      "output": [
+        {
+          "path": "output",
+          "kind": "tensor",
+          "shape": [
+            1,
+            16,
+            9,
+            28,
+            28
+          ],
+          "stride": [
+            112896,
+            7056,
+            784,
+            28,
+            1
+          ],
+          "dtype": "torch.bfloat16"
+        }
+      ]
+    }
+  ],
+  "timing_scope": "CUDA events around exactly five graph replays of frozen model.net.forward inputs; condition/sampler preparation excluded",
+  "dit_replay_seconds": {
+    "count": 40,
+    "mean": 0.4339006462097168,
+    "median": 0.4282977294921875,
+    "p95": 0.4719319152832031,
+    "max": 0.4836106262207031
+  },
+  "peak_allocated_gb_decimal": {
+    "count": 40,
+    "mean": 2.645257216,
+    "median": 2.645257216,
+    "p95": 2.645257216,
+    "max": 2.645257216
+  },
+  "non_dit_offload": {
+    "scope": "model.net only; registered endpoint children plus explicit tokenizer/vae/text-encoder wrappers checked and offloaded before warmup/peak reset",
+    "known_wrapper_roots": [],
+    "modules": [],
+    "checked_cuda_module_count": 0,
+    "post_offload_verification": "every identified offloaded module has zero CUDA parameters/buffers; retained tensors must alias model.net",
+    "offloaded_cuda_tensor_bytes": 0,
+    "retained_shared_with_net_cuda_tensor_bytes": 0
+  },
+  "storage": {
+    "adapter_resident_tensor_bytes": 944062464,
+    "unquantized_dit_bytes": 389612453,
+    "packed_target_and_transform_bytes": 944062464,
+    "packed_storage_bytes": 1333674917,
+    "packed_storage_gib_binary": 1.2420815574005246,
+    "storage_scope": "whole DiT tensor payload including packed targets, Smooth/H128 transforms, and shared U; excludes scratch and file-container overhead"
+  },
+  "training_updates": 0,
+  "closed_loop_episodes": 0,
+  "created_utc": "2026-10-25T16:06:49.660267+00:00"
+}

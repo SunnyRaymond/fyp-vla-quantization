@@ -1,0 +1,214 @@
+#!/bin/bash
+#PBS -N aqlmpair261026
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=2
+#PBS -l walltime=24:00:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+PROTOCOL_ID=fastwam-aqlm-loss-pair-v1
+
+test -n "${PBS_JOBID:-}" || { echo 'PBS_JOBID is missing' >&2; exit 64; }
+[[ "$PBS_JOBID" =~ ^[0-9]+(\[[0-9]*\])?\.[A-Za-z0-9_.-]+$ ]] || { echo 'PBS_JOBID is not a scheduler-issued handle' >&2; exit 64; }
+test -s "${PBS_NODEFILE:-}" || { echo 'PBS_NODEFILE is missing' >&2; exit 64; }
+HOST_SHORT=$(hostname -s)
+case "$HOST_SHORT" in *login*) echo 'login node is forbidden' >&2; exit 64;; esac
+test -r "$PBS_NODEFILE" || { echo 'PBS_NODEFILE is unreadable' >&2; exit 64; }
+awk -F. -v host="$HOST_SHORT" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || {
+  echo 'Current host is outside the approved PBS allocation' >&2; exit 64;
+}
+PBS_INFO=$(qstat -xf "$PBS_JOBID" 2>&1) || { echo "$PBS_INFO" >&2; exit 64; }
+printf '%s\n' "$PBS_INFO" | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' || { echo 'qstat is not R' >&2; exit 64; }
+awk -F= -v host="$HOST_SHORT" '/^[[:space:]]*exec_host[[:space:]]*=/ {v=$2; sub(/^[[:space:]]*/, "", v); split(v, a, "/"); if (a[1] == host) found=1} END {exit !found}' <<< "$PBS_INFO" || {
+  echo 'qstat exec_host does not match the current hostname' >&2; exit 64;
+}
+
+ARTIFACTS="$NEW_ROOT/artifacts/$PBS_JOBID"
+RESULTS="$NEW_ROOT/results"
+STAGE=${FW_AQLM_STAGE:-}
+case "$STAGE" in bootstrap|prepare|pair) ;; *) echo 'FW_AQLM_STAGE is invalid' >&2; exit 64;; esac
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT DIAG_ROOT BASE SMOOTH_ROOT SOURCE_ROOT R128_ROOT SIF PROTOCOL_ID ARTIFACTS RESULTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf 'PBS_JOBID=%s HOST=%s STAGE=%s START=%s\n' "$PBS_JOBID" "$HOST_SHORT" "$STAGE" "$(date -Is)"
+
+write_phase() {
+  local phase=$1
+  python3 - "$ARTIFACTS/RUN_PHASE.json" "$STAGE" "$PBS_JOBID" "$phase" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+target = Path(sys.argv[1])
+value = {"protocol": "fastwam-aqlm-loss-pair-v1", "stage": sys.argv[2], "pbs_jobid": sys.argv[3], "phase": sys.argv[4]}
+fd, name = tempfile.mkstemp(prefix=target.name + ".", dir=str(target.parent))
+with os.fdopen(fd, "w", encoding="utf-8") as stream:
+    json.dump(value, stream, indent=2)
+    stream.write("\n")
+os.replace(name, target)
+PY
+}
+
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  set +e
+  for child in "${RECON_PID:-}" "${OURS_PID:-}"; do
+    if [[ -n "$child" ]]; then kill -TERM "$child" 2>/dev/null; fi
+  done
+  for child in "${RECON_PID:-}" "${OURS_PID:-}"; do
+    if [[ -n "$child" ]]; then wait "$child" 2>/dev/null; fi
+  done
+  if [[ -n "${GPU_MONITOR_PID:-}" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  if [[ "$rc" -eq 75 ]]; then
+    touch "$ARTIFACTS/PIPELINE_CHECKPOINTED"
+    write_phase checkpointed || true
+  elif [[ "$rc" -eq 0 ]]; then
+    printf '0\n' > "$ARTIFACTS/exit_code.txt"
+    write_phase complete || true
+    if [[ "$STAGE" == pair && -s "$RESULTS/summary.json" ]]; then
+      touch "$ARTIFACTS/PHASE_COMPLETE"
+    elif [[ "$STAGE" != pair && -s "$RESULTS/${STAGE}/summary.json" ]]; then
+      touch "$ARTIFACTS/PHASE_COMPLETE"
+    else
+      echo 'stage summary is missing; no PHASE_COMPLETE marker' >&2
+      rc=65
+    fi
+  fi
+  if [[ "$rc" -ne 0 && "$rc" -ne 75 ]]; then
+    rm -f "$ARTIFACTS/PHASE_COMPLETE"
+    write_phase failed || true
+    printf '%s\n' "$rc" > "$ARTIFACTS/failure.exit_status"
+    python3 - "$RESULTS" "$STAGE" "$PBS_JOBID" "$rc" <<'PY' || true
+import json, sys
+from pathlib import Path
+root, stage, job, rc = Path(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4])
+target = root / ('failure.json' if stage == 'pair' else f'{stage}/failure.json')
+if not target.exists():
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps({"protocol":"fastwam-aqlm-loss-pair-v1", "stage":stage,
+        "pbs_jobid":job, "error":f"stage exited with status {rc}"}, indent=2)+"\n", encoding='utf-8')
+PY
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+write_phase running
+
+shopt -s nullglob
+CONTROL_FILES=("$NEW_ROOT"/*.py "$NEW_ROOT"/*.json "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs)
+test "${#CONTROL_FILES[@]}" -gt 0 || { echo 'No uploaded control sources' >&2; exit 65; }
+for file in "${CONTROL_FILES[@]}"; do cp "$file" "$ARTIFACTS/"; done
+test -s "$ARTIFACTS/protocol.json" || { echo 'protocol.json is missing' >&2; exit 65; }
+
+if [[ "$STAGE" == bootstrap ]]; then
+  test -s "$ARTIFACTS/bootstrap.py" || { echo 'bootstrap.py is missing' >&2; exit 65; }
+  export FW_AQLM_BOOTSTRAP_CPU_ONLY=1
+  module purge
+  module load gcc/11.4.0-nscc python/3.11.7-gcc11
+  python3 "$ARTIFACTS/bootstrap.py"
+  exit 0
+fi
+
+mapfile -t RUNTIME_PATHS < <(python3 - "$ARTIFACTS/protocol.json" <<'PY'
+import json, sys
+from pathlib import Path
+p=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+print(p['runtime_source']['directory'])
+print(p['runtime_source']['reader_directory'])
+PY
+)
+test "${#RUNTIME_PATHS[@]}" -eq 2 || { echo 'runtime source paths are unavailable' >&2; exit 65; }
+SOURCE_RUNTIME=${RUNTIME_PATHS[0]}
+READER_RUNTIME=${RUNTIME_PATHS[1]}
+test -d "$SOURCE_RUNTIME" -a -d "$READER_RUNTIME" || { echo 'frozen runtime directory is unavailable' >&2; exit 65; }
+for file in rotation_bank.py c8_train_banks.py batched_transform.py runner.py quantization.py libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$SOURCE_RUNTIME/$file" || { echo "missing frozen source artifact: $file" >&2; exit 65; }
+  cp "$SOURCE_RUNTIME/$file" "$ARTIFACTS/$file"
+done
+test -s "$SOURCE_RUNTIME/worker.py" || { echo 'missing frozen source worker' >&2; exit 65; }
+cp "$SOURCE_RUNTIME/worker.py" "$ARTIFACTS/source_worker.py"
+for file in frozen_reader.py reader_runtime.py reader_loss.py softbin_loss.py; do
+  test -s "$READER_RUNTIME/$file" || { echo "missing frozen reader artifact: $file" >&2; exit 65; }
+  cp "$READER_RUNTIME/$file" "$ARTIFACTS/$file"
+done
+
+FW_CPU_THREADS=16
+FW_SOFT_DEADLINE_SECONDS=85500
+FW_SAVE_RESERVE_SECONDS=900
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS
+source "$ARTIFACTS/environment.sh"
+export ROOT DIAG_ROOT NEW_ROOT ARTIFACTS RESULTS PBS_JOBID
+test -s "$ARTIFACTS/worker.py" || { echo 'worker.py is missing' >&2; exit 65; }
+start_gpu_monitor() {
+  local mask=$1
+  (
+    while :; do
+      timestamp=$(date -Is)
+      nvidia-smi -i "$mask" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader \
+        | while IFS= read -r sample; do printf 'GPU_SAMPLE timestamp=%s %s\n' "$timestamp" "$sample"; done || echo GPU_SAMPLE_ERROR
+      sleep 15
+    done
+  ) &
+  GPU_MONITOR_PID=$!
+}
+if [[ "$STAGE" == prepare ]]; then
+  test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'CUDA_VISIBLE_DEVICES is empty' >&2; exit 65; }
+  IFS=, read -r -a PREPARE_GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+  test "${#PREPARE_GPU_IDS[@]}" -eq 1 || { echo 'prepare requires exactly one allocated GPU' >&2; exit 65; }
+  mapfile -t PREPARE_GPU_UUIDS < <(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); if (length) print}')
+  test "${#PREPARE_GPU_UUIDS[@]}" -eq 1 -a -n "${PREPARE_GPU_UUIDS[0]}" || { echo 'could not resolve prepare GPU UUID' >&2; exit 65; }
+  start_gpu_monitor "${PREPARE_GPU_UUIDS[0]}"
+  CUDA_VISIBLE_DEVICES="${PREPARE_GPU_UUIDS[0]}" run_python "$ARTIFACTS/worker.py" --stage prepare --protocol "$ARTIFACTS/protocol.json"
+  exit $?
+fi
+
+test -s "$ARTIFACTS/analysis.py" || { echo 'analysis.py is missing' >&2; exit 65; }
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'CUDA_VISIBLE_DEVICES is empty' >&2; exit 65; }
+IFS=, read -r -a ALLOCATED_IDS <<< "$CUDA_VISIBLE_DEVICES"
+test "${#ALLOCATED_IDS[@]}" -eq 2 || { echo 'pair requires exactly two allocated GPUs' >&2; exit 65; }
+mapfile -t GPU_UUIDS < <(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); if (length) print}')
+test "${#GPU_UUIDS[@]}" -eq 2 || { echo 'could not resolve exactly two GPU UUIDs' >&2; exit 65; }
+start_gpu_monitor "${GPU_UUIDS[0]},${GPU_UUIDS[1]}"
+
+launch_arm() {
+  local gpu_uuid=$1 arm=$2
+  CUDA_VISIBLE_DEVICES="$gpu_uuid" run_python "$ARTIFACTS/worker.py" --stage arm --arm "$arm" --protocol "$ARTIFACTS/protocol.json"
+}
+launch_arm "${GPU_UUIDS[0]}" reconstruction &
+RECON_PID=$!
+launch_arm "${GPU_UUIDS[1]}" ours &
+OURS_PID=$!
+RECON_DONE=0
+OURS_DONE=0
+RECON_RC=0
+OURS_RC=0
+while [[ "$RECON_DONE" -eq 0 || "$OURS_DONE" -eq 0 ]]; do
+  if [[ "$RECON_DONE" -eq 0 ]] && ! kill -0 "$RECON_PID" 2>/dev/null; then
+    set +e; wait "$RECON_PID"; RECON_RC=$?; set -e; RECON_DONE=1
+    if [[ "$RECON_RC" -ne 0 && "$OURS_DONE" -eq 0 ]]; then kill -TERM "$OURS_PID" 2>/dev/null || true; fi
+  fi
+  if [[ "$OURS_DONE" -eq 0 ]] && ! kill -0 "$OURS_PID" 2>/dev/null; then
+    set +e; wait "$OURS_PID"; OURS_RC=$?; set -e; OURS_DONE=1
+    if [[ "$OURS_RC" -ne 0 && "$RECON_DONE" -eq 0 ]]; then kill -TERM "$RECON_PID" 2>/dev/null || true; fi
+  fi
+  if [[ "$RECON_DONE" -eq 0 || "$OURS_DONE" -eq 0 ]]; then sleep 5; fi
+done
+RECON_PID=
+OURS_PID=
+if [[ "$RECON_RC" -ne 0 || "$OURS_RC" -ne 0 ]]; then
+  if [[ "$RECON_RC" -eq 75 || "$OURS_RC" -eq 75 ]]; then exit 75; fi
+  exit 1
+fi
+run_python "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json"

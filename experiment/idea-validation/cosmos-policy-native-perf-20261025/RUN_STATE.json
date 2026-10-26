@@ -1,0 +1,313 @@
+{
+  "objective": "Frozen checkpoint profile and engine optimization;method native kernel adapters;matched A100SKU/software dual-scope latency/speedup/peak/storage;no training/closedloop.",
+  "updated_utc": "2026-10-25T16:31:18.984753+00:00",
+  "status": "complete",
+  "new_training_updates": 0,
+  "new_closed_loop_episodes": 0,
+  "handles": {
+    "analyze": "25975133.pbs101",
+    "atom_general_build": "25978384.pbs101",
+    "build_fused": "25975310.pbs101",
+    "build": "25975036.pbs101",
+    "capture": "25977542.pbs101",
+    "diffusion": "25975610.pbs101",
+    "diffusion_repack": "25977147.pbs101",
+    "hadamard": "25976172.pbs101",
+    "optimized": "25975121.pbs101",
+    "ours_gate": "25982293.pbs101",
+    "prepare": "25974876.pbs101",
+    "probe_all": "25978617.pbs101",
+    "probe": "25975263.pbs101",
+    "profile": "25974929.pbs101",
+    "startup": "25977419.pbs101",
+    "svd_fused_build": "25976304.pbs101",
+    "svd_fused_repack": "25977151.pbs101",
+    "toolkit": "25975059.pbs101",
+    "gate_spin": "25982287.pbs101",
+    "gate_qua": "25982289.pbs101",
+    "gate_svd": "25982290.pbs101",
+    "gate_vidit": "25982291.pbs101",
+    "perf_bf16": "25982294.pbs101",
+    "gate_wide": "25982296.pbs101",
+    "gate_wide_g1": "25982298.pbs101",
+    "gate_wide_g2": "25982302.pbs101",
+    "gate_wide_g3": "25982303.pbs101",
+    "rotation_parity": "25982926.pbs101",
+    "rotation_parity_long": "25982927.pbs101",
+    "perf_ours": "25983245.pbs101",
+    "perf_spin": "25983246.pbs101",
+    "perf_qua": "25983248.pbs101",
+    "perf_svd": "25983251.pbs101",
+    "perf_vidit": "25983252.pbs101",
+    "perf_bundle": "25984119.pbs101"
+  },
+  "verified_complete": [
+    "Pinned official upstream sources and submodules",
+    "Task-local CUDA12.8 compiler components",
+    "QuaRot core and fused extension CPU builds",
+    "Nunchaku SVDQuant and official ViDiT-Q Atom extension CPU builds",
+    "Initial BF16/ours four-query profile",
+    "CPU trace analysis",
+    "Old QuaRot core 12-shape GPU/stream/graph primitive proof",
+    "Optimized all-five-NFE graph full80 exact parity (all maxabs0)",
+    "Same-allocation current/candidate12 diagnostic:616.0518ms to436.7365ms (1.41058x)",
+    "Official pinned FHT CPU extension build25976172",
+    "Nunchaku rank16 fused CPU extension build25976304",
+    "Fixed activation-scale repacker rebuilt in both CPU extensions:25977147 and25977151;new complete build receipts retrieved.",
+    "BF16actual5NFE capture25977542:complete80/80,matchedfrozen40casesx2seeds,833803360capturebytesremainremote.",
+    "All-native primitiveGPUproof25978617F0:QuaRot12shapesexact,FHT/scaledaddcomplete,SVDcorecomplete,ViDiTgeneralcomplete;AtomoriginalvsGeneraldiagnosticconfirmsfour-factorcolumnfix.",
+    "Ours optimized unified sampler+DiTfull80 passed in25982293;strict1e-6 original thresholds preserved."
+  ],
+  "not_yet_gpu_validated": [
+    "SVDfused candidate excluded duequantize_down illegalaccess; no further work requested"
+  ],
+  "required_remaining": [],
+  "candidate": "all_nfe_graph_recompute_cross_kv_v1",
+  "formal_protocol": "native_protocol.json",
+  "local_stdlib_tests_passed": 218,
+  "resource_note": "Short gdev six1GPU119min plus g1 oneGPU4h/g2 threeGPU2h31/g3 fourGPU2h31/g4 sixGPU2h01 race same six workunits; no duplicate model execution after claim.",
+  "monitoring_interval_minutes": 10,
+  "optimized_candidate": {
+    "status": "accepted_on_exact_full80_and_diagnostic_improvement",
+    "pbs_job_id": "25975121.pbs101",
+    "full80_max_abs": 0,
+    "current_mean_ms": 616.0518045071512,
+    "candidate_mean_ms": 436.7365379196902,
+    "speedup_vs_current": 1.4105799515689585,
+    "current_peak_gb_diagnostic": 3.607221248,
+    "candidate_peak_gb_diagnostic": 3.375663104,
+    "formal_performance": false
+  },
+  "native_boundary": "QuaRot officialFHT+INT4splitG128 orpublicNunchakufullK adapter;SpinlearnedR+samepublicINT4kernels;SVDNunchakucore+separateBF16rank16 orofficialLoRAfusioncandidate;ViDiTAtomgeneralcolumn+affine/W8adapter;OurspackedVQdecode+BF16GEMM. Primitive proofs complete;full80pending.",
+  "capture_recovery": "Complete80/80 in25977542F0 wall18:33;capture_manifest.25977542.json verified;do not resubmitcapture.",
+  "diagnosis_document": "DIAGNOSIS.zh.md",
+  "native_candidates": {
+    "svdquant": "native_fused: official down helper (unused quant outputs discarded) and GEMM LoRA up epilogue; independent compiled module; still unvalidated GPU",
+    "rotations": "native_grouped: public no-LoRA Nunchaku fullK G64 core with exact G128 scale duplication, originalH/R; not an official whole-model method engine"
+  },
+  "gpu_batch_layout": {
+    "short": "five independent 1GPU gate workers plus independent BF16 1GPU formal two scopes",
+    "wide": "same six work units on six GPUs in g4; branch-level atomic claim before model loading"
+  },
+  "queue_snapshot": "All measurement and CPUaggregation jobs verifiedF0;duplicate queuedsiblings canceledF;no active taskjob remains.",
+  "control_tests_note": "Includes real Bash syntax parse and stubbed failure-containment test; no real PBS identity fabricated and no model/Torch forward in local tests.",
+  "gpu_batch_failure_policy": "Backend candidate failures are recorded independently; an arm worker can finish if at least one native implementation passes both full80 gates. Formal selection stays pending and only chosen full80-passed bindings may benchmark.",
+  "short_gpu_prerequisite_walltime": "capture25977017:30min/soft1620s;probe_all25977166:15min;no formal panel submitted.",
+  "formal_panel_submitted": true,
+  "native_packing_recovery": {
+    "failed_probe": "25976174.pbs101",
+    "max_abs_error": 373.27423095703125,
+    "root_cause": "activation half2 scale destination stride32 instead of pinned16, exceeding allocation",
+    "fix": "stride16; two CPU rebuilds then dependent packing/primitive GPU probe",
+    "diffusion_rebuild": "25977147.pbs101",
+    "fused_rebuild": "25977151.pbs101",
+    "probe": "25977166.pbs101",
+    "gates": "25977167.pbs101",
+    "nunchaku_gpu_proof": {
+      "pbs_job_id": "25977166.pbs101",
+      "status": "complete",
+      "native_matmul_calls": 8,
+      "activation_scale_layouts_match": true,
+      "receipt": "retrieved/preparation.nunchaku_packing_diagnostic.json"
+    }
+  },
+  "panel_runtime": "Single runtime per selected arm;720samples per scope, sampler thenDiT;BF16 submitted independently;remaining methods after individual selected full80 gates.",
+  "physical_gpu_constraint_removed_by_user": true,
+  "latest_targeted_tests": {
+    "suite": "full stdlib unittest discover",
+    "passed": 211
+  },
+  "wrapper_termination_fix": "TERM exits143 andINT130 before EXIT marker generation;Bash regression passed;oldfalse markerpreserved asfailureevidence.",
+  "gates_recovery": "Canceled pre-execution quad25978625, replaced with six-shard versus g4-wide atomic race.",
+  "vidit_adapter_fix": "v4 pairedhalf2 activation scales/generalfourfactor epilogue;precomputed affine terms,no perforward denseWunpack;all-nativeGPUprimitiveproof complete25978617.",
+  "atom_packing_recovery": {
+    "failed_probe": "25977166.pbs101",
+    "max_abs_error": 433.512939453125,
+    "root_cause": "v3 repeatedHALF instead ofHALF2pair;upstreamdequant also sharesfactorsacrossadjacentNcolumns. Generalepilogue usesfour independent row/columnfactors;officialMMA/load/storeunchanged.",
+    "adapter": "v4 paired-half2/general-column",
+    "fix": "shared official-lane helper inadapter/probe;reference uses original unpermuted row scales",
+    "cpu_rebuild_required": false,
+    "new_probe": "25978429.pbs101",
+    "second_failed_probe": "25977576.pbs101",
+    "second_max_abs_error": 603.930786,
+    "general_cpu_build": "25978384.pbs101 F0",
+    "gpu_proof": "25978617:generalunscaledrandom/constant/isolatedG0/G1exact0;originalG0max84,G1max60;pairedhalf2andproductionv4Ascaleexact0."
+  },
+  "gate_worker": "One runtime per arm:both80-case scopes;candidate failures isolated;ours_gate_merged explicitly disabled for baseline shards;dedicated Ours worker only.",
+  "probe_driver": "OneTorchstartup thenNunchakudiagnostic,Atomoriginalandgeneralcasecollection,andallnativeprimitiveproof inoneprocess;originaldiagnosticfailuresareexpectedobservations,all-nativeproofmustpass.",
+  "probe_driver_recovery": "25978429F1 beforeAtomcases:missing allocation_guarded flag despite realguardalreadyran. Fixedflag+regression7tests;newprobe25978617,newgates25978625.",
+  "all_native_primitive_proof": {
+    "job_id": "25978617.pbs101",
+    "status": "complete",
+    "all_native_probe_return_code": 0,
+    "svd_max_abs": 0.2230224609375,
+    "vidit_max_abs": 0.23248291015625,
+    "tolerance": "0.125 +0.002*abs(reference), frozen beforeGPU",
+    "policy_forward_calls": 0,
+    "receipt": "retrieved/preparation.kernel_probe_native_all.json.25978617"
+  },
+  "superseded_handles": {
+    "gates_quad": {
+      "job_id": "25978625.pbs101",
+      "status": "verified canceled before execution",
+      "replacement": "six short shards versus gate_wide race"
+    }
+  },
+  "queue_race": {
+    "race_id": "native-gates-sixwork-repair-20261025T1254Z",
+    "claim_path": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/control/races/native-gates-sixwork-repair-20261025T1254Z/claim/owner.json",
+    "short_jobs": {
+      "gate_spin": "25982287.pbs101",
+      "gate_qua": "25982289.pbs101",
+      "gate_svd": "25982290.pbs101",
+      "gate_vidit": "25982291.pbs101",
+      "ours_gate": "25982293.pbs101",
+      "perf_bf16": "25982294.pbs101"
+    },
+    "wide_jobs": {
+      "gate_wide": "25982296.pbs101",
+      "gate_wide_g1": "25982298.pbs101",
+      "gate_wide_g2": "25982302.pbs101",
+      "gate_wide_g3": "25982303.pbs101"
+    },
+    "created_utc": "2026-10-25T12:53:32.027944+00:00",
+    "monitor_interval_minutes": 10,
+    "winner_rule": "Six shorts sharebranch; each widejob exclusive; first actual allocated claim wins. Cancel only verified queued losing job IDs."
+  },
+  "formal_panel_submitted_note": "BF16 arm submitted as race work unit only; other five formal arms not yet submitted.",
+  "execution_owner": {},
+  "gate_recovery_25981837": {
+    "actual_failed_job": "25981837.pbs101",
+    "fixes": [
+      "Resolve rotation artifact_dir before samearm branch",
+      "TorchVersion exact safe allowlist and plainstr new receipts",
+      "SVDfused probe synchronous perentrypoint diagnostics"
+    ],
+    "bf16_sampler_reused_samples": 720,
+    "capture_reruns": 0
+  },
+  "baseline_gate_diagnosis": {
+    "current_evidence": "representative firstquery only, notfull80",
+    "spin_current": {
+      "motor_nrmse": 0.06239,
+      "future_nrmse": 0.12824,
+      "dit_nrmse": 0.15458,
+      "operator_nrmse": 0.0032
+    },
+    "spin_grouped": {
+      "motor_nrmse": 0.05773,
+      "future_nrmse": 0.13092,
+      "dit_nrmse": 0.15495,
+      "operator_nrmse": 0.00607
+    },
+    "qua_current": {
+      "motor_nrmse": 0.04586,
+      "future_nrmse": 0.13364,
+      "dit_nrmse": 0.14625,
+      "operator_nrmse": 0.00347
+    },
+    "gate_thresholds_unchanged": 0.01,
+    "qua_grouped": "registeredbuffer signs lookupfixed locally/remote;notrerungateyet",
+    "rounding_boundary": "BF16 decoded A/W rounding vsnativeINT4codes+FP32/FP16scales hypothesis;notyet causalproof",
+    "next_diagnostic": "rotationparity25982926 onequery fiveNFEs decoded-repeat/native/decoded-after+28block sampled traces"
+  },
+  "scope_clarification": {
+    "user_instruction": "\u5404baseline\u4ecd\u6d4bnative\u6027\u80fd\uff1b\u8bef\u5dee\u5927\u4e0d\u7528\u5173\u6ce8\uff0c\u4e0d\u518d\u6295\u5165\u989d\u5916\u6570\u503c\u8bca\u65ad",
+    "recorded_utc": "2026-10-25T13:40:34.267835+00:00",
+    "baseline_fidelity_policy": "report_only",
+    "ours_fidelity_policy": "strict",
+    "stopped": [
+      "rotation parity diagnostic",
+      "fused SVD candidate debugging",
+      "baseline numerical fidelity optimization"
+    ],
+    "still_required": [
+      "all six methods native/permitted engine dualscope720 latency/speedup/peak/storage",
+      "subagent10minmonitor",
+      "honest reported numerical evidence and backend boundary"
+    ]
+  },
+  "formal_selected_variants": {
+    "bf16": "current",
+    "spinquant_w4a4": "current",
+    "quarot_w4a4": "current",
+    "svdquant_w4a4": "current",
+    "viditq_w4a4": "current",
+    "ours_vqwam": "optimized"
+  },
+  "diagnostic_cancellation": "rotation25982926 qdel succeeded awaitingF confirmation by monitor;longsibling25982927F confirmed; do not analyze outputs",
+  "active_performance_design": "40ctx_once_v3",
+  "performance_contexts": "40cases3000-3039 eachseed0;one timed sample percontext perarm/scope",
+  "accepted_legacy_performance": {
+    "bf16": {
+      "sampler": {
+        "samples": 720,
+        "status": "complete",
+        "path": "results/native_performance/sampler/current/bf16/summary.json"
+      },
+      "dit_replay": {
+        "samples": 720,
+        "status": "complete",
+        "path": "results/native_performance/dit_replay/current/bf16/summary.json"
+      }
+    }
+  },
+  "new_work_preserves_completed720": true,
+  "performance_results_directory": "results/native_performance_n40",
+  "latest_tests": {
+    "full_run_total": 245,
+    "initial_failure": "old unused diagnostic test expected720, updated40 peruser",
+    "targeted_repair_tests_passed": 7,
+    "other_full_run_tests_passed": 244
+  },
+  "formal_n40_queue_race": {
+    "created_utc": "2026-10-25T14:44:46.640762+00:00",
+    "race_id": "native-performance-n40-20261025T1442Z",
+    "short_jobs": {
+      "perf_ours": "25983245.pbs101",
+      "perf_spin": "25983246.pbs101",
+      "perf_qua": "25983248.pbs101",
+      "perf_svd": "25983251.pbs101",
+      "perf_vidit": "25983252.pbs101"
+    },
+    "wide_job": "25984119.pbs101",
+    "claim_path": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/control/formal_n40_queue_race/control/races/native-performance-n40-20261025T1442Z/claim/owner.json",
+    "actual_stage_mapping": {
+      "perf_ours": "ours_gate",
+      "perf_spin": "gate_spin",
+      "perf_qua": "gate_qua",
+      "perf_svd": "gate_svd",
+      "perf_vidit": "gate_vidit",
+      "perf_bundle": "gate_wide"
+    },
+    "winner_rule": "First valid allocated branch claims before model. Shortbranch keepsfive independentjobs;widebranch keeps onlyg1bundle. Cancelonlyverifiedlosingqueuedhandles.",
+    "performance_design": "40ctx_once_v3",
+    "bf16_complete720_not_in_race": true,
+    "monitor_interval_minutes": 10
+  },
+  "active_performance_execution_owner": {
+    "ours_vqwam": "25984119.pbs101",
+    "spinquant_w4a4": "25984119.pbs101",
+    "quarot_w4a4": "25984119.pbs101",
+    "svdquant_w4a4": "25984119.pbs101",
+    "viditq_w4a4": "25984119.pbs101"
+  },
+  "formal_n40_race_winner_receipt": "formal_n40_race_winner.json",
+  "results": {
+    "json": "native_performance_summary_mixed.json",
+    "markdown": "RESULTS_mixed.zh.md",
+    "html": "RESULTS_mixed.html",
+    "aggregation_job": "25985356.pbs101",
+    "measurement_bundle": "25984119.pbs101",
+    "rows": 12,
+    "BF16_samples_per_scope": 720,
+    "other_samples_per_scope": 40,
+    "new_training_updates": 0,
+    "new_closed_loop_episodes": 0
+  },
+  "scope_completion_note": "Completed effective user scope: native performance for sixmethods, dualscope;baseline numericalerrorsreportonly, no furtherbaseline diagnosis;preserveBF16720 anduse40newcontexts perremainingarm/scope.",
+  "deferred_by_user": [
+    "baselinefidelitydiagnosis/optimization",
+    "unsafe SVDfusedcandidate;safe nativecoremeasured"
+  ]
+}

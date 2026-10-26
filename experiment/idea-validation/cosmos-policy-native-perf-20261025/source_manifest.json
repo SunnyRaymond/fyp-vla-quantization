@@ -1,0 +1,61 @@
+{
+  "format": "cosmos-native-rotation-source-manifest-v1",
+  "protocol": "cosmos-policy-native-perf-20261025",
+  "native_method_arms": [
+    "spinquant_w4a4",
+    "quarot_w4a4"
+  ],
+  "method_artifacts": {
+    "spinquant_w4a4": {
+      "source": "Existing Cosmos SpinQuant W4A4 packed-bank checkpoint referenced by legacy protocol.json reuse.spinquant_artifact",
+      "method_reference": "https://github.com/facebookresearch/SpinQuant",
+      "representation": "two's-complement signed W4, low nibble first, G128 BF16 scales, learned shared R128 and BF16 KV",
+      "method_scope": "Cosmos-adapted learned-rotation artifact; upstream SpinQuant source is attribution only, not the artifact producer or a claim of the official full SpinQuant runtime"
+    },
+    "quarot_w4a4": {
+      "source": "Existing results/quarot bank from legacy cosmos-policy-vqwam-20261024",
+      "method_reference": "https://github.com/spcl/QuaRot",
+      "representation": "offset-8 packed W4, G128 FP16 scales, per-Linear signed local H128 transform",
+      "method_scope": "Cosmos-adapted QuaRot artifact; upstream QuaRot source is attribution and GEMM-primitive source, not a claim that the artifact or runtime is the official full QuaRot engine"
+    }
+  },
+  "gemm_source": {
+    "repository": "https://github.com/spcl/QuaRot",
+    "upstream_file": "quarot/kernels/gemm.cu",
+    "upstream_symbol": "matmul_host",
+    "upstream_binding_contract": "matmul(A:uint8[M,K/2], B:uint8[N,K/2]) -> int32[M,N]",
+    "kernel": "CUTLASS cutlass::int4b_t x cutlass::int4b_t TensorOp GEMM, int32 accumulator, SM80",
+    "module_import": "quarot_official_gemm",
+    "module_binding": "Minimal task-local PyTorch binding around the official QuaRot GEMM; task-local build patches only the launcher signature to accept/pass PyTorch's current CUDA stream and adds a GEMM-only pybind bridge; no official full-engine claim",
+    "source_revision": "5008669b08c1f11f9b64d52d16fddd47ca754c5a",
+    "cutlass_revision": "ffa34e70756b0bc744e1dfcc115b5a991a68f132",
+    "source_receipt": "retrieved/preparation.sources.json",
+    "submodule_receipt": "retrieved/preparation.submodules.json",
+    "build_receipt": "retrieved/preparation.quarot_build.json",
+    "adapter_changes": [
+      "Explicit current CUDA stream passed from the PyTorch binding to the CUTLASS launcher",
+      "GEMM-only pybind bridge; no QuaRot KV or attention kernels",
+      "GPU execution parity not yet tested"
+    ]
+  },
+  "adapter": {
+    "source_file": "native_rotations.py",
+    "operation": "One official int4 GEMM per contiguous 128-feature group; FP32 accumulation applies the existing per-token activation scale and each group's original per-output weight scale",
+    "spinquant_codes": "Used directly as signed two's-complement nibbles",
+    "quarot_codes": "Offset-8 nibble encoding is rebased once with packed_byte XOR 0x88; scale tensors remain FP16 and unchanged",
+    "activations": "Dynamic symmetric signed per-token A4, qmax 7, transiently nibble-packed",
+    "protected_scope": "Only the frozen 280 target Linear weights are packed; target biases, non-target DiT parameters, and KV remain BF16"
+  },
+  "build": {
+    "execution_location": "Approved CPU PBS allocation only; never login node or local machine",
+    "command_template": "Within the approved CPU PBS allocation, use the staged CUDA 12.8 toolkit and run python build_native.py --root <new-root>; TORCH_CUDA_ARCH_LIST=8.0 and MAX_JOBS=6 are set by the build worker",
+    "runtime_import_check": "Add <new-root>/native_extensions/quarot_official_gemm to sys.path, then import quarot_official_gemm and assert callable(matmul); the shared object is not pip-installed",
+    "requirements_file": "native-requirements.txt"
+  },
+  "claims": {
+    "official_full_quarot_engine": false,
+    "official_full_spinquant_engine": false,
+    "official_quarot_cutlass_gemm_primitive": true,
+    "cosmos_g128_scale_adapter": "local source in this experiment directory"
+  }
+}

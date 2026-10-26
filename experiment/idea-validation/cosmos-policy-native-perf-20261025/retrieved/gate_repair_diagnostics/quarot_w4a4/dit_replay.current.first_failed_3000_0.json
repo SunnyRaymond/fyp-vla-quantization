@@ -1,0 +1,172 @@
+{
+  "protocol": "cosmos-policy-vqwam-v1",
+  "arm": "quarot_w4a4",
+  "variant": "current",
+  "scope": "dit_replay",
+  "phase": "representative4",
+  "hardware": {
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "total_memory_bytes": 42406903808,
+    "capability": [
+      8,
+      0
+    ],
+    "torch_version": "2.7.0+cu128",
+    "cuda_version": "12.8"
+  },
+  "backend_binding": {
+    "execution": "official_quarot_cutlass_int4_gemm_split_g128",
+    "native_backend": "official QuaRot CUTLASS int4b_t TensorOp GEMM with a Cosmos group-scale adapter",
+    "native_backend_module": "quarot_official_gemm_fused",
+    "native_int4_kernel_used": true,
+    "native_backend_source_revision": "5008669b08c1f11f9b64d52d16fddd47ca754c5a",
+    "native_backend_cutlass_revision": "ffa34e70756b0bc744e1dfcc115b5a991a68f132",
+    "adapter_version": "cosmos_rotation_int4_g128_v3_native_quarot_h128",
+    "adapter_epilogue": "fused_cuda_fp32_group_scaled_add",
+    "adapter_epilogue_source": "task-local G128 scale/add adapter around official QuaRot GEMM; not upstream full inference engine",
+    "native_hadamard_backend": "Dao-AILab fast-hadamard-transform CUDA kernel from the pinned QuaRot submodule",
+    "native_hadamard_module": "quarot_native_hadamard_cuda",
+    "native_hadamard_source_repository": "https://github.com/Dao-AILab/fast-hadamard-transform.git",
+    "native_hadamard_source_commit": "4ea722e434e3d4f2a14522341959ebdbe62be2de",
+    "native_hadamard_quarot_source_revision": "5008669b08c1f11f9b64d52d16fddd47ca754c5a",
+    "native_hadamard_submodule_path": "third-party/fast-hadamard-transform",
+    "native_hadamard_build_receipt": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/results/preparation/quarot_hadamard_build.json",
+    "native_hadamard_build_producer": {
+      "pbs_job_id": "25976172.pbs101",
+      "host": "x1001c7s0b0n0"
+    },
+    "native_hadamard_build_pbs_job_id": "25976172.pbs101",
+    "native_hadamard_build_host": "x1001c7s0b0n0",
+    "native_hadamard_build_torch": "2.7.0+cu128",
+    "native_hadamard_build_cuda_runtime": "12.8",
+    "artifact_dir": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/quarot",
+    "rotation_artifact_source": "existing method-specific packed checkpoint",
+    "weight_group_size": 128,
+    "arm": "quarot_w4a4",
+    "requested_variant": "current",
+    "extension_build": {
+      "path": "results/preparation/quarot_fused_build.json",
+      "pbs_job_id": "25975310.pbs101",
+      "module": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/native_extensions/quarot_official_gemm_fused/quarot_official_gemm_fused.so",
+      "source_commit": "5008669b08c1f11f9b64d52d16fddd47ca754c5a",
+      "submodule_commits": {
+        "quarot_cutlass": "ffa34e70756b0bc744e1dfcc115b5a991a68f132",
+        "nunchaku_cutlass": "a75b4ac483166189a45290783cb0a18af5ff0ea5",
+        "nunchaku_spdlog": "27cb4c76708608465c413f6d0e6b8d99a4d84302",
+        "nunchaku_json": "63258397761b3dd96dd171e5a5ad5aa915834c35",
+        "nunchaku_mio": "8b6b7d878c89e81614d05edca7936de41ccdd2da"
+      }
+    }
+  },
+  "query": [
+    3000,
+    0
+  ],
+  "limits": {
+    "dit_forward_nrmse": 0.01,
+    "linear_operator_nrmse": 0.01
+  },
+  "metrics": {
+    "dit_forward_nrmse": 0.1462504156462926,
+    "dit_forward_max_abs": 1.91015625,
+    "per_nfe": [
+      {
+        "elements": 112896,
+        "max_abs": 1.3359375,
+        "rmse": 0.1396257997219719,
+        "nrmse": 0.13394774912435398,
+        "by_tensor": {
+          "root": {
+            "elements": 112896,
+            "max_abs": 1.3359375,
+            "rmse": 0.1396257997219719,
+            "nrmse": 0.13394774912435398
+          }
+        }
+      },
+      {
+        "elements": 112896,
+        "max_abs": 1.310546875,
+        "rmse": 0.14303603189337488,
+        "nrmse": 0.13690205712244813,
+        "by_tensor": {
+          "root": {
+            "elements": 112896,
+            "max_abs": 1.310546875,
+            "rmse": 0.14303603189337488,
+            "nrmse": 0.13690205712244813
+          }
+        }
+      },
+      {
+        "elements": 112896,
+        "max_abs": 1.412109375,
+        "rmse": 0.14093820348178052,
+        "nrmse": 0.13478952565638253,
+        "by_tensor": {
+          "root": {
+            "elements": 112896,
+            "max_abs": 1.412109375,
+            "rmse": 0.14093820348178052,
+            "nrmse": 0.13478952565638253
+          }
+        }
+      },
+      {
+        "elements": 112896,
+        "max_abs": 1.4375,
+        "rmse": 0.14447636387269047,
+        "nrmse": 0.13750957884603066,
+        "by_tensor": {
+          "root": {
+            "elements": 112896,
+            "max_abs": 1.4375,
+            "rmse": 0.14447636387269047,
+            "nrmse": 0.13750957884603066
+          }
+        }
+      },
+      {
+        "elements": 112896,
+        "max_abs": 1.91015625,
+        "rmse": 0.15485729176616478,
+        "nrmse": 0.1462504156462926,
+        "by_tensor": {
+          "root": {
+            "elements": 112896,
+            "max_abs": 1.91015625,
+            "rmse": 0.15485729176616478,
+            "nrmse": 0.1462504156462926
+          }
+        }
+      }
+    ],
+    "linear_operator_nrmse": 0.003472846271734235,
+    "linear_operator_max_abs": 0.5,
+    "linear_operator_worst": {
+      "nfe": 0,
+      "module": "net.blocks.11._checkpoint_wrapped_module.cross_attn.v_proj",
+      "call_index": 0,
+      "nrmse": 0.003472846271734235,
+      "max_abs": 0.001953125
+    },
+    "linear_operator_sampled_rows": 32,
+    "linear_operator_calls": 1400
+  },
+  "status": "failed",
+  "hardware_receipt": {
+    "gpu_uuid": "6e6d271e-6af6-836c-f753-82043b78acfe",
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "total_memory_bytes": 42406903808,
+    "capability": [
+      8,
+      0
+    ],
+    "torch_version": "2.7.0+cu128",
+    "cuda_version": "12.8",
+    "hostname": "x1000c0s0b0n0",
+    "pbs_job_id": "25982289.pbs101"
+  },
+  "pbs_job_id": "25982289.pbs101",
+  "hostname": "x1000c0s0b0n0"
+}

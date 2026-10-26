@@ -1,0 +1,175 @@
+{
+  "format": "cosmos_native_performance_v1",
+  "protocol": "cosmos-policy-vqwam-v1",
+  "status": "complete",
+  "complete": true,
+  "arm": "svdquant_w4a4",
+  "variant": "current",
+  "scope": "sampler",
+  "hardware": {
+    "gpu_uuid": "2c4aaa13-69aa-baac-0ffa-b526d3e2b2c9",
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "total_memory_bytes": 42406903808,
+    "capability": [
+      8,
+      0
+    ],
+    "torch_version": "2.7.0+cu128",
+    "cuda_version": "12.8",
+    "hostname": "x1000c0s7b0n0",
+    "pbs_job_id": "25984119.pbs101"
+  },
+  "backend_binding": {
+    "implementation": "nunchaku_official_w4a4_int4_g128_checkpoint_adapter",
+    "execution": "packed_gpu_resident_native_int4_gemm",
+    "native_int4_kernel_used": true,
+    "native_kernel": "Nunchaku W4A4 INT4",
+    "native_weight_format": "Nunchaku GEMM-specific signed INT4 layout",
+    "native_extension": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/native_extensions/svdquant_w4a4/nunchaku_svdq_native.so",
+    "adapter_version": "cosmos_nunchaku_w4a4_g128_rank16_v1",
+    "artifact_manifest": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/svdquant/manifest.json",
+    "original_weight_bank": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/svdquant/manifest.json",
+    "weight_group_size": 128,
+    "packed_target_payload_scope": "unique resident CUDA storage of native packed weights, native group scales, affine offsets, Smooth transforms, ViDiT signs, and the SVD rank-16 branch; measured from tensor untyped_storage, excluding transient activations/output",
+    "arm": "svdquant_w4a4",
+    "requested_variant": "current",
+    "extension_build": {
+      "path": "results/preparation/native_diffusion_build.json",
+      "pbs_job_id": "25977147.pbs101",
+      "module": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/native_extensions/svdquant_w4a4/nunchaku_svdq_native.so",
+      "source_commit": "302e0e97024ebd68688fe890e5df83731edf7b54",
+      "submodule_commits": {}
+    }
+  },
+  "install_metadata": {
+    "protocol": "cosmos-policy-vqwam-v1",
+    "arm": "svdquant_w4a4",
+    "adapter_version": "cosmos_nunchaku_w4a4_g128_rank16_v1",
+    "implementation": "nunchaku_official_w4a4_int4_g128_checkpoint_adapter",
+    "target_linears": 280,
+    "target_weight_numel": 1761607680,
+    "weight_group_size": 128,
+    "weight_scale_dtype": "torch.float16",
+    "activation_bits": 4,
+    "native_int4_kernel_used": true,
+    "native_kernel": "Nunchaku W4A4 INT4",
+    "native_weight_format": "Nunchaku GEMM-specific signed INT4 layout",
+    "original_weight_bank": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/svdquant/manifest.json",
+    "weight_requantized": false,
+    "weight_recalibrated": false,
+    "new_training_updates": 0,
+    "new_closed_loop_episodes": 0,
+    "global_svd_rank": 16,
+    "protected_modules": [],
+    "execution": "packed_gpu_resident_native_int4_gemm",
+    "native_activation_scale_dtype": "torch.float16",
+    "packed_gpu_resident": true,
+    "packed_weight_gpu_resident": true,
+    "bf16_target_weight_numel_resident": 0,
+    "bf16_target_weight_numel_cuda_resident": 0,
+    "bf16_restore_shadow_cpu_numel": 1761607680,
+    "packed_target_payload_bytes": 984481792,
+    "packed_target_payload_scope": "unique resident CUDA storage of native packed weights, native group scales, affine offsets, Smooth transforms, ViDiT signs, and the SVD rank-16 branch; measured from tensor untyped_storage, excluding transient activations/output",
+    "bf16_target_bias_storage_bytes": 0,
+    "reference_module_weights_retained": false,
+    "adaptation_boundary": {
+      "scope": "Finite calibration-only smoothing grid and one randomized truncated SVD per Linear; no iterative residual refinement.",
+      "execution": "decoded_bf16_fake_a4_eager",
+      "official_full_method_reproduction": false
+    },
+    "artifact_manifest": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/svdquant/manifest.json",
+    "native_extension": "/scratch/users/ntu/yguo017/cosmos-policy-native-perf-20261025/native_extensions/svdquant_w4a4/nunchaku_svdq_native.so",
+    "native_resident_tensor_bytes": 984481792,
+    "native_resident_tensor_scope": "native packed target payload plus the still-resident BF16 target biases; excludes transient activations/output and all unquantized non-target model tensors"
+  },
+  "performance_design": "40ctx_once_v3",
+  "coverage": {
+    "queries": 40,
+    "samples": 40,
+    "expected_samples": 40,
+    "reused_samples": 0,
+    "blocks": 1,
+    "repetitions": 1
+  },
+  "warmup_queries": [
+    {
+      "query": [
+        3000,
+        0
+      ],
+      "denoising_seconds": 0.9790135810617357,
+      "complete_endpoint_query_seconds": 1.3477337481454015,
+      "sampler_forward_calls": 1,
+      "sampler_evaluations": 5,
+      "denoiser_calls": 5
+    },
+    {
+      "query": [
+        3001,
+        0
+      ],
+      "denoising_seconds": 0.8339217391330749,
+      "complete_endpoint_query_seconds": 0.9704419311601669,
+      "sampler_forward_calls": 1,
+      "sampler_evaluations": 5,
+      "denoiser_calls": 5
+    },
+    {
+      "query": [
+        3002,
+        0
+      ],
+      "denoising_seconds": 0.8366387020796537,
+      "complete_endpoint_query_seconds": 0.9722247151657939,
+      "sampler_forward_calls": 1,
+      "sampler_evaluations": 5,
+      "denoiser_calls": 5
+    }
+  ],
+  "timing_scope": "synchronized legacy benchmark.run_one sampler.forward wall interval",
+  "denoising_wall_seconds": {
+    "count": 40,
+    "mean": 0.8591169813938905,
+    "median": 0.8260359495179728,
+    "p95": 0.9301389381289482,
+    "max": 1.456946366932243
+  },
+  "complete_endpoint_query_seconds": {
+    "count": 40,
+    "mean": 0.9961901008209679,
+    "median": 0.9628872919129208,
+    "p95": 1.065604385919869,
+    "max": 1.6211247551254928
+  },
+  "peak_allocated_gb_decimal": {
+    "count": 40,
+    "mean": 3.16736,
+    "median": 3.16736,
+    "p95": 3.16736,
+    "max": 3.16736
+  },
+  "sample_hardware_provenance": {
+    "sample_count": 40,
+    "devices": [
+      {
+        "gpu_uuid": "2c4aaa13-69aa-baac-0ffa-b526d3e2b2c9",
+        "hostnames": [
+          "x1000c0s7b0n0"
+        ],
+        "pbs_job_ids": [
+          "25984119.pbs101"
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "adapter_resident_tensor_bytes": 984481792,
+    "unquantized_dit_bytes": 389611888,
+    "packed_storage_bytes": 1374093680,
+    "packed_storage_gib_binary": 1.2797244638204575,
+    "storage_scope": "adapter-reported resident packed target tensors plus unique unquantized model.net CUDA parameters and buffers"
+  },
+  "training_updates": 0,
+  "closed_loop_episodes": 0,
+  "created_utc": "2026-10-25T15:42:44.932515+00:00"
+}
