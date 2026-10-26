@@ -1,6 +1,6 @@
 # Week ending 2026-10-04：周报实验索引
 
-范围：2026-09-28 至 2026-10-04；依据 [Notion 周报](https://app.notion.com/p/12844c7da96583aab809818763fa7f0a) 的 Main results 和 Progress 整理。只保留其中提及的本周实验；历史周报实验及所有 reproduction 目录继续保留。
+范围：2026-09-28 至 2026-10-04；依据 [Notion 周报](https://app.notion.com/p/12844c7da96583aab809818763fa7f0a) 的 Main results 和 Progress 整理。本文保留当周实验记录；2026-10-26 的整体目录清理与当前研究范围见仓库 README。
 
 ## 实验与结果
 
@@ -27,6 +27,6 @@ FastWAMOptionalIDM 固定 revision `7faa71108368fbb3b6885649f112af607427a2d4`，
 - PTQ 数据集中到 [fastwam-phase-dither](fastwam-phase-dither/README.zh.md)，保留 Q-WAM 动机、phase proposal、机制初筛、新 draws A8 对照、输出分解和完整 suite。
 - 未在最新周报中提及的 810 配方 branch-output reuse、W4A4 结果及 task0 32-episode pilot 移到仓库外可恢复归档：`D:\Downloads\FYP-unreported-experiments-20261005`。混合 A4/A8 原始汇总保留在该归档，Git 中只保留其 A8 字段提取及明确来源。
 - Task0 pilot 的 `closedloop.py` 继续作为完整 suite 的共享执行 helper；保留通用源码不表示保留该 pilot 的结果。
-- 原 `ideaspark_run/` 中其余候选生成材料属于 research ideas，保留在本地，不纳入此次实验提交。与本周实验无关的嵌套仓库改动不提交。
+- 原 `ideaspark_run/` 中其余候选生成材料于 2026-10-26 移出工作目录，保存在 `D:\Downloads\FYP-cleanup-recovery-20261026`；本页引用的 phase 实验和 proposal 已在 `fastwam-phase-dither/` 中保留。
 
 下周的 weight/activation sensitivity analysis 和 WAM QAT 与 Yanlong 的讨论仍是计划，不列为本周已完成实验。
