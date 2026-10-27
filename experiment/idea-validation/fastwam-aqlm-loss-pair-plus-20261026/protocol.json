@@ -1,0 +1,185 @@
+{
+  "protocol": "fastwam-aqlm-loss-pair-plus-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-plus-20261026",
+  "arms": [
+    "reconstruction",
+    "ours"
+  ],
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006"
+  },
+  "sources": {
+    "parent_root": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026",
+    "parent_protocol": "fastwam-aqlm-loss-pair-v1",
+    "parent_pair_job": "26008761.pbs101",
+    "parent_pair_artifacts": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/artifacts/26008761.pbs101",
+    "parent_summary": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/summary.json",
+    "parent_protocol_file": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/artifacts/26008761.pbs101/protocol.json",
+    "previous_episode_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-c80-clip-joint-plus-20261017/artifacts/25858606.pbs101",
+    "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "official_vendor": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/vendor/AQLM"
+  },
+  "arm_sources": {
+    "reconstruction": {
+      "source_root": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026",
+      "source_protocol": "fastwam-aqlm-loss-pair-v1",
+      "source_job": "26008761.pbs101",
+      "source_protocol_file": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/artifacts/26008761.pbs101/protocol.json",
+      "source_summary": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/reconstruction/summary.json",
+      "deployment": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/reconstruction/deployment.pt",
+      "endpoint": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/reconstruction/final_anchor.json",
+      "anchor_tensor": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/reconstruction/final_anchor.pt",
+      "source_bank": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/banks",
+      "endpoint_arm": "reconstruction",
+      "updates": 8,
+      "training_exposures": 80
+    },
+    "ours": {
+      "source_root": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026",
+      "source_protocol": "fastwam-aqlm-loss-pair-v1",
+      "source_job": "26008761.pbs101",
+      "source_protocol_file": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/artifacts/26008761.pbs101/protocol.json",
+      "source_summary": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/ours/summary.json",
+      "deployment": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/ours/deployment.pt",
+      "endpoint": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/ours/final_anchor.json",
+      "anchor_tensor": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/arms/ours/final_anchor.pt",
+      "source_bank": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/results/banks",
+      "endpoint_arm": "ours",
+      "updates": 8,
+      "training_exposures": 80
+    }
+  },
+  "quantization": {
+    "target_linears": 614,
+    "weight_bits": 4,
+    "activation_bits": 4,
+    "execution": "decoded_bf16_dense_aqlm",
+    "vq_enabled": true,
+    "native_low_bit_kernel": false,
+    "kv_cache_dtype": "bf16",
+    "transform_implementation": "smooth05_h128_r0_aqlm_g8_m4_k256_v1",
+    "smooth_alpha": 0.5,
+    "hadamard_block": 128,
+    "D": 1,
+    "clipping_ratio": 1,
+    "streams": [
+      "action",
+      "video"
+    ],
+    "rotation_shape": [
+      128,
+      128
+    ],
+    "codebooks": 4,
+    "codebook_size": 256,
+    "in_group_size": 8,
+    "decoded_operands": "bf16 dense"
+  },
+  "inference": {
+    "mode": "idm",
+    "video_steps": 10,
+    "action_steps": 10,
+    "sigma_shift": 1.0,
+    "action_horizon": 32,
+    "execute_per_replan": 10,
+    "action_ensembler": false,
+    "settling_steps": 30,
+    "max_steps_normal": 400,
+    "max_steps_long": 700
+  },
+  "worker_assignment": {
+    "workers": 4,
+    "mapping": {
+      "0": {
+        "arm": "reconstruction",
+        "shard": 0
+      },
+      "1": {
+        "arm": "reconstruction",
+        "shard": 1
+      },
+      "2": {
+        "arm": "ours",
+        "shard": 0
+      },
+      "3": {
+        "arm": "ours",
+        "shard": 1
+      }
+    },
+    "indices_per_worker": "index % 2 == worker_id % 2",
+    "variants_per_worker": 140,
+    "start_stagger_seconds": 20
+  },
+  "allocation": {
+    "jobs": 1,
+    "queue": "normal",
+    "execution_queue": "g3",
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 220,
+    "walltime": "16:00:00",
+    "episodes_per_job": 560,
+    "gpu_monitor_seconds": 15
+  },
+  "soft_deadline_seconds": 56700,
+  "startup_checks": {
+    "case_id": 2000,
+    "seed_index": 0,
+    "sampler_seed": 910004000,
+    "expected_modules": 614,
+    "startup_queries_per_worker": 2,
+    "source_anchor_action_max_abs_tolerance": 0.0,
+    "source_anchor_future_max_abs_tolerance": 0.0,
+    "actual_infer_action_max_abs_tolerance": 1e-06,
+    "orthogonality_max_abs_tolerance": 5e-05
+  },
+  "cohort": {
+    "manifest_protocol": "fastwam-rotation-baselines-v1",
+    "reference_manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "reference_evaluation_job_id": "25728285.pbs101",
+    "sampling_changed": false,
+    "variants_per_arm": 280,
+    "total_new_episodes": 560,
+    "suites": 4,
+    "dimensions": 7,
+    "variants_per_suite": 70,
+    "variants_per_dimension": 40,
+    "variants_per_cell": 10,
+    "state_id": 0,
+    "env_seed_base": 800000000,
+    "sampler_seed_base": 900000000,
+    "seed_stride": 1000,
+    "paired_seeds_across_arms": true
+  },
+  "source_rotation": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021",
+    "protocol": "fastwam-r128-improvements-v1",
+    "job": "25905203.pbs101",
+    "lane": "coverage_c80",
+    "arm": "C80_once_lr1e4",
+    "updates": 8,
+    "training_exposures": 80,
+    "deployment": "/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021/results/coverage_c80/arms/C80_once_lr1e4/deployment.pt"
+  },
+  "training": {
+    "updates": 8,
+    "exposures": 80,
+    "new_training_updates": 0,
+    "all_parameters_frozen": true
+  },
+  "references": {
+    "arms": [],
+    "reference_episode_slots": 0
+  },
+  "selection": "fixed final8 per arm; no heldout or closed-loop checkpoint selection",
+  "boundary": {
+    "closed_loop_authorized": true,
+    "episodes_per_arm": 280,
+    "total_episodes": 560
+  },
+  "goal_thread": "01a17756-c858-7142-b39a-619f26b9eae0"
+}

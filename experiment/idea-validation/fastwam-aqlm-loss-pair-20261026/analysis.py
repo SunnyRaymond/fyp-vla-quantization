@@ -70,8 +70,15 @@ def main():
         summary=read(directory/'summary.json')
         if (summary['protocol'] != PROTOCOL or summary['arm'] != arm or not summary['complete']
                 or summary['updates'] != 8 or summary['exposures'] != 80
-                or summary['target_linears'] != 614 or summary['closed_loop_episodes'] != 0):
+                or summary['target_linears'] != 614 or summary['closed_loop_episodes'] != 0
+                or summary.get('final_anchor') is not True):
             raise ValueError('Arm is incomplete')
+        anchor=read(directory/'final_anchor.json')
+        expected_anchor=dict(protocol=PROTOCOL,arm=arm,updates=8,exposures=80,
+            target_linears=614,case_id=2000,seed_index=0,counts=dict(video_steps=10,action_steps=10))
+        if (any(anchor.get(key) != value for key,value in expected_anchor.items())
+                or not (directory/'final_anchor.pt').is_file()):
+            raise ValueError('Final8 closed-loop source anchor is incomplete')
         setup=read(directory/'setup_checks.json')
         training=read(directory/'training.json')
         if not setup['passed'] or len(training['history']) != 8:

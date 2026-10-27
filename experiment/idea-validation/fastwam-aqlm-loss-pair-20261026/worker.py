@@ -169,6 +169,9 @@ class Work:
             v.requires_grad_(False)
         from aqlm_banks import AQLMBanks
         self.bank = AQLMBanks(self.runtime, p, self.out/'banks', load_quantized=stage != 'prepare')
+        # Keep the decoded student and transformed reference; stream original BF16 masters.
+        self.bank.cache_original_gpu = arm != 'reconstruction'
+        self._reconstruction_teacher_checked = False
         self.masters = self.bank.masters
         self.reset_rng()
 
@@ -375,8 +378,28 @@ class Work:
         with self.torch.set_grad_enabled(grad):
             return reader(self.runtime, value, self.rows[case]['sampler_seeds'][seed], future, checkpointed=grad)
 
-    def reader_preparation(self):
+    @contextmanager
+    def frozen_reader_session(self):
         from reader_runtime import reader_session
+        torch,bank=self.torch,self.bank
+        devices={name:value.device for name,value in bank.decoded.items()}
+        parked_bytes=sum(value.numel()*value.element_size() for value in bank.decoded.values())
+        # The historical reader parks module weights but cannot see this extra AQLM cache.
+        bank.decoded={name:value.detach().cpu() for name,value in bank.decoded.items()}
+        succeeded=False
+        try:
+            with reader_session(torch,self.runtime,bank,self.masters) as reader:
+                save(self.unit/'reader_dense_parking.json',dict(protocol=PROTOCOL,pbs_jobid=self.job,
+                    parked_dense_bytes=parked_bytes,reader_allocated_bytes=torch.cuda.memory_allocated(),
+                    extra_model_queries=0))
+                yield reader
+            succeeded=True
+        finally:
+            if succeeded:
+                bank.decoded={name:value.to(devices[name]) for name,value in bank.decoded.items()}
+                bank.bind_dense()
+
+    def reader_preparation(self):
         from reader_loss import reader_terms
         torch, p = self.torch, self.p
         directory = self.out/'reader_preparation'
@@ -398,7 +421,7 @@ class Work:
             self.progress('initial_student', contexts=case-CASES[0]+1)
             del action, future, target
         records = []
-        with reader_session(torch, self.runtime, self.bank, self.masters) as reader:
+        with self.frozen_reader_session() as reader:
             for case in CASES:
                 path = directory/'cases'/f'{case}.json'
                 if path.exists():
@@ -423,7 +446,6 @@ class Work:
                 records.append(row)
                 self.progress('initial_reader', contexts=len(records))
                 del leaf, action, terms, gradient, target
-        self.bank.bind_dense()
         beta = beta_from_means(p, sum(r['latent_nmse'] for r in records)/80,
             sum(r['reader_kl'] for r in records)/80)
         saved = dict(protocol=p, complete=True, cases=CASES, stats=stats, beta=beta, heldout_used=False)
@@ -431,7 +453,6 @@ class Work:
         return saved
 
     def ours_batch(self, batch, beta, stats):
-        from reader_runtime import reader_session
         from reader_loss import reader_terms
         torch, staged, metrics = self.torch, [], []
         for case in batch:
@@ -446,7 +467,7 @@ class Work:
                 ga=ga.detach().cpu(), gz=gz.detach().cpu()))
             del action, future, total, a, z, ga, gz
         reader_values = []
-        with reader_session(torch, self.runtime, self.bank, self.masters) as reader:
+        with self.frozen_reader_session() as reader:
             for row in staged:
                 leaf = row['future'].cuda().float().detach().requires_grad_(True)
                 action, _ = self.reader_action(reader, row['case'], leaf, True)
@@ -457,7 +478,6 @@ class Work:
                 row['gz'] += rg.detach().cpu()
                 reader_values.append(float(terms['reader_kl'].detach()))
                 del leaf, action, terms, rg
-        self.bank.bind_dense()
         error = 0.
         for row in staged:
             action, future, _ = self.query(row['case'], grad=True)
@@ -499,7 +519,19 @@ class Work:
                 try:
                     for name, module in self.bank.modules.items():
                         hooks.append(module.register_forward_hook(reconstruction(name)))
-                    self.query(case)
+                    action,future,_=self.query(case)
+                    if not self._reconstruction_teacher_checked:
+                        target=self.teacher(case)
+                        error=max(float((action.float().cpu()-target['action'].float()).abs().max()),
+                            float((future.float().cpu()-target['future'].float()).abs().max()))
+                        if error > 1e-6:
+                            raise ValueError('Streamed original BF16 weights changed teacher replay')
+                        save(self.unit/'reconstruction_teacher_identity.json',dict(protocol=PROTOCOL,
+                            pbs_jobid=self.job,case_id=case,max_abs=error,extra_model_queries=0,
+                            original_gpu_cache=False,reference_cache='BF16 GPU'))
+                        self._reconstruction_teacher_checked=True
+                        del target
+                    del action,future
                 finally:
                     for hook in hooks:
                         hook.remove()
@@ -541,6 +573,7 @@ class Work:
             update, started = state['updates'], time.monotonic()
             batch = self.schedule[update]
             optimizer.zero_grad(set_to_none=True)
+            torch.cuda.reset_peak_memory_stats()
             self.progress('training', updates=update, exposures=state['exposures'])
             values = self.reconstruction_batch(batch) if self.arm == 'reconstruction' else self.ours_batch(batch,beta,prep['stats'])
             coverage = self.bank.gradient_report()
@@ -548,6 +581,9 @@ class Work:
                 raise ValueError('Codebook/scale gradient coverage failed')
             if any(v.grad is not None for v in self.runtime.model.parameters()) or any(v.grad is not None for v in self.bank.rotations.parameters()):
                 raise ValueError('Frozen base or rotation accumulated a gradient')
+            # All target gradients are complete; references are unnecessary during Adam/decode.
+            self.bank.release_reference_cache()
+            torch.cuda.empty_cache()
             norm = torch.nn.utils.clip_grad_norm_(self.bank.parameters(), p['training']['gradient_clip'], error_if_nonfinite=True)
             optimizer.step()
             if update == 0 and p['training']['optimizer_reset_after_update1']:
@@ -556,7 +592,11 @@ class Work:
             state['updates'] += 1
             state['exposures'] += 10
             state['history'].append(dict(update=state['updates'], cases=batch, **values, coverage=coverage,
-                gradient_norm=float(norm), seconds=time.monotonic()-started, pbs_jobid=self.job))
+                gradient_norm=float(norm), seconds=time.monotonic()-started, pbs_jobid=self.job,
+                memory=dict(peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+                    peak_reserved_bytes=torch.cuda.max_memory_reserved(),
+                    original_gpu_cache_bytes=sum(v.numel()*v.element_size() for v in self.bank._original_gpu.values()),
+                    reference_gpu_cache_bytes=sum(v.numel()*v.element_size() for v in self.bank._reference_cache.values()))))
             self.atomic(torch, checkpoint, dict(protocol=p,arm=self.arm,beta=beta,state=state,
                 parameters=self.bank.snapshot(),optimizer=self.to_cpu(optimizer.state_dict()),rng=self.capture_rng(torch)))
             save(self.unit/'training.json',dict(protocol=PROTOCOL,arm=self.arm,**state))
@@ -582,8 +622,18 @@ class Work:
                         saved=read(path)
                         if saved['protocol'] != PROTOCOL or saved['updates'] != 8 or saved['arm'] != self.arm:
                             raise ValueError('Existing evaluation unit differs')
-                        continue
-                    action,future,_=self.query(case,seed)
+                        if not (split=='calibration' and case==2000 and seed==0
+                                and not ((self.unit/'final_anchor.pt').exists() and (self.unit/'final_anchor.json').exists())):
+                            continue
+                    action,future,counts=self.query(case,seed)
+                    if split=='calibration' and case==2000 and seed==0:
+                        anchor=dict(protocol=PROTOCOL,pbs_jobid=self.job,arm=self.arm,updates=8,exposures=80,
+                            target_linears=614,case_id=case,seed_index=seed,
+                            sampler_seed=self.rows[case]['sampler_seeds'][seed],plan_row=self.rows[case],counts=counts,
+                            action_shape=list(action.shape),future_shape=list(future.shape))
+                        self.atomic(torch,self.unit/'final_anchor.pt',dict(anchor,
+                            action=action.detach().cpu(),future=future.detach().cpu()))
+                        save(self.unit/'final_anchor.json',anchor)
                     values=self.metrics(action,future,self.teacher(case,seed))
                     save(path,dict(protocol=PROTOCOL,arm=self.arm,case_id=case,seed_index=seed,updates=8,
                         suite=self.rows[case]['suite'],metrics=values,pbs_jobid=self.job))
@@ -591,7 +641,8 @@ class Work:
                     del action,future
         save(self.unit/'summary.json',dict(protocol=PROTOCOL,arm=self.arm,complete=True,updates=8,exposures=80,
             target_linears=614,calibration_queries=80,heldout_queries=80,beta=beta,pbs_jobid=self.job,
-            lineage=state['lineage'],counters=self.counters,closed_loop_episodes=0))
+            lineage=state['lineage'],counters=self.counters,closed_loop_episodes=0,
+            final_anchor=(self.unit/'final_anchor.pt').exists() and (self.unit/'final_anchor.json').exists()))
         (self.unit/'failure.json').unlink(missing_ok=True)
 
 

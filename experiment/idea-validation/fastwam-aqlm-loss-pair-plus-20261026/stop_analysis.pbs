@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N aqlmana261027a
+#PBS -P personal-yguo017
+#PBS -q qdev
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=0
+#PBS -l walltime=01:00:00
+#PBS -j oe
+set -Eeuo pipefail
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+HOST_SHORT=$(hostname -s)
+case "$HOST_SHORT" in *login*|*head*|*submit*) exit 64;; esac
+awk -F. -v host="$HOST_SHORT" '$1==host {found=1} END {exit !found}' "$PBS_NODEFILE" || exit 64
+INFO=$(qstat -xf "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$INFO" || exit 64
+grep -Eq '^[[:space:]]*exec_host[[:space:]]*=.*'"$HOST_SHORT"'/' <<< "$INFO" || exit 64
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-plus-20261026
+DIAG_ROOT=$NEW_ROOT
+ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+PILOT_ROOT=$ROOT
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+AQLM_VENDOR=/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-20261026/vendor/AQLM
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+STOPPED=$NEW_ROOT/artifacts/26010239.pbs101
+ANALYSIS_OUT=$NEW_ROOT/user_stop_analysis/$PBS_JOBID
+ARTIFACTS=$ANALYSIS_OUT/staged
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=4
+CUDA_VISIBLE_DEVICES=
+export NEW_ROOT DIAG_ROOT ROOT PILOT_ROOT BASE SMOOTH_ROOT SOURCE_ROOT R128_ROOT AQLM_VENDOR SIF
+export ANALYSIS_OUT ARTIFACTS FW_JOB_START_EPOCH FW_CPU_THREADS CUDA_VISIBLE_DEVICES
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ANALYSIS_OUT/job.log") 2>&1
+finish() {
+  rc=$?
+  trap - EXIT TERM INT
+  printf '%s\n' "$rc" > "$ANALYSIS_OUT/exit_code.txt"
+  if [[ "$rc" == 0 && -s "$ANALYSIS_OUT/summary.json" ]]; then touch "$ANALYSIS_OUT/ANALYSIS_COMPLETE"; fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+for file in aggregate.py evaluate.py runtime.py runner.py quantization.py libero_state_loader.py; do
+  test -s "$STOPPED/$file" || exit 65
+  cp "$STOPPED/$file" "$ARTIFACTS/$file"
+done
+cp "$NEW_ROOT/stop_analysis.py" "$NEW_ROOT/stop_analysis.pbs" "$ARTIFACTS/"
+source "$STOPPED/environment.sh"
+NV_ARGS=()
+run_python "$ARTIFACTS/stop_analysis.py" "$ANALYSIS_OUT"

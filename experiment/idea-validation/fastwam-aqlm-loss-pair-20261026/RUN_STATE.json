@@ -1,13 +1,13 @@
 {
   "protocol": "fastwam-aqlm-loss-pair-v1",
   "goal_thread": "01a17756-c858-7142-b39a-619f26b9eae0",
-  "goal_status": "active",
-  "status": "minimal_fit_submitted",
+  "goal_status": "paused",
+  "status": "user_stopped_analysis_complete",
   "bootstrap_job_id": "26000139.pbs101",
   "bootstrap_complete_verified": true,
   "prepare_job_id": "26005386.pbs101",
-  "prepare_complete_verified": false,
-  "pair_job_id": null,
+  "prepare_complete_verified": true,
+  "pair_job_id": "26008761.pbs101",
   "arms": [
     "reconstruction",
     "ours"
@@ -15,26 +15,29 @@
   "updates_per_arm": 8,
   "calibration_evaluation_queries_per_arm": 80,
   "heldout_evaluation_queries_per_arm": 80,
-  "closed_loop_authorized": false,
-  "closed_loop_episodes": 0,
+  "closed_loop_authorized": true,
+  "closed_loop_episodes": 525,
   "monitor": {
-    "agent": "/root/aqlm_watch",
-    "configured_model": "gpt-5.6-luna",
+    "agent": "/root/aqlm_watch_6luna",
+    "configured_model": "gpt-6-luna",
     "configured_reasoning_effort": "xhigh",
     "interval_seconds": 1200,
     "unchanged_Q_R": "silent",
     "wakeup_target": "/root in original goal thread",
     "normal_fitting_progress": "silent_snapshot_only",
     "user_confirmed_interval_utc": "2026-10-26T13:28:11.792713+00:00",
-    "budget_change_order": "edit_and_test_before_controlled_stop"
+    "budget_change_order": "edit_and_test_before_controlled_stop",
+    "normal_progress": "silent",
+    "status": "stopped"
   },
-  "next_action": "Monitor minimal_v3 prepare every1200s; verify all614 shared banks, then concurrent loss arms and full fixed-input evaluation. Closed-loop0.",
+  "next_action": "Wait for explicit user instruction; preserve completed525 episodes and all checkpoints. No new training, model forward, or automatic episode resume.",
   "remaining_required_work": [
     "verify all614 official AQLM input-aware fitted banks and C80 captures",
     "complete both loss arms at final update8 with shared initialization",
     "complete C80 and 40contexts x2seeds heldout evaluations per arm",
     "verify actual records and summarize paired results",
-    "keep closed-loop episodes and submissions at zero"
+    "complete one4GPU closed-loop job with280 new episodes per arm,560total",
+    "verify exact paired seeds/state0 coverage and report closed-loop success and paired wins/losses/ties"
   ],
   "pending_source_updates": [],
   "source_updates_applied_to_running_job": true,
@@ -89,9 +92,9 @@
       "completed_captures_reused": 80
     }
   ],
-  "last_verified_utc": "2026-10-26T13:42:03.352913+00:00",
-  "fitted_banks_last_observed": 34,
-  "fitting_module_last_observed": null,
+  "last_verified_utc": "2026-10-27T05:57:09.219456+00:00",
+  "fitted_banks_last_observed": 614,
+  "fitting_module_last_observed": "video_expert.blocks.29.ffn.2",
   "official_fit_runtime_verified": true,
   "startup_decoder_and_capture_parity_passed": true,
   "resume_teacher_max_abs": null,
@@ -201,7 +204,7 @@
   "prepare_queue": "g1",
   "prepare_exec_host": "x1000c1s4b0n1/1*16",
   "runtime_light_budget_verified": true,
-  "runtime_capture_cache_complete": false,
+  "runtime_capture_cache_complete": true,
   "retained_heavy_banks_reused": 22,
   "runtime_cluster_cap_observed": null,
   "runtime_cluster_candidate_vectors": null,
@@ -306,7 +309,101 @@
     "profile": "minimal_v3",
     "max_cluster_vectors": 4096
   },
-  "runtime_minimal_budget_verified": false,
+  "runtime_minimal_budget_verified": true,
   "previous_resume_teacher_max_abs": 0.0,
-  "completed_minimal_banks_last_observed": 0
+  "completed_minimal_banks_last_observed": 580,
+  "closed_loop_expected_episodes": 560,
+  "closed_loop_episodes_per_arm": 280,
+  "closed_loop_root": "/scratch/users/ntu/yguo017/fastwam-aqlm-loss-pair-plus-20261026",
+  "closed_loop_job_id": "26010239.pbs101",
+  "fixed_stage_closed_loop_authorized": false,
+  "closed_loop_controller_local": "../fastwam-aqlm-loss-pair-plus-20261026/control.py",
+  "closed_loop_submission_resources": {
+    "jobs": 1,
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 220,
+    "walltime": "16:00:00"
+  },
+  "fit_profile_counts": {
+    "heavy_v1_retained": 22,
+    "light_v2": 12,
+    "minimal_v3": 580
+  },
+  "previous_pair_job_id": "26008308.pbs101",
+  "previous_pair_exit_status": 1,
+  "pair_memory_fix": "stream original BF16 weights on reconstruction; retain existing transformed BF16 reference cache; no objective/budget change",
+  "reference_weight_bytes": 12032634880,
+  "pair_attempts": [
+    {
+      "job_id": "26006936.pbs101",
+      "attempt": "a",
+      "exit_status": 1,
+      "reason": "reconstruction OOM before first optimizer update",
+      "committed_updates": 0
+    },
+    {
+      "job_id": "26007418.pbs101",
+      "attempt": "b",
+      "status": "confirmed",
+      "memory_fix": true,
+      "exit_status": 1,
+      "reason": "reader KL backward OOM; reconstruction update1 committed",
+      "committed_reconstruction_updates": 1
+    },
+    {
+      "job_id": "26008308.pbs101",
+      "attempt": "c",
+      "status": "confirmed",
+      "reader_memory_fix": true,
+      "resume_reconstruction_updates": 1,
+      "exit_status": 1,
+      "reason": "reference cache overlapped Adam/decode refresh peak",
+      "committed_reconstruction_updates": 1,
+      "reader_preparation_complete": true
+    },
+    {
+      "job_id": "26008761.pbs101",
+      "attempt": "d",
+      "status": "confirmed",
+      "reference_refresh_fix": true,
+      "resume_reconstruction_updates": 1
+    }
+  ],
+  "reconstruction_first_update_gate_passed": true,
+  "reconstruction_updates_last_observed": 3,
+  "reconstruction_exposures_last_observed": 30,
+  "reconstruction_teacher_replay_max_abs": 0.0,
+  "reconstruction_original_gpu_cache_bytes": 0,
+  "reconstruction_peak_allocated_bytes": 41172815872,
+  "reconstruction_peak_reserved_bytes": 41638952960,
+  "ours_phase_last_observed": "initial_student",
+  "ours_contexts_last_observed": 77,
+  "reader_memory_fix": "park full padded AQLM decoded cache on CPU during frozen reader; restore and bind after success",
+  "preserved_ours_initial_inputs": 80,
+  "reference_refresh_fix": "release completed-batch BF16 reference cache before Adam and decoded refresh",
+  "reader_preparation_complete_verified": true,
+  "reader_beta": 0.005507108948679781,
+  "ours_updates_last_observed": 1,
+  "ours_exposures_last_observed": 10,
+  "ours_first_update_gate_passed": true,
+  "ours_staged_replay_max_abs": 0.0,
+  "ours_peak_allocated_bytes": 40125337600,
+  "ours_peak_reserved_bytes": 41578135552,
+  "reader_parked_dense_bytes": 12032636928,
+  "pair_complete_verified": true,
+  "fixed_input_result": "ours worse than reconstruction on all40 heldout contexts for reported metrics; full negative results retained",
+  "fixed_input_report": "pulled/26008761.pbs101/results/report.zh.md",
+  "closed_loop_completed_by_arm": {
+    "reconstruction": 280,
+    "ours": 245
+  },
+  "closed_loop_episodes_completed": 525,
+  "closed_loop_full_goal_complete": false,
+  "closed_loop_remaining_episodes": 35,
+  "closed_loop_stop_receipt": "../fastwam-aqlm-loss-pair-plus-20261026/user_stop_receipt.json",
+  "read_only_analysis_job_id": "26020010.pbs101",
+  "read_only_analysis_complete": true,
+  "automatic_resume": false,
+  "analysis_report": "../fastwam-aqlm-loss-pair-plus-20261026/STOPPED_ANALYSIS.zh.md"
 }

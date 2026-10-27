@@ -1,0 +1,1539 @@
+{
+  "title": "Microscaling VQ WAM and inference engine handoff index",
+  "snapshot_date_sgt": "2026-10-27",
+  "base_repository_commit_after_cleanup": "38099754413203676f16eb744190eb6115f8e01f",
+  "scope": {
+    "idea_validation_directories": 85,
+    "reproduction_directories": 2,
+    "total_directories": 87
+  },
+  "primary_document": "HANDOFF.zh.md",
+  "operations_document": "handoff/07_OPERATIONS.zh.md",
+  "verification_boundary": "本地证据交接快照；未运行训练、推理或环境 episodes，未逐项重验远端资产，未自动恢复作业。原任务可能继续更新自己的状态。",
+  "current_fastwam_reference": {
+    "source_job": "25921795.pbs101",
+    "arm": "reader_kl",
+    "endpoint": "final8",
+    "closed_loop_successes": 208,
+    "episodes": 280,
+    "matched_action_latent_successes": 204,
+    "bf16_successes": 216,
+    "benchmark": "LIBERO-Plus frozen280 panel; separate from original LIBERO400"
+  },
+  "current_runtime": {
+    "name": "C+decoder+buffer",
+    "policy_call_p50_seconds": 0.887096,
+    "query_peak_allocated_gb_decimal": 16.914255,
+    "linear_backend": "online BF16 layer decode and cuBLAS BF16 GEMM",
+    "native_int4_or_vq_gemm": false,
+    "measurement_scope": "historical fixed80-query profiling panel; separate from new closed-loop policy-call timing"
+  },
+  "experiments": [
+    {
+      "directory": "experiment/idea-validation/fastwam-libero-bottleneck",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-libero-bottleneck",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 在优化模型前，先测清 FastWAM Optional-IDM 的 `first_frame` 实际时间花在哪里。冻结 checkpoint、observation、proprio、prompt 与 RNG，比较原生调用、逐层 hooks、较轻计时及单独 profiler；另测 OSMesa 环境步进。它服务于判断 attention sparsity/cache 的整段收益空间，不是量化实验。",
+      "result_and_status_excerpts": [
+        "**结果。** 原生暖态 action chunk 约 637–640 ms；10 次 action denoising 合计约 523.12 ms，约占暖态 chunk 的 82%。VAE 当前图像编码约 9.99 ms，text encode 约 33.15 ms，video K/V prefill 约 52.04 ms。所谓 action mixed-attention 约 55.4 ms 是 inclusive 诊断区间，含多种边、layout 和 launch 开销；单次 profiler 的相关 GPU kernels 累计仅约 11.29 ms，不能把前者当作可删除的 observation QK/AV 独占成本。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-libero-bottleneck/RESULT.zh.md",
+        "experiment/idea-validation/fastwam-libero-bottleneck/PROTOCOL.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-idm-libero-bottleneck",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-idm-libero-bottleneck",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 用同一 Optional-IDM checkpoint、相同输入与随机源，比较 `first_frame` 和 `idm`。前者不生成 future，后者多出 10 次 video denoising，再用 current/future video 做 action conditioning；两者 action 均为 10 步。",
+      "result_and_status_excerpts": [
+        "**结果。** 12 对原生完整调用中，IDM/first_frame 的配对比值均值为 1.8039。完整调用 median 分别为 1158.59 / 643.19 ms；单轮 video/action forward 的 CPU wall median 约 52.00 / 52.99 ms。实际等待时间上两段相近，而 profiler child kernels 的 video/action 合计约 413.26 / 158.10 ms；这两种观察并不矛盾。",
+        "**接手意义。** 现有 joint video/action 量化必须同时保护 video 与 action 链路；first_frame profiling 不能替代 IDM profiling。本实验也没有证明 action-context sparsity 能得到大幅整段加速。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-idm-libero-bottleneck/RESULT.zh.md",
+        "experiment/idea-validation/fastwam-idm-libero-bottleneck/PROTOCOL.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-action-parallel",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-action-parallel",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 分开测试两种“并行”：固定 text/proprio context 的 K/V 预计算，以及依赖性的 denoising 时间步能否用 prefix-Picard 近似并行求解。前者是精确复用，后者会改变求解过程，不能混为一种优化。",
+      "result_and_status_excerpts": [
+        "**结果。** 逐层固定 K/V cache 的完整 infer_action 约 642.77→591.82 ms，配对约 1.0864×，逐步及最终输出一致。跨层 batching 让构建更快，但整段额外收益约 0.4%，且增加显存。所有 11 个 prefix-Picard 配方均未过 numerical gate；W10/R1 看似约 9.88×，输出误差很大；W10/R10 约 0.99×，仍未通过。Batch10 仅多约 47.4 MiB，故当前限制是数值/收敛与额外工作量，并非模型复制导致的巨大显存压力。",
+        "**当前决策。** 保留精确 K/V cache 的实现思想；冻结的时间并行 recipe 为 NO-GO。当前 engine 的条件缓存仍需在当前模型模式内独立验证，不能继承这三个观察的覆盖结论。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-action-parallel/RESULT.zh.md",
+        "experiment/idea-validation/fastwam-action-parallel/CONTEXT_PROTOCOL.zh.md",
+        "experiment/idea-validation/fastwam-action-parallel/TIME_PROTOCOL.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-phase-dither",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-phase-dither",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与表示。** 在 W4A8 activation subtractive dither 中，通过共享随机 draw 的 phase 调整跨位点量化残差相关性，尝试降低最终 action error。固定 8 个 phase groups，保持原模型权重与求解器；这是独立历史方向，不是当前 additive weight VQ 的组成。",
+      "result_and_status_excerpts": [
+        "**结果与结论。** 原 screen 对 independent dither 的完整 action MSE 改善 5.27696%，低于预先规定的 10% 扩展 gate，因此 `NO_GO_FOR_EXPANSION`。新 draws 下 phase/independent 的排序改变。完整 Goal 10 tasks×50 states、每臂 500 episodes：BF16 487，RTN 486，independent 483，learned phase 481；learned 对 RTN 为 7 胜/12 负/481 平。当前 recipe 没有闭环优势。",
+        "**边界。** 该闭环用 first_frame、20 action steps、W4A8 fake-quant floating GEMM；当前 Microscaling 主结果用 IDM 10+10，不能直接比较 latency 或成功率。NO-GO 只约束这套粗粒度 recipe，不等于证明 dither 全家族无效。原始二进制输入依赖旧 scratch；本地 `new-draw-a8` 只有从混合结果提取的 A8 字段，不能声称 raw data 全部齐全。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-phase-dither/README.zh.md",
+        "experiment/idea-validation/fastwam-phase-dither/mechanism-screen/RESULT.zh.md",
+        "experiment/idea-validation/fastwam-phase-dither/libero-goal-suite/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-libero-plus-pilot",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-libero-plus-pilot",
+      "status": "partial_stopped",
+      "status_note": "早期 pilot 已停止；只使用验证过的子面板，未完成原 5600 目标。",
+      "purpose_excerpt": "**最初目标。** 原设计为 4 suites×7 扰动×50 variants=1400 variants，每 variant 比 BF16/W4A8/W4A4/W4A4 KV4，合计 5600 slots；这是后续 280-variant 面板的来源，不是同一个分母。W4A4 要求真实 packed INT4 Tensor Core GEMM；KV4 要求真实打包存储后读取，不接受 fake quant 冒充。",
+      "result_and_status_excerpts": [
+        "**实际进度。** `RUN_STATE.json` 明确记录：保留的 78 shards 已完成，CPU 汇总验证的是 Spatial 6 个维度、300 variants×4 arms=1200 slots；A4 与 A4 KV4 均为 0/300。原 5600 目标、完整 performance/storage 均未完成，后续提交已禁用。状态文件里仍有 `completed_episodes=0` 等历史字段，与自然语言状态并不一致，不能机械把任意一个字段当最终评分。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-libero-plus-pilot/PREREG.zh.md",
+        "experiment/idea-validation/fastwam-libero-plus-pilot/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-a4-phases12",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-a4-phases12",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 识别 A4 的主要敏感 scope，并排除“只有 native kernel 出错”的解释。在 10 个 Original Spatial 与 12 个 Plus 输入、每输入 2 seeds 上，冻结 W4 G128，只对 video/action/proprio 的 A8/A4 做完整 2³ factorial；加独立解包 FP32 Linear reference。总 440 个 full queries，0 闭环。",
+      "result_and_status_excerpts": [
+        "**结果。** Original/Plus first 10 motor RMSE：全 A8 0.02034/0.02852；仅 video A4 0.32548/0.31233；仅 action A4 0.11299/0.12854；全 A4 0.34717/0.34535。Video 的 paired 主效应约 +0.25888，action +0.06263，proprio 接近零。Video×action 存在非加性交互。",
+        "**接手意义。** 支持优先改善 video/action activation basis 与量化步长，促成 Smooth/H128；不支持只降低 proprio 精度来修复主问题。44 contexts 是 22 个输入内的配对重复，不是 44 个独立场景。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-a4-phases12/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-smooth-vq-phases12",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-smooth-vq-phases12",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 先用 Smooth/Hadamard 改善 A4，再看简单 weight VQ 能否接住被迁移到 weights 的难度。614 Linears、约 6.016B target weights；固定 8 calibration contexts、4 selection cases×2 seeds、10 held-out cases×2 seeds。Selection 前没有使用 test；0 episodes。",
+      "result_and_status_excerpts": [
+        "**结果。** BF16 W+A4 的 held-out motor RMSE 从 identity 0.33724 降至 Smooth0.5+H 的 0.04529，约下降 86.6%。同一 S0.5H 基底下 Scalar W4A4 为 0.05745，原始 VQ 为 0.07831，10/10 test cases 的 VQ 更差。Selection 上更激进 smoothing 的 activation error 更低，并不保证 action 更好；weight peak ratio 随 smoothing 可显著增大。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-smooth-vq-phases12/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-smooth-vq-phases12/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-rotation-baselines",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-rotation-baselines",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与公平性。** 在同一个 Optional-IDM 模型、冻结 280 variants 上比较 BF16、固定 QuaRot-adapted、learned SpinQuant-adapted W4A4。局部右乘在 norm/modulation/nonlinearity 后执行，不把 LLaMA 的全局 residual rotation 直接穿过 WAM。Learned rotation 复用历史 step200，不重训、不重新选 checkpoint。",
+      "result_and_status_excerpts": [
+        "**结果。** 正式作业 `25728285.pbs101` 完成 840/840 slots，BF16 **216/280**、QuaRot **195/280**、SpinQuant **203/280**。SpinQuant 对 QuaRot 为 16 胜/8 负/256 平；两者分别比 BF16 少 13/21 个成功。量化 episodes 有实际 native INT4 调用证据。",
+        "**边界与特殊放行。** 原 preparation 的部分 native-vs-reference 数值差被用户明确放行；未完成的 selection 检查不能写成全通过。正式 native runtime、完整覆盖和结果有效性仍验收。它是本地 adapted recipe，既不能叫官方完整复现，也不能保证 native 与 decoded BF16 输出相等。",
+        "**接手用途。** 它提供后续反复复用的 280-variant manifest 和 BF16/rotation reference。优先复用已经完成的 slots，不重新生成 seeds 或抽样。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-rotation-baselines/PREREG.zh.md",
+        "experiment/idea-validation/fastwam-rotation-baselines/formal_completion_receipt.json",
+        "experiment/idea-validation/fastwam-rotation-baselines/results/summary.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-smooth-scalar-plus",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-smooth-scalar-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 把已冻结 Smooth0.5+Hadamard Scalar bank 接入真实 native W4A4 闭环，与已有 BF16/QuaRot/SpinQuant reference 比较。2 GPUs 各 140 episodes；不新增 calibration 或训练。",
+      "result_and_status_excerpts": [
+        "**结果。** `25734678.pbs101` 完整 280/280，Scalar **200/280（71.43%）**；对 BF16 为 9 胜/25 负/246 平，对 SpinQuant 为 14 胜/17 负/249 平。实际 native 完整 query mean 约 6.124 s，query allocated peak 约 16.23 GB；压缩降低 storage/allocated memory，没有形成速度优势。",
+        "**边界。** Scalar 的历史 calibration/selection 只覆盖 Spatial，rotation baseline 覆盖四 suites；因此不能把成功率差全部归因于 Smooth。Native 与旧 decoded reference 的启动 action 存在差异，这个闭环只属于该 native 实现。其 bank 来源固定，不因 Plus 结果重新调参。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-smooth-scalar-plus/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-spinquant-rmse",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-spinquant-rmse",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 将已训练的 native SpinQuant bank 放到与 VQ 相同的固定输入 action-fidelity 面板中，避免只比较不同轨迹的 closed-loop queries。4 selection cases×2 seeds 加 22 test cases×2 seeds，共 52 个新 query，另一个 BF16 replay。",
+      "result_and_status_excerpts": [
+        "**结果。** Test first 10 motor RMSE **0.057373**；历史 Scalar 0.054994、row-scale VQ 0.057052、local-output VQ 0.057256、action-sensitive VQ 0.061030。正式每 query 记录 614 targets、6436 次 native INT4 GEMM；没有回退 decoded SpinQuant。Job `25756064.pbs101` F/Exit0。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-spinquant-rmse/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-spinquant-rmse/native_execution_receipt.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-diffusion-baselines",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-diffusion-baselines",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 在同一 614-target、相近 effective bpw 下加入 diffusion quantization 的 SVDQuant/ViDiT-Q adaptations。C80 calibration，两个新 arms 各 280 episodes，复用 2240 reference slots。SVD 保留 BF16 low-rank residual；ViDiT 保留 channel balancing、rotation 和 token-dynamic A4。",
+      "result_and_status_excerpts": [
+        "**结果。** `25878591.pbs101` 完成 560/560 新 episodes：SVDQuant **108/280（38.57%）**、ViDiT-Q **203/280（72.50%）**。Target effective bpw 为 4.4250 / 4.3250；SVD global rank16。ViDiT 与 SpinQuant 成功数相同，但仍有 9 胜/9 负的不同 slots。SVD 的低分是该适配版事实，未做归因。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-diffusion-baselines/README.zh.md",
+        "experiment/idea-validation/fastwam-diffusion-baselines/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-prism-visualization",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-prism-visualization",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 用相同输入的 activation/weight 图解释 transformations 与 Microscaling 的作用，避免把更平坦的图面直接当成最终控制收益。采集 2 个输入×5 arms，共 10 次 full forward，得到 752 份 activation/paired-local/weight 记录；16 个目标 Linears 覆盖两个 experts 和多个深度。",
+      "result_and_status_excerpts": [
+        "**结果。** 代表性 video block10 ffn.2 的 channel RMS CV：raw 0.492、SpinQuant R128 0.130、Smooth+H128 0.122；但 action 位置的相对排序不同。Row/Micro 共享相同 activation recipe；其差别应看相同基底下的 weight/output error，而非说 Micro 又额外“平滑 activation”。",
+        "**接手边界。** 图窗口不是全模型统计。后续离线 weight analysis 复用已有 captures，不额外跑整模型；no-A4 FP32 bias-free Linear 的 output NMSE 不能写成 action RMSE、native latency 或 closed-loop 证据。原始 signed NPZ 与 JPEG 展示分开保存。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-prism-visualization/README.zh.md",
+        "experiment/idea-validation/fastwam-prism-visualization/WEIGHT_ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-prism-visualization/retrieved/results/full/plots/gallery.html"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-teacher-multiseed",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "fastwam-teacher-multiseed",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 在构造概率/soft-bin 目标前，先测 BF16 teacher 的条件采样波动。C80、每 case16 seeds，共 1280 记录；seed0 复用 80 条，新增 1200 条。仅 first 10×6 normalized motor；0 训练、0 held-out、0 闭环。",
+      "result_and_status_excerpts": [
+        "**结果。** Case 内 seed 波动 RMS std **0.02358**，case mean 间 std RMS **0.32473**，约 13.77 倍。使用固定 88 投影比较 K4/K8 子组；covariance relative Frobenius error mean 分别 1.2130/0.98766，effective rank 约 6.2136。16 次 cached/repeat replay 检查通过。",
+        "**结论限制。** Full16 是有限样本参照，不是真分布；16 seeds 不等于 16 独立环境状态，也不能证明多模态。共享 Gaussian bandwidth 可能大于 case 内波动；σ0.25 时 98.75%投影宽度超过相应 within-state std。没有预先 stability threshold，不能写成“分布估计已稳定通过”。此数据不自动改变 Cosmos 训练协议。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-teacher-multiseed/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-teacher-multiseed/DESIGN.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/reproduction/fastwam-smoke",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "reproduction/fastwam-smoke",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**角色。** 原始 FastWAM、LIBERO、OSMesa、checkpoint、容器/host 库兼容性的基础入口。上游 revision `7faa71108368fbb3b6885649f112af607427a2d4`；主仓库只保存内部 FastWAM 的 gitlink，恢复源码需检出登记 revision。",
+      "result_and_status_excerpts": [
+        "**实际实现约束。** PBS 分配 GPU UUID 与 EGL 全局 index 不兼容，当前采用 OSMesa CPU rendering、分配 GPU 推理，不修改 CUDA mask 去探测别人的卡。旧 EGL 全局探测入口已禁用。该 smoke 仅证明一条管线能跑通，不是完整 suite/IDM 结果。"
+      ],
+      "evidence_paths": [
+        "experiment/reproduction/fastwam-smoke/RESULT.md",
+        "experiment/reproduction/fastwam-smoke/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/reproduction/cosmos3-edge-robolab120",
+      "handoff_document": "handoff/01_FOUNDATIONS_AND_BASELINES.zh.md",
+      "section_heading": "reproduction/cosmos3-edge-robolab120",
+      "status": "preparation_unverified",
+      "status_note": "准备性质 reproduction，不能当成已完成训练或机器人闭环。",
+      "purpose_excerpt": "**角色。** Cosmos3-Edge-Policy-DROID 与 RoboLab-120 的后续迁移准备，不是当前 Cosmos Policy/Predict2-2B 实验，也没有完成 Microscaling 量化。",
+      "result_and_status_excerpts": [],
+      "evidence_paths": [
+        "experiment/reproduction/cosmos3-edge-robolab120/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-action-aware",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-action-aware",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与实现。** 从简单 additive VQ 依次增加 BF16 row gain、local Linear-output fitting 和 action-sensitive proxy。表示为 d4、两本 256-entry BF16 books、uint8 indices；共享 Smooth0.5/H128、dynamic A4、BF16 KV。所有新拟合从相同 row-scale bank 开始。Calibration8、selection4×2、test22×2；action-sensitive lambda 只在 selection 选择。",
+      "result_and_status_excerpts": [
+        "**结果。** Test first 10 motor RMSE：原始 VQ0.07131、row-scale0.05705、local-output0.05726、action-sensitive λ0.1 为 0.06103，Scalar 参考 0.05499。Row-scale 相对原始约改善 20%、19/22 cases 更好；之后的 proxy 优化没有继续改善实际 test。",
+        "**关键失败。** Action-sensitive 训练 proxy 降到初始约 0.0048%，但 calibration 真实 motor 仍 0.04851，差于 local-output0.04671，说明失配在训练输入就存在，不只是泛化问题。当前方法不继承该 proxy 作为训练主目标；保留 row-scale 表示，并转向真实 sampler 末端监督。",
+        "**接手入口。** [RESULTS.zh.md](../idea-validation/fastwam-vq-action-aware/RESULTS.zh.md)、[README.zh.md](../idea-validation/fastwam-vq-action-aware/README.zh.md)。`25743693.pbs101`为主要 GPU 来源；不要混淆这里的 lambda0.1 与后续 latent loss 的 rho0.1。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-action-aware/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-action-aware/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-proxy-diagnostic",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-proxy-diagnostic",
+      "status": "partial_historical_wait",
+      "status_note": "保留完成的离线诊断；完整后续阶段尚无完成证据，旧等待状态不代表当前仍在排队。",
+      "purpose_excerpt": "**问题。** 区分 proxy 失效是 probes 没覆盖最终 60D action，还是连已观察方向也预测错，并检查固定 token rows/probes 的依赖。第一阶段只读 8calibration×4 banks 的已保存 actions，不重跑模型；后续重 capture 与 old/new rows×old/new probes 交叉比较。",
+      "result_and_status_excerpts": [
+        "**结论限制。** 修正抵消原误差，不等于模块修正之间异常互相抵消；不应据此引入“禁止跨层抵消”的新损失。当前主线已使用真实 output loss，不依赖补完这批旧 proxy。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-proxy-diagnostic/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-proxy-diagnostic/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-action-distill",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-action-distill",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 放弃间接 proxy，对完整 student sampler 的最终 first 10×6 motor 直接蒸馏。训练 614 层 books 与 row gains，indices 和底模固定；从 row-output parent 开始，C8×2epochs=16 updates，4-case selection 选 epoch，完整 22-case test 只在冻结后评测。",
+      "result_and_status_excerpts": [
+        "**结果。** Parent→selected epoch2：test first 10 motor **0.057256→0.058110（+1.49%）**，full 32 **0.066828→0.069572（+4.11%）**，late 22 **0.069300→0.073342（+5.83%）**；calibration 则 0.046706→0.044329。13/22 cases 改善但少数大退化使 primary mean 更差，不能用中位数或胜例数替换主指标。",
+        "**当前决策。** 该 selected checkpoint 不替换 parent；这轮促成 future-latent 诊断和 A+Z。不能将 late 22 退化单因归为未监督 horizon，因为还没做因果干预。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-action-distill/ANALYSIS.md",
+        "experiment/idea-validation/fastwam-vq-action-distill/RESUME.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-latent-diagnostic",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-latent-diagnostic",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** Action-only 更新是否破坏了想象的 future，以及使用 teacher future 能否修复 action。固定 parent 和 distilled epoch2，不训练；同一 60 contexts 比较 BF16、parent/self、parent/teacher-future、distilled/self、distilled/teacher-future。",
+      "result_and_status_excerpts": [
+        "**状态与结论。** GPU `25787685/25787687`与 CPU `25790422`完整结束，60 contexts、5 arms、300metric rows，22testcases 全部保留，self-replay 差异 0。结果支持检验 A+latent 组合：calibration 的 action 拟合可伴随 latent 恶化；但本轮没有训练 latent-only，也不能从相关性指定某一语义特征为中介。详细指标见该目录分析产物，不在缺少对应表的根 README 中补造数值。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-latent-diagnostic/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-action-latent",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-action-latent",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与实现。** 在与 action-only 相同的 parent、C8、16 updates 和 selection 规则下，加入 teacher clean-future NMSE；student 仍使用自身 future，没有 teacher forcing。训练前用 C8 确定 w=0.0029918822946277566，使初始 latent loss 数值约为 action 的 10%，这不是 10%的梯度占比。",
+      "result_and_status_excerpts": [
+        "**结果。** Test first 10 motor：parent0.057256、action-only0.058110、A+Z **0.052951**；full 32 为 0.061332、late 22 为 0.063866；future NMSE 从 parent0.084435、action-only0.093011 降至 **0.071787**。Gripper 反而从 parent0.018110 到 0.018826；更远 horizon 仍不及部分 Scalar/row-scale 参考。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-action-latent/INTERPRETATION.zh.md",
+        "experiment/idea-validation/fastwam-vq-action-latent/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-microscale",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-microscale",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** Row-scale 的单个 output-row gain 不足以匹配行内幅度变化；在相同 d4/two-book 容量上加入 B32 power-of-two scale。一个 B32 覆盖 8 个 d4 vectors；额外 uint8 exponent 为 0.25 bpw。拟合按真实 scale²和 A4 输入 diagonal second moments 加权，不只是先归一化后无权 K-means。",
+      "result_and_status_excerpts": [
+        "**结果。** Row→Micro test first 10 motor **0.05705206→0.05240395（−8.15%）**，14/22 cases 改善，通过 mean 下降≥5%且≥12/22 改善的工程 gate。Selection 反而+1.11%，所以不称普遍稳定改善。含 transforms 的 target effective bpw **4.020873→4.270878**，payload 约 3.024→3.212 GB。Gripper 比 row 更好，但仍不及历史 Scalar。",
+        "**接手意义。** 这是后来 MXVQ 表示的起点；B32 是 weight microscaling，不是 activation block quantization。Indices/exponents 在后续 distillation 中通常冻结。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-microscale/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-microscale/micro_codebook.py"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-plus",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 将旧 row-scale 与 Micro 的已冻结 banks 放到同一 280-variant 闭环面板，验证固定输入改善是否转成控制收益。两臂各 280，复用 1120 已有 reference slots；没有重拟合。4 卡各一个 persistent worker。",
+      "result_and_status_excerpts": [
+        "**结果。** 续跑`25771275.pbs101`完整结束：row-scale **202/280**、Microscaling **204/280**；旧 BF16 为 216/280。两 VQ 的后续 query mean 约 4.731/4.783 s，是当时 decoded-dense 实现，不能代表后来 layer-decode/Graph engine 速度。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-plus/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-plus/results/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-micro-latent-search",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-micro-latent-search",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 将 A+Z 叠加到共同未训练 Micro 起点，扫描 rho；lambda=rho×c，c=0.03033027132999191 只由初始 8calibration 确定。五个 R1 候选 rho0.1/0.5/0.7/1/1.5 各 16 updates；selection4 cases×2 seeds，late 22/gripper/P90 guards 为 parent 的 1.2 倍。按最低 first 10 的 1%near-tie 优先小 rho、早 epoch。",
+      "result_and_status_excerpts": [
+        "**最终范围。** 用户在第一轮结束后取消第二轮并停止。因此只完成 5 候选×3checkpoints 的 15selection points，不能沿用旧 README 称“两轮 optimal lambda 已完成”，也没有 rho0 matched action-only control。",
+        "**结果。** 协议选 rho0.1/epoch2，lambda0.00303302713，selection first 10 **0.0418016**，相对 parent0.047929 下降 12.78%。严格最小是 rho1.5/epoch1 的 0.0417929，但 near-tie 规则选小 rho；future 最小是 rho0.7/epoch2 的 0.0226788。三种“最好”对象不同，必须同时保留。",
+        "**当前用途。** 保留小样本 loss tradeoff 证据，不将 selection 数字当独立 test 或闭环。接手不自动恢复已取消 R2，也不把这里旧 Spatial C8 系数替换成四 suite C8 的 c。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-micro-latent-search/ROUND1_SUMMARY.zh.md",
+        "experiment/idea-validation/fastwam-vq-micro-latent-search/CONTRACT.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c8-action-latent-plus",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-c8-action-latent-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 用四个 Original LIBERO suites 各 2 contexts 的 C8，训练 A+Z MXVQ，再完整评测冻结 280 面板。C8 是`2000,2019,2021,2025,2051,2057,2066,2070`，seed0；c=0.028303017887797623。rho0.1 训练 16 updates/2epochs，rho1.5 训练 8 updates/1epoch，二者预算不同。",
+      "result_and_status_excerpts": [
+        "**结果。** `25822971.pbs101`完成 560 新 episodes 与 1680references：rho0.1 **201/280**，rho1.5 **206/280**；旧 Micro204、SpinQuant203、BF16216。Source/action replay 差异 0，batched H/A4 通过 bitwise checks。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/results/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c8-action-latent-plus/VALIDATION_REPAIR_25821658.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-future-reader",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-future-reader",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** A+Z 收益是否只因它自己的 student 下游与 future 共同适配。冻结同一 BF16 reader（video prepare/prefill、ActionDiT、proprio），仅替换 BF16/parent/action-only/A+Z 的 final future；随后完整做两个 student readers×两种 futures 的 2×2 交叉。",
+      "result_and_status_excerpts": [
+        "**覆盖与结果。** 原 60 contexts、test22 cases×2 seeds。固定 BF16 reader 的 first 10：parent **0.036144691**、action-only **0.041243219**、A+Z **0.035083670**；A+Z 对 action-only 有 13/22 cases 改善，进入交叉阶段。Action-only reader 读 A/A+Z 为 0.058110442/0.053481176；A+Z reader 为 0.058676505/0.052951009。60 次 BF16 future replay 和 120 次 student self-future replay 差异 0。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-future-reader/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-future-nmse-matched",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-future-nmse-matched",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与对照。** 将 action-only future 误差方向保留，只围绕 teacher 缩放其幅度，使实际 BF16 future NMSE 匹配 A+Z；用同一 BF16 reader 比较 A、匹配幅度 C、A+Z 的 B。Alpha 只按 future error 确定，不按 action 结果选；保留全部 60 contexts。",
+      "result_and_status_excerpts": [
+        "**结果。** Test future NMSE A/C/B 为 0.093011/0.0717863/0.0717869；first 10 motor **0.0412432/0.0360742/0.0350837**。C 已经重现大部分 A→B 平均收益。B−C mean 略好−0.00099049，但 median 为正，仅 11/22 cases 改善，leave-one-case-out 范围跨 0；full 32/late 22 也更差。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-future-nmse-matched/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-future-nmse-matched/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-bilevel-rho",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-bilevel-rho",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 能否通过独立 development 上的虚拟 Adam 有限差分，自动调 rho，而非反复看旧 held-out。Inner 原 C8；outer8 与 confirmation8 contexts 来自与 C80/held-out 不同 demonstrations；8rounds/16 updates，固定 rho0.1/1.5 对照从共同状态重训。",
+      "result_and_status_excerpts": [
+        "**结果。** 完整 pilot312endpoint records，rho_hat 约 2、lambda 约 0.05660604；相对 development 冻结 rho1.5，confirmation motor **+27.44%**，旧 held-out **−2.77%**，未过 gate。另做阶段 1 保留 adaptive 路径的 endpoint 诊断，相对 rho1.5 仍有 motor/latent 退化。",
+        "**阶段 2 最终状态。** rho1 与 2.25 从相同初始 master/Adam/RNG 训练 16 步，H1/H8/H16 完整 outer 比较；2.25 始终 motor 稍好于 1，未出现总体排序翻转。但 final16 相对 rho1.5，motor 分别+6.18%/+5.99%，future+51.07%/+37.82%，两候选均不合格，**不进入阶段 3**，保留 rho1.5。不能把曾经“阶段 2 已授权”的正文当作仍待自动提交的任务。",
+        "**接手意义。** 单步 warm-state 目标与从头固定 rho 训练不是同一优化问题；该路线未替代当前 rho1.5。确定性修复、state-restore 与 nonempty-Adam replay 是这里的重要工程资产。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-bilevel-rho/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-bilevel-rho/results/stage2_compare/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-bilevel-rho/NUMERICS_REPAIR.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-codeword-conflict",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-codeword-conflict",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 检验 shared codeword 是否形成异常梯度冲突、阻碍 latent 保护。扫描 614 Linears occupied words 后，仅按 C8 选 4modules×8book0 words，共 1,118,810 个 d4 vectors。相同 support 比较 shared codebook 更新、untied 独立 decoded-weight 更新、random，两个有限步长 0.005/0.015；不发明新的 assignment。",
+      "result_and_status_excerpts": [
+        "**结果。** 小步 shared/untied 的 test future NMSE **0.0832547/0.0730161**，fixed-reader motor **0.0391120/0.0333009**，有正信号。大步 untied 却显著恶化：future0.1218054、motor0.0590210，均差于 shared0.0777560/0.0359131。两个步长都需通过的 gate 为 false。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-codeword-conflict/FINAL_REPORT.zh.md",
+        "experiment/idea-validation/fastwam-vq-codeword-conflict/EXACT_INTERPRETATION.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-module-norm",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-module-norm",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 上一轮 untied 收益究竟来自方向自由度还是模块间更新能量分配。固定同 4modules/32words/support，用 shared 和 untied 原有预算分别构成 S-budget/U-budget，每模块对 shared/untied/random 匹配实际 decoded-BF16 更新范数；不新增 backward。",
+      "result_and_status_excerpts": [
+        "**结果。** 小步 S-budget shared/untied motor 为 0.0391120/0.0388714；U-budget 为 0.0408482/0.0347709，说明方向与模块预算存在交互。大步 0.015 的 untied 在两种预算下仍明显失败。小步 untied 对 U-budget random 的 motor 只多改善约 0.000581，不能脱离 random 实例和已见 test 过度解释。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-module-norm/FINAL_REPORT.zh.md",
+        "experiment/idea-validation/fastwam-vq-module-norm/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-residual-capacity",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-residual-capacity",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 同一预算下，将第二本 residual book 的容量按未来/reader 损伤重新分配，是否优于 uniform、reconstruction 或 Fisher。冻结 action-only16update checkpoint，不训 books、不改已有 index 值；4096 个 d4 vectors/tile，0/50/100% residual slots；tags、padding、metadata 都计入 bytes。完整 17 arms×60 contexts=1020 记录。",
+      "result_and_status_excerpts": [
+        "**结果。** 统一 target 预算 2,272,020,342 bytes。Uniform 的 fixed-reader/native first 10/future 为 **0.068938/0.092265/0.181304**；action-Fisher **0.040995/0.056460/0.099004**；future+reader signed-damage 组合 **0.174579/0.189466/0.367432**，22/22 cases 均差于 uniform 的 action。Action 目标的 signed-damage 也差，不能只责怪 future 目标。",
+        "**结论与接手。** 否定的是这套有符号一阶评分与大幅容量移除的组合；不能据此否定 A+Z 训练。Fisher 是较好的本轮排序 proxy，不等于完成完整 GPTVQ 算法。此 layout 是容量核算、decoded-BF16 执行，尚无稀疏 packed 部署 kernel。随后做单 tile 与多 tile 实测，见下一条。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-residual-capacity/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-residual-capacity/retrieved/results/analysis/REPORT.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-tile-intervention",
+      "handoff_document": "handoff/02_VQ_AND_LATENT.zh.md",
+      "section_heading": "fastwam-vq-tile-intervention",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** Residual 分配失效是单 tile 评分已经不准，还是多 tile 同时改动才产生交互。固定 4 个 video/action 早晚 FFN 模块、每模块 7 个 tiles，8calibration cases；28single+24multi 组合与首尾 baseline，共 432 配对记录，每条包含 native 与 fixed-reader 两个 query。",
+      "result_and_status_excerpts": [
+        "**结果。** 全部 864 模型查询完成，无新 training/backward。单 tile signed prediction 的 Spearman 弱甚至为负，例如 native motor/video late FFN 约−0.331；某 reader 高正分 tile 预测+9.40e-7，实际 MSE 变化−2.98e-4。多 tile 的真实 output 也不满足可加性：2tiles 的相对交互中位数约 0.629，有 43/144 方向翻转。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-tile-intervention/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-tile-intervention/retrieved/results/analysis/primary_summary.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-calibration-suites",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-calibration-suites",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与数据。** 将旧 Spatial-only 诊断扩展到 Original LIBERO 四 suite。C8 为每 suite 两个不同 tasks 的 contexts，嵌套在 C80；C80 覆盖 40 tasks×2distinct demonstrations/task×1snapshot/demo，共 80，四 suite 各 20，phase 每 suite7early/7middle/6late。统一 seed20261013，源 dataset revision 记录在 data receipt；不含 Plus 训练输入。",
+      "result_and_status_excerpts": [
+        "**方法与结果。** 对 C8/C80 分别完成 614 层 MXVQ 拟合，比较同 40held-out×2 seeds。四 suite macro first 10 motor：C8 **0.0464021562**、C80 **0.046636498（+0.505%）**；full 32 **0.0523299512→0.050788815（−2.945%）**，gripper 约不变。C80 有更广覆盖，但未在 primary first 10 稳定胜出。",
+        "**状态与接手。** Teacher`25787525`、C8`25789685`、C80`25791907`与 CPU`25793267`均已有完成证据，无待续实验。保留 C8 用于快速开发、C80 用于正式跨 suite 比较，不说 C8 已被证明足够/最优。C8 仅 8/40 tasks、一个 calibration draw，paired sampler seeds 不是独立 calibration 抽样。旧监控文档的 wake 失败不代表实验未完成。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-calibration-suites/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-original-episode-c80",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-original-episode-c80",
+      "status": "protocol_only",
+      "status_note": "仅保存原始 episode C80 的方案，不能记为已跑结果。",
+      "purpose_excerpt": "**角色。** 本地只见`protocol.json`的协议/配置保留目录。内容登记 Original demonstration state/XML 恢复、early/middle/late snapshot 规则、C80 与 held-out ID 空间，以及 calibration/clipping 源 roots。",
+      "result_and_status_excerpts": [
+        "**完成状态。** 没有该目录独立的 worker、controller、结果报告或完成 receipt，不能因为有完整 protocol 就宣称跑完了“Original episode C80”实验，也不能给它补一套成功率。实际已完成的数据准备、拟合和 clipping 结果分别归于其他目录。",
+        "**接手方式。** 将它作为历史合同参考，先比较后续实际实验的 protocol 再决定是否需要恢复；不能直接提交一个并不存在的完整执行入口。保留 snapshot 恢复而非偷偷改用 initial state0 的要求。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-original-episode-c80/protocol.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-activation-clipping",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-activation-clipping",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 以四 suite C8 rho1.5/update8 checkpoint 为共同起点，比较 baseline、额外 8 步 weight_only、clip_only、joint。每 Linear 一个 ratio，token/denoising 共享，ratio 从 1 限制到[0.5,1]；weights LR5e-4、ratio LR1e-2，固定 final8。训练仍 A+Z；原 40held-out×2 seeds，共 80/arm。",
+      "result_and_status_excerpts": [
+        "**结果。** 相对原 baseline，held-out motor/latent：weight_only **+2.410%/+3.179%**，clip_only **+2.569%/+12.884%**，joint **+0.517%/+0.211%**。均未净胜原 checkpoint，joint 只是缓解继续 weight 训练的退化，预设 channel-scaling gate 为 false。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-activation-clipping/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-activation-clipping/results/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-activation-ablation",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-activation-ablation",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** Joint 权重是否只在其共同训练的 clipping 下有效；训练集目标究竟有没有下降。固定 checkpoint，不重训，比较 joint weights+ratio1、baseline weights+joint ratios，并补四个完整 C8 端点。",
+      "result_and_status_excerpts": [
+        "**结果。** Held-out motor/latent 相对 baseline：joint W+ratio1 **+2.762%/+4.144%**，baseline W+joint ratio **+1.452%/−3.758%**。拆开也没有双指标净改进。C8 端点相反明显变好：clip_only motor/latent **−8.648%/−33.702%**，joint **−5.307%/−33.707%**。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-activation-ablation/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-activation-ablation/results/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c80-activation-clipping",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-c80-activation-clipping",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 从同一 C8 rho1.5 起点，只训练 614ratios，扩到 C80/80 updates；books/indices/row gains/exponents/Smooth/H 固定。用户取消新 development，继续用原 40×2held-out。不能把已取消的数据准备算入本轮。",
+      "result_and_status_excerpts": [
+        "**结果。** 原 baseline motor/latent **0.044296774/0.060877371**；C80 clip-only **0.043848437/0.054848124**，分别−1.01%/−9.90%，23/40motor、30/40latent 改善。Full32/late 22/gripper 则分别+5.50%/+6.61%/+3.97%。两 primary 通过不等于全输出改善。",
+        "**状态与解释。** GPU`25853617/25854128`及 CPU`25854912`完成；最终 deployment 主要保存 ratios 与冻结 source 引用。相对旧 C8 同时改变 coverage 和 updates，不能单因归为“增加数据量有效”。这个 clip-only80 后来有 207/280 闭环，是长期复用 comparator。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c80-activation-clipping/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-c80-clip-joint-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 更低 fixed-input error 的 joint 能否提高闭环；clip-only 与 joint 均从同一 C8 checkpoint，C80、80 updates，但 joint 同时更新 books/log gains 和 ratios。",
+      "result_and_status_excerpts": [
+        "**结果。** 两臂各 280，共 560 新 episodes、2240references。Clip-only **207/280**，joint **202/280**；joint 对 clip 为 9 胜/14 负/257 平，camera 维度净少 5 成功。C8 初始化为 206/280。不能按 joint 更低 RMSE 宣布更好的 policy。",
+        "**接手用途。** 保留两 checkpoint，供状态覆盖、gripper 和机制诊断；没有删除 clip-only comparator。后续所有新路线应清楚是否从 C8 起点还是从已训 clip-only 继续。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-clip-joint-plus/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c80-joint-rmse",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-c80-joint-rmse",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**角色。** 对上条 joint final80 做独立 fixed-input evaluation，不重训，不新增 teacher。源绑定到实际完成的`25858027`，新 160 端点，复用 baseline/clip320，共 480。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25858590`、CPU`25859109`完成。Held-out joint motor **0.0418468372**、latent **0.0489733362**；比 baseline−5.53%/−19.55%，比 clip-only−4.56%/−10.71%。源 reference action parity0。后续只读追加闭环 202 对 207 及 camera 损失，没有重跑 episode。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c80-joint-rmse/README.md",
+        "experiment/idea-validation/fastwam-vq-c80-joint-rmse/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-b32-scaling-clipping",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-b32-scaling-clipping",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与实现。** 在 activation Z 上每输入 B32 group 学习 D∈{0.5,1,2}，配对 weight compensation；D 从 1、ratio 从 1，冻结 VQ，C80/80 updates。整数 k 能折入原 weight B32 exponents；前向必须实际取整，不能用 shadow 连续值冒充部署。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25855238`、CPU`25856260`完成 160 新端点、320reference；相对 clip-only80 motor **+0.3154%**、latent **−1.2700%**，双指标 gate 失败。只 13/56466 groups 变化，涉及 3/614 Linears。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-b32-scaling-clipping/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-continuous-b32-scaling-clipping",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-continuous-b32-scaling-clipping",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与实现。** D=2^log2D，log2D∈[−1,1]，每 32 channels 共享；从原 C8 起点训 80 步，不从离散 arm 继续。真实 forward 始终`Linear(Q_A4(Z/D;ratio), BF16(Wq*D))`，连续 D 额外保存 FP32 metadata，不能说精确折进整数 exponents。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25856825`、CPU`25857520`完成。Held-out motor **0.044588993**、latent **0.060690613**；相对 clip-only+1.6889%/+10.6521%，四 suite 均退化，gate 失败。",
+        "**接手意义。** 比较的是未补齐 absmax 链式项的连续版本，不应与 coupled 版本混用。BF16 weight compensation 自身会 round，评估已核对 uncached/cached 完整输出 parity；它不是精确实数等价，不应忽略 rounding 账本。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-continuous-b32-scaling-clipping/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-b32-absmax-coupling",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-b32-absmax-coupling",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**唯一干预。** 补齐 dynamic absmax 对 input/D 的链式项；相同连续 B32 范围、80 updates、loss、LR 与共同起点。Max ties 按 amax 等分、零输入有旁路。Ratio 仍用既有 surrogate，不能把它称为硬 round/BF16 函数的精确梯度。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25861303`、CPU`25861881`完成；held-out motor **0.043394818**、latent **0.054067248**，比 clip-only−1.0345%/−1.4237%，比未 coupled 版本−2.6782%/−10.9133%，完整主 gate 通过，suite 仍有取舍。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-b32-absmax-coupling/README.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-per-channel-scaling-clipping",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-per-channel-scaling-clipping",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 将 coupled B32 的 D 细化到每物理 input channel，共 1,806,863 个 FP32 log2D；ratio 仍每 Linear 一个，不是逐 channel clipping。共同 C8 起点、C80/80 updates，VQ 冻结。完整 coupled input/D surrogate 和实际 BF16 compensation 保持。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25862598`、CPU`25863316`完成。Held-out motor **0.031641466**、latent **0.055377875**；相对 coupled B32 **−27.0847%/+2.4241%**，motor 有 39/40 cases 改善，但双 primary gate 仍失败。Latent 问题主要在 Goal/Libero10。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-per-channel-scaling-clipping/README.md",
+        "experiment/idea-validation/fastwam-vq-per-channel-scaling-clipping/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-joint-per-channel",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-joint-per-channel",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 在 per-channel D+ratio 上同时放开 books/log row gains，能否减少 latent tradeoff。共同 C8 起点、80 updates，indices/exponents/Smooth/H 固定；weights/ratio/D LR 分别 5e-4/.01/.02。新增 weight adjoint 要从实际 BF16 compensated Linear 回到 Wq，避免重复算 D 补偿梯度。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25864060`、CPU`25865058`完成。Motor/latent **0.032668161/0.048842217**；相对 per-channel motor+3.245%、latent−11.802%；相对旧 joint motor−21.934%、latent 仅−0.268%。Gripper0.080485551，比旧 joint+81.89%。Calibration 两项也比 per-channel 更差，不是典型训练集更好而 held-out 更差。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-joint-per-channel/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c80-per-channel-plus",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-c80-per-channel-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 对已固定 per_channel_clip final80 单独闭环，不重训。新增 280 episodes，复用 2800reference slots；source scalar metrics、uncached/cached action/future 与实际 infer 均检查。源没保存 final action vector，不能称为直接 saved-action replay。",
+      "result_and_status_excerpts": [
+        "**结果。** Per-channel **203/280**，clip-only207、C8 rho1.5 为 206、BF16216。Suite 为 Libero10 47/70、Goal46、Object56、Spatial54；motor fixed-input 大幅改善没有转换成总体成功率收益。",
+        "**接手用途。** 这是分析 gripper/visited states 的动机，但不能事后将 4 个净损失全部归因于某个控制事件。保留实际 source、280 面板和对应执行路径，不能用另一 checkpoint 的 engine parity 给它补精度证明。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c80-per-channel-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-per-channel-plus/CLOSED_LOOP_ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-rollout-c80",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-rollout-c80",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 原 C80 的 40 偶数 cases 保留 anchor，40 奇数替换为固定 C8 student 从 demo snapshot 执行最多 10actions 后的 visited states；四 suite 各 20。保持 80 contexts/80 updates 和原 jointrecipe，采集/teacher 成本另算；不按失败或 held-out 选择 states。",
+      "result_and_status_excerpts": [
+        "**结果。** 新 joint motor/latent **0.042925590/0.053785088**，均差于原 joint **0.041846837/0.048973336**；Object 改善，Spatial/Goal 退化。Gripper 相对原 joint−20.715%，只是 secondary。40 新 visited teacher 与 40anchor 旧 teacher 绑定 plan 和 seed。",
+        "**结论。** 局部短程 student 覆盖没有在原分布 fixed-input 上胜出；不能据此证明它对长期闭环无用，也不能声称已解决闭环退化。本轮没有新 closed-loop。所采 40states 被后续 visited 诊断复用，不自动回灌其他训练。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-rollout-c80/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-rollout-c80/results/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-visited-diagnostic",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-visited-diagnostic",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与输入。** 在 40 个既有 visited states 上，以同输入/seed 比较 BF16、clip-only、joint，避免把轨迹分叉当成局部模型响应。每 state 有 base、raw 双相机 brightness±1、raw EEF 对角方向±5mm，再走原 preprocessing；共 600 端点，566 新 queries，0 训练。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25863989`与 CPU`25864600`完成，全部 reference/repeat parity0。Base normalized motor clip/joint **0.045833804/0.044575345**；gripper 实际开合错误 **6/400→3/400**。但 joint proprio 方向响应误差变差，且 case2045 motor 更准却漏掉前 10 步释放事件。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-visited-diagnostic/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-visited-diagnostic/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-per-channel-visited-diagnostic",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-per-channel-visited-diagnostic",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**设计。** 在完全相同 40states×5inputs 上只增加 per-channel200 端点，复用 600 旧端点。共 205 新 queries，1 个 fresh BF16 仅用于 parity。旧完整 image tensors 没持久化，核对 inputmetadata 与 fresh BF16 replay，不宣称全部逐像素重验。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25868350`、CPU`25868746`完成。Base normalized motor **0.034658006**，比 clip/joint 都好；actualcommand motor0.027482118。Gripper 连续 RMSE0.115395849、开合错误 6/400，漏 open2 次；与 motor 改善不同步。相对 clip normalized motor37/40 cases 改善。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-per-channel-visited-diagnostic/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-per-channel-visited-diagnostic/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-per-channel-gripper",
+      "handoff_document": "handoff/03_SCALING_CLIPPING_AND_DATA.zh.md",
+      "section_heading": "fastwam-vq-per-channel-gripper",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**唯一干预。** 保持 per-channel 原 C80/80 updates、motor/latent 系数与优化器，从共同 C8 起点加 first 10 第 7 维 MSE，lambda_g=1/6。只训练 D/ratio，VQ 冻结；不是对已训 per-channel 继续微调。原 held-out80 和 visited200 端点均完整评估，新增 query 预算 445。",
+      "result_and_status_excerpts": [
+        "**结果与状态。** GPU`25869007`、CPU`25869987`完整结束。Visited base 开合错误从 **6→9/400**，漏 open 仍 2 次，并有 motor/latent 代价。当前 checkpoint 不支持进入闭环；未向暂停中的闭环任务发恢复消息。",
+        "**接手判断。** 增加连续 gripper 监督不等于解决 sign/event 时机。若再设计事件 loss 需另立协议；不能偷偷修改当前 motor6 mean 系数，或让 late 22 也获得未声明监督。现有 visited states 不回灌本轮训练。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-per-channel-gripper/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-per-channel-gripper/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-dual-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-dual-kl",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 在原 per-channel D+ratio activation 优化上做 2×2loss 替换：MSE+NMSE、action soft-bin KL+NMSE、MSE+latent soft-bin KL、dual-KL。VQ 冻结，共同 C8 起点、C80/80 updates；原 MSE arm 复用并重放 160 端点。KL 坐标与 coefficients 只由 C80 初始统计冻结。",
+      "result_and_status_excerpts": [
+        "**结果。** Held-out motor/latent：MSE **0.031641466/0.055377875**，action-KL **0.031724741/0.059674341**，latent-KL **0.032218684/0.053663947**，dual **0.032329860/0.053033005**。Dual 改善 latent 但 motor 变差，预设 joint screen 失败，保留 MSE reference。完整四臂已结束，不自动追加闭环。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-dual-kl/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-dual-kl/results/ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-dual-kl/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-relational-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-relational-kl",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 逐点 soft-bin 无法显式描述邻居结构；增加 action temporal 与 latent spatiotemporal conditional-neighbor KL 是否更合适。Action 用 ordered3-step 窗口得到 8 个 18D tokens；latent 按 camera 分别 pool2×2，196 个 48D tokens，含空间邻边与同 camera 时间邻边，排除 camera 接缝。",
+      "result_and_status_excerpts": [
+        "**结果。** Held-out softbin→relational：motor **0.032329860→0.031438487（−2.757%）**，future **0.053033005→0.054295895（+2.381%）**，composite **0.005913306→0.005743407（−2.873%）**。Relational 目标更低但 latentNMSE 更差；不能用一个共同 objective 隐藏取舍。CPU`25884638`完整汇总 320 端点。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-relational-kl/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-relational-kl/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-softbin-relational-plus",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-softbin-relational-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 上述 fixed-input KL 改善能否转为闭环。直接复用两种 final80，每臂 280，13reference 组 3640 slots，无新训练；完整 source action/future、cache、infer parity 均 0。",
+      "result_and_status_excerpts": [
+        "**结果。** `25886452.pbs101`完成 560 新 episodes：soft-bin **199/280**，relational **198/280**；原 per-channel MSE203、C8 rho1.5 为 206、clip-only207、BF16216。Relational 对 softbin 为 9 胜/10 负/261 平，对 per-channel MSE 为 10 胜/15 负/255 平。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-softbin-relational-plus/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-relational-vq-activation",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-relational-vq-activation",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与阶段。** 将原 C8/8update VQ supervision 也换成 soft-bin+relational KL，再固定该 VQ 训 C80/80update D/ratio。比较旧 MSE-VQ8+KL-activation80，避免把 VQ-only 端点当同预算 final80 对照。",
+      "result_and_status_excerpts": [
+        "**结果。** 新 pipeline held-out motor **0.034438064**、future **0.057364387**、composite **0.0061686663**；比旧 relational 参照分别+9.54%/+5.65%/+7.40%，两个 split 八项总体指标都更差。Activation 阶段相对新 VQ-only 有恢复，但未追平旧参照。",
+        "**C8 补诊断。** CPU`25895158`复用缓存：KL-VQ8 在真实 C8 motor/latent **0.040801177/0.043700444**，优于 MSE-VQ8 **0.042133242/0.054480982**，但 held-out 分别更差 10.33%/12.32%。因此不能说 KL 连 C8 都没拟合；应分清 VQ C8 拟合、activation C80 优化与 held-out 泛化。根报告主 pipeline 已完成，`results/vq_diagnosis`某些梯度诊断只有历史待完成记录，不提升为最终因果证明。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-relational-vq-activation/results/ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-relational-vq-activation/results/vq_diagnosis/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-control-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-control-kl",
+      "status": "partial_blocked_historical",
+      "status_note": "传感/路径诊断已完成；后续参数 gate 和训练方案没有最终结果，勿自动恢复。",
+      "purpose_excerpt": "**问题。** 为什么 soft-bin/relational 的部分 fixed-input 指标更好，sensor-noise 闭环反而差。先重放原 40sensor 初始状态 clean/noisy，再看 5 个 MSE 成功/relational 失败案例的 47 个沿途 states，固定 reader 隔离 future 路径；另做完整 C80 的独立噪声配对与可回滚参数 gate。",
+      "result_and_status_excerpts": [
+        "**当前边界。** 根报告明确“完整目标尚未完成，未启动新训练”；后续 parameter gate 与可回滚 C80 检查是阶段诊断，不是一个已部署 control-KL 训练结果。5 失败 case 按 MSE/relational 成败选出，不能解释 softbin 所有失败，更不能把这些已看 test states 回灌超参选择。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-control-kl/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-control-kl/C80_GATE_CONTRACT.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-direction",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-direction",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与设计。** 新 KL final80 甚至在各自完整 C80 目标上不如旧 MSE 可行点，先排除 training/eval 前向差异并检查真实有限步。4 个 checkpoint/objective 单元，每个 C80 平均 gradient；saved/fresh Adam×1/0.5/0.25 步，每候选都从同一 checkpoint 出发并投影到 bounds，结束精确回滚，不保存新模型。",
+      "result_and_status_excerpts": [
+        "**结果。** 全 320 同参数 checkpointed/no-grad action/future parity0；24 候选中 **16 个** surrogate 预测下降、真实 C80 目标却上升。Dual checkpoint saved quarter step 使 dual objective0.002797668→0.002639068，低于旧 MSE 同公式 0.002743996；而更小步/fresh moments 并不总更好。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-direction/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-kl-direction/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-fullbatch-refine",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-fullbatch-refine",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**设计。** 复用上条完整 C80 梯度与候选，按实际 calibration objective 选择至多一个额外 update，并给 MSE 同样精修机会。选择不读 held-out；最终仍完整评估原 40×2。",
+      "result_and_status_excerpts": [
+        "**结果。** MSE 原/精修 motor **0.031641466/0.032115747**，latent **0.055377875/0.061798732**；dual 原/精修 motor **0.032329860/0.031900538**，latent **0.053033005/0.060566725**。Dual 精修略优于同样退化的 MSE 精修，但相对原 MSE 两项仍差约+0.82%/+9.37%。Motor 主配对 20/40 改善、LOCO 跨 0，gate 失败。",
+        "**结论。** 完整 C80 真实 loss 选步可修复 calibration，不保证泛化；不能把“胜过退化对照”写成超过原已知好解。本轮已完成，保留原 MSE，后续 warmstart 单独记录。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-fullbatch-refine/results/ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-kl-fullbatch-refine/decision.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-mse-warmstart",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-mse-warmstart",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 从原 MSE80 这一更好的共同起点，复用已算 KL 梯度和选中候选，能否得到更好 held-out。没有新 gradient/teacher，至多一个逻辑 update；calibration 选步后一次完整 held-out 评估。",
+      "result_and_status_excerpts": [
+        "**结果。** Warmstart dual motor **0.032662221**、latent **0.061515833**，均差于原 MSE0.031641466/0.055377875，也没有超过 matched MSE refinement 的 motor。原 MSE 比较 motor 仅 16/40 cases 改善；不能把 23/40 相对另一退化 dual 的 wins 拿来替换主比较。",
+        "**当前决策。** GPU`25882284`、CPU`25882411`完成，但信息论 loss 联合泛化目标未实现。后续只准备 ratio-only 隔离实验；最后明确约束为不启动新训练，不可从`goal_active=true`推出继续提交。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-mse-warmstart/results/ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-kl-mse-warmstart/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-gradient-geometry",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-gradient-geometry",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**范围。** CPU 读取同一个原 MSE80 点的缓存 MSE/KL 梯度、Adam states，做参数几何与投影步模拟。0forward、0backward、0 updates、未用 held-out。",
+      "result_and_status_excerpts": [
+        "**结果。** Ratio 组 MSE/KL cosine **0.999955**，channel 组 **0.987747**，整体 **0.996776**。少数坐标反号不等于主要梯度质量冲突；不支持“两个混合目标在这个点整体方向相反”。Saved/fresh Adam 及 bounds 会改变真实 proposal。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-gradient-geometry/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-candidate-crosscheck",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-candidate-crosscheck",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与范围。** 同一 MSE80 起点两套已有 12 候选，分别用固定 Jm 与 Jk 交叉评分；只读 JSON，C80，不读 held-out、不改模型。",
+      "result_and_status_excerpts": [
+        "**结果。** 12 候选中，两公式对每个候选的升降方向完全一致：2 个都降、10 个都升，不能只说评价指标排序不一致。Saved/full 下，MSE 梯度候选 Jm/Jk **+8.1265%/+7.7194%**，KL 候选 **−2.8893%/−2.1120%**；投影 update 距离只有 MSE-update 范数的 0.58925%，仍产生明显有限输出差异。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-candidate-crosscheck/results/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-ratio-refine",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-ratio-refine",
+      "status": "prepared_not_submitted",
+      "status_note": "保留准备方案，未提交正式实验。",
+      "purpose_excerpt": "**设计。** 保留原 MSE80 的 per-channel D，固定 D，仅开放 614ratios，用缓存 C80 梯度比较 MSE 与 dual-KL；目的是隔离 update 子空间，而非预设 D 已被证明导致失败。",
+      "result_and_status_excerpts": [
+        "**实际状态。** `prepared_not_submitted`、`uploaded=false`、`submitted=false`、`runtime_validated=false`，0 updates/forwards。只有 offline 代码和 preparation checks，没有 GPU 结果，不能将预期改善写入结果表。",
+        "**下一步边界。** 原最后约束“不启动新训练”仍记录在此。接手可以审阅实现与 decision，但本次交接文档不构成提交授权；任何实际执行需由后续研究任务明确决定。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-ratio-refine/decision.json",
+        "experiment/idea-validation/fastwam-vq-kl-ratio-refine/RUN_STATE.json",
+        "experiment/idea-validation/fastwam-vq-kl-ratio-refine/preparation_checks.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-kl-continuation",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-kl-continuation",
+      "status": "prepared_not_selected",
+      "status_note": "保留未选用的 continuation 方案，未产生对应新结果。",
+      "purpose_excerpt": "**角色。** 保存未选用的 continuation controller/worker 草案：从已有 per-channel checkpoint 继续 80 updates，四种 MSE/KL 目标与 20/40/60/80 snapshots。代码的存在只说明准备过执行方案。",
+      "result_and_status_excerpts": [
+        "**状态与决策。** 本地没有该方案独立 protocol/handle/结果 receipt；上游`kl-direction`明确将它标为 unsubmitted、not selected，不能自动采用 warmstart+fresh Adam 或半 LR。实际后续走的是 full batch-refine、warmstart 及缓存诊断，不是此 80 步 continuation。",
+        "**接手方式。** 不运行该目录作为“继续未完成训练”的入口。若将来确需复用，先建立新的冻结合同与当前数值检查，保留原 incumbent；没有可交接的实验分数。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-kl-continuation/worker.py",
+        "experiment/idea-validation/fastwam-vq-kl-direction/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-teacher-anchor-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-teacher-anchor-kl",
+      "status": "superseded_cancelled",
+      "status_note": "CPU 定义检查完成，原 GPU pipeline 被后续用户范围取代并取消。",
+      "purpose_excerpt": "**原设计。** 在 MSE/NMSE 上增加 student-to-fixed-teacher-neighbor affinity KL；不同于 student–student relational，teacher anchors 完全 detach。原本计划 C80 per-channel 训练 80 步并完成 paired280，beta 按初始加权 NMSE 的 10%冻结。",
+      "result_and_status_excerpts": [
+        "**实际状态。** 用户后来更正为 C8 VQ-only、无 activation scaling/clipping、无 280 闭环。此目录`goal_status=superseded_by_user`，GPU pipeline 取消。CPU`25902483`完成 teacher 定义检查：selfKL0、spatial-roll0.657848391、time-swap0.365453346、matched bias0.044196485；这只是定义辨别能力，没有完成原计划的训练/闭环。",
+        "**接手意义。** 下一条才是修改后真正跑完的 C8 实验。不能看到这里 README“已提交 GPU”便报告 C80 anchor 闭环结果；取消来源`USER_SCOPE_CHANGE_CANCELLATION.json`保留。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-teacher-anchor-kl/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-teacher-anchor-kl/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c8-latent-anchor-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-c8-latent-anchor-kl",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**设计。** 从与原 C8 A+Z 相同未训练 banks，614books/log gains，8 updates，增加 teacher-anchor affinity KL；普通 A4，D1/ratio1，不训 activation 参数。只用 C8 定 statistics/tau/beta，复用训练后 A+Z 的 88 条对照，不把未训练 reference_cache 当 trained comparator。",
+      "result_and_status_excerpts": [
+        "**结果。** Held-out motor **0.0442968→0.0458895**，latent **0.0608774→0.0614710**，保留 baseline。后续完整机制诊断含 16 组梯度、22 可回滚条件、8 等 NMSE reader 对照，0 持久新 updates。",
+        "**机制结论。** 加权 KL/原目标参数梯度范数约初始化 11.64%、终点 10.16%，不能说 KL 梯度支配。22 条件中 11 个 action 一阶预测下降而真实上升；初始 8 种单步里 BF16 部署 row gain 全部未变，尽管 FP32 master 有 delta。Beta 降 10 倍有好有坏，quarter step 也不总更安全；存在部署格点/STE/有限步落差，但未唯一分离根因。等 NMSE 下修复 KL 可见/不可见方向的 motor 差很小，额外控制价值未获稳定证据。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c8-latent-anchor-kl/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-c8-latent-anchor-kl/results/MECHANISM_CONCLUSIONS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c8-frozen-reader-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-c8-frozen-reader-kl",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**新方向。** 不用 latent affinity 近似“信息重要性”，而让固定原始 BF16 reader 实际读 student future，再对 first 10motor 的 soft-bin 输出蒸馏。保留 A+Z，reader 参数冻结、future cotangent 保留；C8 同起点 8 updates，staged VJP 按相同参数/输入/noise 精确重放 student。",
+      "result_and_status_excerpts": [
+        "**结果。** 完整 40×2held-out：motor 相对原 A+Z **+1.93%**，仅 12/40 cases 改善，future NMSE **−5.78%**。要求 mean/median/motorcase 数及 latent 均通过的 gate 失败，停止此 recipe；没有运行条件性的 reader-MSE ablation，也没有参数 sweep 或闭环。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c8-frozen-reader-kl/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-c8-frozen-reader-kl/results/CONCLUSIONS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-c80-frozen-reader-kl",
+      "handoff_document": "handoff/04_KL_AND_OPTIMIZATION.zh.md",
+      "section_heading": "fastwam-vq-c80-frozen-reader-kl",
+      "status": "partial_stopped_unmatched",
+      "status_note": "KL 臂完成，对照取消；原 matched gate 不可评定。后续另有 R128 matched loss-pair。",
+      "purpose_excerpt": "**设计与修改范围。** 原计划 C80/80 updates A+Z 对 reader-KL，但用户要求先分析已完成 KL 后结束；匹配 A+Z 在 2 updates 后取消，双组 aggregate 未执行。KL 完成 80 updates、160student+160reader 端点，另 CPU 读取缓存，无新 forward。",
+      "result_and_status_excerpts": [
+        "**结果。** 相对历史 C8 A+Z，held-out motor **0.04444355（+0.33%）**、latent **0.05436114（−10.70%）**，motor20/40 改善，median 仍退化。共同初始化→final 的 calibration reader KL **0.02748146→0.03080744（+12.10%）**，辅助目标本身没有成功下降。Student 与 BF16 reader 的 MSE 差项 0.00144086，大于 future 经 reader 误差 0.00054784；仅优化 teacher-readerfuture 并不能消除量化下游差异。",
+        "**结论与接手。** 源 KL`25913982`完整 F/0；A+Z`25913984`取消 F/143；CPU 分析`25920011`完成。缺少 matched C80 control，原同预算 gate 不可评定，不能用历史 C8 冒充。原版停止；后来冻结 R128、batch10、同起点的 loss-pair 另做了干净对照并得到 208/280，详见下一部分。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-c80-frozen-reader-kl/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-c80-frozen-reader-kl/results/CONCLUSIONS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-learned-r128-c8",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-learned-r128-c8",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与流程。** 固定 Smooth，比较 H+VQ8 与先 W16A4 学 R8、收集 moments/refit VQ、再冻结 R 训 VQ8。C8、614 targets、普通 A4，loss 仍 A+Z；candidate 多出 R 学习与 refitting，不能称 equal-compute。",
+      "result_and_status_excerpts": [
+        "**结果。** GPU`25902163`完成。H/R held-out motor **0.044296774/0.046408990**，latent **0.060877371/0.065187050**，mixed **0.004598652/0.004980800**；分别+4.77%/+7.08%/+8.31%，保留 H+VQ8。CPU 核对 R 实际变化，U−I 约 0.015–0.016，正交误差约 1.91e-6，不是 R 未接入。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-learned-r128-c8/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-learned-r128-c8/results/25902163.pbs101/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-joint-c8",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-joint-c8",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 比较 sequential R→VQ 与同起点 Joint8，并补 H/R W16A4 诊断及 C8 阶段边界。Joint 从 H+VQ0、U=I 开始，R LR1e-4、VQ LR5e-4，8 updates；仅 VQ 在 update1 后 reset，R moments 保留。共同训练 R 和 books/gains 时，compressed weights 不自动配对补偿 R。",
+      "result_and_status_excerpts": [
+        "**结果归属。** 完整总结在后续 joint-refine 目录：Joint8 held-out motor **0.045524040**、latent **0.060773535**、mixed **0.004718190**；比 sequential 有改善，仍差于原 H+VQ8 的 motor/mixed。H/R W16A4 比较显示 R8 在 held-out 先已退化。",
+        "**实现边界。** 本 Joint 是 compressed-student 共适配，训练中不保证固定 VQ 时 R-only 保持原浮点函数；不能凭正交性说这就是等价 rotation 优化。没有 H+VQ16 对照、没有闭环。后续 lower-LR conditional arm 另记下一条。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-joint-c8/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-joint-refine-c8/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-joint-refine-c8",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-joint-refine-c8",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与条件执行。** 基于 C8 而非 held-out 触发一档 R LR1e-5，并增加同实现 H_currentpath（U=I 冻结）控制，核对实现路径差异。",
+      "result_and_status_excerpts": [
+        "**结果。** W16A4 H/R held-out motor **0.042604556/0.044585121**、latent **0.038380617/0.040343879**，说明 R 在压缩前已泛化退化。Joint R1e-5 motor/latent/mixed **0.045226322/0.065914399/0.004893894**，相对 H_currentpath mixed 只−0.003%，没有可靠额外收益；full 32 更差。原 H+VQ8 仍保留。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-joint-refine-c8/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-joint-refine-c8/results/25904715.pbs101/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-r128-improvements",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-r128-improvements",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**三个问题。** 无 VQ 的 W16A4 下，分别检验最终 R 幅度收缩 t=0/.25/.5/1、C8 顺序×LR 的 2×2，以及 C80 coverage recipe。保持 Smooth/signs、D1、ratio1、A4、BF16 KV，仅两个 stream-shared Cayley U128 可训。",
+      "result_and_status_excerpts": [
+        "**当前用途。** `25905203.pbs101 / coverage_c80 / C80_once_lr1e4`生成当前主模型的 R0。采用它作为固定来源不等于宣称 R0 本身带来显著闭环收益；coverage、LR、平均梯度方式共同改变。Path/optimization/coverage 均完成，零新 teacher；相同首步梯度数值差需保留其描述性边界。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-r128-improvements/README.zh.md",
+        "experiment/idea-validation/fastwam-r128-improvements/results/final/ANALYSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-r128-w16a4-plus",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-r128-w16a4-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 单独量化 activation、不做 weight VQ 时，C80 R0 能否改善闭环。两臂 H-W16A4、R0-W16A4 各 280；原 BF16 weights 只配对 transform 并一次缓存，D1、ratio1、无新增训练。",
+      "result_and_status_excerpts": [
+        "**结果。** `25910102.pbs101`完成 560 新 episodes、3640references。H **204/280**，R0 **203/280**，16 胜/17 负/247 平，净−1。Object/Spatial 有所改善，Goal/Libero10 退化；当前 cohort 没有总体成功率优势。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-r128-w16a4-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-r128-w16a4-plus/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-dual",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-dual",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与共同起点。** 复用上条 R0，R0 坐标下只拟合一次 VQ0，再比较冻结 R 的 Seq8 与 warm-start Joint8。相同 8batch×10 contexts、80 exposures、VQ LR5e-4；Joint 额外 R LR1e-5。614 编码、indices/exponents 固定；用独立 Runtime 与严格 replay/determinism gate。",
+      "result_and_status_excerpts": [
+        "**结果。** `25912619.pbs101`完整完成。共同 R0+VQ0 held-out motor/latent **0.048127906/0.059216201**；Seq8 **0.044207680/0.051400843**；Joint8 **0.045749947/0.059470054**。Joint calibration 略好而 held-out 更差，Seq8 作为后续方法候选。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-dual/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-dual/JOINT8_DIAGNOSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-dual/results/25912619.pbs101/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-transport",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-transport",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**两个问题。** 固定某个 Seq/Joint 端点函数，换 R 并运输 decoded weights，评估 A4/noA4；再从共同 R0/VQ0 训练带可微 weight 补偿 Comp8，与原 Joint8 比较。",
+      "result_and_status_excerpts": [
+        "**Probe 结果。** Seq 函数由 R0 补偿换 RJ，held-out mixed **0.004175274→0.004404567（+5.49%）**；Joint 函数由 RJ 换 R0，mixed **0.004682388→0.004460030（−4.75%）**。Calibration 的排序反向；不能说“RJ 方向本来好，只是 weight 没跟上”。NoA4 残差 gate 是聚合主指标条件，不等于完整 action 逐位等价，存在较大 gripper/最大坐标差异。",
+        "**Comp8 结果与范围修改。** 用户停止 Uncomp8 同期重跑，复用原 Joint8 作为 reference；Comp8 保留已完成 3 updates 后单卡继续到 8，`25921642`完成。相对原 Joint8 mixed−5.251%，收回 gap **48.488%**，低于冻结 50%effect gate，仍比 Seq8 差 6.256%。不能四舍五入成通过，也不能宣称具备原计划同期完整 replay 的归因强度。",
+        "**诊断约束。** Seq/Comp 轨迹已分叉，跨轨迹 final 差不是纯 R 效应。每步更新里 R/VQ 贡献应靠同端点 2×2swap 或有界 counterfactual；“7/8loss 下降”不等于更稳泛化。Decoded transport 也不解决旋转后的 weight 是否还能原样表达为 d4/B32 VQ 的问题。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-transport/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-transport/ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-transport/COMP8_UPDATE_DIAGNOSIS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-loss-pair",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**当前最干净的 loss 设计。** 固定 R0、同一原始 VQ0，从共同初始化分别训练 A+Z 和 A+Z+frozen-reader-KL。C80 八批十 contexts、8Adam updates、80 exposures、LR5e-4、VQ 首步后 reset，indices/exponents/全部 transforms 固定；只改变 reader-KL。两个 arms 同一个双 GPU allocation 并行，各一张卡。",
+      "result_and_status_excerpts": [
+        "**当前最干净的 loss 设计。** 固定 R0、同一原始 VQ0，从共同初始化分别训练 A+Z 和 A+Z+frozen-reader-KL。C80 八批十 contexts、8Adam updates、80 exposures、LR5e-4、VQ 首步后 reset，indices/exponents/全部 transforms 固定；只改变 reader-KL。两个 arms 同一个双 GPU allocation 并行，各一张卡。",
+        "**实际结果。** `25921795.pbs101`summary 完整：两臂 8 updates、614 targets、frozen_rotation、initial/formal parity0、finalanchor，new teacher0。AZ 记录 82studentqueries；KL242student 与 162readerqueries，体现额外 reader 成本，不把零新 teacher targets 当作零 BF16 reader 计算。本轮**没有新 held-out fixed-input 评估**，不能凭 calibration 目录补造一张 held-out 结果表；下游闭环另记。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair/protocol.json",
+        "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair/worker.py",
+        "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair/pulled/25921795.pbs101/summary.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair-plus",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-loss-pair-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 只增加 reader-KL，在严格 matched 起点/预算后是否改进控制。Frozen280 面板，两臂各 280，复用 4200reference slots；不重训，不新增 baselineforward，不追加 held-out RMSE。",
+      "result_and_status_excerpts": [
+        "**结果。** `25925636.pbs101` F/0，四 workers 各 140；AZ **204/280（72.86%）**，AZ+readerKL **208/280（74.29%）**；14 胜/10 负/256 平，净+4（+1.43pp）。BF16 **216/280**，仍高 8 成功。KL camera14→19，Goal44→47，但 robot initial33→31，非所有扰动受益。",
+        "**当前定位。** **reader_kl final8 是当前 Fast-WAM 算法 Q0/reference**，后续 runtime 与 Q-Clip 基于它。它是单一冻结 cohort 的点估计，不能称统计显著、SOTA 或跨训练 seed 稳定。首次启动因容器缺 CUBLAS_WORKSPACE_CONFIG 失败，0 episodes；修复入口后复用原 checkpoint，不能把修复算新训练。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-loss-pair-plus/summary.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-qclip",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-qclip",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题。** 冻结上条 Q0 全部 weights/VQ/R，仅追加 614activation ratios，C80 一遍 80 单 contextupdates，LR.01、ratio[.5,1]，原 A+Z+readerKL 系数不变。固定 final80，无 held-out 选模。与旧 C80 clip-only 不是同 checkpoint。",
+      "result_and_status_excerpts": [
+        "**结果。** `25937633`完成。同一 Q0/Q-Clip 的 held-out motor **0.045606257→0.043983056（−3.56%）**，future **0.061737563→0.051682642（−16.29%）**，full 32/late 22/gripper 均值也降。Calibration motor 却+0.70%、gripper+38.85%；要保留这些反向指标。Full endpoint reader-KL 未追加，不能把逐 case 更新前日志冒充最终共同 KL 表。",
+        "**当前意义。** Fixed-input 有净收益，但部署是否采用应看下一条闭环。FrozenR/VQ 与 r1source parity 均 0；zero new teacher，仍有 80readerqueries。此研究按指定只做该 arm，没有自动扩展 D 或重新训 books。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-qclip/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-qclip/protocol.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-qclip-plus",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-qclip-plus",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与结果。** 将 Q-Clipfinal80 直接评 280，复用 17 arms/4760 slots。`25939858`完成，Q-Clip **207/280**，父 Q0 **208/280**；11 胜/12 负/257 平，无总体闭环提升，故 Q0 继续作当前 reference。旧 C80 clip-only 恰好也 207，不代表同 outcomes 或同 method。",
+      "result_and_status_excerpts": [
+        "**问题与结果。** 将 Q-Clipfinal80 直接评 280，复用 17 arms/4760 slots。`25939858`完成，Q-Clip **207/280**，父 Q0 **208/280**；11 胜/12 负/257 平，无总体闭环提升，故 Q0 继续作当前 reference。旧 C80 clip-only 恰好也 207，不代表同 outcomes 或同 method。",
+        "**执行与边界。** 四 workers 各 70、全部 source/anchor/inferparity0，无新 training。旧 decoded-dense 完整 querymean 约 6.969 s、allocatedpeak28.478 GB，不是当前 engine 结果。LIBERO10 净少 2、Goal 多 1，不能以部分 case 改善替换整体主指标。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-qclip-plus/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-qclip-plus/FINAL_COMPLETION_EVIDENCE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-aqlm-loss-pair-20261026",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-aqlm-loss-pair-20261026",
+      "status": "fixed_input_complete_negative",
+      "status_note": "两臂final8、calibration80/held-out80均完整；ours在报告的全部held-out误差上0/40胜。整体按用户停止指令保留。",
+      "purpose_excerpt": "**问题与对照。** 将同一任务末端 loss 转移到另一种 quantizer，检验收益能否超出自家 MXVQ 表示。共同初始化使用 pinned official `Vahe1994/AQLM@e79a896ed6656fe4ed06193d42d004e7d0bbdbb2` 的 AQEngine：input-aware XTX、residual K-means、continuous Adam 与 discrete beam-search；g8、4 个 K256 additive codebooks、BF16 scales，共同冻结 Smooth0.5/H128/R0。Nominal indices4 bpw，weight encoding **4.018892 bpw**，含共同 preprocessing **4.031080 bpw**。这是官方 AQLM 的 Fast-WAM adaptation，不是原 LLM 全流程，也不是官方 block fine-tuning。",
+      "result_and_status_excerpts": [
+        "**共享拟合实际预算。** Prepare `26005386.pbs101` 已完成全部 614 banks，最终为 **22 heavy_v1、12 light_v2、580 minimal_v3**。Minimal K-means≤5 iterations、max_points_per_centroid16、单次残差 codebook 聚类最多 4096 vectors；所有 weight groups 仍 assignment；≤1 epoch×5 Adam updates、beam1、relative tolerance.005。已完成旧预算 banks 原样复用，两臂共享同一混合初始化，不能把 614 层描述成统一 minimal，也不能仅以混合来源解释两臂分化。Context archives/批量 GPU→CPU copy/compute host cache 只改 I/O；官方 CUDA index_reduce 的 deterministic override 仅在共同 quantize 范围，finally 恢复，两臂训练仍 deterministic。",
+        "**Fixed-input 最终结果。** 这是负结果。Held-out 全 40 contexts，以下各项 ours 均 **0 胜/40 负/0 平**：",
+        "**校准拟合也失败。** 既有初始化缓存→reconstruction final8→ours final8，C80 motor RMSE **0.048906→0.048310→0.118843**；future NMSE **0.057176→0.061066→0.250011**；mixed **0.004960→0.005010→0.028407**。Ours 相对初始化 80/80 mixed 变差，motor/future 各 79/80 变差。这不是只在测试集或闭环才出现的退化。",
+        "**训练/参数诊断。** CPU `26020010` 使用原初始化预测匹配各更新前实际 cases，第一次更新后，下一 batch 的含 KL 总 loss 已为其初始值 **6.030×**、motor MSE **8.335×**。八批输入不同，不能把原八个 loss 直接画成固定 batch 收敛曲线，也不能据此断言第一步在原训练 batch 上逆真实梯度更新。最终 books 相对 L2 漂移 reconstruction **2.057%**、ours **8.903%**（4.33×）；每层中位 **2.795%/13.279%**、最大 **8.455%/37.139%**。Ours 更新 RMS .001530 远大于 BF16 舍入 RMS .00002824，单靠最终存储舍入难解释退化。部署 row scales 无符号翻转、变化很小，不优先归因 scale 爆炸。",
+        "**当前决策。** Fixed-input 阶段已完成；它本身 closed-loop episodes=0，后续环境结果见下一条。整体按用户要求停止，保留全部模型、初始化及缓存，不新增训练/forward/sweep，不自动恢复。旧 `remaining_required_work` 列表有历史待办；最新 stop receipt 和状态优先。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-20261026/pulled/26008761.pbs101/results/report.zh.md",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-20261026/pulled/26008761.pbs101/pair/summary.json",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-20261026/pulled/26008761.pbs101/results/comparison.json",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/STOPPED_ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-20261026/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026",
+      "handoff_document": "handoff/05_R128_MATCHED_LOSSES_AND_AQLM.zh.md",
+      "section_heading": "fastwam-aqlm-loss-pair-plus-20261026",
+      "status": "user_stopped_partial_analysis_complete",
+      "status_note": "PBS26010239受控F/141；reconstruction280、ours245，共525/560；共同245配对179对125，5胜59负181平；CPU26020010分析完成，禁止自动恢复。",
+      "purpose_excerpt": "**原目标与配对。** 在源 AQLM 两臂 final8 和全部 fixed-input 评估完成后，各评冻结 280 Plus variants，共 560 新 episodes。沿用 4 suites×7dimensions×10variants、state0、环境 seed `800000000+index*1000`、sampler seed `900000000+index*1000+replan`；10 动作执行、400/700 cap。四 GPU 单 allocation，worker0/1 为 reconstruction 偶/奇片，2/3 为 ours；原计划各 140，20 秒错开，15 秒 GPU telemetry。External reference slots0，两臂产生自身新 episodes，不复用其他 VQ 评分。",
+      "result_and_status_excerpts": [
+        "**用户停止及验收状态。** 闭环 `26010239.pbs101` 在 525/560 条时按用户指令取消，PBS **F/Exit141**、walltime **09:33:11**。Reconstruction **280/280**、ours **245/280**；缺 35 条不记失败，原 560 目标明确未完成。CPU 只读分析 `26020010.pbs101` **F/0**、00:02:37，新增 training updates0、model forwards0，分析完成不代表 560 评测完成。最新完成 receipt 为 **2026-10-27 13:57:09 SGT**，监控已停止，automatic_resume=false。",
+        "**闭环结果。** Reconstruction 完整 **202/280（72.14%）**。严格共同 245 条上，reconstruction **179/245（73.06%）**，ours **125/245（51.02%）**，差 **−22.04pp**；ours 逐 episode **5 胜/59 负/181 平**。",
+        "**解释与接手边界。** 245 条 overall 按 episode 汇总，Long 仅半数；不是四 suite 等权的完整 280 结果，也不是随机停止得到的无偏总体效应或显著性证据。不能把 ours125/245 直接与 reconstruction202/280 作配对差，也不能写 ours125/280。训练阶段已发生显著拟合退化，问题不应只归为环境不适配。详细初始化、C80 漂移、参数变化与未知原因见上一条及 STOPPED_ANALYSIS；若以后明确重开，先验证优化方向，再考虑重训，不自动补剩余 35 条。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/STOPPED_ANALYSIS.zh.md",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/user_stop_receipt.json",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/stopped_analysis/26020010.pbs101/completion_receipt.json",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/stopped_analysis/26020010.pbs101/summary.json",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/protocol.json",
+        "experiment/idea-validation/fastwam-aqlm-loss-pair-plus-20261026/RUN_STATE.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-inference-profile",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-inference-profile",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**问题与产物。** 冻结`25921795/reader_kl final8`，导出 inference-only bundle 并定位部署成本。Bundle 保存 614 目标的最终编码、transforms/U、非量化 state、normalizer 和 resolved config；排除目标 denseBF16、training masters/Adam、frozen reader。Factory 仍依赖 FastWAM 源码及 VAE/T5/tokenizer 外部 cache，并非一个文件就能离线搬到任意机器。",
+      "result_and_status_excerpts": [
+        "**设计与状态。** Legacy、BF16、inference_dense 三个独立进程各完整 80 queries，另 stream_decode 两个诊断 queries；3 warmups，主 latency 无 profiler，detailtrace 独立。`25938083.pbs101`成功，source/export action/future parity0。原 load 字段的计时范围不一致，不能据其算公平 cold-start speedup。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-inference-profile/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-inference-profile/EXPORT_STORAGE.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-inference-profile/pulled/25938083.pbs101/FINAL_REPORT.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-fused-kernel",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-fused-kernel",
+      "status": "failed_superseded",
+      "status_note": "融合路径有数值偏移，未成为当前推荐部署。",
+      "purpose_excerpt": "**设计。** 依次实现 Smooth/sign/H/U/A4 input fusion、uint8codebook lookup+decode+BF16 MMA/FP32 acc、direct/meta loader。保持 source checkpoint、完整 80panel；614decoderbitwise、代表 shapebench、full policy parity 分别检查。",
+      "result_and_status_excerpts": [
+        "**实际进度。** 初始 constexpr/globalconstant 编译错误无 modelquery；r3 通过 synthetic 与 614decoder 检查，但真实 input-fused anchor 的 A4 位模式 gate 失败，只有 eager80 完成，没有完整 packed/direct E2E 表。修复定位到 PyTorchscalar /7 与 Triton div_rn 算术差异，转入下一条 fused-tuning。",
+        "**接手意义。** 这个目录是失败 attempt 与初版 source，不是最终推荐 engine。不能把“614weight decoder 相同”当作整个 GEMM 或 policy 相同；activationoperand 和 reduction/epilogue 也需独立验证。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-fused-kernel/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-fused-kernel/fused_input.py",
+        "experiment/idea-validation/fastwam-vq-r128-c80-fused-kernel/fused_vq.py"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-fused-tuning",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-fused-tuning",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**最终测量。** `25943391`同一 A100 五模式各 80 queries；source 不变，0training/closed-loop。Inputfusion p50 **6.528→3.504 s**，action 误差 0；通用 packed fused VQ p50 **7.093 s**、peak16.330 GB；direct/meta loader 约 7.095 s、peak16.438 GB、loadpeak16.139 GB，0dense targetweights。",
+      "result_and_status_excerpts": [
+        "**最终测量。** `25943391`同一 A100 五模式各 80 queries；source 不变，0training/closed-loop。Inputfusion p50 **6.528→3.504 s**，action 误差 0；通用 packed fused VQ p50 **7.093 s**、peak16.330 GB；direct/meta loader 约 7.095 s、peak16.438 GB、loadpeak16.139 GB，0dense targetweights。",
+        "**精度失败。** Packed 相对 eager first 10 motor RMSE **0.0449623**，gripper 分歧 6/800；direct loader 相对同 packed arithmetic 误差 0，不等于对原 checkpoint0。独立 precisionprobe 提示主要偏差仍存在于 denseTritonGEMM，不能全部归因 VQdecode。Pipeline 验收完成表示结果完整，不表示候选数值等价或值得采用。",
+        "**当前决策。** 保留精确 inputfusion；不采用这条更慢且改变输出的通用 packed GEMM。后续回到 cuBLAS BF16 主 Linear，仅优化 decode/residency。该目录虽有“native VQ”历史命名，不能用于当前主路径的 native acceleration claim。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-fused-tuning/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-fused-tuning/pulled/25943391.pbs101/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-layerdecode-bf16",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-layerdecode-bf16",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**实现。** VQ 编码常驻，单个 BF16 scratch，每 Linear 由 Triton 完整解码当前矩阵，再调用原 cuBLAS `F.linear`；保留 inputfusion/directmeta loader，不常驻 614 张 denseweights。",
+      "result_and_status_excerpts": [
+        "**结果。** `25954757`第一轮 full 80action 误差 0，p50 **3.532909 s**、allocatedpeak **16.550766 GB**，对原 dense25.139 GB 形成真实 runtime 显存节约。第二轮 BF16 U 为 4.166 s、更广 BF16 input 为 3.982 s 且都改变输出，不推荐。沿用历史 eager/inputfused/BF16 对照，跨 allocation 比较明确来源。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-layerdecode-bf16/README.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-layerdecode-bf16/long/pulled/25954757.pbs101/RESULTS.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-runtime-abc",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-runtime-abc",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**组件设计。** A 预分配 FP32 H/U 与 BF16 A4 workspace，保持算术；B 增加 query 内 text/context 及各层 cross-attention K/Vcache；C 在 B 上为 video_step、video_prefill、action_step 建立三个手动 CUDA Graph。缓存含当前 proprio，只能按 query 重建，不能跨不同 observation 盲用。",
+      "result_and_status_excerpts": [
+        "**完整 80 query 结果。** A/B/C p50 **3.693649/3.047032/0.956914 s**，peak **16.592381/16.688547/16.949808 GB**，action 与独立 future anchor 均 0 误差。A 本身没有 E2E 收益，但提供 stable buffer addresses；B 使逻辑 targets/query 从 6436→5258；C 逻辑工作量不变，通过减少 host submission 开销大幅降时。Video/actionGraph 各 800 replays、prefill80。",
+        "**公平边界。** 历史 BF16 p50 **1.450439 s**尚无同等 cache/Graph 优化，C 相对它约 1.52×是完整 runtime 组合结果，不是 VQ 算法独立加速。Profiler nestedstages 不相加；Graph 增加 setup 和 memory 成本，报告已单列。",
+        "**compile 失败。** 首 job 完成 ABC 后 compile 卡住被精确停止，保留 ABC；独立重试`25958068`准备阶段 segfault139。没有有效 compilelatency 或精度结论，也不再自动尝试。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-runtime-abc/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-runtime-abc/abc_runtime.py",
+        "experiment/idea-validation/fastwam-vq-r128-c80-runtime-abc/graph_runtime.py"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-vq-r128-c80-c-decoder-buffer",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-vq-r128-c80-c-decoder-buffer",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**当前推荐实现。** 固定 Q0 与 C，独立 decoder 有限 5 配置 shape-tuning，保持 FP32 codebook sum→ldexp→rowmultiply→BF16 write 顺序；17 真实 shapes 中 14 选择新配置、3 回退。再使 FP32 H/Uintermediates 复用 113,246,208-byteweight scratch，A4 保留独立 BF16 buffer，顺序 H→U→A4→weight decode→cuBLAS，避免覆盖仍在使用的 operand。",
+      "result_and_status_excerpts": [
+        "**当前推荐实现。** 固定 Q0 与 C，独立 decoder 有限 5 配置 shape-tuning，保持 FP32 codebook sum→ldexp→rowmultiply→BF16 write 顺序；17 真实 shapes 中 14 选择新配置、3 回退。再使 FP32 H/Uintermediates 复用 113,246,208-byteweight scratch，A4 保留独立 BF16 buffer，顺序 H→U→A4→weight decode→cuBLAS，避免覆盖仍在使用的 operand。",
+        "**主结果。** C / C+decoder / C+decoder+buffer：p50 **0.956914 / 0.890160 / 0.887096 s**；最终 mean **0.886964 s**、p95 **0.894262 s**、query peak allocated **16.914255 GB**。全 614weight/activationbitwise 检查、full 80actionmax/RMSE0、独立 anchoraction/future0。Decoder 主要解释降时；buffer 比 decoder p50 仅少 0.34%，跨 allocation 不解释成可靠速度收益，显存少约 35.55 MB。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-vq-r128-c80-c-decoder-buffer/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-vq-r128-c80-c-decoder-buffer/decoder_runtime.py",
+        "experiment/idea-validation/fastwam-vq-r128-c80-c-decoder-buffer/abc_runtime.py",
+        "experiment/idea-validation/fastwam-vq-r128-c80-c-decoder-buffer/graph_runtime.py"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/fastwam-libero-engine-20261027",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "fastwam-libero-engine-20261027",
+      "status": "complete_as_recorded",
+      "status_note": "PBS26020749 F/0、四workers/anchor/PIPELINE_COMPLETE通过；标准LIBERO391/400，无新校准；没有同400-slot BF16比较。",
+      "purpose_excerpt": "**问题。** 将当前算法 checkpoint 和推荐 inference engine 真正接到标准 LIBERO 环境，检查冻结 C80 reader-KL 模型在原始 40 tasks 上的表现，以及 engine 在大量闭环 queries 中能否正常执行。这不是重校准、AQLM 实验或完整 LIBERO-Plus 评测。",
+      "result_and_status_excerpts": [
+        "**实际 engine 与并发。** Packed MXVQ 常驻、按层 BF16 decode、cuBLAS BF16 GEMM，condition cache、三 Graph 区域、H/U 借 weight scratch、A4 独立 buffer。复用原 decoder shape choices，不重新 tuning，不是 native INT4/VQ GEMM。四常驻 workers 各加载一次，通过原子动态 task queue 领任务，Long 优先；与旧 Plus 按偶奇固定 140 切片不同。最终各完成 **100/100/90/110** episodes、成功 **98/98/87/108**，总 model loads4；每 worker 加载/安装/anchor 约 304 秒。",
+        "**完成状态。** `26020749.pbs101 / fwlib400`，2026-10-27 **15:45:38 SGT**保存的 PBS 状态 **F/Exit0**、实际 walltime **01:22:44**，artifact 和四 workers exit0、PIPELINE_COMPLETE。原请求 normal→g3、4 GPU/32 CPU/220 GB、6h；scheduler 实际改为 64 CPU/440 GB、仍 4 GPU/6h。每 15 秒 GPU telemetry；30 分钟监控在完成后停止。没有为此次补文档再查询/提交作业。",
+        "**结果。** 标准 LIBERO **391/400（97.75%）**；四 suite 各 100，因此 overall 也等于四 suite 等权均值。",
+        "**实现与接手。** `worker.py`负责官方任务/initial states、常驻模型、engine 安装、startup anchor、原子任务队列与逐 episode 记录；`analysis.py`要求 400 唯一 slots、40tasks、相同协议及四 worker 通过后聚合，`control.py`管理 handle/status。产物在 `/scratch/users/ntu/yguo017/fastwam-libero-engine-20261027/`，本地保存 summary、task_queue 和实际 job artifacts。本轮已完成，无待续 episodes。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/fastwam-libero-engine-20261027/RESULTS.zh.md",
+        "experiment/idea-validation/fastwam-libero-engine-20261027/protocol.json",
+        "experiment/idea-validation/fastwam-libero-engine-20261027/pulled/26020749.pbs101/summary.json",
+        "experiment/idea-validation/fastwam-libero-engine-20261027/monitor_status.json",
+        "experiment/idea-validation/fastwam-libero-engine-20261027/pulled/26020749.pbs101/artifacts/worker.py",
+        "experiment/idea-validation/fastwam-libero-engine-20261027/pulled/26020749.pbs101/artifacts/analysis.py"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/cosmos-policy-c8-w4a4",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "cosmos-policy-c8-w4a4",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**第一批跨模型验证。** `Cosmos-Policy-LIBERO-Predict2-2B`官方 directpolicy，sharedDiT，5NFE、chunk16 执行 16。共享 OriginalC8 观察与指令，但 teacheraction/latent 由 Cosmos 生成，不能使用 Fast-WAM targets。280 targets 约 1.762Bweights；d4/twobooks/B32MXVQ，只有 A+Z，**没有 reader-KL**。SpinQuant200 updates，VQ16 updates，目标及预算不同。",
+      "result_and_status_excerpts": [
+        "**结果。** 840 episodes 完整：BF16 **233/280**，SpinQuant **221/280**，VQ **226/280**；VQ 对 Spin14 胜/9 负/257 平。Targetbpw16/4.125446/4.286979；wholeDiTbpw 另算，不是同一个分母。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/cosmos-policy-c8-w4a4/RESULTS.zh.md",
+        "experiment/idea-validation/cosmos-policy-c8-w4a4/README.zh.md"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/cosmos-policy-vqwam-20261024",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "cosmos-policy-vqwam-20261024",
+      "status": "documented_see_section",
+      "status_note": "目的、设计、结果与证据边界见对应交接条目；本索引不重新判定远端实时状态。",
+      "purpose_excerpt": "**当前跨模型方法。** C80 先 W16A4 学共享 R8，再冻结 R、训 VQ8，每 update 平均 10 contexts；训练完整 16×6motorMSE、future-viewNMSE 和**joint-DiT suffixreader-KL**，不是仅旧 A+Z。Lambda **0.0645743742**、beta **1.7317817103**按 Cosmos 自身 C80 冻结，不沿用 Fast-WAM 数字。",
+      "result_and_status_excerpts": [
+        "**当前跨模型方法。** C80 先 W16A4 学共享 R8，再冻结 R、训 VQ8，每 update 平均 10 contexts；训练完整 16×6motorMSE、future-viewNMSE 和**joint-DiT suffixreader-KL**，不是仅旧 A+Z。Lambda **0.0645743742**、beta **1.7317817103**按 Cosmos 自身 C80 冻结，不沿用 Fast-WAM 数字。",
+        "**六臂结果。** 完整 1680 records：BF16 **233/280**、SpinQuant **221**、QuaRot **227**、SVDQuantadapted **78**、ViDiT-Qmixed **232**、ours **230**。Ours 对 BF168 胜/11 负/261 平；没有 matchedA+Zcontrol，不能把 230 相对旧 226 的变化单因归 KL。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/cosmos-policy-vqwam-20261024/INTERIM_RESULTS.zh.md",
+        "experiment/idea-validation/cosmos-policy-vqwam-20261024/reader.py",
+        "experiment/idea-validation/cosmos-policy-vqwam-20261024/engine.py",
+        "experiment/idea-validation/cosmos-policy-vqwam-20261024/protocol.json"
+      ]
+    },
+    {
+      "directory": "experiment/idea-validation/cosmos-policy-native-perf-20261025",
+      "handoff_document": "handoff/06_ENGINE_AND_COSMOS.zh.md",
+      "section_heading": "cosmos-policy-native-perf-20261025",
+      "status": "performance_complete_fidelity_not_passed",
+      "status_note": "性能表已完成；baseline representative fidelity 失败，full80 fidelity 缺失，不能声称新 native backend 闭环已验证。",
+      "purpose_excerpt": "**目标与 scope。** 固定已有 checkpoint，测真正接入 native baseline 后的性能，并分别报告真实 sampler wall 和 FPcaptured DiT Graph replay CUDAevent。0 训练、0 新闭环。Ours 仍 codebookdecode+BF16 GEMM，native 一词描述 baseline backend/native sampler，不是宣称 oursINT4。",
+      "result_and_status_excerpts": [
+        "**最终表与边界。** BF16 行 80 queries×3blocks×3repeats=N720；其他行 40 queries/seed0=N40，**不能称相同 cohort 等重复 benchmark**。Sampler BF16/oursmean **432.566/435.695ms**，peak **5.7094/3.3082 GB**；DiT replay **277.356/433.901ms**，peak **5.0787/2.6453 GB**。Oursstorage1.2421 GiB，sampler 近 BF16 但 DiT replay 仍慢，不能只报一个相近端点概括 backbone 加速。",
+        "**接手优先。** 若要正式效率结论，先决定统一 measurement design 和精度资格，再补 matchedBF16/cacheGraph、native 闭环。不能拿论文 RTX4090DiT replay 与本机 A100policycall 直接论 SOTA，也不自动发起额外 sweep。"
+      ],
+      "evidence_paths": [
+        "experiment/idea-validation/cosmos-policy-native-perf-20261025/RESULTS_mixed.zh.md",
+        "experiment/idea-validation/cosmos-policy-native-perf-20261025/DIAGNOSIS.zh.md",
+        "experiment/idea-validation/cosmos-policy-native-perf-20261025/engine_optimized.py"
+      ]
+    }
+  ],
+  "previous_snapshot_date_sgt": "2026-10-26",
+  "revision_scope": "更新AQLM fixed-input、用户停止后闭环/CPU分析，并加入标准LIBERO engine400；其他实验沿用初稿证据。",
+  "aqlm_snapshot": {
+    "checked_utc": "2026-10-27T05:57:09.219456+00:00",
+    "owner_thread_id": "01a17756-c858-7142-b39a-619f26b9eae0",
+    "status": "user_stopped_analysis_complete",
+    "prepare_job": "26005386.pbs101",
+    "banks_completed": 614,
+    "banks_expected": 614,
+    "fit_profile_counts": {
+      "heavy_v1_retained": 22,
+      "light_v2": 12,
+      "minimal_v3": 580
+    },
+    "pair_job": "26008761.pbs101",
+    "fixed_input_complete": true,
+    "updates_per_arm": 8,
+    "exposures_per_arm": 80,
+    "calibration_queries_per_arm": 80,
+    "heldout_queries_per_arm": 80,
+    "heldout_motor_rmse": {
+      "reconstruction": 0.05175537564791739,
+      "ours": 0.11687385234981776
+    },
+    "heldout_future_nmse": {
+      "reconstruction": 0.06998902149498462,
+      "ours": 0.23959216885268686
+    },
+    "closed_loop_job": "26010239.pbs101",
+    "closed_loop_exit_status": 141,
+    "controlled_user_stop": true,
+    "closed_loop_expected_episodes": 560,
+    "closed_loop_completed_episodes": 525,
+    "completed_by_arm": {
+      "reconstruction": 280,
+      "ours": 245
+    },
+    "reconstruction_full_successes": 202,
+    "matched_episodes": 245,
+    "matched_successes": {
+      "reconstruction": 179,
+      "ours": 125
+    },
+    "ours_matched_wins_losses_ties": [
+      5,
+      59,
+      181
+    ],
+    "remaining_episodes": 35,
+    "closed_loop_full_goal_complete": false,
+    "analysis_job": "26020010.pbs101",
+    "analysis_complete": true,
+    "analysis_exit_status": 0,
+    "new_analysis_training_updates": 0,
+    "new_analysis_model_forwards": 0,
+    "monitor_stopped": true,
+    "automatic_resume": false
+  },
+  "original_libero_evaluation": {
+    "directory": "experiment/idea-validation/fastwam-libero-engine-20261027",
+    "checked_utc": "2026-10-27T07:45:38.525742+00:00",
+    "job": "26020749.pbs101",
+    "status": "complete",
+    "pbs_state": "F",
+    "exit_status": 0,
+    "walltime": "01:22:44",
+    "benchmark": "original LIBERO",
+    "tasks": 40,
+    "episodes_per_task": 10,
+    "initial_state_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "environment_seed": 42,
+    "sampler_seed": 42,
+    "episodes": 400,
+    "successes": 391,
+    "success_rate": 0.9775,
+    "suites": {
+      "libero_spatial": {
+        "episodes": 100,
+        "successes": 98
+      },
+      "libero_object": {
+        "episodes": 100,
+        "successes": 99
+      },
+      "libero_goal": {
+        "episodes": 100,
+        "successes": 97
+      },
+      "libero_10": {
+        "episodes": 100,
+        "successes": 97
+      }
+    },
+    "source_job": "25921795.pbs101",
+    "arm": "reader_kl",
+    "endpoint": "final8",
+    "engine": "C+decoder+buffer",
+    "native_int4_or_vq_gemm": false,
+    "new_calibration_updates": 0,
+    "workers": 4,
+    "anchor_action_future_max_abs_per_worker": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "worker_episodes": [
+      100,
+      100,
+      90,
+      110
+    ],
+    "policy_calls": 6415,
+    "warm_policy_call_p50_seconds": 0.899527340196073,
+    "policy_call_scope": "warm model call; excludes observation preprocessing, model loading, graph capture and environment stepping",
+    "matched_bf16_evaluation_available": false,
+    "monitor_stopped": true
+  }
+}

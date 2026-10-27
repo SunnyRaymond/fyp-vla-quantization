@@ -1,6 +1,6 @@
 # Fast-WAM AQLM loss-pair
 
-只做 AQLM-adapted 的两臂 fixed-input 消融，完成后停止；不授权、也不包含 280-episode 闭环入口。
+先完成 AQLM-adapted 两臂 fixed-input 消融；用户已另行授权随后两臂各280 episodes的闭环（共560），由相邻 fastwam-aqlm-loss-pair-plus-20261026 的独立协议和单一四GPU长作业执行。本目录 protocol 的 closed_loop=false 仅约束本 fixed-input 阶段。
 
 共同初始化使用官方 `Vahe1994/AQLM@e79a896ed6656fe4ed06193d42d004e7d0bbdbb2` 的 `AQEngine`：input-aware XTX、residual K-means、continuous codebook/scale Adam 与 discrete beam-search。配置为 group8、4 个 256-entry codebooks，nominal index 4 bpw；codebooks/scales 的 BF16 存储、padding 与共同 Smooth/H/R preprocessing 均计入报告。
 
@@ -29,6 +29,14 @@ Capture 的 I/O 修正不改变采样：GPU 上先收集同样的 BF16 rows，�
 
 本地控制：`control.py upload`、`control.py submit --stage bootstrap`，之后完成上一阶段再提交 `prepare`、`pair`。`status` 为轻量状态；`logs --stage prepare` 读取日志尾部。checkpoint75或已确认失败后需显式使用新 attempt 恢复，不能在Q/R状态重提。
 
-最终产物：`results/comparison.json`、`results/report.zh.md`、两臂部署参数、完整 fixed-input records。闭环 episode 数必须始终为0。
+本阶段产物：`results/comparison.json`、`results/report.zh.md`、两臂部署参数、完整 fixed-input records。本阶段闭环episode为0，之后由独立closed-loop协议执行两臂各280 episodes。
 
 最终比较里的 `mixed_loss` 定义为共同的 `A + lambda*Z`，不含 reader KL；ours 的 reader KL 单独保存在训练历史中，避免把两臂不同定义的训练总 loss 直接作数值比较。
+
+重建臂不持久缓存原始BF16 GPU权重，按层从相同CPU masters搬入；保留原有BF16 transformed-reference缓存和decoded student，避免同时保留三套目标矩阵。首个原计划训练query同时核对缓存teacher action/future（不增加模型forward），首个完整10-context update沿用614模块梯度/冻结项检查，并记录每个update显存峰值。该修正只改变缓存生命周期，训练loss、数值dtype和样本/更新预算均不变；CPU→GPU传输耗时可能增加。
+
+每个完整batch的所有梯度计算完毕后，释放本batch的transformed-reference缓存，再执行Adam和decoded refresh，避免reference与刷新临时矩阵同时占满显存。下个batch从同一冻结原始权重重建相同BF16 references。
+
+Frozen-reader阶段把AQLM额外持有的decoded dense缓存暂存CPU，使历史reader_session实际释放student GPU权重。正常退出后逐字节搬回原device并bind_dense，保持完整padded矩阵；异常时不额外分配GPU内存，避免覆盖原错误。原有reader teacher identity、staged student replay和614梯度门槛继续验证数值一致；不增加teacher/student queries。
+
+闭环启动所需 final8 action/future anchor 会在既有 calibration case2000/seed0 评估时保存，不增加 forward；恢复时缺少该anchor则补做同一student query。闭环阶段不新增训练或BF16 teacher forward。

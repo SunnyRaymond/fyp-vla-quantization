@@ -1,0 +1,62 @@
+{
+  "protocol": "fastwam-libero-engine-20261027-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-libero-engine-20261027",
+  "job_name": "fwlib400",
+  "allocation": {
+    "queue": "normal",
+    "execution_queue": "g3",
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 220,
+    "walltime": "06:00:00",
+    "gpu_monitor_seconds": 15
+  },
+  "evaluation": {
+    "benchmark": "original LIBERO",
+    "suites": ["libero_spatial", "libero_object", "libero_goal", "libero_10"],
+    "task_ids": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "trial_ids": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "episodes": 400,
+    "initial_states": "official original LIBERO initial_states[trial_id]",
+    "seed": 42,
+    "sampler_seed": 42,
+    "settling_steps": 30,
+    "replan_steps": 10,
+    "max_steps": {"libero_spatial": 400, "libero_object": 400, "libero_goal": 400, "libero_10": 700},
+    "aggregation": "100 episodes per suite; equal four-suite mean",
+    "scheduler": "four persistent GPU workers; atomic dynamic task queue; long-suite tasks first",
+    "save_videos": false
+  },
+  "model": {
+    "base_checkpoint": "libero_optional_idm_2cam224.clean.pt",
+    "upstream_revision": "7faa71108368fbb3b6885649f112af607427a2d4",
+    "source_job": "25921795.pbs101",
+    "arm": "reader_kl",
+    "updates": 8,
+    "mode": "idm",
+    "video_steps": 10,
+    "action_steps": 10,
+    "sigma_shift": 1.0,
+    "action_horizon": 32,
+    "new_calibration_updates": 0,
+    "calibration_observations": "frozen C80: original LIBERO, all 40 tasks, two distinct demonstration snapshots per task"
+  },
+  "engine": {
+    "mode": "c_buffer",
+    "description": "C+decoder+buffer: packed MXVQ residency, layer BF16 decode, BF16 cuBLAS GEMM, condition cache, CUDA Graph",
+    "native_int4_gemm": false,
+    "source_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101",
+    "source_results": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/results/c_buffer",
+    "bundle": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt",
+    "anchor_tensor": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/arms/reader_kl/anchor.pt",
+    "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "startup": "one saved full action/future anchor per GPU, exact equality; reuse decoder selections; no retuning"
+  },
+  "monitor": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "xhigh",
+    "interval_seconds": 1800,
+    "unchanged": "silent",
+    "target_thread": "01a17b63-e7c7-7bd0-88a6-cef92be42fe0"
+  }
+}

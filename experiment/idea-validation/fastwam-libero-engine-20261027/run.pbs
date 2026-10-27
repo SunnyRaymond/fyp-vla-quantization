@@ -1,0 +1,107 @@
+#!/bin/bash
+#PBS -N fwlib400
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=32:mem=220gb:ngpus=4
+#PBS -l walltime=06:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test "${PBS_JOBNAME:-}" = fwlib400 || exit 64
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g3([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-engine-20261027
+ENGINE_SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+export NEW_ROOT ARTIFACTS RESULTS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+GPU_MONITOR_PID=
+WORKERS=()
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKERS[@]:-}"; do kill -TERM "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq 4 || { echo 'Expected four allocated GPUs'; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || exit 65
+  for prior in "${GPU_UUIDS[@]:-}"; do test "$prior" != "$uuid" || exit 65; done
+  GPU_UUIDS+=("$uuid")
+done
+(
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    done
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+for name in protocol.json run.pbs environment.sh worker.py analysis.py; do
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+# Reuse the exact frozen engine and its dependencies; all copies occur in compute allocation.
+for name in reference_profile.py export_runtime.py fused_input.py fused_vq.py kernel_runtime.py \
+    layer_runtime.py condition_cache.py abc_runtime.py graph_runtime.py decoder_runtime.py \
+    profile_worker.py runner.py quantization.py libero_state_loader.py previous_vq_adapter.py \
+    rotation_bank.py batched_transform.py smooth_vq.py codebook.py micro_codebook.py \
+    c8_train_banks.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$ENGINE_SOURCE/$name" || { echo "Missing engine dependency: $name"; exit 65; }
+  cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+done
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/worker.py" --protocol "$ARTIFACTS/protocol.json" --init
+
+for worker in 0 1 2 3; do
+  (
+    set +e
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$worker]} run_python "$ARTIFACTS/worker.py" \
+      --protocol "$ARTIFACTS/protocol.json" --worker "$worker" \
+      > "$ARTIFACTS/worker_$worker.log" 2>&1
+    rc=$?
+    printf '%s\n' "$rc" > "$ARTIFACTS/worker_$worker.exit"
+    exit "$rc"
+  ) & WORKERS+=("$!")
+done
+
+# Check worker exit files without waiting behind another worker that is still running.
+while :; do
+  finished=0
+  for worker in 0 1 2 3; do
+    if [[ -s "$ARTIFACTS/worker_$worker.exit" ]]; then
+      rc=$(<"$ARTIFACTS/worker_$worker.exit")
+      if (( rc != 0 )); then tail -c 6000 "$ARTIFACTS/worker_$worker.log"; exit "$rc"; fi
+      finished=$((finished+1))
+    fi
+  done
+  (( finished == 4 )) && break
+  sleep 15
+done
+for pid in "${WORKERS[@]}"; do wait "$pid"; done
+CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

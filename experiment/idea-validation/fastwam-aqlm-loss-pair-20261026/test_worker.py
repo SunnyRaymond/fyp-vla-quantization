@@ -2,11 +2,13 @@
 import copy
 import unittest
 import tempfile
+from contextlib import contextmanager
+import sys
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from pathlib import Path
 
-from worker import validate, read, save, beta_from_means, load_capture_case, official_quantize, PROTOCOL
+from worker import validate, read, save, beta_from_means, load_capture_case, official_quantize, PROTOCOL, Work
 from analysis import aggregate, paired
 
 
@@ -89,6 +91,45 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             official_quantize(torch,SimpleNamespace(quantize=failing),object())
         self.assertEqual(settings,{'enabled':True,'warn_only':False})
+
+
+class ReaderParkingTests(unittest.TestCase):
+    def test_dense_cache_preserves_padded_shape_and_restores_only_after_success(self):
+        transfers=[]
+        class Dense:
+            def __init__(self,device):
+                self.device=device
+                self.shape=(2,8)
+                self.values=tuple(range(16))
+            def numel(self):return 16
+            def element_size(self):return 2
+            def detach(self):return self
+            def cpu(self):return Dense('cpu')
+            def to(self,device):
+                transfers.append(device)
+                return Dense(device)
+        @contextmanager
+        def reader_session(torch,runtime,bank,masters):
+            self.assertEqual(bank.decoded['layer'].device,'cpu')
+            self.assertEqual(bank.decoded['layer'].shape,(2,8))
+            yield object()
+        with tempfile.TemporaryDirectory() as directory:
+            work=Work.__new__(Work)
+            work.bank=SimpleNamespace(decoded={'layer':Dense('cuda:0')},bind_dense=Mock())
+            work.torch=SimpleNamespace(cuda=SimpleNamespace(memory_allocated=lambda:10))
+            work.runtime=object();work.masters={};work.unit=Path(directory);work.job='test.pbs'
+            with patch.dict(sys.modules,{'reader_runtime':SimpleNamespace(reader_session=reader_session)}):
+                with work.frozen_reader_session():pass
+                self.assertEqual(work.bank.decoded['layer'].device,'cuda:0')
+                self.assertEqual(work.bank.decoded['layer'].values,tuple(range(16)))
+                work.bank.bind_dense.assert_called_once()
+                transfers.clear();work.bank.bind_dense.reset_mock()
+                with self.assertRaisesRegex(RuntimeError,'reader failure'):
+                    with work.frozen_reader_session():
+                        raise RuntimeError('reader failure')
+                self.assertEqual(work.bank.decoded['layer'].device,'cpu')
+                self.assertEqual(transfers,[])
+                work.bank.bind_dense.assert_not_called()
 
 
 if __name__=='__main__':
