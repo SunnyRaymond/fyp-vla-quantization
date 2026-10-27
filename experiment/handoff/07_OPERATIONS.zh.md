@@ -10,7 +10,7 @@ ASPIRE2A login 只用于轻量 SSH、PBS 提交/查询、小型控制文件与�
 
 每个 workload 在任何重操作前验证：真实`PBS_JOBID`、非 login hostname、可读`PBS_NODEFILE`且当前 host 在其中；严格 launcher 还核对 live PBS state=R、job name、routing queue 与 exec_host。不要手动设置 PBS 变量绕过 guard。GPU 任务运行中每 15 秒将分配 GPU 的 utilization/VRAM 写入本 job.log；收尾退出，避免空占。
 
-CPU 数据准备/安装/后处理优先 CPU allocation。Compute 无法联网不意味着可以退回 login 下载；应保留状态，查明获准路径。禁止动用账户 banked reset；保留 SSH host-key verification。依据：[项目AGENTS](../../AGENTS.md)、[严格主launcher](../idea-validation/fastwam-vq-r128-c80-loss-pair/run.pbs)。根`ASPIRE2A_README.md`部分较旧描述不能覆盖这些更严格规则。
+CPU 数据准备/安装/后处理优先 CPU allocation。Compute 无法联网不意味着可以退回 login 下载；应保留状态，查明获准路径。禁止动用账户 banked reset；保留 SSH host-key verification。依据：[CLAUDE.md](../../CLAUDE.md)、[严格主launcher](../idea-validation/fastwam-vq-r128-c80-loss-pair/run.pbs)。根`ASPIRE2A_README.md`部分较旧描述不能覆盖这些更严格规则。
 
 ## 2. 本机哪些内容在备份里
 
