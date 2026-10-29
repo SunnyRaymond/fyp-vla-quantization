@@ -1,0 +1,95 @@
+#!/bin/bash
+#PBS -N fwa8v2
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=01:30:00
+#PBS -j oe
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-a8-accuracy-20261027-v2
+PARENT_ROOT=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022
+PARENT_RUNTIME=$PARENT_ROOT/artifacts/25921795.pbs101
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" || die 'PBS_JOBID is required'
+test -n "${PBS_NODEFILE:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS_NODEFILE is missing or empty'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Current host is outside the PBS allocation'
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS job is not running'
+grep -Eq '^[[:space:]]*Job_Name[[:space:]]*=[[:space:]]*fwa8v2(r[0-9]+)?([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS job name differs'
+grep -Eiq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*gdev([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS did not route this job to gdev'
+
+FW_JOB_START_EPOCH=$(date +%s)
+export FW_JOB_START_EPOCH
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+printf 'PBS_JOBID=%s host=%s start_epoch=%s route=gdev\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH"
+
+GPU_MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  (( rc == 0 )) || rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+for name in protocol.json run.pbs environment.sh worker.py analysis.py; do
+  test -s "$NEW_ROOT/$name" || { echo "Uploaded source missing: $name" >&2; exit 65; }
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+# Exact Q0 runtime: the loss-pair job artifacts, as reused by Q-Clip.
+cp "$PARENT_RUNTIME/protocol.json" "$ARTIFACTS/parent_protocol.json"
+cp "$PARENT_RUNTIME/worker.py" "$ARTIFACTS/q0_worker.py"
+for name in source_worker.py rotation_bank.py c8_train_banks.py batched_transform.py runner.py quantization.py \
+    libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py \
+    checkpointing.py calibration_source.py frozen_reader.py reader_runtime.py reader_loss.py softbin_loss.py; do
+  test -s "$PARENT_RUNTIME/$name" || { echo "Q0 runtime artifact missing: $name" >&2; exit 65; }
+  cp "$PARENT_RUNTIME/$name" "$ARTIFACTS/"
+done
+
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+export ROOT BASE DIAG_ROOT NEW_ROOT SMOOTH_ROOT SOURCE_ROOT R128_ROOT
+FW_CPU_THREADS=16
+FW_SOFT_DEADLINE_SECONDS=5100
+FW_SAVE_RESERVE_SECONDS=300
+export FW_CPU_THREADS FW_SOFT_DEADLINE_SECONDS FW_SAVE_RESERVE_SECONDS
+source "$ARTIFACTS/environment.sh"
+
+test -n "${CUDA_VISIBLE_DEVICES:-}" || { echo 'CUDA_VISIBLE_DEVICES is empty' >&2; exit 65; }
+GPU_UUID=$(nvidia-smi -i "$CUDA_VISIBLE_DEVICES" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || { echo 'Expected one allocated GPU' >&2; exit 65; }
+printf 'ALLOCATED_GPU_UUID=%s\n' "$GPU_UUID"
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -Is)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 15
+  done
+) &
+GPU_MONITOR_PID=$!
+
+cd "$ARTIFACTS"
+CUDA_VISIBLE_DEVICES=$GPU_UUID run_python "$ARTIFACTS/worker.py" --protocol "$ARTIFACTS/protocol.json" --worker 0 \
+  > "$ARTIFACTS/worker_0.log" 2>&1 || { tail -c 6000 "$ARTIFACTS/worker_0.log"; exit 66; }
+CUDA_VISIBLE_DEVICES=$GPU_UUID run_python "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json"
+cp "$RESULTS/summary.json" "$RESULTS/RESULTS.zh.md" "$ARTIFACTS/"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

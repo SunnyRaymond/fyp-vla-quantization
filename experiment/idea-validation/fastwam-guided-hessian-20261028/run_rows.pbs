@@ -1,0 +1,204 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# WAM-guided Hessian, phase 4 (rows.json), one g1 job on 1 GPU: the phase-1 H~ plus a zero-bit output-row scale on
+# QTIP W2 (arm QTIP_GR_W2, rows_worker.py): quant -> complete -> eval (held-out 40x2 + C1 swap) -> LIBERO-Plus 280 with
+# the A16 baselines' loop worker -> final (results/rows report). Each step skips finished files, so fwgrrN resumes.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028
+PARENT_RUNTIME=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" || die 'PBS_JOBID is required'
+test -n "${PBS_NODEFILE:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS_NODEFILE is missing or empty'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Current host is outside the PBS allocation'
+FW_JOB=${PBS_JOBNAME:-}
+[[ "$FW_JOB" =~ ^fwgr(r[0-9])?$ ]] || die "Unknown job name: $FW_JOB"
+QUEUE=g1; NG=1; FW_SOFT_DEADLINE_SECONDS=24900
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS job is not running'
+grep -Eq "^[[:space:]]*Job_Name[[:space:]]*=[[:space:]]*${PBS_JOBNAME}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die 'PBS job name differs'
+grep -Eiq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die "PBS did not route the job to $QUEUE"
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=$(( NCPUS / NG ))
+FW_SAVE_RESERVE_SECONDS=300
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+OUT=$ARTIFACTS
+RESULTS=$NEW_ROOT/results
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+export FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS FW_CPU_THREADS FW_SAVE_RESERVE_SECONDS FW_JOB
+export ROOT BASE SIF DIAG_ROOT NEW_ROOT SMOOTH_ROOT SOURCE_ROOT R128_ROOT ARTIFACTS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+printf 'PBS_JOBID=%s host=%s start_epoch=%s route=%s gpus=%s\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH" "$QUEUE" "$NG"
+
+GPU_MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  (( rc == 0 )) || rm -f "$OUT/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$OUT/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+for name in protocol.json host.json rows.json run_rows.pbs environment.sh worker.py rows_worker.py probe.py \
+    loop_check.py; do
+  test -s "$NEW_ROOT/$name" || { echo "Uploaded source missing: $name" >&2; exit 65; }
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+# Frozen loss-pair runtime chain: model, plan, cached teachers, metrics, reader, soft-bin KL.
+cp "$PARENT_RUNTIME/protocol.json" "$ARTIFACTS/lp_protocol.json"
+cp "$PARENT_RUNTIME/worker.py" "$ARTIFACTS/lp_worker.py"
+for name in source_worker.py rotation_bank.py c8_train_banks.py batched_transform.py runner.py quantization.py \
+    libero_state_loader.py smooth_vq.py codebook.py micro_codebook.py sampler.py latent_reference.py \
+    checkpointing.py calibration_source.py frozen_reader.py reader_runtime.py reader_loss.py softbin_loss.py; do
+  test -s "$PARENT_RUNTIME/$name" || { echo "Runtime artifact missing: $name" >&2; exit 65; }
+  cp "$PARENT_RUNTIME/$name" "$ARTIFACTS/"
+done
+# The A16 baselines' QTIP port, unchanged (the same code produced their QTIP_W2).
+mkdir -p "$ARTIFACTS/methods"
+for method in qtip; do
+  test -s "$BASELINE_ROOT/methods/$method/quant.py" || { echo "Baseline $method implementation missing" >&2; exit 65; }
+  cp -r "$BASELINE_ROOT/methods/$method" "$ARTIFACTS/methods/"
+  sha256sum "$ARTIFACTS/methods/$method/quant.py"
+done
+
+source "$ARTIFACTS/environment.sh"
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || { echo "Expected $NG allocated GPUs, got ${#GPU_IDS[@]}" >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || exit 65
+  GPU_UUIDS+=("$uuid")
+done
+ME=$(id -un)
+(
+  n=0
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    if (( n % 4 == 0 )); then  # busy cores of this user's processes over 2 s (second top frame), against the request
+      top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+        '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+        || echo CPU_SAMPLE_ERROR
+    fi
+    n=$(( n + 1 ))
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+cd "$ARTIFACTS"
+
+step() {  # one worker process per GPU (shard k of n); the first failure ends the job
+  local stage=$1 n=$2 k pids=()
+  echo "STEP $stage shards=$n $(date -u +%H:%M:%S)"
+  for (( k = 0; k < n; k++ )); do
+    ( export CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$k]} FW_STAGE=$stage FW_SHARD=$k FW_SHARDS=$n
+      run_python "$ARTIFACTS/rows_worker.py" --protocol "$ARTIFACTS/protocol.json" > "$OUT/${stage}_$k.log" 2>&1 ) &
+    pids+=("$!")
+  done
+  for (( k = 0; k < n; k++ )); do
+    if ! wait -n; then
+      for (( k = 0; k < n; k++ )); do tail -c 6000 "$OUT/${stage}_$k.log"; done
+      die "step $stage failed"
+    fi
+  done
+  for (( k = 0; k < n; k++ )); do grep FWGH_PROGRESS "$OUT/${stage}_$k.log" | tail -n 1; done
+}
+
+count() { (find "$1" -maxdepth 1 -name "$2" 2>/dev/null || true) | wc -l; }
+
+mapfile -t LOOP_CFG < <(python3 - "$BASELINE_ROOT/protocol.json" "$ARTIFACTS/rows.json" <<'PY'
+import json, sys
+p, r = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+for value in (p["roots"]["engine_source"], " ".join(p["engine_files"]), r["arm"], r["closed_loop"]["workers_per_gpu"]):
+    print(value)
+PY
+)
+test "${#LOOP_CFG[@]}" -eq 4 || die 'Cannot read the closed-loop configuration'
+ENGINE_SOURCE=${LOOP_CFG[0]}; read -r -a ENGINE_FILES <<< "${LOOP_CFG[1]}"; ARM=${LOOP_CFG[2]}; WPG=${LOOP_CFG[3]}
+
+# Closed-loop directory: the A16 baselines' loop worker, analysis, environment and engine files, plus a protocol that
+# names ARM under this root; results/prep links to the baseline prep (T5 cache, BF16 anchor).
+L=$ARTIFACTS/loop
+mkdir -p "$L"
+for name in common.py loop_worker.py analysis.py environment.sh; do
+  test -s "$BASELINE_ROOT/$name" || die "Baseline loop source missing: $name"
+  cp "$BASELINE_ROOT/$name" "$L/"
+done
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+  cp "$ENGINE_SOURCE/$name" "$L/"
+done
+python3 - "$BASELINE_ROOT/protocol.json" "$L/protocol.json" "$NEW_ROOT" "$ARTIFACTS/rows.json" <<'PY'
+import json, sys
+p, r = json.load(open(sys.argv[1])), json.load(open(sys.argv[4]))
+p.update(protocol="fastwam-guided-hessian-20261028-v1", remote_root=sys.argv[3], arm_priority=[r["arm"]],
+         arms={r["arm"]: dict(method=r["method"], bits=r["bits"])})
+json.dump(p, open(sys.argv[2], "w"), indent=2)
+PY
+ln -sfn "$BASELINE_ROOT/results/prep" "$RESULTS/prep"
+
+loop_env() {  # call inside a subshell: the baselines' environment.sh / run_python with the loop directory first
+  ARTIFACTS=$L; DIAG_ROOT=$L; FW_CPU_THREADS=$1
+  source "$L/environment.sh"
+  cd "$L"
+}
+
+loop() {  # LIBERO-Plus 280 of ARM: NG x WPG workers claim episodes from one queue
+  local workers=$(( NG * WPG ))
+  if [[ -e "$RESULTS/loops/$ARM/DONE" ]]; then echo "LOOP $ARM already done"; return; fi
+  echo "STEP loop arm=$ARM workers=$workers $(date -u +%H:%M:%S)"
+  (
+    loop_env $(( NCPUS / workers ))
+    LP=(--protocol "$L/protocol.json" --arm "$ARM")
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/loop_worker.py" "${LP[@]}" --init
+    for (( w = 0; w < workers; w++ )); do
+      ( CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$(( w / WPG ))]} run_python "$L/loop_worker.py" "${LP[@]}" --worker "$w" \
+          > "$OUT/loop_${ARM}_$w.log" 2>&1 ) &
+      sleep 10
+    done
+    for (( w = 0; w < workers; w++ )); do
+      wait -n || { for f in "$OUT"/loop_${ARM}_*.log; do tail -c 4000 "$f"; done; exit 1; }
+    done
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/analysis.py" --protocol "$L/protocol.json" --arm "$ARM"
+  ) || die "$ARM closed loop failed"
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["complete"] else 1)' \
+    "$RESULTS/loops/$ARM/summary.json" || die "$ARM closed loop incomplete"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$RESULTS/loops/$ARM/DONE"
+  cat "$RESULTS/loops/$ARM/RESULTS.zh.md"
+}
+
+if (( $(count "$RESULTS/quantized/$ARM/stats" '*.json') == 614 )); then echo 'STEP quant already complete'
+else step quant "$NG"; fi
+step complete 1  # quantized/<arm>/COMPLETE.json, which the baselines' analysis.py reads
+if [[ -s "$RESULTS/heldout/$ARM.json" ]]; then echo 'STEP eval already complete'; else step eval 1; fi
+loop
+step final 1
+cat "$RESULTS/rows/RESULTS.zh.md"
+
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

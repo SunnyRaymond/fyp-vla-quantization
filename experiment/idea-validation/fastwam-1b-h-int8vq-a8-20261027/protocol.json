@@ -1,0 +1,155 @@
+{
+  "protocol": "fastwam-1b-h-int8vq-a8-20261027-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-1b-h-int8vq-a8-20261027",
+  "parent_runtime": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101",
+  "engine_source": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101",
+  "stages": {
+    "prep": {
+      "job_name": "fw1bprep",
+      "allocation": {
+        "queue": "normal",
+        "execution_queue": "gdev",
+        "gpus": 1,
+        "ncpus": 16,
+        "memory_gb": 110,
+        "walltime": "02:00:00"
+      },
+      "soft_deadline_seconds": 6600,
+      "work": "W16A8 moments in H coordinates on C80 -> integer VQ0' fit for 614 Linears -> case-2000 init anchor -> untrained VQ0' held-out 40x2"
+    },
+    "train": {
+      "job_name": "fw1btrn",
+      "allocation": {
+        "queue": "normal",
+        "execution_queue": "g1",
+        "gpus": 1,
+        "ncpus": 16,
+        "memory_gb": 110,
+        "walltime": "05:00:00"
+      },
+      "soft_deadline_seconds": 17100,
+      "work": "beta on initial C80 -> 8 A+Z+K updates -> final anchor -> trained held-out 40x2 -> inference bundle export"
+    }
+  },
+  "format": {
+    "coordinates": "frozen Smooth0.5 scales and signs from the C80 calibration banks, then signed H128; no U",
+    "activation": "per-token symmetric INT8 grid: scale=absmax/127, round half-to-even, clamp +-127, BF16 output; identity STE",
+    "weights": "d4, two 256-entry integer codebooks, one BF16 scale per output row; each codebook pair sums inside [-127,127]; no B32 exponents",
+    "storage_compatibility": "micro_codebook encoding with books stored as BF16 integers and all exponents 127, so the existing decoders run unchanged",
+    "kv_cache": "BF16"
+  },
+  "fitting": {
+    "moments": "per-context mean square of A8 operands under original BF16 weights in H coordinates (W16A8), equal mean over the 80 C80 contexts",
+    "continuous_fit": "weighted 2x256 additive k-means on row-RMS-normalized d4 vectors; metric = input second moment x row scale squared",
+    "integer_rule": "delta=(max|C0|+max|C1|)/127 per layer, round both books to integers on delta (grow delta until bound sum <=127), reassign indices on the integer grid, row scale=row RMS x delta",
+    "samples": 8192,
+    "iterations": 8,
+    "seed": 20261006
+  },
+  "training": {
+    "loss": "first10x6 motor MSE + lambda future NMSE + beta frozen-BF16-reader soft-bin KL",
+    "latent_weight": 0.04245452683169643,
+    "beta_rule": "0.1 x lambda x mean initial C80 future NMSE / mean initial C80 reader KL, frozen before update 1",
+    "updates": 8,
+    "contexts_per_update": 10,
+    "exposures": 80,
+    "schedule": "same eight C80 batches as the loss-pair reader_kl arm",
+    "optimizer": "Adam lr 5e-4, grad-norm clip 1, VQ moments cleared after update 1, fixed final8",
+    "trainable": "614 x (FP32 codebook master in integer-grid units / 250, log row scale)",
+    "ste": "stored codebook = clamp(round(250 * master), +-bound); master gradient = 250 x integer-book gradient; row scale cast BF16",
+    "frozen": [
+      "original model",
+      "indices",
+      "Smooth",
+      "signs",
+      "H128",
+      "frozen BF16 reader"
+    ],
+    "teachers": "reuse cached C80 and held-out BF16 teachers; 0 new teacher queries",
+    "codebook_parameterization": "masters in integer-grid units / 250; Adam lr 5e-4 moves an entry ~0.125 integer per update (~1 grid point over 8 updates, matching Q0 ~1 BF16 ulp); row scales unchanged (log, BF16 storage)"
+  },
+  "evaluation": {
+    "split": "heldout",
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "aggregation": "seed -> context -> suite -> equal four-suite mean",
+    "arms": {
+      "VQ0_prime": "integer VQ fit before calibration (prep)",
+      "H_INT8VQ_A8_KL": "after 8 A+Z+K updates (train)"
+    }
+  },
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "q0_reference": {
+    "source": "Q0 (R0 + MXVQ + A4) held-out overall from Q-Clip job 25937633.pbs101",
+    "overall": {
+      "first10motor_rmse": 0.045606256602331995,
+      "first10motor_mse": 0.0021410813336842694,
+      "future_latent_nmse": 0.06173756314674392,
+      "full32motor_rmse": 0.05105919102206826,
+      "late22motor_rmse": 0.05255547049455345,
+      "first10gripper_rmse": 0.05731855619233102,
+      "first10gripper_disagreement": 0.00625
+    }
+  },
+  "gates": {
+    "init_anchor_metric_atol": 1e-06,
+    "transform_check_max_relative": 0.02
+  },
+  "export": {
+    "format": "fastwam_1b_h_int8vq_a8_inference_v1",
+    "bundle": "results/export/inference_bundle.pt",
+    "anchor": "results/arms/reader_kl/anchor.pt (case 2000, seed index 0, eager A8 action+future after update 8)",
+    "engine_notes": "decode with existing micro decoder (exponents=127), skip U, A8 operand kernel; startup must match the anchor exactly",
+    "container": "export_runtime.FORMAT with identity action/video rotations; 1b variant in bundle[\"variant\"], use_u=False"
+  },
+  "scope": "fixed-input held-out accuracy and inference bundle only; closed loop runs in the engine evaluator"
+}

@@ -1,0 +1,146 @@
+{
+  "protocol": "fastwam-a8-accuracy-20261027-v2",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-a8-accuracy-20261027-v2",
+  "job_name": "fwa8v2",
+  "parent_root": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022",
+  "parent_runtime": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101",
+  "source_checkpoint": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/arms/reader_kl/deployment.pt",
+  "source_anchor": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/arms/reader_kl/anchor.pt",
+  "source_summary": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/arms/reader_kl/summary.json",
+  "source_job": "25921795.pbs101",
+  "source_arm": "reader_kl",
+  "q0_reference": {
+    "source": "fastwam-vq-r128-c80-qclip-v1 job 25937633.pbs101 arms.q0.heldout.overall",
+    "summary": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-qclip-20261023/results/summary.json",
+    "endpoints": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-qclip-20261023/results/endpoints/q0/heldout",
+    "overall": {
+      "first10motor_rmse": 0.045606256602331995,
+      "first10motor_mse": 0.0021410813336842694,
+      "future_latent_nmse": 0.06173756314674392,
+      "mixed_az_loss": 0.004762120291707106,
+      "full32motor_rmse": 0.05105919102206826,
+      "late22motor_rmse": 0.05255547049455345,
+      "first10gripper_rmse": 0.05731855619233102,
+      "first10gripper_disagreement": 0.00625
+    },
+    "reuse_as_arm": "Q0_A4"
+  },
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "evaluation": {
+    "split": "heldout",
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "queries_per_arm": 80,
+    "aggregation": "seed -> context -> suite -> equal four-suite mean",
+    "teacher": "cached BF16 heldout teacher (baseline_root/results/teacher), 0 new teacher queries"
+  },
+  "arms": {
+    "Q0_A16": {
+      "weights": "q0",
+      "activation": "bf16",
+      "coordinates": "R0",
+      "note": "Smooth/H/U transform kept, activation only cast to BF16; weight-only lower bound"
+    },
+    "Q0_A8": {
+      "weights": "q0",
+      "activation": "a8",
+      "coordinates": "R0"
+    },
+    "Q0_H_INT8_A8": {
+      "weights": "q0_noU_int8row",
+      "activation": "a8",
+      "coordinates": "H",
+      "note": "no-retraining version of the 1b format: decoded Q0 weight right-multiplied by U^T per full 128 block (FP32), then per-row INT8; activation Smooth+signs+H only"
+    }
+  },
+  "workers": {
+    "0": [
+      "Q0_A16",
+      "Q0_A8",
+      "Q0_H_INT8_A8"
+    ]
+  },
+  "quantizers": {
+    "a4": "rotation_bank.A4: per-token absmax/7, round half-to-even, clamp +-7, BF16 output",
+    "a8": "per-token absmax/127, round half-to-even, clamp +-127, BF16 output",
+    "int8row": "per-output-row absmax/127 on the decoded weight, round half-to-even, clamp +-127, BF16 output",
+    "execution": "decoded BF16 dense weights + fake-quant activations, BF16 KV, eager; no kernel"
+  },
+  "allocation": {
+    "queue": "normal",
+    "execution_queue": "gdev",
+    "gpus": 1,
+    "ncpus": 16,
+    "memory_gb": 110,
+    "walltime": "01:30:00",
+    "gpu_monitor_seconds": 15
+  },
+  "gates": {
+    "anchor_max_abs": 1e-06,
+    "transform_check_max_relative": 0.02
+  },
+  "expected": {
+    "arms": 3,
+    "heldout_queries_per_arm": 80,
+    "target_linears": 614,
+    "new_teacher_queries": 0,
+    "training_updates": 0,
+    "closedloop_episodes": 0
+  },
+  "scope": "fixed-input heldout accuracy only; decoded BF16 weights with fake activation quantization; no speed, kernel, or closed-loop claim",
+  "superseded": "v1 (six arms, job 26028311.pbs101) cancelled by user after 1.5 min with no results",
+  "reused_arms": {
+    "Q0_A4": "q0_reference.endpoints (Q-Clip 25937633.pbs101, 80 heldout endpoints, same metrics)"
+  },
+  "weight_diagnostic": "per-layer INT8-row rounding error of decoded Q0 (R0 and H coordinates) vs VQ error, normalized by original transformed weight energy; no queries",
+  "anchors": "results/anchors/<arm>.pt: eager case 2000 seed 0 action/future per arm, for the engine evaluator startup check"
+}

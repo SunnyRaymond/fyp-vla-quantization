@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU node: rowcheck.py on the saved probe statistics and baseline masters (reads ~12 GB of masters, mmap'd d only).
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+cp "$NEW_ROOT/rowcheck.py" "$ARTIFACTS/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+NCPUS=$(qstat -xf "$PBS_JOBID" | sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) ncpus=$NCPUS"
+apptainer exec --cleanenv --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+  --env "OMP_NUM_THREADS=$NCPUS,MKL_NUM_THREADS=$NCPUS,PYTHONUNBUFFERED=1" \
+  "$SIF" "$BASE/venv/bin/python" -B "$ARTIFACTS/rowcheck.py" \
+  "$NEW_ROOT/results" "$BASELINE_ROOT/results" "$NEW_ROOT/results/rowcheck/summary.json"
+touch "$ARTIFACTS/COMPLETE"

@@ -1,0 +1,48 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU node: test_probe.py, test_hosts.py and test_rows.py in the cluster container, next to the uploaded worker/probe/host.json, the
+# A16 baselines' method ports and the runtime's softbin_loss.py. Results under results/cputest/<job>/.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+PARENT_RUNTIME=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results/cputest/$PBS_JOBID
+mkdir -p "$ARTIFACTS/methods" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+for name in worker.py probe.py host.json rows.json rows_worker.py test_probe.py test_hosts.py test_rows.py; do
+  test -s "$NEW_ROOT/$name" || die "Uploaded source missing: $name"
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+cp "$PARENT_RUNTIME/softbin_loss.py" "$ARTIFACTS/"
+for method in qtip gptvq quipsharp; do cp -r "$BASELINE_ROOT/methods/$method" "$ARTIFACTS/methods/"; done
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+NCPUS=$(qstat -xf "$PBS_JOBID" | sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) ncpus=$NCPUS"
+cd "$ARTIFACTS"
+rc=0
+for test in test_probe.py test_hosts.py test_rows.py; do
+  set +e
+  apptainer exec --cleanenv --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+    --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+    --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+    --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+    --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+    --env "OMP_NUM_THREADS=$NCPUS,MKL_NUM_THREADS=$NCPUS,PYTHONUNBUFFERED=1,PYTHONIOENCODING=utf-8" \
+    "$SIF" "$BASE/venv/bin/python" -B "$ARTIFACTS/$test" > "$RESULTS/${test%.py}.log" 2>&1
+  code=$?
+  set -e
+  printf '{"test": "%s", "exit_code": %d}\n' "$test" "$code" > "$RESULTS/${test%.py}.json"
+  tail -n 3 "$RESULTS/${test%.py}.log"
+  (( code == 0 )) || rc=1
+done
+(( rc == 0 )) && touch "$RESULTS/PASSED"
+exit "$rc"

@@ -1,0 +1,31 @@
+{
+  "purpose": "Phase 4: the phase-1 H~ (QTIP_G_W2, closed loop 208) plus a zero-bit output-row scale from the same probes, one arm on QTIP W2, one g1 GPU. Separate from host.json so the phase-3 job's sources stay unchanged.",
+  "arm": "QTIP_GR_W2",
+  "method": "qtip",
+  "bits": 2,
+  "hessian": "results/hessians/<i>.pt 'hessian' (phase-1 H~, unchanged)",
+  "row_weight": "results/hessians/<i>.pt 'row_weight': d_c = sum over the 80 C80 contexts and all calls of sum_t g_tc^2 |x_t|^2 of the A + lambda Z + beta K probe cotangents (phase-1 per-token definition); rowcheck 26046194: split-half predicted guided-loss ratio 0.845 (in sample 0.817), half correlation 0.86",
+  "row_scale_rule": "s_c^2 = sqrt(d_c)/|W_c| (minimizes (sum d_c/s_c^2)(sum s_c^2 |W_c|^2)), geometric mean 1, clipped to [1/limit, limit]; QTIP quantizes diag(s) W on H~ with the baseline seed and the dequantized rows are divided by s, i.e. s folds into QTIP's fp32 SV: 0 extra bits, no gradient updates. A layer without probe signal keeps s = 1",
+  "row_scale_limit": 16,
+  "compare": {"QTIP_U_W2": "baseline QTIP_W2 (H_U)", "QTIP_G_W2": "phase 1 (H~, no row scale)"},
+  "allocation": {
+    "job_name": "fwgr",
+    "queue": "normal",
+    "execution_queue": "g1",
+    "gpus": 1,
+    "ncpus": 6,
+    "ncpus_basis": "QTIP ~1-2 cores, 2 loop workers ~4 cores (26043905 / 26046240 CPU_SAMPLE); PBS sets 16 per GPU on the GPU queues regardless",
+    "memory_gb": 64,
+    "memory_basis": "26043905 used 56 GB with 4 loop workers on 2 GPUs; here 2 workers",
+    "walltime": "07:00:00",
+    "soft_deadline_seconds": 24900
+  },
+  "steps": [
+    "quant: QTIP W2 on H~ with the row scale, 614 layers; proxies of the three QTIP W2 weights (baseline, phase 1, this arm) under H_U, H~ and H~ with the row weights",
+    "complete: quantized/QTIP_GR_W2/COMPLETE.json",
+    "eval: held-out 40x2 with the C1 swap",
+    "loop: LIBERO-Plus 280, 2 workers on the GPU",
+    "final: results/rows/RESULTS.zh.md, three QTIP W2 arms, paired counts with McNemar p"
+  ],
+  "closed_loop": {"workers_per_gpu": 2}
+}
