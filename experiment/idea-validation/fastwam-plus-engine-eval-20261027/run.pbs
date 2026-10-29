@@ -1,0 +1,144 @@
+#!/bin/bash
+#PBS -N fwpe
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=64:mem=440gb:ngpus=4
+#PBS -l walltime=02:00:00
+#PBS -j oe
+# Submitted per arm by control.py with -N <arm job_name>, the arm's -l values and -v FW_ARM=<arm>.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-plus-engine-eval-20261027
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" -a -n "${FW_ARM:-}" || { echo 'PBS allocation and FW_ARM required' >&2; exit 64; }
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || { echo 'Host outside PBS allocation' >&2; exit 64; }
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" "$NEW_ROOT/arms.json" "$FW_ARM" <<'PY'
+import json, sys
+p, arms, arm = json.load(open(sys.argv[1])), json.load(open(sys.argv[2])), sys.argv[3]
+cfg = arms[arm]
+a = {**p["allocation"], **cfg.get("allocation", {})}
+r, e = p["roots"], p["engine"]
+for value in (cfg["job_name"], a["execution_queue"], a["workers_per_gpu"], a["ncpus"], p["repro_arm"],
+              r["pilot"], r["base"], r["old_banks"], r["old_inputs"], r["sif"],
+              e["source_artifacts"], " ".join(e["files"])):
+    print(value)
+PY
+)
+test "${#CFG[@]}" -eq 12 || { echo "Unknown arm or malformed protocol: $FW_ARM" >&2; exit 65; }
+JOB_NAME=${CFG[0]}; EXEC_QUEUE=${CFG[1]}; WPG=${CFG[2]}; NCPUS=${CFG[3]}; REPRO=${CFG[4]}
+ROOT=${CFG[5]}; BASE=${CFG[6]}; SMOOTH_ROOT=${CFG[7]}; SOURCE_ROOT=${CFG[8]}; SIF=${CFG[9]}
+ENGINE_SOURCE=${CFG[10]}; read -r -a ENGINE_FILES <<< "${CFG[11]}"
+test "${PBS_JOBNAME:-}" = "$JOB_NAME" || { echo 'PBS job name differs from the arm' >&2; exit 64; }
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${EXEC_QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" \
+  || { echo "PBS did not route this job to $EXEC_QUEUE" >&2; exit 64; }
+
+DIAG_ROOT=$NEW_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+echo "ARM=$FW_ARM JOB=$PBS_JOBID QUEUE=$EXEC_QUEUE"
+
+GPU_MONITOR_PID=
+WORKERS=()
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  if (( rc != 0 )); then
+    for pid in "${WORKERS[@]:-}"; do [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null || true; done
+  fi
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null || true; wait "$GPU_MONITOR_PID" 2>/dev/null || true; fi
+  (( rc == 0 )) || rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -ge 1 || { echo 'No allocated GPUs' >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || exit 65
+  GPU_UUIDS+=("$uuid")
+done
+(
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    done
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+for name in protocol.json arms.json run.pbs environment.sh worker.py plus_engine.py analysis.py; do
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || { echo "Missing engine dependency: $name" >&2; exit 65; }
+  cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+done
+N=$(( ${#GPU_UUIDS[@]} * WPG ))
+FW_CPU_THREADS=$(( NCPUS / N > 0 ? NCPUS / N : 1 ))
+export FW_CPU_THREADS
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+ARGS=(--protocol "$ARTIFACTS/protocol.json" --arms "$ARTIFACTS/arms.json")
+
+repro_passed() {
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("repro_passed") else 1)' \
+    "$RESULTS/$REPRO/summary.json" 2>/dev/null
+}
+
+run_arm() {
+  local arm=$1 workers=$2 w rc finished
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/worker.py" "${ARGS[@]}" --arm "$arm" --init
+  WORKERS=()
+  for (( w = 0; w < workers; w++ )); do
+    rm -f "$ARTIFACTS/${arm}_worker_$w.exit"
+    (
+      set +e
+      CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$(( w / WPG ))]} run_python "$ARTIFACTS/worker.py" "${ARGS[@]}" \
+        --arm "$arm" --worker "$w" > "$ARTIFACTS/${arm}_worker_$w.log" 2>&1
+      printf '%s\n' "$?" > "$ARTIFACTS/${arm}_worker_$w.exit"
+    ) & WORKERS+=("$!")
+    sleep 10
+  done
+  while :; do
+    finished=0
+    for (( w = 0; w < workers; w++ )); do
+      if [[ -s "$ARTIFACTS/${arm}_worker_$w.exit" ]]; then
+        rc=$(<"$ARTIFACTS/${arm}_worker_$w.exit")
+        if (( rc != 0 )); then tail -c 6000 "$ARTIFACTS/${arm}_worker_$w.log"; exit "$rc"; fi
+        finished=$(( finished + 1 ))
+      fi
+    done
+    (( finished == workers )) && break
+    sleep 15
+  done
+  for pid in "${WORKERS[@]}"; do wait "$pid"; done
+  WORKERS=()
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/analysis.py" "${ARGS[@]}" --arm "$arm"
+}
+
+# First use of the evaluator: 8 historical Q0/A4 slots must reproduce exactly before any other arm.
+if [[ "$FW_ARM" != "$REPRO" ]] && ! repro_passed; then
+  echo "FIRST_USE_REPRO $REPRO"
+  run_arm "$REPRO" $(( N < 8 ? N : 8 ))
+  repro_passed || { echo 'Engine reproduction check failed; stopping before the requested arm' >&2; exit 66; }
+fi
+if [[ "$FW_ARM" == "$REPRO" ]]; then
+  run_arm "$REPRO" $(( N < 8 ? N : 8 ))
+  repro_passed || { echo 'Engine reproduction check failed' >&2; exit 66; }
+else
+  run_arm "$FW_ARM" "$N"
+fi
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

@@ -1,0 +1,72 @@
+{
+  "Q0_A4_repro": {
+    "job_name": "fwpe_q0a4r",
+    "description": "First-use check: Q0 + A4 on 8 slots spanning 4 suites and all 7 dimensions; success and steps must equal history 25925636/reader_kl",
+    "bundle": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt",
+    "activation_bits": 4,
+    "use_u": true,
+    "anchor": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/arms/reader_kl/anchor.pt",
+    "slots": [
+      10,
+      50,
+      70,
+      130,
+      160,
+      170,
+      220,
+      250
+    ],
+    "compare_history": true,
+    "allocation": {
+      "gpus": 1,
+      "ncpus": 16,
+      "memory_gb": 110,
+      "walltime": "00:45:00",
+      "workers_per_gpu": 2
+    }
+  },
+  "Q0_A8": {
+    "job_name": "fwpe_q0a8",
+    "description": "Q0 weights unchanged, activations A8 (no recalibration)",
+    "bundle": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt",
+    "activation_bits": 8,
+    "use_u": true,
+    "anchor": "/scratch/users/ntu/yguo017/fastwam-a8-accuracy-20261027-v2/results/anchors/Q0_A8.pt",
+    "slots": "all"
+  },
+  "H1B_A8_KL": {
+    "job_name": "fwpe_h1b",
+    "description": "1b: H-only coordinates, integer-codebook VQ (4.02 bpw), A8, A+Z+K 8 updates (job 26030496)",
+    "bundle": "/scratch/users/ntu/yguo017/fastwam-1b-h-int8vq-a8-20261027/results/export/inference_bundle.pt",
+    "activation_bits": 8,
+    "use_u": false,
+    "anchor": "/scratch/users/ntu/yguo017/fastwam-1b-h-int8vq-a8-20261027/results/arms/reader_kl/anchor.pt",
+    "slots": "all",
+    "allocation": {
+      "execution_queue": "g3",
+      "gpus": 4,
+      "ncpus": 64,
+      "memory_gb": 440,
+      "walltime": "03:00:00",
+      "workers_per_gpu": 2
+    }
+  },
+  "H1B_A8_KL_2g": {
+    "job_name": "fwpe_h1b2g",
+    "description": "1b: H-only coordinates, integer-codebook VQ (4.02 bpw), A8, A+Z+K 8 updates (job 26030496); 2-GPU g2 racer of fwpe_h1b (only one runs)",
+    "bundle": "/scratch/users/ntu/yguo017/fastwam-1b-h-int8vq-a8-20261027/results/export/inference_bundle.pt",
+    "activation_bits": 8,
+    "use_u": false,
+    "anchor": "/scratch/users/ntu/yguo017/fastwam-1b-h-int8vq-a8-20261027/results/arms/reader_kl/anchor.pt",
+    "slots": "all",
+    "allocation": {
+      "execution_queue": "g2",
+      "gpus": 2,
+      "ncpus": 32,
+      "memory_gb": 220,
+      "walltime": "04:00:00",
+      "workers_per_gpu": 2
+    },
+    "group": "H1B_A8_KL"
+  }
+}

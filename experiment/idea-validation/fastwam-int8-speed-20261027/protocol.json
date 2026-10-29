@@ -1,0 +1,140 @@
+{
+  "protocol": "fastwam-int8-speed-20261027-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-int8-speed-20261027",
+  "job_name": "fwi8spd",
+  "allocation": {
+    "queue": "normal",
+    "execution_queue": "g1",
+    "gpus": 1,
+    "ncpus": 16,
+    "memory_gb": 110,
+    "walltime": "03:00:00",
+    "gpu_monitor_seconds": 15,
+    "gpu_family": "A100"
+  },
+  "purpose": "Phase-0 speed gate for W4A8-class VQ: INT8 vs BF16 GEMM on the real Fast-WAM-IDM Linear shapes, and full policy-call latency of BF16 eager, BF16+condition cache+CUDA Graph, and the Q0 c_buffer engine in one allocation",
+  "modes": [
+    "shapes",
+    "gemm",
+    "bf16_eager",
+    "q0_c_buffer",
+    "bf16_cache_graph"
+  ],
+  "panel": {
+    "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "queries": 80,
+    "warmup_case_id": 3000,
+    "warmup_queries": 3,
+    "shape_case_id": 3000,
+    "geometry": {
+      "batch_size": 1,
+      "video_frames": 9,
+      "video_steps": 10,
+      "action_steps": 10,
+      "action_horizon": 32
+    },
+    "scope": "prepared GPU input datum to infer_action output; excludes observation preprocessing, environment and robot motion",
+    "numerics": "same as historical profiles: deterministic algorithms, fill_uninitialized_memory, TF32 off, CUBLAS_WORKSPACE_CONFIG=:4096:8"
+  },
+  "gemm": {
+    "shape_source": "results/shapes/shapes.json, condition-cache call distribution",
+    "variants": {
+      "bf16": "F.linear(x_bf16, w_bf16, bias)",
+      "int8": "torch._int_mm(a_int8, w_int8.t()) -> int32; pure cuBLASLt INT8 GEMM",
+      "int8_unfused": "BF16 x -> per-token absmax/127 int8 -> _int_mm -> * token scale * row scale + bias -> BF16; unfused W8A8 lower bound"
+    },
+    "int8_min_rows": 32,
+    "int8_multiple": 8,
+    "graph_calls": 24,
+    "min_weight_copies": 4,
+    "l2_flush_bytes": 134217728,
+    "warmup_replays": 5,
+    "timed_replays": 25,
+    "numerics": "deterministic algorithms and fill_uninitialized_memory disabled for the microbenchmark only; TF32 off",
+    "int8_min_rows_note": "pad M to 32 only when M <= 16; pad K and N to multiples of 8 only when required"
+  },
+  "model": {
+    "base_checkpoint": "libero_optional_idm_2cam224.clean.pt",
+    "upstream_revision": "7faa71108368fbb3b6885649f112af607427a2d4",
+    "source_job": "25921795.pbs101",
+    "arm": "reader_kl",
+    "updates": 8,
+    "mode": "idm",
+    "video_steps": 10,
+    "action_steps": 10,
+    "sigma_shift": 1.0,
+    "action_horizon": 32
+  },
+  "engine": {
+    "mode": "c_buffer",
+    "description": "C+decoder+buffer: packed MXVQ residency, layer BF16 decode, BF16 cuBLAS GEMM, condition cache, CUDA Graph",
+    "source_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101",
+    "source_results": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/results/c_buffer",
+    "bundle": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt",
+    "anchor_tensor": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/arms/reader_kl/anchor.pt",
+    "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json"
+  },
+  "engine_worker": "/scratch/users/ntu/yguo017/fastwam-libero-engine-20261027/artifacts/26020749.pbs101/worker.py",
+  "references": {
+    "bf16_eager": {
+      "job": "25943391.pbs101",
+      "actions": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-fused-tuning-20261023-r2/results/bf16/actions.pt",
+      "p50_ms": 1450.4389455541968,
+      "peak_allocated_GB": 25.130502144
+    },
+    "q0_c_buffer": {
+      "job": "25960283.pbs101",
+      "actions": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/results/c_buffer/actions.pt",
+      "p50_ms": 887.096,
+      "peak_allocated_GB": 16.914255
+    }
+  },
+  "new_training_updates": 0,
+  "closed_loop_episodes": 0
+}

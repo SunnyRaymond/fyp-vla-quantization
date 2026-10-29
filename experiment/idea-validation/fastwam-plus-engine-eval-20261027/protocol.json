@@ -1,0 +1,59 @@
+{
+  "protocol": "fastwam-plus-engine-eval-20261027-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-plus-engine-eval-20261027",
+  "allocation": {
+    "queue": "normal",
+    "execution_queue": "gdev",
+    "gpus": 4,
+    "ncpus": 64,
+    "memory_gb": 440,
+    "walltime": "02:00:00",
+    "workers_per_gpu": 2,
+    "gpu_monitor_seconds": 15
+  },
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006",
+    "sif": "/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif"
+  },
+  "panel": {
+    "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "variants": 280,
+    "seeds": "runner.seed_for: env 800000000+1000*index, sampler 900000000+1000*index+replan",
+    "settling_steps": 30,
+    "max_steps": {"libero_10": 700, "other": 400},
+    "replan_steps": 10,
+    "gripper": "runner.Runtime.command (denormalize, flip, sign)"
+  },
+  "engine": {
+    "source_artifacts": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101",
+    "source_results": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/results/c_buffer",
+    "default_bundle": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-inference-profile-20261023-r2/results/export/inference_bundle.pt",
+    "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "files": ["reference_profile.py", "export_runtime.py", "fused_input.py", "fused_vq.py", "kernel_runtime.py",
+              "layer_runtime.py", "condition_cache.py", "abc_runtime.py", "graph_runtime.py", "decoder_runtime.py",
+              "profile_worker.py", "runner.py", "quantization.py", "libero_state_loader.py", "previous_vq_adapter.py",
+              "rotation_bank.py", "batched_transform.py", "smooth_vq.py", "codebook.py", "micro_codebook.py",
+              "c8_train_banks.py", "sampler.py", "latent_reference.py", "checkpointing.py", "calibration_source.py"],
+    "note": "engine runner.py, quantization.py and libero_state_loader.py are byte-identical to the Plus episode runtime of 25822971 (checked 2026-10-27)"
+  },
+  "repro_arm": "Q0_A4_repro",
+  "history": {
+    "job": "25925636.pbs101",
+    "arm": "reader_kl",
+    "episodes": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/results/workers/worker_*/episodes.jsonl",
+    "match": "success and steps equal per slot"
+  },
+  "references": {
+    "paired": {
+      "BF16": {"episodes": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl", "arm": "bf16"},
+      "Q0_A4": {"episodes": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/results/workers/worker_*/episodes.jsonl", "arm": "reader_kl"},
+      "AZ_A4": {"episodes": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/results/workers/worker_*/episodes.jsonl", "arm": "az"}
+    },
+    "totals_summary": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/results/summary.json",
+    "table_arms": ["bf16", "reader_kl", "az", "H_W16A4", "C80_R128_W16A4", "spinquant_adapted_w4a4",
+                   "quarot_adapted_w4a4", "smooth05_hadamard_scalar_w4a4", "viditq_w4a4"]
+  }
+}

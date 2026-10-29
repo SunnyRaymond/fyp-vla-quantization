@@ -1,0 +1,162 @@
+{
+  "protocol": "fastwam-w4a8-scalar-baselines-20261028-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-w4a8-scalar-baselines-20261028",
+  "parent_runtime": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101",
+  "rotation_source": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008",
+    "module": "rotation.py",
+    "learned": "results/rotation_training/learned_rotation.pt",
+    "receipt": "results/rotation_training/training_receipt.json",
+    "seed": 20261008,
+    "job": "25726472.pbs101",
+    "selected_step": 200,
+    "note": "same R128 as the closed-loop quarot_adapted_w4a4 / spinquant_adapted_w4a4 arms; SpinQuant rotation reused as learned under W4A4 RTN"
+  },
+  "allocation": {
+    "job_name": "fww4a8",
+    "queue": "normal",
+    "execution_queue": "g1",
+    "gpus": 1,
+    "ncpus": 16,
+    "memory_gb": 110,
+    "walltime": "05:00:00",
+    "soft_deadline_seconds": 17100
+  },
+  "weights": {
+    "format": "symmetric INT4 codes in [-7,7], group 128 along the input dim, one BF16 scale per (row, group); 4.125 bpw",
+    "rtn": "per-group absmax/7 scale (same quantizer as the W4A4 rotation baselines)",
+    "gptq": {
+      "hessian": "mean x^T x of BF16 Linear inputs over all calls of the 80 C80 queries (seed index 0), original coordinates; rotated arms use R^T H R",
+      "damp": 0.01,
+      "block": 128,
+      "act_order": false,
+      "clip": "per-(row,group) scale = absmax/7 x shrink, shrink in 1-0.2*i/20 (i=0..20) minimizing sum |w-q|^2.4, chosen on the updated weights at each group start"
+    }
+  },
+  "activation": "per-token symmetric INT8: scale=absmax/127 over the transformed operand, round half-to-even, clamp +-127, BF16 operand",
+  "coordinates": {
+    "plain": "original coordinates, no smoothing, no rotation",
+    "quarot": "fixed randomized signed block-Hadamard R128 per stream (seed 20261008), xR and WR, signed power-of-two Hadamard tails",
+    "spinquant": "same base times learned Cayley(raw - raw^T) per stream, frozen"
+  },
+  "arms": {
+    "GPTQ_W4A8": {
+      "coordinates": "plain",
+      "weights": "gptq",
+      "activation_bits": 8
+    },
+    "QuaRot_GPTQ_W4A8": {
+      "coordinates": "quarot",
+      "weights": "gptq",
+      "activation_bits": 8
+    },
+    "SpinQuant_GPTQ_W4A8": {
+      "coordinates": "spinquant",
+      "weights": "gptq",
+      "activation_bits": 8
+    },
+    "RTN_W4A8": {
+      "coordinates": "plain",
+      "weights": "rtn",
+      "activation_bits": 8
+    },
+    "QuaRot_RTN_W4A8": {
+      "coordinates": "quarot",
+      "weights": "rtn",
+      "activation_bits": 8
+    },
+    "SpinQuant_RTN_W4A8": {
+      "coordinates": "spinquant",
+      "weights": "rtn",
+      "activation_bits": 8
+    },
+    "W16A8": {
+      "coordinates": "plain",
+      "weights": "bf16",
+      "activation_bits": 8
+    }
+  },
+  "evaluation": {
+    "split": "heldout",
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "aggregation": "seed -> context -> suite -> equal four-suite mean"
+  },
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "references": {
+    "q0_a4": {
+      "source": "Q0 (R0 + MXVQ + A4) held-out overall from Q-Clip job 25937633.pbs101",
+      "overall": {
+        "first10motor_rmse": 0.045606256602331995,
+        "first10motor_mse": 0.0021410813336842694,
+        "future_latent_nmse": 0.06173756314674392,
+        "full32motor_rmse": 0.05105919102206826,
+        "late22motor_rmse": 0.05255547049455345,
+        "first10gripper_rmse": 0.05731855619233102,
+        "first10gripper_disagreement": 0.00625
+      }
+    },
+    "1b": {
+      "source": "1b H_INT8VQ_A8_KL held-out, job 26030496.pbs101",
+      "first10motor_rmse": 0.0183,
+      "future_latent_nmse": 0.0304,
+      "first10gripper_rmse": 0.0295
+    }
+  },
+  "gates": {
+    "transform_check_max_relative": 0.0001,
+    "orthogonality_max_abs": 0.0001,
+    "spinquant_min_change": 0.001,
+    "hessian_headroom_gb": 6.0
+  },
+  "scope": "fixed-input held-out accuracy only; no training, 0 new teacher queries; closed loop later for the strongest arm"
+}

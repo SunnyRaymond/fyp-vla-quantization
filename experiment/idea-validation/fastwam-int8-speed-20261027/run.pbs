@@ -1,0 +1,87 @@
+#!/bin/bash
+#PBS -N fwi8spd
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=16:mem=110gb:ngpus=1
+#PBS -l walltime=03:00:00
+#PBS -j oe
+set -euo pipefail
+
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || exit 64
+case "$(hostname -s)" in *login*) echo 'Refusing login-node execution' >&2; exit 64;; esac
+grep -Fqx "$(hostname -s)" <(awk -F. '{print $1}' "$PBS_NODEFILE") || exit 64
+test "${PBS_JOBNAME:-}" = fwi8spd || exit 64
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID")
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+grep -Eq '^[[:space:]]*queue[[:space:]]*=[[:space:]]*g1([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || exit 64
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-int8-speed-20261027
+ENGINE_SOURCE=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101
+ENGINE_WORKER=/scratch/users/ntu/yguo017/fastwam-libero-engine-20261027/artifacts/26020749.pbs101/worker.py
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+export NEW_ROOT ARTIFACTS RESULTS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+GPU_MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" 2>/dev/null || true
+    wait "$GPU_MONITOR_PID" 2>/dev/null || true
+  fi
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq 1 || { echo 'Expected one allocated GPU'; exit 65; }
+GPU_UUID=$(nvidia-smi -i "${GPU_IDS[0]}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+test -n "$GPU_UUID" || exit 65
+export CUDA_VISIBLE_DEVICES=$GPU_UUID
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi -i "$GPU_UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+for name in protocol.json run.pbs environment.sh bench_worker.py analysis.py; do
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+# Reuse the exact frozen engine and its dependencies; all copies occur in compute allocation.
+for name in reference_profile.py export_runtime.py fused_input.py fused_vq.py kernel_runtime.py \
+    layer_runtime.py condition_cache.py abc_runtime.py graph_runtime.py decoder_runtime.py \
+    profile_worker.py runner.py quantization.py libero_state_loader.py previous_vq_adapter.py \
+    rotation_bank.py batched_transform.py smooth_vq.py codebook.py micro_codebook.py \
+    c8_train_banks.py sampler.py latent_reference.py checkpointing.py calibration_source.py; do
+  test -s "$ENGINE_SOURCE/$name" || { echo "Missing engine dependency: $name"; exit 65; }
+  cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+done
+test -s "$ENGINE_WORKER" || { echo 'Missing standard-LIBERO engine worker'; exit 65; }
+cp "$ENGINE_WORKER" "$ARTIFACTS/libero_engine_worker.py"
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+
+# Fresh process per mode; a failed mode is recorded and the remaining modes still run.
+FAILED=0
+for mode in shapes gemm bf16_eager q0_c_buffer bf16_cache_graph; do
+  echo "MODE_START $mode $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  set +e
+  run_python "$ARTIFACTS/bench_worker.py" --protocol "$ARTIFACTS/protocol.json" --mode "$mode" \
+    > "$ARTIFACTS/$mode.log" 2>&1
+  rc=$?
+  set -e
+  printf '%s\n' "$rc" > "$ARTIFACTS/$mode.exit"
+  echo "MODE_EXIT $mode rc=$rc"
+  if (( rc != 0 )); then FAILED=1; tail -c 6000 "$ARTIFACTS/$mode.log"; fi
+done
+run_python "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json"
+(( FAILED == 0 )) || exit 66
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

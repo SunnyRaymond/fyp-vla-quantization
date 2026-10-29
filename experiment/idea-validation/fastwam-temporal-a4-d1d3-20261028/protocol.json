@@ -1,0 +1,230 @@
+{
+  "protocol": "fastwam-temporal-a4-d1d3-20261028-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-temporal-a4-d1d3-20261028",
+  "parent_runtime": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101",
+  "design": "research/paper/2026-10-28_w4a4_latent_aware_design.zh.md sections 4 and 9.1 (D1, D3)",
+  "allocation": {
+    "job_name": "fwtqa4",
+    "queue": "normal",
+    "execution_queue": "g2",
+    "gpus": 2,
+    "ncpus": 32,
+    "memory_gb": 220,
+    "walltime": "04:00:00",
+    "soft_deadline_seconds": 14100,
+    "gpu_monitor_seconds": 15
+  },
+  "coordinates": "frozen Smooth(alpha 0.5) + saved signs + H128 from the C8 source banks (loss-pair calibration.bank_directory), Cayley U = I; same code path as the historical H_W16A4 arm (rotation_bank.transformed with zero rotations)",
+  "weights": "original BF16 weights transformed once into the same coordinates and cast to BF16; no weight quantization in D1/D3",
+  "quantizer": {
+    "grid": "symmetric absmax per token (optionally per 32-channel group), round half-to-even, clamp +-(2^(b-1)-1), FP32 dequant, BF16 operand; b=4 without groups is bitwise rotation_bank.A4",
+    "cross_step": "per (Linear, input shape) state within one query: innovation Delta_s = z_s - xhat_{s-1}; feedback v_s = Delta_s + h w_{s-1}; q_s = Q(v_s); w_s = q_s - v_s; xhat_s = xhat_{s-1} + q_s; operand xhat_s",
+    "static_inputs": "an input bitwise equal to the previous call of the same key reuses that call's operand (what the deployed condition cache does for context K/V and text embedding)",
+    "dither": "non-subtractive RPDF dither U[-0.5,0.5) LSB added before rounding; CUDA generator seeded dither_seed + 10*case + seed_index per query",
+    "prefill": "video-stream call index 10 (the single conditioning pass on the clean future) can use prefill_bits; video head is only called 10 times",
+    "action_bits": "action-expert Linears use action_bits when set; proprio encoder follows bits"
+  },
+  "prefill": {
+    "stream": "video",
+    "call_index": 10
+  },
+  "dither_seed": 20261028,
+  "arms": {
+    "W16A16": {
+      "bits": 16
+    },
+    "A8": {
+      "bits": 8
+    },
+    "A4": {
+      "bits": 4
+    },
+    "A4_g32": {
+      "bits": 4,
+      "group": 32
+    },
+    "A4_dither": {
+      "bits": 4,
+      "dither": true
+    },
+    "A4_sd": {
+      "bits": 4,
+      "feedback": -1.0
+    },
+    "A4_inno": {
+      "bits": 4,
+      "innovation": true
+    },
+    "A4_inno_sd": {
+      "bits": 4,
+      "innovation": true,
+      "feedback": -1.0
+    },
+    "A4_inno_sd05": {
+      "bits": 4,
+      "innovation": true,
+      "feedback": -0.5
+    },
+    "A4_actA8": {
+      "bits": 4,
+      "action_bits": 8
+    },
+    "A4_preA8": {
+      "bits": 4,
+      "prefill_bits": 8
+    },
+    "A4g32_inno_sd": {
+      "bits": 4,
+      "group": 32,
+      "innovation": true,
+      "feedback": -1.0
+    },
+    "A4_inno_sd_actA8": {
+      "bits": 4,
+      "innovation": true,
+      "feedback": -1.0,
+      "action_bits": 8
+    }
+  },
+  "workers": {
+    "0": [
+      "A4",
+      "A4_inno",
+      "A4_inno_sd",
+      "A4_sd",
+      "A4_dither",
+      "A4_inno_sd05",
+      "A4g32_inno_sd"
+    ],
+    "1": [
+      "A8",
+      "A4_g32",
+      "A4_actA8",
+      "A4_preA8",
+      "A4_inno_sd_actA8",
+      "W16A16"
+    ]
+  },
+  "d1": {
+    "worker": 0,
+    "case_ids": [
+      2000,
+      2008,
+      2016,
+      2024,
+      2032,
+      2040,
+      2048,
+      2056,
+      2064,
+      2072
+    ],
+    "seed_index": 0,
+    "forward": "BF16 operand in the quantizer coordinates (the W16A16 arm); statistics of z only",
+    "token_groups": {
+      "video_tokens": 294,
+      "frame_tokens": 98,
+      "action_tokens": 32,
+      "action_executed": 10
+    },
+    "statistics": "per (Linear, shape, call): |z|^2, |z-z_prev|^2, mean over tokens of amax|z-z_prev|/amax|z|, A4 RTN residual dot with previous call's residual; groups video all/frame0/future, action all/first10/rest"
+  },
+  "evaluation": {
+    "split": "heldout",
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "queries_per_arm": 80,
+    "aggregation": "seed -> context -> suite -> equal four-suite mean",
+    "teacher": "cached BF16 heldout teacher, 0 new teacher queries"
+  },
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "reference_h_w16a4": {
+    "queries": "/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021/results/path/heldout/H_W16A4/queries",
+    "source": "fastwam-vq-r128-joint-c8 H_W16A4 (RotationBanks, zero rotations), reused by fastwam-r128-improvements",
+    "overall": {
+      "first10motor_rmse": 0.042604556,
+      "future_latent_nmse": 0.038380617
+    },
+    "closed_loop": "204/280 LIBERO-Plus"
+  },
+  "references": {
+    "W16A8_plain": {
+      "source": "w4a8-scalar-baselines 26036415.pbs101, plain coordinates",
+      "first10motor_rmse": 0.0053,
+      "future_latent_nmse": 0.0011
+    },
+    "QuaRot_GPTQ_W4A8": {
+      "source": "w4a8-scalar-baselines 26036415.pbs101",
+      "first10motor_rmse": 0.0098,
+      "future_latent_nmse": 0.0089
+    }
+  },
+  "gates": {
+    "transform_check_max_relative": 0.02,
+    "reference_first_endpoint_max_relative": 0.02
+  },
+  "decision": {
+    "d1": "go if, over video-loop and action-loop keys and steps 1..9, median innovation ratio sqrt(|z-z_prev|^2/|z|^2) < 0.5 or median adjacent-step A4 residual correlation > 0.5",
+    "d3": "go if the best of A4_sd / A4_inno / A4_inno_sd / A4_inno_sd05 closes >= 50% of the A4->A8 gap on both first10 motor RMSE and future NMSE, and is below A4_g32 on both",
+    "mechanism": "A4_dither below A4 on future NMSE indicates coherent cross-step accumulation of RTN error"
+  },
+  "expected": {
+    "arms": 13,
+    "heldout_queries_per_arm": 80,
+    "target_linears": 614,
+    "new_teacher_queries": 0,
+    "training_updates": 0,
+    "closedloop_episodes": 0,
+    "d1_queries": 10
+  },
+  "scope": "fixed-input held-out accuracy of activation quantizers with BF16 weights; fake quantization in eager PyTorch; no kernel, speed or closed-loop claim"
+}

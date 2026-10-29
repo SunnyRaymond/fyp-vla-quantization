@@ -1,0 +1,49 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU-node run of the method test files (methods/<m>/test_<m>.py) in the cluster container; FW_METHODS=m1+m2+...
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" -a -n "${FW_METHODS:-}" || die 'PBS allocation and FW_METHODS required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))["roots"]
+for key in ("pilot", "base", "old_banks", "old_inputs", "sif"):
+    print(r[key])
+PY
+)
+ROOT=${CFG[0]}; BASE=${CFG[1]}; SMOOTH_ROOT=${CFG[2]}; SOURCE_ROOT=${CFG[3]}; SIF=${CFG[4]}
+DIAG_ROOT=$NEW_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results/cputest/$PBS_JOBID
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+cp "$NEW_ROOT/environment.sh" "$NEW_ROOT/cputest.pbs" "$ARTIFACTS/"
+cp -r "$NEW_ROOT/methods" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+NV_ARGS=()  # CPU node: no --nv
+
+IFS=+ read -r -a METHODS <<< "$FW_METHODS"
+THREADS=$(( ${NCPUS:-16} / ${#METHODS[@]} )); (( THREADS > 0 )) || THREADS=1
+echo "JOB=$PBS_JOBID METHODS=${METHODS[*]} THREADS=$THREADS"
+PIDS=()
+for m in "${METHODS[@]}"; do
+  test -s "$ARTIFACTS/methods/$m/test_$m.py" || die "Missing methods/$m/test_$m.py"
+  (
+    set +e
+    cd "$ARTIFACTS/methods/$m"
+    start=$(date +%s)
+    FW_CPU_THREADS=$THREADS run_python -B "test_$m.py" > "$RESULTS/$m.log" 2>&1
+    rc=$?
+    printf '{"method": "%s", "exit_code": %d, "seconds": %d}\n' "$m" "$rc" "$(( $(date +%s) - start ))" \
+      > "$RESULTS/$m.json"
+  ) & PIDS+=("$!")
+done
+for pid in "${PIDS[@]}"; do wait "$pid"; done
+cat "$RESULTS"/*.json
+touch "$RESULTS/COMPLETE"

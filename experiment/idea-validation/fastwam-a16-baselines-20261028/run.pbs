@@ -1,0 +1,240 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# A16 baselines. The job's plan (jobs.json, keyed by job name without an rN retry suffix) is a list of steps:
+#   prep            C80 Hessians + BF16 masters on all GPUs (shard 0 also builds the T5 cache and BF16 anchor)
+#   wait:prep       block until another job finished prep
+#   quant:M:B       quantize all 614 layers with method M at B bits, layers sharded over the GPUs, then finalize
+#   loops           claim quantized arms in priority order (one job per arm) and run the 280-episode closed loop
+# Every step skips work that is already on disk, so a resubmitted job continues where the last one stopped.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+KEY=$PBS_JOBNAME
+[[ "$KEY" =~ ^(.*)r[0-9]+$ ]] && KEY=${BASH_REMATCH[1]}
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" "$NEW_ROOT/jobs.json" "$KEY" <<'PY'
+import json, sys
+p, jobs, key = json.load(open(sys.argv[1])), json.load(open(sys.argv[2])), sys.argv[3]
+j, r = jobs[key], p["roots"]
+for value in (j["execution_queue"], j["gpus"], j["ncpus"], j["workers_per_gpu"], j.get("loop_wait_seconds", 0),
+              j["plan"], r["pilot"], r["base"], r["old_banks"], r["old_inputs"], r["sif"], r["engine_source"],
+              " ".join(p["engine_files"]), " ".join(p["arm_priority"])):
+    print(value)
+PY
+)
+test "${#CFG[@]}" -eq 14 || die "Unknown job key or malformed config: $KEY"
+EXEC_QUEUE=${CFG[0]}; WANT_GPUS=${CFG[1]}; NCPUS=${CFG[2]}; WPG=${CFG[3]}; LOOP_WAIT=${CFG[4]}
+read -r -a PLAN <<< "${CFG[5]}"
+ROOT=${CFG[6]}; BASE=${CFG[7]}; SMOOTH_ROOT=${CFG[8]}; SOURCE_ROOT=${CFG[9]}; SIF=${CFG[10]}
+ENGINE_SOURCE=${CFG[11]}; read -r -a ENGINE_FILES <<< "${CFG[12]}"; read -r -a PRIORITY <<< "${CFG[13]}"
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'Job not running'
+grep -Eq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${EXEC_QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" \
+  || die "PBS did not route this job to $EXEC_QUEUE"
+
+DIAG_ROOT=$NEW_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+echo "JOB=$PBS_JOBID KEY=$KEY QUEUE=$EXEC_QUEUE PLAN=${PLAN[*]}"
+
+GPU_MONITOR_PID=
+PIDS=()
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  for pid in "${PIDS[@]:-}"; do [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null; done
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  (( rc == 0 )) || rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+for name in protocol.json jobs.json run.pbs environment.sh common.py prep_worker.py quant_worker.py loop_worker.py \
+    analysis.py; do
+  test -s "$NEW_ROOT/$name" || die "Uploaded source missing: $name"
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+cp -r "$NEW_ROOT/methods" "$ARTIFACTS/"
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+  cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+done
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$WANT_GPUS" || die "Expected $WANT_GPUS GPUs, got ${#GPU_IDS[@]}"
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || die "No UUID for GPU $gpu"
+  GPU_UUIDS+=("$uuid")
+done
+NG=${#GPU_UUIDS[@]}
+(
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || true
+    done
+    sleep 60
+  done
+) & GPU_MONITOR_PID=$!
+
+source "$ARTIFACTS/environment.sh"
+cd "$ARTIFACTS"
+P=(--protocol "$ARTIFACTS/protocol.json")
+
+arm_of() {  # method bits -> arm name
+  python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(next(a for a,c in p["arms"].items() if c["method"]==sys.argv[2] and c["bits"]==int(sys.argv[3])))' \
+    "$ARTIFACTS/protocol.json" "$1" "$2"
+}
+
+per_gpu() {  # label script args...: one process per GPU with --shard k --shards NG; fail if any fails
+  local label=$1; shift
+  local k rc failed=0
+  PIDS=()
+  for (( k = 0; k < NG; k++ )); do
+    ( CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$k]} run_python "$@" --shard "$k" --shards "$NG" \
+        > "$ARTIFACTS/${label}_shard_$k.log" 2>&1 ) & PIDS+=("$!")
+  done
+  for (( k = 0; k < NG; k++ )); do
+    if ! wait "${PIDS[$k]}"; then failed=1; tail -c 6000 "$ARTIFACTS/${label}_shard_$k.log"; fi
+  done
+  PIDS=()
+  (( failed == 0 )) || { echo "PER_GPU_FAILED $label"; return 1; }
+}
+
+step_prep() {
+  [[ -s "$RESULTS/prep/COMPLETE.json" ]] && { echo 'PREP already complete'; return; }
+  FW_CPU_THREADS=$(( NCPUS / NG )); export FW_CPU_THREADS
+  per_gpu prep "$ARTIFACTS/prep_worker.py" "${P[@]}" || die 'prep failed'
+  local n_h n_m
+  n_h=$( (find "$RESULTS/prep/hessians" -name '*.pt' 2>/dev/null || true) | wc -l)
+  n_m=$( (find "$RESULTS/prep/masters" -name '*.pt' 2>/dev/null || true) | wc -l)
+  [[ "$n_h" -eq 614 && "$n_m" -eq 614 && -s "$RESULTS/prep/t5_cache.pt" && -s "$RESULTS/prep/bf16_anchor.pt" ]] \
+    || die "Prep incomplete: hessians=$n_h masters=$n_m"
+  printf '{"complete": true, "pbs_jobid": "%s", "hessians": %s, "masters": %s}\n' "$PBS_JOBID" "$n_h" "$n_m" \
+    > "$RESULTS/prep/COMPLETE.json"
+  echo PREP_COMPLETE
+}
+
+step_wait_prep() {
+  local waited=0
+  until [[ -s "$RESULTS/prep/COMPLETE.json" ]]; do
+    (( waited < 14400 )) || die 'Prep did not complete within 4 h'
+    sleep 60; waited=$(( waited + 60 ))
+  done
+  echo "PREP_READY after ${waited}s"
+}
+
+step_quant() {
+  local method=$1 bits=$2 order=${3:-} arm extra=()
+  [[ "$order" == rev ]] && extra=(--reverse)
+  arm=$(arm_of "$method" "$bits")
+  [[ -s "$RESULTS/quantized/$arm/COMPLETE.json" ]] && { echo "QUANT $arm already complete"; return; }
+  [[ -s "$ARTIFACTS/methods/$method/quant.py" ]] || die "Method implementation missing: $method"
+  FW_CPU_THREADS=$(( NCPUS / NG )); export FW_CPU_THREADS
+  # A failing method is recorded and skipped so the job's other steps still run.
+  if ! per_gpu "quant_${arm}" "$ARTIFACTS/quant_worker.py" "${P[@]}" --method "$method" --bits "$bits" "${extra[@]}"; then
+    echo "QUANT_FAILED $arm"; return 0
+  fi
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/quant_worker.py" "${P[@]}" \
+    --method "$method" --bits "$bits" --finalize || echo "QUANT_FAILED $arm finalize"
+}
+
+live_job() {  # true while the given PBS job is queued, held or running
+  qstat -f "$1" 2>/dev/null | grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*[QRHE]([[:space:]]|$)'
+}
+
+claim_arm() {
+  local arm dir owner
+  for arm in "${PRIORITY[@]}"; do
+    [[ -s "$RESULTS/quantized/$arm/COMPLETE.json" && ! -e "$RESULTS/loops/$arm/DONE" ]] || continue
+    dir=$RESULTS/loops/$arm/claim
+    mkdir -p "$RESULTS/loops/$arm"
+    if mkdir "$dir" 2>/dev/null; then echo "$PBS_JOBID" > "$dir/job"; echo "$arm"; return; fi
+    owner=$(cat "$dir/job" 2>/dev/null || true)
+    if [[ "$owner" == "$PBS_JOBID" ]] || { [[ -n "$owner" ]] && ! live_job "$owner"; }; then
+      echo "$PBS_JOBID" > "$dir/job"; echo "$arm"; return
+    fi
+  done
+}
+
+pending_arms() {  # arms not done and not yet quantized
+  local arm n=0
+  for arm in "${PRIORITY[@]}"; do
+    [[ -e "$RESULTS/loops/$arm/DONE" || -s "$RESULTS/quantized/$arm/COMPLETE.json" ]] || n=$(( n + 1 ))
+  done
+  echo "$n"
+}
+
+run_loop() {
+  local arm=$1 workers=$(( NG * WPG )) w rc finished
+  FW_CPU_THREADS=$(( NCPUS / workers > 0 ? NCPUS / workers : 1 )); export FW_CPU_THREADS
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/loop_worker.py" "${P[@]}" --arm "$arm" --init
+  PIDS=()
+  for (( w = 0; w < workers; w++ )); do
+    rm -f "$ARTIFACTS/${arm}_worker_$w.exit"
+    (
+      set +e
+      CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$(( w / WPG ))]} run_python "$ARTIFACTS/loop_worker.py" "${P[@]}" \
+        --arm "$arm" --worker "$w" > "$ARTIFACTS/${arm}_worker_$w.log" 2>&1
+      printf '%s\n' "$?" > "$ARTIFACTS/${arm}_worker_$w.exit"
+    ) & PIDS+=("$!")
+    sleep 10
+  done
+  while :; do
+    finished=0
+    for (( w = 0; w < workers; w++ )); do
+      if [[ -s "$ARTIFACTS/${arm}_worker_$w.exit" ]]; then
+        rc=$(<"$ARTIFACTS/${arm}_worker_$w.exit")
+        if (( rc != 0 )); then tail -c 6000 "$ARTIFACTS/${arm}_worker_$w.log"; die "$arm worker $w failed ($rc)"; fi
+        finished=$(( finished + 1 ))
+      fi
+    done
+    (( finished == workers )) && break
+    sleep 30
+  done
+  for pid in "${PIDS[@]}"; do wait "$pid"; done
+  PIDS=()
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/analysis.py" "${P[@]}" --arm "$arm"
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["complete"] else 1)' \
+    "$RESULTS/loops/$arm/summary.json" || die "$arm closed loop incomplete"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$RESULTS/loops/$arm/DONE"
+  echo "LOOP_DONE $arm"
+}
+
+step_loops() {
+  local arm waited=0
+  while :; do
+    arm=$(claim_arm)
+    if [[ -n "$arm" ]]; then run_loop "$arm"; waited=0; continue; fi
+    if (( $(pending_arms) == 0 || waited >= LOOP_WAIT )); then echo "LOOPS_EXIT waited=${waited}s"; return; fi
+    sleep 120; waited=$(( waited + 120 ))
+  done
+}
+
+for step in "${PLAN[@]}"; do
+  echo "STEP $step $(date -u +%H:%M:%S)"
+  case "$step" in
+    prep) step_prep ;;
+    wait:prep) step_wait_prep ;;
+    quant:*) IFS=: read -r _ method bits order <<< "$step"; step_quant "$method" "$bits" "${order:-}" ;;
+    loops) step_loops ;;
+    *) die "Unknown step $step" ;;
+  esac
+done
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

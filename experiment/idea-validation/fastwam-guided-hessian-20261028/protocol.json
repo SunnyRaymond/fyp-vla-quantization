@@ -1,0 +1,125 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028",
+  "parent_runtime": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101",
+  "design": "WAM-guided Hessian plugin: Gauss-Newton matrix of L = A + lambda Z + beta K turned into token/step and row weights of each Linear's Hessian; quantizer code untouched",
+  "allocation": {
+    "job_name": "fwgh",
+    "queue": "normal",
+    "execution_queue": "g1",
+    "gpus": 1,
+    "ncpus": 16,
+    "memory_gb": 110,
+    "walltime": "08:00:00",
+    "soft_deadline_seconds": 28200,
+    "smoke": {
+      "job_name_suffix": "s",
+      "execution_queue": "gdev",
+      "walltime": "00:45:00",
+      "scope": "two C80 contexts (one diagnostic, one combined), a three-layer replay, one-layer GPTQ, one held-out BF16 endpoint with the swap; outputs only under results/smoke"
+    }
+  },
+  "loss": {
+    "A": "first10 x 6 motor MSE of the executed action (mean over 60 scalars)",
+    "Z": "future NMSE over frames 1: (frame0 is the clamped observation)",
+    "K": "mean per-scalar soft-bin KL(teacher || action read from the future by the BF16 reader); at the BF16 linearization point the reader is the model's own prefill + action loop",
+    "lambda": 0.04245452683169643,
+    "beta": 0.006083668576461056,
+    "beta_source": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/results/reader_preparation/summary.json (job 25921795, reader_kl arm)"
+  },
+  "probes": {
+    "contexts": "C80 (case 2000-2079), sampler seed index 0, BF16 model",
+    "probes_per_context": 1,
+    "seed": 20261028,
+    "cotangents": "A: Rademacher/sqrt(60) on action[:10,:6]; K: Rademacher*sqrt(h/2), h = diagonal soft-bin KL curvature at the teacher action; Z: Rademacher/|z_T[:,:,1:]| on future[:,:,1:]",
+    "reverse_passes": "reader pass (prefill + action loop from the query's own future): v_A -> records prefill/action/proprio calls and gives c1 at z; v_K -> c2 at z (not recorded); query graph from z with c1 + sqrt(beta) c2 + sqrt(lambda) v_Z -> records video denoising calls",
+    "diagnostic_cases_per_suite": 2,
+    "diagnostic": "on these contexts the three z cotangents are back-propagated separately (heads Az, K, Z); their sum replaces the combined pass"
+  },
+  "hessian": {
+    "gamma": 0.1,
+    "definition": "H~ = sum_t (u_t / ubar_l + gamma) x_t x_t^T / sum_t (u_t / ubar_l + gamma) over every call of the 80 C80 queries; u_t = |g_t|^2 of the probe cotangent at the Linear output; ubar_l = layer mean of u over all its rows",
+    "format": "results/hessians/<index>.pt with the A16-baseline prep keys (module, rows, hessian) plus weight_sum, ubar, gamma, row_weight (sum_t g_tc^2 |x_t|^2 per output row)"
+  },
+  "baseline": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028",
+    "uses": "results/prep/{modules.json, masters, hessians} (H_U) and methods/gptq/quant.py unchanged"
+  },
+  "gptq": {
+    "bits": [
+      3,
+      2
+    ],
+    "seed_base": 20261028
+  },
+  "evaluation": {
+    "arms": [
+      "GPTQ_U_W3",
+      "GPTQ_G_W3",
+      "GPTQ_U_W2",
+      "GPTQ_G_W2"
+    ],
+    "split": "heldout",
+    "case_ids": [
+      3000,
+      3001,
+      3002,
+      3003,
+      3004,
+      3005,
+      3006,
+      3007,
+      3008,
+      3009,
+      3010,
+      3011,
+      3012,
+      3013,
+      3014,
+      3015,
+      3016,
+      3017,
+      3018,
+      3019,
+      3020,
+      3021,
+      3022,
+      3023,
+      3024,
+      3025,
+      3026,
+      3027,
+      3028,
+      3029,
+      3030,
+      3031,
+      3032,
+      3033,
+      3034,
+      3035,
+      3036,
+      3037,
+      3038,
+      3039
+    ],
+    "seed_indices": [
+      0,
+      1
+    ],
+    "aggregation": "seed -> context -> suite -> equal four-suite mean",
+    "c1_swap": "per query: the same quantized model's reader (prefill + action loop) reads the BF16 teacher future with the query's sampler seed"
+  },
+  "suites": [
+    "libero_spatial",
+    "libero_object",
+    "libero_goal",
+    "libero_10"
+  ],
+  "gates": {
+    "teacher_parity_max_abs": 0.05,
+    "signature_tolerance": 0.0001,
+    "hessian_headroom_gb": 6.0,
+    "prep_wait_seconds": 7200
+  },
+  "scope": "S1 probes + S2 guided Hessians + GPTQ host (H_U vs H~) held-out; QTIP/GPTVQ hosts and closed loop use the saved Hessians in later jobs"
+}

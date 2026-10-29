@@ -1,0 +1,129 @@
+{
+  "protocol": "fastwam-a16-baselines-20261028-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028",
+  "purpose": "Weight-only (A16) PTQ baselines on Fast-WAM-IDM: GPTQ, QuIP#, QTIP, GPTVQ at 3 and 2 bits; LIBERO-Plus 280 closed loop on the BF16 condition-cache + CUDA-Graph runtime with dequantized dense BF16 weights",
+  "arms": {
+    "GPTQ_W3": {
+      "method": "gptq",
+      "bits": 3
+    },
+    "QUIPSHARP_W3": {
+      "method": "quipsharp",
+      "bits": 3
+    },
+    "QTIP_W3": {
+      "method": "qtip",
+      "bits": 3
+    },
+    "GPTVQ_W3": {
+      "method": "gptvq",
+      "bits": 3
+    },
+    "GPTQ_W2": {
+      "method": "gptq",
+      "bits": 2
+    },
+    "QUIPSHARP_W2": {
+      "method": "quipsharp",
+      "bits": 2
+    },
+    "QTIP_W2": {
+      "method": "qtip",
+      "bits": 2
+    },
+    "GPTVQ_W2": {
+      "method": "gptvq",
+      "bits": 2
+    }
+  },
+  "arm_priority": [
+    "GPTQ_W3",
+    "QUIPSHARP_W3",
+    "QTIP_W3",
+    "GPTVQ_W3",
+    "GPTQ_W2",
+    "QUIPSHARP_W2",
+    "QTIP_W2",
+    "GPTVQ_W2"
+  ],
+  "budget_rule": "total stored bits per weight ~= bits; all side information (scales, zero points, codebooks, sign vectors, padding) counted in bits_total; no fine-tuning for any method",
+  "hessian": {
+    "definition": "mean x x^T of the BF16 inputs of each of the 614 target Linears over every call of the 80 C80 queries (case 2000-2079, sampler seed index 0), original coordinates, FP32",
+    "source": "BF16 model for every method (no sequential re-collection on quantized layers)",
+    "c80_cases": [
+      2000,
+      2079
+    ],
+    "headroom_gb": 6.0
+  },
+  "t5_cache": {
+    "what": "T5 prompt embeddings (encode_prompt output) for the 280 panel instructions and the case-2000 anchor prompt, computed once on an A100 by the full BF16 model; closed-loop workers load the model with load_text_encoder=false and serve encode_prompt from this cache",
+    "check": "each prompt encoded twice and must be bitwise equal; every loop worker reproduces the full-T5 BF16 case-2000 action/future bitwise from the cache before installing quantized weights"
+  },
+  "closed_loop": {
+    "runtime": "BF16 F.linear on dequantized BF16 weights + query condition cache + three CUDA Graph regions (the bf16_cache_graph mode of job 26028322, 541 ms/call)",
+    "startup_check": "case-2000 eager vs cache+Graph action/future bitwise equal with the arm's weights",
+    "panel": "frozen 280-variant LIBERO-Plus manifest, seeds/settling/caps/replans identical to fastwam-plus-engine-eval-20261027"
+  },
+  "roots": {
+    "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+    "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+    "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+    "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006",
+    "r128": "/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021",
+    "sif": "/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif",
+    "engine_source": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101"
+  },
+  "engine_files": [
+    "reference_profile.py",
+    "export_runtime.py",
+    "fused_input.py",
+    "fused_vq.py",
+    "kernel_runtime.py",
+    "layer_runtime.py",
+    "condition_cache.py",
+    "abc_runtime.py",
+    "graph_runtime.py",
+    "decoder_runtime.py",
+    "profile_worker.py",
+    "runner.py",
+    "quantization.py",
+    "libero_state_loader.py",
+    "previous_vq_adapter.py",
+    "rotation_bank.py",
+    "batched_transform.py",
+    "smooth_vq.py",
+    "codebook.py",
+    "micro_codebook.py",
+    "c8_train_banks.py",
+    "sampler.py",
+    "latent_reference.py",
+    "checkpointing.py",
+    "calibration_source.py"
+  ],
+  "panel": {
+    "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "anchor_case": 2000
+  },
+  "references": {
+    "paired": {
+      "BF16": {
+        "episodes": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl",
+        "arm": "bf16"
+      },
+      "Q0_A4": {
+        "episodes": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/results/workers/worker_*/episodes.jsonl",
+        "arm": "reader_kl"
+      }
+    },
+    "totals_summary": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-plus-20261022/results/summary.json",
+    "table_arms": [
+      "bf16",
+      "reader_kl",
+      "spinquant_adapted_w4a4",
+      "quarot_adapted_w4a4",
+      "viditq_w4a4"
+    ]
+  }
+}

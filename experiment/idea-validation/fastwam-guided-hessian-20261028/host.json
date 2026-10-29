@@ -1,0 +1,92 @@
+{
+  "purpose": "QTIP W2 host for the guided Hessian, run as g2 two-GPU jobs. protocol.json is frozen on the cluster; this file replaces its gptq, evaluation.arms and allocation (g1) entries. Loss, probes, gates and the held-out panel still come from protocol.json. Phase 1 (job 26043905): token-weighted H~, arm QTIP_G_W2. Phase 2 (this file's 'coherent'): rollout-coherent Gauss-Newton from sketched weight gradients, arms QTIP_C_W2 and QTIP_CA_W2 (failed: context heavy tail, see results/coherent). Phase 3 (this file's 'hosts'): the phase-1 H~ unchanged on two more VQ hosts, GPTVQ and QuIP#, at W2.",
+  "host": {
+    "method": "qtip",
+    "bits": 2,
+    "seed_base": 20261028,
+    "implementation": "<baseline root>/methods/qtip (the A16 baselines' port, unchanged); per layer the same seed (seed_base + index), so the sign vectors equal the baseline's and only the Hessian differs",
+    "baseline_arm": "QTIP_W2",
+    "input": "an input-side Hessian only (QTIP); output-row weights are not used"
+  },
+  "arms": {
+    "QTIP_U_W2": "the A16 baselines' QTIP_W2 weights (H_U = mean x x^T), reused, not re-quantized",
+    "QTIP_G_W2": "phase 1: QTIP W2 on H~ (token weights u, gamma 0.1)",
+    "QTIP_C_W2": "phase 2: QTIP W2 on H_C (coherent, A + lambda Z + beta K)",
+    "QTIP_CA_W2": "phase 2: QTIP W2 on H_CA (coherent, A only: the executed-action loss through its direct path and through the imagined future; the GuidedQuant-style end-loss control)",
+    "GPTVQ_G_W2": "phase 3: GPTVQ W2 (the A16 baselines' port) on H~",
+    "QUIPSHARP_G_W2": "phase 3: QuIP# W2 (the A16 baselines' port) on H~"
+  },
+  "coherent": {
+    "arms": {
+      "QTIP_C_W2": "C",
+      "QTIP_CA_W2": "CA"
+    },
+    "probes_per_context": 2,
+    "sketch_rows": 32,
+    "seed": 20261029,
+    "gamma_u": 0.1,
+    "hessian": "H = S^T S / mean diag(S^T S) + gamma_u H_U / mean diag(H_U); S stacks over the 80 C80 contexts and both probes the per-probe sketches R^T G (R +-1/sqrt(32), fresh per context, probe and layer)",
+    "check_tolerance": 0.05,
+    "gate": {
+      "min_a_via_future": 0.2,
+      "statistic": "1 - sum |S_A|^2 / sum |S_A + S_Az|^2 over all 80 contexts and probes: the share of the executed-action error energy (isotropic weight noise) that the coherent model routes through the imagined future; the per-token model gave 0.069, the measured BF16-future swap 0.44-0.50 (first10 motor MSE)"
+    },
+    "row_scale": true,
+    "row_scale_basis": "pre-registered: adopt if the split-half predicted guided-loss ratio is <= 0.9. rowcheck 26046194 on the phase-1 per-token row weights: 0.845 split-half (0.817 in sample), half-correlation 0.86 -> adopted. The arms use the coherent row weights of their own variant, E|G_c|^2, estimated by the input-side sketch G Q (Q +-1/sqrt(16) per context, probe and layer); the per-token ones are saved alongside for comparison",
+    "row_sketch_cols": 16,
+    "row_scale_limit": 16,
+    "row_scale_rule": "s_c^2 = sqrt(d_c)/|W_c| (minimizes (sum d_c/s_c^2)(sum s_c^2 |W_c|^2)), geometric mean 1, clipped to [1/16, 16]; QTIP quantizes diag(s) W and the dequantized rows are divided by s, i.e. s folds into QTIP's fp32 SV: 0 extra bits"
+  },
+  "allocation": {
+    "job_name": "fwgh",
+    "queue": "normal",
+    "execution_queue": "g2",
+    "gpus": 2,
+    "ncpus": 12,
+    "ncpus_basis": "measured in 26043905: 4 loop workers 7.0 cores mean / 10.3 max, QTIP 3.5, probes 3.2; PBS sets 16 per GPU on the GPU queues regardless",
+    "memory_gb": 120,
+    "memory_basis": "26043905 used 56 GB (resources_used.mem)",
+    "walltime": "08:00:00",
+    "soft_deadline_seconds": 27900
+  },
+  "steps": [
+    "check: GPU 0 per host the smallest layer on H_U against the baseline weight, then on H~; model load, install of a baseline host arm, one held-out endpoint; GPU 1 the closed-loop glue (baseline QTIP_W2, startup gates, one episode)",
+    "quant: per GPU, half of the layers (the baselines' GPTVQ_W2 + QUIPSHARP_W2 seconds balanced); both hosts on H~; proxies of ours and the baseline weight under H_U and H~",
+    "complete: quantized/<arm>/COMPLETE.json",
+    "eval: held-out 40x2 with the C1 swap: GPU 0 GPTVQ_G_W2 and GPTVQ_W2, GPU 1 QUIPSHARP_G_W2 and QUIPSHARP_W2",
+    "loop: LIBERO-Plus 280 of GPTVQ_G_W2 then QUIPSHARP_G_W2, 2 workers per GPU on one episode queue",
+    "final: results/hosts/RESULTS.zh.md, QTIP (phases 0/1) + GPTVQ + QuIP#, baseline vs guided, paired counts"
+  ],
+  "closed_loop": {
+    "arms": [
+      "GPTVQ_G_W2",
+      "QUIPSHARP_G_W2"
+    ],
+    "workers_per_gpu": 2
+  },
+  "barrier_poll_seconds": 30,
+  "hosts": {
+    "arms": {
+      "GPTVQ_G_W2": {
+        "method": "gptvq",
+        "bits": 2,
+        "baseline_arm": "GPTVQ_W2"
+      },
+      "QUIPSHARP_G_W2": {
+        "method": "quipsharp",
+        "bits": 2,
+        "baseline_arm": "QUIPSHARP_W2"
+      }
+    },
+    "hessian": "results/hessians (phase 1, H~), unchanged; seeds seed_base + layer index as the baselines' quant_worker",
+    "eval_arms": [
+      "GPTVQ_G_W2",
+      "QUIPSHARP_G_W2",
+      "GPTVQ_W2",
+      "QUIPSHARP_W2"
+    ],
+    "eval_note": "the baseline host arms have no held-out run yet; evaluated here from the baseline root so all four are on the same panel (one guided + its baseline per GPU)",
+    "reproduction_tolerance": 0.001,
+    "reproduction_note": "check: the smallest 512x256-divisible layer on the baseline H_U must reproduce the baseline weight within this relative Frobenius difference"
+  }
+}
