@@ -1,0 +1,812 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26068868.pbs101",
+  "complete": true,
+  "xfer": {
+    "purpose": "user request (2026-10-31): migrate EoRA-J to GPTVQ_W2 and QuIP#_W2 and run each one's LIBERO-Plus 280 closed loop, paired against the host's own closed loop (GPTVQ_W2 201/280, QUIPSHARP_W2 198/280; QTIP: J 209 vs 204). The method moves unchanged: rank 4, EoRA init on the same H_U and damping, lambda and beta, step grid and 0.5 rule, 8 updates on the C80 batches; only the host weights differ.",
+    "hosts": {
+      "GPTVQ": {
+        "method": "gptvq",
+        "baseline_arm": "GPTVQ_W2",
+        "baseline_loop": "GPTVQ_W2"
+      },
+      "QUIPSHARP": {
+        "method": "quipsharp",
+        "baseline_arm": "QUIPSHARP_W2",
+        "baseline_loop": "QUIPSHARP_W2"
+      }
+    },
+    "arms": "<HOST>_LRE_W2 (E: init, C80 fit, held-out 40x2 + swap) and <HOST>_LRJ_W2 (J: step check from E, 8 updates, fit, held-out); D is not run",
+    "baselines": "U held-out = results/heldout/<baseline_arm>.json (26050310), U C80 fit = results/tune/<HOST>/fit_before.json",
+    "init": {
+      "allocation": {
+        "job_name": "fwlx1",
+        "queue": "normal",
+        "execution_queue": "gdev",
+        "gpus": 2,
+        "ncpus": 32,
+        "memory_gb": 220,
+        "walltime": "02:00:00",
+        "soft_deadline_seconds": 6900,
+        "time_basis": "one host per GPU: load ~10 min, EoRA factors, E bits + C80 fit + held-out ~45 min (QTIP 26060556)"
+      }
+    },
+    "train": {
+      "allocation": {
+        "job_name": "fwlx2",
+        "queue": "normal",
+        "execution_queue": "gdev",
+        "gpus": 2,
+        "ncpus": 32,
+        "memory_gb": 220,
+        "walltime": "02:00:00",
+        "soft_deadline_seconds": 6900,
+        "time_basis": "one host per GPU: load ~10 min, step check 6 grid values ~20 min, 8 updates ~4 min each, bits + fit + held-out ~30 min (QTIP fwlj1); checkpointed, rN resumes"
+      }
+    },
+    "loop": {
+      "workers_per_gpu": 2,
+      "gpus_per_host": 2,
+      "mode": "branch",
+      "checks": "per worker (lowrank_loop.py --lr-mode branch): host weights alone reproduce the host's own loop anchor, the branch reproduces the arm's C80 fit row of case 2000, both within 1e-4 relative; then eager vs cache+Graph bitwise",
+      "allocation": {
+        "job_name": "fwlxl",
+        "queue": "normal",
+        "execution_queue": "g3",
+        "gpus": 4,
+        "ncpus": 20,
+        "memory_gb": 200,
+        "walltime": "04:00:00",
+        "soft_deadline_seconds": 14100,
+        "time_basis": "two arms in parallel, 2 GPUs x 2 workers each: 280 x ~84 s / 4 ~1.6 h (26066178) plus load"
+      }
+    }
+  },
+  "hosts": {
+    "QTIP": {
+      "U": {
+        "arm": "QTIP_U_W2",
+        "tuned": false,
+        "quant": {
+          "protocol": "fastwam-a16-baselines-20261028-v1",
+          "arm": "QTIP_W2",
+          "method": "qtip",
+          "bits": 2,
+          "complete": true,
+          "pbs_jobid": "26042755.pbs101",
+          "target_weights": 6016317440,
+          "bpw": 2.0158526103303487,
+          "proxy_nmse_weighted": 0.005824207358468657,
+          "proxy_nmse_max": 0.040198467671871185,
+          "worst_layers": [
+            [
+              0.040198467671871185,
+              "proprio_encoder"
+            ],
+            [
+              0.034579090774059296,
+              "action_expert.action_encoder"
+            ],
+            [
+              0.02570185996592045,
+              "video_expert.blocks.27.self_attn.v"
+            ],
+            [
+              0.02516152895987034,
+              "video_expert.blocks.28.self_attn.v"
+            ],
+            [
+              0.024093300104141235,
+              "video_expert.blocks.23.self_attn.o"
+            ]
+          ],
+          "quantize_seconds": 6703.462461956311,
+          "config_example": {
+            "method": "QTIP",
+            "upstream": "https://github.com/Cornell-RelaxML/qtip",
+            "upstream_commit": "e90c6688c8dfae326a3a81b5eb032db7c6680ec0",
+            "code": "HYB",
+            "decode_mode": "quantlut_sym",
+            "L": 16,
+            "K": 2,
+            "V": 2,
+            "tlut_bits": 9,
+            "td_x": 16,
+            "td_y": 16,
+            "lut": "official quantlut_sym k-means LUT (torch seed 0), normalized to std 0.9682458365518543, rounded to the model dtype; global, not tuned",
+            "lut_dtype": "torch.bfloat16",
+            "viterbi_input_dtype": "torch.float16",
+            "incoherence": "RHT both sides: Wr = Had_m^T diag(SV) W diag(SU) Had_n",
+            "hadamard_K_in": 1,
+            "hadamard_K_out": 12,
+            "rounding": "BlockLDLQ (block 16) + tail-biting Viterbi",
+            "for_kernel_permute": true,
+            "kernel_bit_layout": true,
+            "ldlq_buf_cols": 128,
+            "sigma_reg": 0.01,
+            "scale_override": 0.9,
+            "attempts": [
+              {
+                "dtype": "torch.float32",
+                "sigma_reg": 0.01,
+                "ok": true
+              }
+            ],
+            "hessian_fallback": null,
+            "fine_tuning": "none",
+            "seed": 20261028,
+            "sign_rng": "torch.Generator(cpu).manual_seed(seed): SU then SV",
+            "shape": [
+              3072,
+              4096
+            ],
+            "padded_shape": [
+              3072,
+              4096
+            ],
+            "bits": {
+              "trellis": 25165824,
+              "SU": 65536,
+              "SV_fp32_with_Wscale": 98304,
+              "shared_tlut_not_counted": 16384
+            },
+            "bpw": 2.0130208333333335,
+            "Wscale": 0.03810662403702736,
+            "proxy_err_official": 0.001204355270601809,
+            "decode_verified": true,
+            "viterbi_update": "compile+fast",
+            "seconds": 18.033991159987636
+          }
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "host": "QTIP",
+          "arm": "QTIP_U_W2",
+          "mixed_loss": 0.0025389408248884136,
+          "first10motor_rmse": 0.028988335758913308,
+          "future_latent_nmse": 0.03858650027541444
+        },
+        "heldout": {
+          "first10motor_rmse": 0.032398840948008004,
+          "first10motor_mse": 0.0011035398099920712,
+          "future_latent_nmse": 0.05324625272769481,
+          "mixed_loss": 0.003364084218628705,
+          "full32motor_rmse": 0.035440620267763734,
+          "late22motor_rmse": 0.03602131861262023,
+          "first10gripper_rmse": 0.08595653278753161,
+          "first10gripper_disagreement": 0.005000000000000001,
+          "first10motor_rmse_swap": 0.024588405271060768,
+          "first10motor_mse_swap": 0.0006217636451765429,
+          "full32motor_rmse_swap": 0.024653597222641113
+        }
+      },
+      "E": {
+        "arm": "QTIP_LRE_W2",
+        "tuned": false,
+        "eta": null,
+        "quant": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "complete": true,
+          "pbs_jobid": "26060556.pbs101",
+          "arm": "QTIP_LRE_W2",
+          "method": "qtip",
+          "bits": 2,
+          "hessian": "U",
+          "rank": 4,
+          "target_weights": 6016317440,
+          "bpw": 2.0571340703724568,
+          "proxy_nmse_weighted": 0.005723854471922992,
+          "baseline_proxy_U_weighted": 0.005825155915274611
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "arm": "QTIP_LRE_W2",
+          "mixed_loss": 0.0022045192839868833,
+          "first10motor_rmse": 0.02216641210252419,
+          "future_latent_nmse": 0.03871192983351648
+        },
+        "heldout": {
+          "first10motor_rmse": 0.026437661866657438,
+          "first10motor_mse": 0.000782933913069428,
+          "future_latent_nmse": 0.05352569485548884,
+          "mixed_loss": 0.0030553419113857672,
+          "full32motor_rmse": 0.031128059013281015,
+          "late22motor_rmse": 0.032326107646804304,
+          "first10gripper_rmse": 0.027614865632494913,
+          "first10gripper_disagreement": 0.00375,
+          "first10motor_rmse_swap": 0.015705669997259974,
+          "first10motor_mse_swap": 0.000261191654499271,
+          "full32motor_rmse_swap": 0.01705433310708031
+        },
+        "heldout_vs_U": {
+          "mixed_loss": 0.9082239661143829,
+          "future_latent_nmse": 1.0052481088053862,
+          "first10motor_rmse": 0.8160064092750491,
+          "first10gripper_rmse": 0.3212654668232567
+        }
+      },
+      "J": {
+        "arm": "QTIP_LRJ_W2",
+        "tuned": true,
+        "eta": 0.005,
+        "quant": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "complete": true,
+          "pbs_jobid": "26061075.pbs101",
+          "arm": "QTIP_LRJ_W2",
+          "method": "qtip",
+          "bits": 2,
+          "hessian": "U",
+          "rank": 4,
+          "target_weights": 6016317440,
+          "bpw": 2.0571340703724568,
+          "proxy_nmse_weighted": 0.005729201768564504,
+          "baseline_proxy_U_weighted": 0.005825155915274611
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "arm": "QTIP_LRJ_W2",
+          "mixed_loss": 0.0015927736458252184,
+          "first10motor_rmse": 0.01772423820802942,
+          "future_latent_nmse": 0.02943679877789691
+        },
+        "heldout": {
+          "first10motor_rmse": 0.02455521826632321,
+          "first10motor_mse": 0.0006863291979243513,
+          "future_latent_nmse": 0.05229660673066974,
+          "mixed_loss": 0.0029065568407531826,
+          "full32motor_rmse": 0.029519538627937436,
+          "late22motor_rmse": 0.03085817560786381,
+          "first10gripper_rmse": 0.028784395987167956,
+          "first10gripper_disagreement": 0.00375,
+          "first10motor_rmse_swap": 0.01354603422805667,
+          "first10motor_mse_swap": 0.00019764238813877456,
+          "full32motor_rmse_swap": 0.014979064650833608
+        },
+        "step": {
+          "chosen": 0.005,
+          "rows": [
+            {
+              "lr": 0.0025,
+              "predicted": 0.0005879939806622007,
+              "realized": 0.000508786534054772
+            },
+            {
+              "lr": 0.005,
+              "predicted": 0.0011759879613244015,
+              "realized": 0.0008766180253527882
+            },
+            {
+              "lr": 0.01,
+              "predicted": 0.002351975922648803,
+              "realized": 0.0010563677286861077
+            },
+            {
+              "lr": 0.02,
+              "predicted": 0.004703951845297606,
+              "realized": 0.00021102116459736486
+            },
+            {
+              "lr": 0.05,
+              "predicted": 0.011759879613244015,
+              "realized": -0.004322465741161708
+            },
+            {
+              "lr": 0.1,
+              "predicted": 0.02351975922648803,
+              "realized": -0.01631558160821217
+            }
+          ]
+        },
+        "heldout_vs_U": {
+          "mixed_loss": 0.8639964554567474,
+          "future_latent_nmse": 0.9821650172852233,
+          "first10motor_rmse": 0.757904219651813,
+          "first10gripper_rmse": 0.33487153394515773
+        }
+      }
+    },
+    "GPTVQ": {
+      "U": {
+        "arm": "GPTVQ_W2",
+        "tuned": false,
+        "quant": {
+          "protocol": "fastwam-a16-baselines-20261028-v1",
+          "arm": "GPTVQ_W2",
+          "method": "gptvq",
+          "bits": 2,
+          "complete": true,
+          "pbs_jobid": "26042764.pbs101",
+          "target_weights": 6016317440,
+          "bpw": 2.0625666773327707,
+          "proxy_nmse_weighted": 0.009616856705452424,
+          "proxy_nmse_max": 0.05307959392666817,
+          "worst_layers": [
+            [
+              0.05307959392666817,
+              "video_expert.time_embedding.0"
+            ],
+            [
+              0.04947782680392265,
+              "video_expert.blocks.17.cross_attn.o"
+            ],
+            [
+              0.044855471700429916,
+              "video_expert.blocks.23.self_attn.o"
+            ],
+            [
+              0.040051016956567764,
+              "video_expert.blocks.22.self_attn.o"
+            ],
+            [
+              0.039806198328733444,
+              "proprio_encoder"
+            ]
+          ],
+          "quantize_seconds": 13819.385065397015,
+          "config_example": {
+            "method": "gptvq",
+            "upstream": "https://github.com/qualcomm-ai-research/gptvq",
+            "upstream_commit": "fd8a3ced81f767018a28a51a91af96777f885f9f",
+            "bits": 2,
+            "shape": [
+              3072,
+              4096
+            ],
+            "padded_shape": [
+              3072,
+              4096
+            ],
+            "vq_dim": 4,
+            "n_centroids": 256,
+            "index_bits_per_vector": 8,
+            "columns_per_group": 256,
+            "rows_per_group": 512,
+            "rows_per_group_nominal": 512,
+            "groupsize": 131072,
+            "groups_per_column": 6,
+            "column_spans": 16,
+            "n_codebooks": 96,
+            "codebook_bitwidth": 8,
+            "quantize_per_codebook": false,
+            "n_codebook_scales": 16,
+            "codebook_scale_bits": 32,
+            "kmeans_init_method": "mahalanobis",
+            "kmeans_iters": 100,
+            "hessian_weighted_lookups": true,
+            "include_m_step": true,
+            "quantize_during_kmeans": false,
+            "vq_scaling_blocksize": -1,
+            "svd_rank": null,
+            "act_order": false,
+            "blocksize": 128,
+            "percdamp": 0.01,
+            "percdamp_official": 0.01,
+            "hessian_scale": "H_upstream = 2 * hessian (GPTQ.add_batch convention)",
+            "assignment_chunk_size": 21845,
+            "singular_init_fallbacks": 0,
+            "dead_inputs": 0,
+            "index_bits": 25165824,
+            "codebook_bits": 786432,
+            "scale_bits": 512,
+            "bpw": 2.0625406901041665,
+            "side_bpw": 0.06254069010416667,
+            "padding_bpw": 0.0,
+            "seed": 20261028,
+            "seed_note": "Mahalanobis init is deterministic; the seed only fixes the RNG state",
+            "seconds": 45.314,
+            "device": "cuda:0",
+            "gptq_error": 0.12337708473205566,
+            "gptq_pass_seconds": 21.66,
+            "m_step_snr_db": [
+              29.27,
+              29.62
+            ],
+            "m_step_restarts": 1
+          }
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "host": "GPTVQ",
+          "arm": "GPTVQ_W2",
+          "mixed_loss": 0.004085172917984892,
+          "first10motor_rmse": 0.03564141490496695,
+          "future_latent_nmse": 0.06379587422125041
+        },
+        "heldout": {
+          "first10motor_rmse": 0.04030083275865763,
+          "first10motor_mse": 0.0018078010751196413,
+          "future_latent_nmse": 0.09557235662359745,
+          "mixed_loss": 0.005865280149737373,
+          "full32motor_rmse": 0.047546789539046584,
+          "late22motor_rmse": 0.04955008095130324,
+          "first10gripper_rmse": 0.03649309842148796,
+          "first10gripper_disagreement": 0.0025,
+          "first10motor_rmse_swap": 0.025861716154031454,
+          "first10motor_mse_swap": 0.0006963686861126917,
+          "full32motor_rmse_swap": 0.02722578882239759
+        }
+      },
+      "E": {
+        "arm": "GPTVQ_LRE_W2",
+        "tuned": false,
+        "eta": null,
+        "quant": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "complete": true,
+          "pbs_jobid": "26068766.pbs101",
+          "arm": "GPTVQ_LRE_W2",
+          "method": "gptvq",
+          "bits": 2,
+          "hessian": "U",
+          "rank": 4,
+          "target_weights": 6016317440,
+          "bpw": 2.1038481373748787,
+          "proxy_nmse_weighted": 0.00907203294467688,
+          "baseline_proxy_U_weighted": 0.009617475326574096
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "arm": "GPTVQ_LRE_W2",
+          "seed_index": 0,
+          "mixed_loss": 0.0035576298483647405,
+          "first10motor_rmse": 0.02891437478829175,
+          "future_latent_nmse": 0.061452315142378214
+        },
+        "heldout": {
+          "first10motor_rmse": 0.03586013054009527,
+          "first10motor_mse": 0.0015286372372429469,
+          "future_latent_nmse": 0.091551503399387,
+          "mixed_loss": 0.005415412917500362,
+          "full32motor_rmse": 0.04306770353578031,
+          "late22motor_rmse": 0.04481729352846742,
+          "first10gripper_rmse": 0.034937376814195883,
+          "first10gripper_disagreement": 0.00375,
+          "first10motor_rmse_swap": 0.01780258640064858,
+          "first10motor_mse_swap": 0.0003562673408396222,
+          "full32motor_rmse_swap": 0.019599266792647542
+        },
+        "heldout_vs_U": {
+          "mixed_loss": 0.9232999582710205,
+          "future_latent_nmse": 0.9579287006592692,
+          "first10motor_rmse": 0.8898111548921186,
+          "first10gripper_rmse": 0.9573694294377583
+        }
+      },
+      "J": {
+        "arm": "GPTVQ_LRJ_W2",
+        "tuned": true,
+        "eta": 0.005,
+        "quant": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "complete": true,
+          "pbs_jobid": "26068868.pbs101",
+          "arm": "GPTVQ_LRJ_W2",
+          "method": "gptvq",
+          "bits": 2,
+          "hessian": "U",
+          "rank": 4,
+          "target_weights": 6016317440,
+          "bpw": 2.1038481373748787,
+          "proxy_nmse_weighted": 0.009107573162493188,
+          "baseline_proxy_U_weighted": 0.009617475326574096
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "arm": "GPTVQ_LRJ_W2",
+          "seed_index": 0,
+          "mixed_loss": 0.002696983913483564,
+          "first10motor_rmse": 0.0227817217935808,
+          "future_latent_nmse": 0.04985973904840648
+        },
+        "heldout": {
+          "first10motor_rmse": 0.0338766505708918,
+          "first10motor_mse": 0.0013957756735180737,
+          "future_latent_nmse": 0.0926679742988199,
+          "mixed_loss": 0.005329950556915719,
+          "full32motor_rmse": 0.04127627821872011,
+          "late22motor_rmse": 0.04321660553105175,
+          "first10gripper_rmse": 0.04814676655223593,
+          "first10gripper_disagreement": 0.005000000000000001,
+          "first10motor_rmse_swap": 0.016498356778174638,
+          "first10motor_mse_swap": 0.00030432421463046924,
+          "full32motor_rmse_swap": 0.018327450985088943
+        },
+        "step": {
+          "chosen": 0.005,
+          "rows": [
+            {
+              "lr": 0.0025,
+              "predicted": 0.0012517289673110127,
+              "realized": 0.0009766064383511484
+            },
+            {
+              "lr": 0.005,
+              "predicted": 0.0025034579346220253,
+              "realized": 0.0014295832605713868
+            },
+            {
+              "lr": 0.01,
+              "predicted": 0.005006915869244051,
+              "realized": 0.0010368709616611674
+            },
+            {
+              "lr": 0.02,
+              "predicted": 0.010013831738488101,
+              "realized": 0.00031369407237280544
+            },
+            {
+              "lr": 0.05,
+              "predicted": 0.025034579346220255,
+              "realized": -0.006126296159601051
+            },
+            {
+              "lr": 0.1,
+              "predicted": 0.05006915869244051,
+              "realized": -0.0237825208612623
+            }
+          ]
+        },
+        "heldout_vs_U": {
+          "mixed_loss": 0.9087290667870955,
+          "future_latent_nmse": 0.969610644464736,
+          "first10motor_rmse": 0.840594306667627,
+          "first10gripper_rmse": 1.319338960922157
+        }
+      }
+    },
+    "QUIPSHARP": {
+      "U": {
+        "arm": "QUIPSHARP_W2",
+        "tuned": false,
+        "quant": {
+          "protocol": "fastwam-a16-baselines-20261028-v1",
+          "arm": "QUIPSHARP_W2",
+          "method": "quipsharp",
+          "bits": 2,
+          "complete": true,
+          "pbs_jobid": "26042755.pbs101",
+          "target_weights": 6016317440,
+          "bpw": 2.0104292050121613,
+          "proxy_nmse_weighted": 0.007704122729205049,
+          "proxy_nmse_max": 0.03302746266126633,
+          "worst_layers": [
+            [
+              0.03302746266126633,
+              "video_expert.blocks.27.self_attn.v"
+            ],
+            [
+              0.032446280121803284,
+              "video_expert.blocks.28.self_attn.v"
+            ],
+            [
+              0.03148208558559418,
+              "video_expert.blocks.23.self_attn.o"
+            ],
+            [
+              0.02979157119989395,
+              "video_expert.blocks.26.self_attn.v"
+            ],
+            [
+              0.02853686735033989,
+              "video_expert.blocks.24.self_attn.v"
+            ]
+          ],
+          "quantize_seconds": 4624.011430869577,
+          "config_example": {
+            "method": "quipsharp",
+            "upstream": "https://github.com/Cornell-RelaxML/quip-sharp",
+            "upstream_commit": "1d8f873e9a2a8b86b12bb1064c312c5689b77d98",
+            "bits": 2,
+            "codebook": "E8P12",
+            "codesz": 8,
+            "ldl_block": 8,
+            "incoherence": "randomized Hadamard both sides (incoh_mode=had)",
+            "args": {
+              "sigma_reg": 0.01,
+              "sigma_reg2": 0.01,
+              "incoh_mode": "had",
+              "lora_rank": 0,
+              "quip_tune_iters": 10,
+              "use_fp64": false,
+              "full_svd": false,
+              "no_use_buffered": false,
+              "rescale_WH": false,
+              "lowmem_ldlq": false,
+              "scale_override": 0.9,
+              "resid_scale_override": -1,
+              "buf_cols": 128
+            },
+            "wscale_divisor": 0.9,
+            "sv_fp16_factor": 0.9999061226844788,
+            "resid_scale": null,
+            "fine_tuning": "none (no within-block or end-to-end fine-tuning; one-shot PTQ)",
+            "seed": 20261028,
+            "shape": [
+              3072,
+              4096
+            ],
+            "padded_shape": [
+              3072,
+              4096
+            ],
+            "hadamard_K": {
+              "out": 12,
+              "inp": 1
+            },
+            "hessian": "lower triangle mirrored, zero-padded, then official regularize_H (divide by mean diag, + sigma_reg)",
+            "zero_hessian_replaced_by_identity": false,
+            "sigma_retries": 0,
+            "fp64_fallback": false,
+            "bits_detail": {
+              "codes": 25165824,
+              "SU": 65536,
+              "SV": 49152,
+              "Wscale": 32,
+              "codebook_id": 64,
+              "total": 25280608
+            },
+            "bpw": 2.0091222127278647,
+            "proxy_rel_err": 0.0022843549959361553,
+            "official_log": [
+              "mean square of W: 0.9999999403953552",
+              "mean square of Wr: 1.0",
+              "difference between Hr and Hr.T: 4.76837158203125e-07",
+              "max abs of Hr: 4.922013282775879",
+              "min diag of Lhr: 0.11185933649539948"
+            ],
+            "seconds": 11.561530102044344
+          }
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "host": "QUIPSHARP",
+          "arm": "QUIPSHARP_W2",
+          "mixed_loss": 0.0031029336460051127,
+          "first10motor_rmse": 0.026673123356886208,
+          "future_latent_nmse": 0.05367805231362581
+        },
+        "heldout": {
+          "first10motor_rmse": 0.031053637049626555,
+          "first10motor_mse": 0.00107988008785469,
+          "future_latent_nmse": 0.07175812474451959,
+          "mixed_loss": 0.0041263372535468084,
+          "full32motor_rmse": 0.037947662803344426,
+          "late22motor_rmse": 0.039754835539497435,
+          "first10gripper_rmse": 0.07482744748704136,
+          "first10gripper_disagreement": 0.005000000000000001,
+          "first10motor_rmse_swap": 0.020036371471360323,
+          "first10motor_mse_swap": 0.00041906232181645466,
+          "full32motor_rmse_swap": 0.020659557322505864
+        }
+      },
+      "E": {
+        "arm": "QUIPSHARP_LRE_W2",
+        "tuned": false,
+        "eta": null,
+        "quant": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "complete": true,
+          "pbs_jobid": "26068766.pbs101",
+          "arm": "QUIPSHARP_LRE_W2",
+          "method": "quipsharp",
+          "bits": 2,
+          "hessian": "U",
+          "rank": 4,
+          "target_weights": 6016317440,
+          "bpw": 2.0517106650542694,
+          "proxy_nmse_weighted": 0.0076492637479752094,
+          "baseline_proxy_U_weighted": 0.00770511022196883
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "arm": "QUIPSHARP_LRE_W2",
+          "seed_index": 0,
+          "mixed_loss": 0.0029579133784864097,
+          "first10motor_rmse": 0.024395625700708478,
+          "future_latent_nmse": 0.052623638173099604
+        },
+        "heldout": {
+          "first10motor_rmse": 0.028798548923805355,
+          "first10motor_mse": 0.0009474694412347161,
+          "future_latent_nmse": 0.07088753711432219,
+          "mixed_loss": 0.003956966209807434,
+          "full32motor_rmse": 0.036175904772244395,
+          "late22motor_rmse": 0.0381664442596957,
+          "first10gripper_rmse": 0.04638716550689423,
+          "first10gripper_disagreement": 0.006250000000000001,
+          "first10motor_rmse_swap": 0.016325490234885366,
+          "first10motor_mse_swap": 0.000298596949869534,
+          "full32motor_rmse_swap": 0.0169543421769049
+        },
+        "heldout_vs_U": {
+          "mixed_loss": 0.9589536595454501,
+          "future_latent_nmse": 0.9878677483100771,
+          "first10motor_rmse": 0.9273808693578353,
+          "first10gripper_rmse": 0.6199217942711138
+        }
+      },
+      "J": {
+        "arm": "QUIPSHARP_LRJ_W2",
+        "tuned": true,
+        "eta": 0.005,
+        "quant": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "complete": true,
+          "pbs_jobid": "26068868.pbs101",
+          "arm": "QUIPSHARP_LRJ_W2",
+          "method": "quipsharp",
+          "bits": 2,
+          "hessian": "U",
+          "rank": 4,
+          "target_weights": 6016317440,
+          "bpw": 2.0517106650542694,
+          "proxy_nmse_weighted": 0.007669878137776456,
+          "baseline_proxy_U_weighted": 0.00770511022196883
+        },
+        "fit": {
+          "protocol": "fastwam-guided-hessian-20261028-v1",
+          "arm": "QUIPSHARP_LRJ_W2",
+          "seed_index": 0,
+          "mixed_loss": 0.002207917998748599,
+          "first10motor_rmse": 0.019891015480970962,
+          "future_latent_nmse": 0.04143079362111166
+        },
+        "heldout": {
+          "first10motor_rmse": 0.028433644108008596,
+          "first10motor_mse": 0.0009660282014920085,
+          "future_latent_nmse": 0.07140021356754006,
+          "mixed_loss": 0.003997290434199385,
+          "full32motor_rmse": 0.03516883070115,
+          "late22motor_rmse": 0.03687790781259537,
+          "first10gripper_rmse": 0.053834572801133615,
+          "first10gripper_disagreement": 0.006250000000000001,
+          "first10motor_rmse_swap": 0.015262784506194293,
+          "first10motor_mse_swap": 0.0002639989620547567,
+          "full32motor_rmse_swap": 0.015942334418650717
+        },
+        "step": {
+          "chosen": 0.005,
+          "rows": [
+            {
+              "lr": 0.0025,
+              "predicted": 0.0006718451150960203,
+              "realized": 0.0005292876060572875
+            },
+            {
+              "lr": 0.005,
+              "predicted": 0.0013436902301920406,
+              "realized": 0.0008748915282031657
+            },
+            {
+              "lr": 0.01,
+              "predicted": 0.002687380460384081,
+              "realized": 0.0010410184530175292
+            },
+            {
+              "lr": 0.02,
+              "predicted": 0.005374760920768162,
+              "realized": 0.0003204894766511662
+            },
+            {
+              "lr": 0.05,
+              "predicted": 0.013436902301920406,
+              "realized": -0.005395112384412962
+            },
+            {
+              "lr": 0.1,
+              "predicted": 0.026873804603840812,
+              "realized": -0.028990116778675138
+            }
+          ]
+        },
+        "heldout_vs_U": {
+          "mixed_loss": 0.9687260610517232,
+          "future_latent_nmse": 0.9950122557096663,
+          "first10motor_rmse": 0.9156300778092121,
+          "first10gripper_rmse": 0.719449541700012
+        }
+      }
+    }
+  }
+}

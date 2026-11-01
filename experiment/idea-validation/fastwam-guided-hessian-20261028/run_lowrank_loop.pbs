@@ -1,0 +1,244 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# Low-rank arm closed loop (lowrank.json "loop"): LIBERO-Plus 280 of one arm (QTIP W2 + its rank-4 BF16 factors) with
+# the A16 baselines' loop worker through lowrank_loop.py (--lr-mode from loop "mode"), NG x WPG workers on one episode
+# queue, then the baselines' analysis and a paired McNemar against the host's own closed loop (QTIP_W2) and, for a fused
+# or merged loop, against the exact-branch loop. Finished episodes are skipped, so rN resumes.
+# Job fwljb instead runs loop "bench": lowrank_bench.py once per mode (branch, fused, merged, host) on one GPU, then
+# --compare. Queue, GPUs and soft deadline come from the stage's allocation in lowrank.json.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" || die 'PBS_JOBID is required'
+test -n "${PBS_NODEFILE:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS_NODEFILE is missing or empty'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Current host is outside the PBS allocation'
+FW_JOB=${PBS_JOBNAME:-}
+case "$FW_JOB" in
+  fwljl|fwljlr[0-9]) STAGE=loop;;
+  fwljb|fwljbr[0-9]) STAGE=bench;;
+  *) die "Unknown job name: $FW_JOB";;
+esac
+read -r QUEUE NG FW_SOFT_DEADLINE_SECONDS < <(python3 - "$NEW_ROOT/lowrank.json" "$STAGE" <<'PY'
+import json, sys
+lw = json.load(open(sys.argv[1]))["loop"]
+a = lw["allocation"] if sys.argv[2] == "loop" else lw["bench"]["allocation"]
+print(a["execution_queue"], a["gpus"], a["soft_deadline_seconds"])
+PY
+) || die 'Cannot read the allocation'
+[[ "$NG" =~ ^[0-9]+$ && "$FW_SOFT_DEADLINE_SECONDS" =~ ^[0-9]+$ ]] || die 'Invalid allocation'
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS job is not running'
+grep -Eq "^[[:space:]]*Job_Name[[:space:]]*=[[:space:]]*${PBS_JOBNAME}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die 'PBS job name differs'
+grep -Eiq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die "PBS did not route the job to $QUEUE"
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=$(( NCPUS / NG ))
+FW_SAVE_RESERVE_SECONDS=300
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+OUT=$ARTIFACTS
+RESULTS=$NEW_ROOT/results
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+export FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS FW_CPU_THREADS FW_SAVE_RESERVE_SECONDS FW_JOB
+export ROOT BASE SIF DIAG_ROOT NEW_ROOT SMOOTH_ROOT SOURCE_ROOT R128_ROOT ARTIFACTS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+printf 'PBS_JOBID=%s host=%s start_epoch=%s route=%s gpus=%s stage=%s\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH" "$QUEUE" "$NG" "$STAGE"
+
+GPU_MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  (( rc == 0 )) || rm -f "$OUT/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$OUT/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+for name in protocol.json lowrank.json run_lowrank_loop.pbs lowrank_loop.py lowrank_bench.py environment.sh; do
+  test -s "$NEW_ROOT/$name" || { echo "Uploaded source missing: $name" >&2; exit 65; }
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+source "$ARTIFACTS/environment.sh"
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || { echo "Expected $NG allocated GPUs, got ${#GPU_IDS[@]}" >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || exit 65
+  GPU_UUIDS+=("$uuid")
+done
+ME=$(id -un)
+(
+  n=0
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    if (( n % 4 == 0 )); then  # busy cores of this user's processes over 2 s (second top frame), against the request
+      top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+        '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+        || echo CPU_SAMPLE_ERROR
+    fi
+    n=$(( n + 1 ))
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+cd "$ARTIFACTS"
+
+mapfile -t LOOP_CFG < <(python3 - "$BASELINE_ROOT/protocol.json" "$ARTIFACTS/lowrank.json" <<'PY'
+import json, sys
+p, g = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+lw = g["loop"]
+print(p["roots"]["engine_source"]); print(" ".join(p["engine_files"]))
+print(g["arms"][lw["arm"]]["arm"]); print(lw["workers_per_gpu"]); print(lw["host_loop_arm"])
+print(lw["mode"]); print(lw["bench"]["calls"]); print(lw["bench"]["warmup"])
+PY
+)
+test "${#LOOP_CFG[@]}" -eq 8 || die 'Cannot read the closed-loop configuration'
+ENGINE_SOURCE=${LOOP_CFG[0]}; read -r -a ENGINE_FILES <<< "${LOOP_CFG[1]}"; ARM=${LOOP_CFG[2]}; WPG=${LOOP_CFG[3]}
+HOST_LOOP=${LOOP_CFG[4]}; MODE=${LOOP_CFG[5]}; CALLS=${LOOP_CFG[6]}; WARMUP=${LOOP_CFG[7]}
+case "$MODE" in branch|fused|merged) ;; *) die "Unknown loop mode: $MODE";; esac
+LR=$RESULTS/lowrank/$ARM
+for f in factors.pt fit.json COMPLETE.json arm.json; do test -s "$LR/$f" || die "Missing $LR/$f"; done
+HOST_WEIGHTS=$BASELINE_ROOT/results/quantized/$HOST_LOOP
+HOST_ANCHOR=$BASELINE_ROOT/results/loops/$HOST_LOOP/worker_0/startup.json
+test -e "$BASELINE_ROOT/results/loops/$HOST_LOOP/DONE" -a -s "$HOST_ANCHOR" || die "Host closed loop $HOST_LOOP is not done"
+
+# Closed-loop directory: the A16 baselines' loop worker, analysis, environment and engine files, lowrank_loop.py, and a
+# protocol that names the arm under this root; results/prep links to the baseline prep (T5 cache, BF16 anchor), and
+# results/quantized/<arm>/COMPLETE.json to the arm's (bits, bpw, proxy) for analysis.py.
+L=$ARTIFACTS/loop
+mkdir -p "$L"
+for name in common.py loop_worker.py analysis.py environment.sh; do
+  test -s "$BASELINE_ROOT/$name" || die "Baseline loop source missing: $name"
+  cp "$BASELINE_ROOT/$name" "$L/"
+done
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+  cp "$ENGINE_SOURCE/$name" "$L/"
+done
+cp "$ARTIFACTS/lowrank_loop.py" "$ARTIFACTS/lowrank_bench.py" "$L/"
+# The exact-branch loop keeps the arm's name (26066178); a fused or merged loop is <arm>_<mode>.
+NAME=$ARM; [[ "$MODE" == branch ]] || NAME=${ARM}_$MODE
+python3 - "$BASELINE_ROOT/protocol.json" "$L/protocol.json" "$NEW_ROOT" "$NAME" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+p.update(protocol="fastwam-guided-hessian-20261028-v1", remote_root=sys.argv[3], arm_priority=[sys.argv[4]],
+         arms={sys.argv[4]: dict(method="qtip", bits=2)})
+json.dump(p, open(sys.argv[2], "w"), indent=2)
+PY
+ln -sfn "$BASELINE_ROOT/results/prep" "$RESULTS/prep"
+mkdir -p "$RESULTS/quantized/$NAME"
+ln -sfn "$LR/COMPLETE.json" "$RESULTS/quantized/$NAME/COMPLETE.json"
+LRARGS=(--lr-host "$HOST_WEIGHTS" --lr-factors "$LR/factors.pt" --lr-host-anchor "$HOST_ANCHOR" --lr-fit "$LR/fit.json")
+
+loop_env() {  # call inside a subshell: the baselines' environment.sh / run_python with the loop directory first
+  ARTIFACTS=$L; DIAG_ROOT=$L; FW_CPU_THREADS=$1
+  source "$L/environment.sh"
+  cd "$L"
+}
+
+if [[ "$STAGE" == bench ]]; then
+  B=$RESULTS/lowrank/bench
+  for mode in branch fused merged host; do
+    echo "STEP bench mode=$mode $(date -u +%H:%M:%S)"
+    rm -rf "$B/$mode"; mkdir -p "$B/$mode"
+    if ( loop_env "$NCPUS"
+         CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/lowrank_bench.py" --protocol "$L/protocol.json" --arm "$ARM" \
+           --out "$B/$mode" --calls "$CALLS" --warmup "$WARMUP" --lr-mode "$mode" "${LRARGS[@]}" \
+           --lr-check "$B/$mode/lowrank_check.json" ) > "$OUT/bench_$mode.log" 2>&1; then
+      grep '^BENCH' "$OUT/bench_$mode.log"
+    else  # a fast mode may fail its deviation check; compare marks it, the exact branch and the host must run
+      tail -c 4000 "$OUT/bench_$mode.log"
+      [[ "$mode" == fused || "$mode" == merged ]] || die "bench $mode failed"
+      echo "BENCH_FAILED mode=$mode"
+    fi
+  done
+  ( loop_env "$NCPUS"; CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/lowrank_bench.py" --compare "$B" ) \
+    || die 'bench compare failed'
+  touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  echo PIPELINE_COMPLETE
+  exit 0
+fi
+
+LOOPS=$RESULTS/loops/$NAME
+if [[ -e "$LOOPS/DONE" ]]; then
+  echo "LOOP $NAME already done"
+else
+  workers=$(( NG * WPG ))
+  echo "STEP loop arm=$NAME mode=$MODE workers=$workers $(date -u +%H:%M:%S)"
+  (
+    loop_env $(( NCPUS / workers ))
+    LP=(--protocol "$L/protocol.json" --arm "$NAME")
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/lowrank_loop.py" "${LP[@]}" --init
+    for (( w = 0; w < workers; w++ )); do
+      ( CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$(( w / WPG ))]} run_python "$L/lowrank_loop.py" "${LP[@]}" --worker "$w" \
+          --lr-mode "$MODE" "${LRARGS[@]}" --lr-check "$LOOPS/worker_$w/lowrank_check.json" \
+          > "$OUT/loop_${NAME}_$w.log" 2>&1 ) &
+      sleep 10
+    done
+    for (( w = 0; w < workers; w++ )); do
+      wait -n || { for f in "$OUT"/loop_${NAME}_*.log; do tail -c 4000 "$f"; done; exit 1; }
+    done
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/analysis.py" --protocol "$L/protocol.json" --arm "$NAME"
+  ) || die "$NAME closed loop failed"
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["complete"] else 1)' \
+    "$LOOPS/summary.json" || die "$NAME closed loop incomplete"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$LOOPS/DONE"
+fi
+cat "$LOOPS/RESULTS.zh.md"
+
+# Paired against the host's own closed loop (same 280 slots, seeds and caps): wins / losses and the exact McNemar p;
+# a fused or merged loop also against the exact-branch loop of the same arm when that is done.
+BRANCH_LOOP=
+if [[ "$MODE" != branch && -e "$RESULTS/loops/$ARM/DONE" ]]; then BRANCH_LOOP=$RESULTS/loops/$ARM; fi
+python3 - "$LOOPS" "$BASELINE_ROOT/results/loops/$HOST_LOOP" "$NAME" "$HOST_LOOP" "$PBS_JOBID" "$BRANCH_LOOP" <<'PY'
+import glob, json, math, os, sys
+def episodes(root):
+    return {int(os.path.basename(f)[:-5]): json.load(open(f))["success"] for f in glob.glob(root + "/episodes/*.json")}
+def paired(arm, ref):
+    wins = sum(arm[k] and not ref[k] for k in arm if k in ref)
+    losses = sum(ref[k] and not arm[k] for k in arm if k in ref)
+    n = wins + losses
+    p = min(1.0, 2 * sum(math.comb(n, i) for i in range(min(wins, losses) + 1)) / 2 ** n) if n else 1.0
+    return wins, losses, p
+arm, host = episodes(sys.argv[1]), episodes(sys.argv[2])
+wins, losses, p = paired(arm, host)
+checks = [json.load(open(f)) for f in sorted(glob.glob(sys.argv[1] + "/worker_*/lowrank_check.json"))]
+out = dict(arm=sys.argv[3], host=sys.argv[4], pbs_jobid=sys.argv[5], arm_successes=sum(arm.values()),
+           host_successes=sum(host.values()), episodes=len(arm), wins=wins, losses=losses, mcnemar_p=p,
+           install_checks=checks)
+print(f"PAIRED {sys.argv[3]} {out['arm_successes']}/280 vs {sys.argv[4]} {out['host_successes']}/280: "
+      f"{wins} W / {losses} L, McNemar p = {p:.3f}")
+if sys.argv[6]:
+    ref = episodes(sys.argv[6])
+    w, l, q = paired(arm, ref)
+    out["vs_branch"] = dict(loop=sys.argv[6], successes=sum(ref.values()), wins=w, losses=l, mcnemar_p=q)
+    print(f"PAIRED {sys.argv[3]} vs exact branch {sum(ref.values())}/280: {w} W / {l} L, McNemar p = {q:.3f}")
+json.dump(out, open(sys.argv[1] + "/paired.json", "w"), indent=2)
+PY
+
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

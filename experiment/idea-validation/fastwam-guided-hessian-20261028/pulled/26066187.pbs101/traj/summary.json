@@ -1,0 +1,718 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26066187.pbs101",
+  "traj": {
+    "purpose": "Retrospective test of a trajectory-coherent layer objective (C2 candidate after tfdiag). tfdiag (26065573): the W2 velocity error is a per-step bias in nearly the same direction at every denoising step (|sum_i delta_i (v_S - v_T)|^2 = 7.1 x the sum of the step energies, 6.4-7.5 over all 80 samples), and its sum lines up with the rollout future error (cos 0.65). If the same weight error repeats over the 10 video steps, a layer's contribution to the future is ~ dW sum_i delta_i x_i per token, so the objective is tr(dW H_traj dW^T) with H_traj = sum_token (sum_i delta_i x_i)(sum_i delta_i x_i)^T instead of H_U = mean over calls of x x^T. Does it rank the held-out future NMSE of the W2 arms we already have, where H_U does not? No requantization: proxies of saved weights.",
+    "calibration": "C80 (cases 2000-2079), sampler seed index 0, runtime.infer: the queries and path H_U was collected on (A16 baselines prep_worker)",
+    "layers": "the 306 video-expert target Linears (the future comes from the video stage only); the action expert and proprio_encoder are left out",
+    "calls": "per query each video Linear runs once per video denoising step (10) and once in the action stage's video prefill; a layer with exactly 11 calls is stepped: calls 0-9 are steps i with the scheduler's delta_i, call 10 (prefill) is left out; a layer with any other count is unstepped and enters with all its calls, unaccumulated, in both variants. The counts come from a dry query and every query is checked against them",
+    "variants": {
+      "U": "H_U from the A16 baselines' prep (mean x x^T over all calls of the C80 queries)",
+      "S": "steps, incoherent: sum over tokens and steps of delta_i^2 x_i x_i^T (same calls and weights as J, no cross-step terms)",
+      "J": "trajectory: sum over tokens of (sum_i delta_i x_i)(sum_i delta_i x_i)^T, token = the same row of the call's input at every step"
+    },
+    "proxy": "per layer p = tr(dW H dW^T) / tr(W H W^T), dW = W_arm - W_master (FP32); per arm the weight-count-weighted mean of p over the video layers (primary) and the plain mean (reported). Coherence per layer: kappa = tr(dW H_J dW^T) / tr(dW H_S dW^T) on the raw sums (10 if every step's error adds in phase with uniform delta, 1 if uncorrelated), and the same for W",
+    "arms": {
+      "QTIP_U_W2": {
+        "kind": "file",
+        "root": "baseline",
+        "dir": "QTIP_W2",
+        "host": "QTIP"
+      },
+      "QTIP_G_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "QTIP_G_W2",
+        "host": "QTIP"
+      },
+      "QTIP_C_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "QTIP_C_W2",
+        "host": "QTIP"
+      },
+      "QTIP_CA_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "QTIP_CA_W2",
+        "host": "QTIP"
+      },
+      "QTIP_GR_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "QTIP_GR_W2",
+        "host": "QTIP"
+      },
+      "QTIP_T_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "QTIP_T_W2",
+        "host": "QTIP"
+      },
+      "GATE_QTIP_G": {
+        "kind": "gate",
+        "base": "QTIP_U_W2",
+        "selected": "QTIP_G_W2",
+        "gate_host": "QTIP",
+        "host": "QTIP"
+      },
+      "GATE_QTIP_O": {
+        "kind": "gate",
+        "base": "QTIP_U_W2",
+        "selected": "gate",
+        "gate_host": "QTIP",
+        "host": "QTIP"
+      },
+      "QTIP_LRE_W2": {
+        "kind": "lowrank",
+        "base": "QTIP_U_W2",
+        "host": "QTIP"
+      },
+      "QTIP_LRJ_W2": {
+        "kind": "lowrank",
+        "base": "QTIP_U_W2",
+        "host": "QTIP"
+      },
+      "QTIP_LRD_W2": {
+        "kind": "lowrank",
+        "base": "QTIP_U_W2",
+        "host": "QTIP"
+      },
+      "GPTVQ_W2": {
+        "kind": "file",
+        "root": "baseline",
+        "dir": "GPTVQ_W2",
+        "host": "GPTVQ"
+      },
+      "GPTVQ_G_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "GPTVQ_G_W2",
+        "host": "GPTVQ"
+      },
+      "GATE_GPTVQ_G": {
+        "kind": "gate",
+        "base": "GPTVQ_W2",
+        "selected": "GPTVQ_G_W2",
+        "gate_host": "GPTVQ",
+        "host": "GPTVQ"
+      },
+      "GATE_GPTVQ_O": {
+        "kind": "gate",
+        "base": "GPTVQ_W2",
+        "selected": "gate",
+        "gate_host": "GPTVQ",
+        "host": "GPTVQ"
+      },
+      "QUIPSHARP_W2": {
+        "kind": "file",
+        "root": "baseline",
+        "dir": "QUIPSHARP_W2",
+        "host": "QUIPSHARP"
+      },
+      "QUIPSHARP_G_W2": {
+        "kind": "file",
+        "root": "new",
+        "dir": "QUIPSHARP_G_W2",
+        "host": "QUIPSHARP"
+      },
+      "GATE_QUIPSHARP_G": {
+        "kind": "gate",
+        "base": "QUIPSHARP_W2",
+        "selected": "QUIPSHARP_G_W2",
+        "gate_host": "QUIPSHARP",
+        "host": "QUIPSHARP"
+      },
+      "GATE_QUIPSHARP_O": {
+        "kind": "gate",
+        "base": "QUIPSHARP_W2",
+        "selected": "gate",
+        "gate_host": "QUIPSHARP",
+        "host": "QUIPSHARP"
+      }
+    },
+    "arm_sources": "file: <root>/quantized/<dir>/weights/<index>.pt (baseline = A16 baselines results, new = this experiment's results); gate: the base arm with the layers of results/gate/selection.json hosts[gate_host].layers taken from the selected arm (G) or results/gate/<gate_host>/weights (O), as gate_worker.install; lowrank: the base arm plus U V from results/lowrank/<arm>/factors.pt (BF16 factors, as the deployed branch computes them in FP32)",
+    "heldout": "results/heldout/<arm>.json overall: future_latent_nmse (target), mixed_loss and first10motor_rmse (reported)",
+    "closed_loop": {
+      "QTIP_U_W2": 204,
+      "QTIP_G_W2": 208,
+      "QTIP_C_W2": 199,
+      "QTIP_CA_W2": 204,
+      "QTIP_GR_W2": 204,
+      "GPTVQ_W2": 201,
+      "GPTVQ_G_W2": 197,
+      "QUIPSHARP_W2": 198,
+      "QUIPSHARP_G_W2": 196,
+      "basis": "LIBERO-Plus 280 successes from the A16 baselines and jobs 26043905, 26046240, 26050625, 26050310; reported, not gating"
+    },
+    "checks": {
+      "h_all_layers": [
+        "video_expert.time_embedding.0",
+        "video_expert.blocks.0.self_attn.q",
+        "video_expert.blocks.0.cross_attn.k",
+        "video_expert.blocks.0.ffn.0"
+      ],
+      "h_all_rel_max": 0.01,
+      "basis": "the mean over all calls of x x^T collected here on these layers must reproduce the baselines' H_U (relative Frobenius difference): same queries, same path, same scaling"
+    },
+    "reading": {
+      "primary": "Spearman rho between an arm's weighted video-layer proxy and its held-out future NMSE over the 11 QTIP arms (same host, different methods: the arms the host gap cannot sort); pooled over all 19 arms reported",
+      "go_rho_min": 0.6,
+      "go_gain_min": 0.2,
+      "coherence_gain_min": 0.1,
+      "go": "rho_J >= go_rho_min and rho_J - rho_U >= go_gain_min: H_traj ranks the future error where H_U does not; next, QTIP W2 requantized on the saved H_traj (results/traj/hessians), held-out future <= 0.9 x U, then the closed loop",
+      "coherence": "the claim that the cross-step terms do it needs rho_J - rho_S >= coherence_gain_min; otherwise the gain comes from keeping only the denoising-step calls",
+      "no_go": "rho_J below go_rho_min or within go_gain_min of rho_U: a layer objective built on step-accumulated activations does not see the future error the arms differ in"
+    },
+    "save": "H_traj per stepped video layer, mean over tokens and queries, results/traj/hessians/<index>.pt (dict module, rows, hessian, kind) for the requantization a go leads to",
+    "allocation": {
+      "job_name": "fwtr1",
+      "queue": "normal",
+      "execution_queue": "gdev",
+      "gpus": 1,
+      "ncpus": 16,
+      "memory_gb": 100,
+      "walltime": "02:00:00",
+      "soft_deadline_seconds": 6900,
+      "time_basis": "load ~8 min; 80 C80 queries per memory pass at ~4 s (two FP32 accumulators per layer, 65 GB for the video layers: 2-4 passes); proxies of 13 distinct weight sets under 3 Hessians ~1 PFLOP; H_traj writes 33 GB: ~45 min"
+    }
+  },
+  "deltas": [
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625,
+    -0.10009765625
+  ],
+  "calls": {
+    "11": 305,
+    "10": 1
+  },
+  "unstepped": [
+    "video_expert.head.head"
+  ],
+  "h_all_check": {
+    "rows": [
+      {
+        "module": "video_expert.time_embedding.0",
+        "rows": 258720,
+        "baseline_rows": 258720,
+        "rel": 0.0
+      },
+      {
+        "module": "video_expert.blocks.0.self_attn.q",
+        "rows": 258720,
+        "baseline_rows": 258720,
+        "rel": 0.0
+      },
+      {
+        "module": "video_expert.blocks.0.cross_attn.k",
+        "rows": 113520,
+        "baseline_rows": 113520,
+        "rel": 0.0
+      },
+      {
+        "module": "video_expert.blocks.0.ffn.0",
+        "rows": 258720,
+        "baseline_rows": 258720,
+        "rel": 0.0
+      }
+    ],
+    "worst": 0.0,
+    "limit": 0.01
+  },
+  "metrics": {
+    "QTIP_U_W2": {
+      "future_latent_nmse": 0.05324625272769481,
+      "mixed_loss": 0.003364084218628705,
+      "first10motor_rmse": 0.032398840948008004
+    },
+    "QTIP_G_W2": {
+      "future_latent_nmse": 0.06234649998368696,
+      "mixed_loss": 0.003820572223048657,
+      "first10motor_rmse": 0.033169926539994773
+    },
+    "QTIP_C_W2": {
+      "future_latent_nmse": 0.059757960378192365,
+      "mixed_loss": 0.0036330287097371184,
+      "first10motor_rmse": 0.032079864176921546
+    },
+    "QTIP_CA_W2": {
+      "future_latent_nmse": 0.05479797571897507,
+      "mixed_loss": 0.003523184913501609,
+      "first10motor_rmse": 0.03325450769625604
+    },
+    "QTIP_GR_W2": {
+      "future_latent_nmse": 0.05689391731284559,
+      "mixed_loss": 0.003518688303302042,
+      "first10motor_rmse": 0.03238943999167532
+    },
+    "QTIP_T_W2": {
+      "future_latent_nmse": 0.053280344745144245,
+      "mixed_loss": 0.0031047814351040873,
+      "first10motor_rmse": 0.027848010091111063
+    },
+    "GATE_QTIP_G": {
+      "future_latent_nmse": 0.054073667037300766,
+      "mixed_loss": 0.0034050719390506857,
+      "first10motor_rmse": 0.03237226800993085
+    },
+    "GATE_QTIP_O": {
+      "future_latent_nmse": 0.05111160828964785,
+      "mixed_loss": 0.0032716988411266353,
+      "first10motor_rmse": 0.032187227881513535
+    },
+    "QTIP_LRE_W2": {
+      "future_latent_nmse": 0.05352569485548884,
+      "mixed_loss": 0.0030553419113857672,
+      "first10motor_rmse": 0.026437661866657438
+    },
+    "QTIP_LRJ_W2": {
+      "future_latent_nmse": 0.05229660673066974,
+      "mixed_loss": 0.0029065568407531826,
+      "first10motor_rmse": 0.02455521826632321
+    },
+    "QTIP_LRD_W2": {
+      "future_latent_nmse": 0.05177786065032706,
+      "mixed_loss": 0.0028457257416448557,
+      "first10motor_rmse": 0.0238311996916309
+    },
+    "GPTVQ_W2": {
+      "future_latent_nmse": 0.09557235662359745,
+      "mixed_loss": 0.005865280149737373,
+      "first10motor_rmse": 0.04030083275865763
+    },
+    "GPTVQ_G_W2": {
+      "future_latent_nmse": 0.09638019339181482,
+      "mixed_loss": 0.005787709716241806,
+      "first10motor_rmse": 0.038975310837849976
+    },
+    "GATE_GPTVQ_G": {
+      "future_latent_nmse": 0.09826139360666276,
+      "mixed_loss": 0.006111861058161593,
+      "first10motor_rmse": 0.04149245568551123
+    },
+    "GATE_GPTVQ_O": {
+      "future_latent_nmse": 0.09728349708020687,
+      "mixed_loss": 0.006094703206326813,
+      "first10motor_rmse": 0.04190717882011086
+    },
+    "QUIPSHARP_W2": {
+      "future_latent_nmse": 0.07175812474451959,
+      "mixed_loss": 0.0041263372535468084,
+      "first10motor_rmse": 0.031053637049626555
+    },
+    "QUIPSHARP_G_W2": {
+      "future_latent_nmse": 0.07893765037879348,
+      "mixed_loss": 0.004608414044196252,
+      "first10motor_rmse": 0.03348098667338491
+    },
+    "GATE_QUIPSHARP_G": {
+      "future_latent_nmse": 0.07626477568410336,
+      "mixed_loss": 0.0044437083241064095,
+      "first10motor_rmse": 0.03213570127263665
+    },
+    "GATE_QUIPSHARP_O": {
+      "future_latent_nmse": 0.07648770997766405,
+      "mixed_loss": 0.004476376593811437,
+      "first10motor_rmse": 0.03268839971860871
+    }
+  },
+  "proxies": {
+    "QTIP_U_W2": {
+      "U": {
+        "weighted": 0.006738473982053483,
+        "plain": 0.005651330294750751
+      },
+      "S": {
+        "weighted": 0.006505432150737343,
+        "plain": 0.005495608024441173
+      },
+      "J": {
+        "weighted": 0.005821052175539973,
+        "plain": 0.005000067462297923
+      }
+    },
+    "QTIP_G_W2": {
+      "U": {
+        "weighted": 0.009121101769158167,
+        "plain": 0.007501195033683735
+      },
+      "S": {
+        "weighted": 0.008789925320974196,
+        "plain": 0.007285676886984934
+      },
+      "J": {
+        "weighted": 0.008102789665719246,
+        "plain": 0.006767572250532698
+      }
+    },
+    "QTIP_C_W2": {
+      "U": {
+        "weighted": 0.01320954466768347,
+        "plain": 0.01129263071375429
+      },
+      "S": {
+        "weighted": 0.012735580393671979,
+        "plain": 0.010970130408120045
+      },
+      "J": {
+        "weighted": 0.011650626088665543,
+        "plain": 0.010153053824662103
+      }
+    },
+    "QTIP_CA_W2": {
+      "U": {
+        "weighted": 0.013328090853545228,
+        "plain": 0.011319817077202815
+      },
+      "S": {
+        "weighted": 0.012984919950346873,
+        "plain": 0.011099301367756135
+      },
+      "J": {
+        "weighted": 0.01186297681356108,
+        "plain": 0.010262515542821695
+      }
+    },
+    "QTIP_GR_W2": {
+      "U": {
+        "weighted": 0.012768178817835964,
+        "plain": 0.011142562446248418
+      },
+      "S": {
+        "weighted": 0.01231574598704813,
+        "plain": 0.010835053880256072
+      },
+      "J": {
+        "weighted": 0.011373329637063488,
+        "plain": 0.010097541826129182
+      }
+    },
+    "QTIP_T_W2": {
+      "U": {
+        "weighted": 0.006738609272436211,
+        "plain": 0.005651400730815366
+      },
+      "S": {
+        "weighted": 0.006505561395698198,
+        "plain": 0.005495677899725735
+      },
+      "J": {
+        "weighted": 0.005821184902478659,
+        "plain": 0.005000138267787116
+      }
+    },
+    "GATE_QTIP_G": {
+      "U": {
+        "weighted": 0.007131880539107862,
+        "plain": 0.00580210764315952
+      },
+      "S": {
+        "weighted": 0.006886594075362804,
+        "plain": 0.005641845261236301
+      },
+      "J": {
+        "weighted": 0.00620128038685029,
+        "plain": 0.0051459584933871635
+      }
+    },
+    "GATE_QTIP_O": {
+      "U": {
+        "weighted": 0.007109907989807999,
+        "plain": 0.005795047886639639
+      },
+      "S": {
+        "weighted": 0.006870710622206939,
+        "plain": 0.005637043245567344
+      },
+      "J": {
+        "weighted": 0.006186144336389006,
+        "plain": 0.005141433602477233
+      }
+    },
+    "QTIP_LRE_W2": {
+      "U": {
+        "weighted": 0.00667452213159548,
+        "plain": 0.005536310449581908
+      },
+      "S": {
+        "weighted": 0.006441800657316844,
+        "plain": 0.005381857601443596
+      },
+      "J": {
+        "weighted": 0.005759176302636527,
+        "plain": 0.004892717473043236
+      }
+    },
+    "QTIP_LRJ_W2": {
+      "U": {
+        "weighted": 0.006678617513549664,
+        "plain": 0.005542161285415795
+      },
+      "S": {
+        "weighted": 0.006446022214279487,
+        "plain": 0.0053879015376206004
+      },
+      "J": {
+        "weighted": 0.0057635205549554204,
+        "plain": 0.004898912361636591
+      }
+    },
+    "QTIP_LRD_W2": {
+      "U": {
+        "weighted": 0.006691027552256435,
+        "plain": 0.005561230736130684
+      },
+      "S": {
+        "weighted": 0.006458856344887469,
+        "plain": 0.0054076165622036635
+      },
+      "J": {
+        "weighted": 0.005776697454507196,
+        "plain": 0.004919152220746745
+      }
+    },
+    "GPTVQ_W2": {
+      "U": {
+        "weighted": 0.011085995778023614,
+        "plain": 0.010150154224570778
+      },
+      "S": {
+        "weighted": 0.010761153588330212,
+        "plain": 0.00994537543787675
+      },
+      "J": {
+        "weighted": 0.009716427925201514,
+        "plain": 0.009071209923587214
+      }
+    },
+    "GPTVQ_G_W2": {
+      "U": {
+        "weighted": 0.014905364198254471,
+        "plain": 0.013317243536253765
+      },
+      "S": {
+        "weighted": 0.01443290510623823,
+        "plain": 0.013005328858784464
+      },
+      "J": {
+        "weighted": 0.01337114843501433,
+        "plain": 0.012110438445293279
+      }
+    },
+    "GATE_GPTVQ_G": {
+      "U": {
+        "weighted": 0.011585325607611318,
+        "plain": 0.010352962198655355
+      },
+      "S": {
+        "weighted": 0.011241907361476776,
+        "plain": 0.010140724037268093
+      },
+      "J": {
+        "weighted": 0.010174500003148951,
+        "plain": 0.00925639295631163
+      }
+    },
+    "GATE_GPTVQ_O": {
+      "U": {
+        "weighted": 0.011546828719982225,
+        "plain": 0.010336900933925898
+      },
+      "S": {
+        "weighted": 0.011211896936513869,
+        "plain": 0.010128044046474848
+      },
+      "J": {
+        "weighted": 0.010146073633313695,
+        "plain": 0.009245145465947652
+      }
+    },
+    "QUIPSHARP_W2": {
+      "U": {
+        "weighted": 0.008756053143236383,
+        "plain": 0.007315748661650683
+      },
+      "S": {
+        "weighted": 0.008419376052477385,
+        "plain": 0.007092450011872852
+      },
+      "J": {
+        "weighted": 0.007449238023249855,
+        "plain": 0.006387384092448351
+      }
+    },
+    "QUIPSHARP_G_W2": {
+      "U": {
+        "weighted": 0.012744966878427707,
+        "plain": 0.01058665491338093
+      },
+      "S": {
+        "weighted": 0.012269103079267204,
+        "plain": 0.010276920255579124
+      },
+      "J": {
+        "weighted": 0.01128348118859054,
+        "plain": 0.009523421476975727
+      }
+    },
+    "GATE_QUIPSHARP_G": {
+      "U": {
+        "weighted": 0.009245677187749417,
+        "plain": 0.00750615284448499
+      },
+      "S": {
+        "weighted": 0.008892549849453191,
+        "plain": 0.0072773074084391595
+      },
+      "J": {
+        "weighted": 0.007912803798269363,
+        "plain": 0.006563339865488412
+      }
+    },
+    "GATE_QUIPSHARP_O": {
+      "U": {
+        "weighted": 0.009250063708330864,
+        "plain": 0.007514879167496658
+      },
+      "S": {
+        "weighted": 0.00890121953388167,
+        "plain": 0.007287652347768202
+      },
+      "J": {
+        "weighted": 0.007921052027908325,
+        "plain": 0.006571513197031662
+      }
+    }
+  },
+  "ranking": {
+    "qtip": {
+      "future_latent_nmse": {
+        "U": 0.6818181818181818,
+        "S": 0.6818181818181818,
+        "J": 0.6818181818181818
+      },
+      "mixed_loss": {
+        "U": 0.8727272727272727,
+        "S": 0.8727272727272727,
+        "J": 0.8727272727272727
+      },
+      "first10motor_rmse": {
+        "U": 0.7090909090909091,
+        "S": 0.7090909090909091,
+        "J": 0.7090909090909091
+      },
+      "closed_loop": {
+        "U": 0.4472135954999579,
+        "S": 0.4472135954999579,
+        "J": 0.4472135954999579
+      },
+      "closed_loop_arms": [
+        "QTIP_U_W2",
+        "QTIP_G_W2",
+        "QTIP_C_W2",
+        "QTIP_CA_W2",
+        "QTIP_GR_W2"
+      ]
+    },
+    "pooled": {
+      "future_latent_nmse": {
+        "U": 0.6859649122807018,
+        "S": 0.6859649122807018,
+        "J": 0.6771929824561403
+      },
+      "mixed_loss": {
+        "U": 0.7105263157894737,
+        "S": 0.7105263157894737,
+        "J": 0.7017543859649122
+      },
+      "first10motor_rmse": {
+        "U": 0.6842105263157895,
+        "S": 0.6842105263157895,
+        "J": 0.6964912280701754
+      },
+      "closed_loop": {
+        "U": 0.2712254014483242,
+        "S": 0.2712254014483242,
+        "J": 0.2712254014483242
+      },
+      "closed_loop_arms": [
+        "QTIP_U_W2",
+        "QTIP_G_W2",
+        "QTIP_C_W2",
+        "QTIP_CA_W2",
+        "QTIP_GR_W2",
+        "GPTVQ_W2",
+        "GPTVQ_G_W2",
+        "QUIPSHARP_W2",
+        "QUIPSHARP_G_W2"
+      ]
+    },
+    "qtip_plain": {
+      "future_latent_nmse": {
+        "U": 0.6818181818181818,
+        "S": 0.6818181818181818,
+        "J": 0.6818181818181818
+      },
+      "mixed_loss": {
+        "U": 0.8727272727272727,
+        "S": 0.8727272727272727,
+        "J": 0.8727272727272727
+      },
+      "first10motor_rmse": {
+        "U": 0.7090909090909091,
+        "S": 0.7090909090909091,
+        "J": 0.7090909090909091
+      },
+      "closed_loop": {
+        "U": 0.4472135954999579,
+        "S": 0.4472135954999579,
+        "J": 0.4472135954999579
+      },
+      "closed_loop_arms": [
+        "QTIP_U_W2",
+        "QTIP_G_W2",
+        "QTIP_C_W2",
+        "QTIP_CA_W2",
+        "QTIP_GR_W2"
+      ]
+    }
+  },
+  "kappa_median": {
+    "QTIP_U_W2": 8.787095826594781,
+    "QTIP_G_W2": 8.939767232974214,
+    "QTIP_C_W2": 8.90492072415229,
+    "QTIP_CA_W2": 8.89876814828367,
+    "QTIP_GR_W2": 8.949270774337387,
+    "QTIP_T_W2": 8.787095826594781,
+    "GATE_QTIP_G": 8.79186394468405,
+    "GATE_QTIP_O": 8.79186394468405,
+    "QTIP_LRE_W2": 8.774777478801438,
+    "QTIP_LRJ_W2": 8.781043155681468,
+    "QTIP_LRD_W2": 8.787607239383409,
+    "GPTVQ_W2": 8.80340416360511,
+    "GPTVQ_G_W2": 8.944453071642071,
+    "GATE_GPTVQ_G": 8.822725799533766,
+    "GATE_GPTVQ_O": 8.822725799533766,
+    "QUIPSHARP_W2": 8.693945736220964,
+    "QUIPSHARP_G_W2": 8.912266717241176,
+    "GATE_QUIPSHARP_G": 8.700486393840107,
+    "GATE_QUIPSHARP_O": 8.700486393840107
+  },
+  "kappa_master_median": 9.703000730483737,
+  "decision": {
+    "rho": {
+      "U": 0.6818181818181818,
+      "S": 0.6818181818181818,
+      "J": 0.6818181818181818
+    },
+    "go": false,
+    "coherence": false
+  }
+}

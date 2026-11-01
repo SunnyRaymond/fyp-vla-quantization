@@ -1,0 +1,40 @@
+{
+  "purpose": "G4 (C2 direction 2026-10-31, own C1-motivated WAM VQ framework): do gradients of the C1 objectives on shared VQ parameters carry over to other contexts at fresh noise? fwld1 (26063678) on the per-layer rank-4 branch: future path 67% trajectory / 33% context / 0.2% generic, T(other context, seed 1) 0.021 (future) vs 0.423 (action). Q0 tuned codebooks / row gains and its held-out future fell 13-16%. Here the same Gram test on GPTVQ W2 (explicit codebooks, the closest host to Q0 and to our own representation), on three codebook sharing levels and three scale/bias families, objectives separately: Z, K and A.",
+  "host": {"arm": "GPTVQ_W2", "method": "gptvq",
+           "codes": "the baseline stores dense BF16 weights only: per codebook block (rows_per_group rows x 256 columns, 4-dim vectors along the input dimension, from the layer's stats config) the distinct BF16 4-vectors are the codebook entries in use (<= 256 required) and their index per vector the code"},
+  "excluded": "the 6 time-conditioning Linears (video/action time_embedding.0/.2, time_projection.1): they carry no future error (tcond 26066073, 0.999x) and soak up the gradient by sensitivity",
+  "families": {
+    "book": "per codebook entry an offset in weight units, W_v = c_(b,k) + delta_(b,k): GPTVQ's native sharing (one codebook per 131072 weights)",
+    "layer": "per layer 256 meta-entries: the layer's codebook entries in span-normalized coordinates (entry / span max) clustered into 256 (weighted k-means, usage counts); one offset per meta-entry in normalized units, W_v = s_span (c_hat + delta_m): one codebook per layer, as Q0",
+    "module": "the same with 256 meta-entries per module (video body, action body, other) clustered over all its layers: one codebook per module",
+    "row": "per output row a log-scale, W_ij -> e^(r_i) W_ij",
+    "col": "per input column a log-scale, W_ij -> W_ij e^(c_j)",
+    "bias": "per output channel an additive output offset (zero bits once folded into the bias)"
+  },
+  "metric": "each family in coordinates where the Euclidean norm is the Frobenius norm of the weight change it makes (bias: of the output change, E|x|^2/in from the grad passes): offsets divided by sqrt(usage), normalized offsets by sqrt(sum s_span^2 usage), log-scales by the row/column norm. Per tensor (a layer, or a module for 'module') a relative step -eta ref g/|g| with ref = |W| (bias: |W| sqrt(E|x|^2/in); module: sqrt(sum |W|^2)); one global normalized step reported next to it",
+  "samples": "fwld1's: the 40 contexts of the first 4 loss-pair training batches x sampler seed indices 0 and 1 (seed-1 BF16 teachers from results/lowrank/diag/teachers)",
+  "paths": {
+    "Z": "lambda Z through the student query (cotangent at the student future)",
+    "K": "beta K: the frozen BF16 reader on the student future, through the student query",
+    "A": "A_tf: the student reading the BF16 teacher future (fwld1's A path)"
+  },
+  "sources": {"F": ["Z", "K"], "Z": ["Z"], "K": ["K"], "A": ["A"]},
+  "eta": 0.01,
+  "checks": {"replay_max_abs": 0.0001, "max_entries": 256, "invariant_rel_max": 0.001, "skipped_share_max": 0.02,
+             "basis": "the grad replay must reproduce the staged no-grad pass; a layer with a block of > 256 distinct vectors is not coded as configured: it keeps its plain forward, is listed in codes.json, and such layers may hold at most skipped_share_max of the target weights (r1 26071863 met one after 300 layers); per pass and layer sum_i(row grad) = sum_j(col grad) = sum_(b,k) <book grad, entry> per layer (each is sum G o W), relative to sum |G o W|"},
+  "reading": {
+    "primary": "T_F->F(other context, seed 1) per book family: first-order decrease of the future loss (Z + K) on other contexts at fresh noise from a step along a batch's seed-0 mean future gradient, over that on the batch itself, summed over the 4 batches (fwld1's T); reference: rank-4 branch 0.021",
+    "go_min": 0.2,
+    "weak_min": 0.06,
+    "go": "some book family (book, layer or module) reaches go_min: shared codebook parameters carry a C1 future correction that transfers; next, calibrate that family on the winning objective and check held-out future (<= 0.9x U)",
+    "weak": "best book family in [weak_min, go_min): partial transfer; retest on our own initialization at the winning sharing level before training",
+    "no_go": "all book families below weak_min: at W2 A16 the future side is not repairable through shared parameters either; C2 protects the future through bits only and calibrates the action side"
+  },
+  "save": "results/vqg4/GPTVQ/{codes.json, samples/<case>_<seed>.pt (raw per-layer gradients, book in BF16), gram.pt, summary.json, RESULTS.zh.md}",
+  "allocation": {"job_name": "fwg4", "queue": "normal", "execution_queue": "gdev", "gpus": 1, "ncpus": 16, "memory_gb": 110,
+                 "walltime": "02:00:00", "soft_deadline_seconds": 6900,
+                 "time_basis": "load ~10 min; code recovery and k-means a few min; 80 samples x (query + teacher-future read + K read with grad + 3 parameter reverse passes) ~40 s (fwld1: F + A ~25 s) ~55 min; grams ~10 min. Samples saved per file, rN resumes"},
+  "race_allocation": {"job_name": "fwg4g", "queue": "normal", "execution_queue": "g1", "gpus": 1, "ncpus": 16, "memory_gb": 110,
+                      "walltime": "03:30:00", "soft_deadline_seconds": 12300,
+                      "basis": "user (2026-10-31): race a > 2 h g1 job against the gdev job; the first to start stays, the other is qdel'ed; same results dir"}
+}

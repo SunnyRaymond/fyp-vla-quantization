@@ -1,0 +1,50 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU node: gradtx_resummary.py on the stored per-context table gradients of fwrcg2 / fwrcg3 (results/ravqc/gradtx/<arm>),
+# rewriting summary.json / RESULTS.zh.md with the per-group action / future split. Submitted afterok on both gradtx jobs
+# and on the CPU test that covers the new fields. Log under results/ravqc/gradtx/resummary_<job>.log.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+PARENT_RUNTIME=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+ARMS="RAVQC_W2 RAVQC_W3"
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+LOG=$NEW_ROOT/results/ravqc/gradtx/resummary_${PBS_JOBID}.log
+mkdir -p "$ARTIFACTS/methods"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+for name in protocol.json worker.py probe.py host.json gate.json gate_worker.py ravq.json ravq_worker.py ravq_qtip.py ravqc.json \
+    ravqc_worker.py gradtx_resummary.py; do
+  test -s "$NEW_ROOT/$name" || die "Uploaded source missing: $name"
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+for arm in $ARMS; do
+  for name in meta.pt summary.json; do test -s "$NEW_ROOT/results/ravqc/gradtx/$arm/$name" || die "Missing gradtx/$arm/$name"; done
+  test "$(ls "$NEW_ROOT/results/ravqc/gradtx/$arm" | grep -cE '^[0-9]+\.pt$')" -eq 80 || die "gradtx/$arm: not 80 context files"
+done
+cp "$PARENT_RUNTIME/softbin_loss.py" "$ARTIFACTS/"
+test -s "$BASELINE_ROOT/methods/qtip/quant.py" || die 'Baseline qtip implementation missing'
+cp -r "$BASELINE_ROOT/methods/qtip" "$ARTIFACTS/methods/"
+module purge
+module load gcc/11.4.0-nscc python/3.11.7-gcc11 apptainer/1.5.0
+NCPUS=$(qstat -xf "$PBS_JOBID" | sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) ncpus=$NCPUS"
+cd "$ARTIFACTS"
+set +e
+apptainer exec --cleanenv --bind /scratch,/scratch/GPFS/app/apps:/app/apps \
+  --bind /usr/lib64/libffi.so.6:/usr/lib/x86_64-linux-gnu/libffi.so.6 \
+  --bind /usr/lib64/libssl.so.1.1:/usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+  --bind /usr/lib64/libcrypto.so.1.1:/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+  --env "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+  --env "OMP_NUM_THREADS=$NCPUS,MKL_NUM_THREADS=$NCPUS,PYTHONUNBUFFERED=1,PYTHONIOENCODING=utf-8,PBS_JOBID=$PBS_JOBID" \
+  "$SIF" "$BASE/venv/bin/python" -B "$ARTIFACTS/gradtx_resummary.py" $ARMS 2>&1 | tee "$LOG"
+code=${PIPESTATUS[0]}
+set -e
+echo "CPU_SAMPLE $(qstat -xf "$PBS_JOBID" | grep -E 'resources_used\.(cput|walltime|cpupercent)' | tr -s ' ' | tr '\n' ' ') requested=$NCPUS"
+exit "$code"

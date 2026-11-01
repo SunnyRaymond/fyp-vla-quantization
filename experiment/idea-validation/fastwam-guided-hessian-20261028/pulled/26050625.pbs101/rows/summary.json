@@ -1,0 +1,168 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26050625.pbs101",
+  "status": "complete",
+  "complete": true,
+  "rows": {
+    "purpose": "Phase 4: the phase-1 H~ (QTIP_G_W2, closed loop 208) plus a zero-bit output-row scale from the same probes, one arm on QTIP W2, one g1 GPU. Separate from host.json so the phase-3 job's sources stay unchanged.",
+    "arm": "QTIP_GR_W2",
+    "method": "qtip",
+    "bits": 2,
+    "hessian": "results/hessians/<i>.pt 'hessian' (phase-1 H~, unchanged)",
+    "row_weight": "results/hessians/<i>.pt 'row_weight': d_c = sum over the 80 C80 contexts and all calls of sum_t g_tc^2 |x_t|^2 of the A + lambda Z + beta K probe cotangents (phase-1 per-token definition); rowcheck 26046194: split-half predicted guided-loss ratio 0.845 (in sample 0.817), half correlation 0.86",
+    "row_scale_rule": "s_c^2 = sqrt(d_c)/|W_c| (minimizes (sum d_c/s_c^2)(sum s_c^2 |W_c|^2)), geometric mean 1, clipped to [1/limit, limit]; QTIP quantizes diag(s) W on H~ with the baseline seed and the dequantized rows are divided by s, i.e. s folds into QTIP's fp32 SV: 0 extra bits, no gradient updates. A layer without probe signal keeps s = 1",
+    "row_scale_limit": 16,
+    "compare": {
+      "QTIP_U_W2": "baseline QTIP_W2 (H_U)",
+      "QTIP_G_W2": "phase 1 (H~, no row scale)"
+    },
+    "allocation": {
+      "job_name": "fwgr",
+      "queue": "normal",
+      "execution_queue": "g1",
+      "gpus": 1,
+      "ncpus": 6,
+      "ncpus_basis": "QTIP ~1-2 cores, 2 loop workers ~4 cores (26043905 / 26046240 CPU_SAMPLE); PBS sets 16 per GPU on the GPU queues regardless",
+      "memory_gb": 64,
+      "memory_basis": "26043905 used 56 GB with 4 loop workers on 2 GPUs; here 2 workers",
+      "walltime": "07:00:00",
+      "soft_deadline_seconds": 24900
+    },
+    "steps": [
+      "quant: QTIP W2 on H~ with the row scale, 614 layers; proxies of the three QTIP W2 weights (baseline, phase 1, this arm) under H_U, H~ and H~ with the row weights",
+      "complete: quantized/QTIP_GR_W2/COMPLETE.json",
+      "eval: held-out 40x2 with the C1 swap",
+      "loop: LIBERO-Plus 280, 2 workers on the GPU",
+      "final: results/rows/RESULTS.zh.md, three QTIP W2 arms, paired counts with McNemar p"
+    ],
+    "closed_loop": {
+      "workers_per_gpu": 2
+    }
+  },
+  "quant": {
+    "arm": {
+      "arm": "QTIP_GR_W2",
+      "method": "qtip",
+      "bits": 2,
+      "hessian": "G",
+      "row_scale": true,
+      "bpw": 2.0158526103303487,
+      "proxy_nmse_weighted": 0.013800786144001697,
+      "quantize_seconds": 7822.836814277805,
+      "row_ratio_weighted": 0.7297275170527388,
+      "layers_scaled": 614,
+      "layers": 614
+    },
+    "proxy_matrix": {
+      "QTIP_U_W2": {
+        "U": 0.005825155888832933,
+        "G": 0.0077010872386956315,
+        "G_rows": 0.007205556350666774
+      },
+      "QTIP_G_W2": {
+        "U": 0.007933924858742746,
+        "G": 0.003779173223391775,
+        "G_rows": 0.0035906924663525698
+      },
+      "QTIP_GR_W2": {
+        "U": 0.013800786144001697,
+        "G": 0.006412932914288165,
+        "G_rows": 0.003025060323980738
+      }
+    }
+  },
+  "heldout": {
+    "QTIP_U_W2": {
+      "first10motor_rmse": 0.032398840948008004,
+      "first10motor_mse": 0.0011035398099920712,
+      "future_latent_nmse": 0.05324625272769481,
+      "mixed_loss": 0.003364084218628705,
+      "full32motor_rmse": 0.035440620267763734,
+      "late22motor_rmse": 0.03602131861262023,
+      "first10gripper_rmse": 0.08595653278753161,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.024588405271060768,
+      "first10motor_mse_swap": 0.0006217636451765429,
+      "full32motor_rmse_swap": 0.024653597222641113
+    },
+    "QTIP_G_W2": {
+      "first10motor_rmse": 0.033169926539994773,
+      "first10motor_mse": 0.0011736811273294733,
+      "future_latent_nmse": 0.06234649998368696,
+      "mixed_loss": 0.003820572223048657,
+      "full32motor_rmse": 0.03868070153985172,
+      "late22motor_rmse": 0.04002916160970926,
+      "first10gripper_rmse": 0.08761983653530478,
+      "first10gripper_disagreement": 0.005,
+      "first10motor_rmse_swap": 0.023926196538377555,
+      "first10motor_mse_swap": 0.0005878867439605528,
+      "full32motor_rmse_swap": 0.024230299633927643
+    },
+    "QTIP_GR_W2": {
+      "first10motor_rmse": 0.03238943999167532,
+      "first10motor_mse": 0.0011032840327970916,
+      "future_latent_nmse": 0.05689391731284559,
+      "mixed_loss": 0.003518688303302042,
+      "full32motor_rmse": 0.03666037435177714,
+      "late22motor_rmse": 0.03756859770510346,
+      "first10gripper_rmse": 0.07396121954079718,
+      "first10gripper_disagreement": 0.00375,
+      "first10motor_rmse_swap": 0.02486621375428513,
+      "first10motor_mse_swap": 0.0006413376142518246,
+      "full32motor_rmse_swap": 0.024647215707227586
+    }
+  },
+  "loops": {
+    "QTIP_U_W2": {
+      "successes": 204,
+      "episodes": 280,
+      "dimensions": {
+        "background_textures": 25,
+        "camera_viewpoints": 18,
+        "language_instructions": 37,
+        "light_conditions": 36,
+        "objects_layout": 35,
+        "robot_initial_states": 29,
+        "sensor_noise": 24
+      }
+    },
+    "QTIP_G_W2": {
+      "successes": 208,
+      "episodes": 280,
+      "dimensions": {
+        "background_textures": 29,
+        "camera_viewpoints": 14,
+        "language_instructions": 38,
+        "light_conditions": 36,
+        "objects_layout": 34,
+        "robot_initial_states": 33,
+        "sensor_noise": 24
+      }
+    },
+    "QTIP_GR_W2": {
+      "successes": 204,
+      "episodes": 280,
+      "dimensions": {
+        "background_textures": 25,
+        "camera_viewpoints": 15,
+        "language_instructions": 37,
+        "light_conditions": 37,
+        "objects_layout": 35,
+        "robot_initial_states": 31,
+        "sensor_noise": 24
+      },
+      "vs_QTIP_U_W2": {
+        "wins": 8,
+        "losses": 8,
+        "p": 1.0
+      },
+      "vs_QTIP_G_W2": {
+        "wins": 8,
+        "losses": 12,
+        "p": 0.5034446716308594
+      }
+    }
+  },
+  "new_teacher_queries": 0,
+  "training_updates": 0
+}

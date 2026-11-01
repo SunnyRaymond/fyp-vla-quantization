@@ -1,0 +1,288 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26057132.pbs101",
+  "status": "complete",
+  "complete": true,
+  "tune": {
+    "purpose": "C2 continuous stage, first test: each host's W2 weights (A16 baseline, H_U) with indices frozen, per-Linear log-scales on both sides, W' = diag(e^s) W diag(e^t), tuned with A + lambda Z + beta K through the imagine -> execute rollout on Q0's recipe (25921795 reader_kl: C80 once, 8 Adam updates of 10 contexts, clip 1, moments reset after update 1). Q0's codebook/gain tuning cut held-out motor 8% and future 13% from its reconstruction start; the curvature-only rounding variants (phases 1-4, gate 1) did not generalize. No action-only ablation arm in this test.",
+    "hosts": {
+      "QTIP": {
+        "method": "qtip",
+        "bits": 2,
+        "baseline_arm": "QTIP_U_W2",
+        "baseline_loop": "QTIP_W2",
+        "free_scales": true
+      },
+      "GPTVQ": {
+        "method": "gptvq",
+        "bits": 2,
+        "baseline_arm": "GPTVQ_W2",
+        "baseline_loop": "GPTVQ_W2",
+        "free_scales": false
+      },
+      "QUIPSHARP": {
+        "method": "quipsharp",
+        "bits": 2,
+        "baseline_arm": "QUIPSHARP_W2",
+        "baseline_loop": "QUIPSHARP_W2",
+        "free_scales": true
+      }
+    },
+    "arm_suffix": "_T_W2",
+    "parameters": "per target Linear s (out_features) and t (in_features), FP32, zero at start; the training forward uses the BF16 weight bf16(e^s W e^t), i.e. exactly the folded deployment weight; biases, norms and every other parameter frozen",
+    "storage": "QTIP and QuIP# dequantize as diag(SU) H^T Q H diag(SV) * Wscale, so e^s and e^t fold into their FP16 sign/scale vectors: 0 extra bits; GPTVQ stores both vectors in FP16: +16 (out + in) bits per Linear",
+    "loss": "mean over the batch of A + lambda Z + beta K with the protocol's lambda and beta, the same for every host: A first10 x 6 motor MSE, Z future NMSE over frames 1:, K soft-bin KL of the frozen BF16 reader (614 BF16 masters) reading the student future; staged as the loss-pair worker: no-grad queries -> A/Z cotangents, reader -> beta K cotangent at the future, grad replay of the same queries (bitwise check) with both",
+    "training": {
+      "schedule": "the loss-pair C80 schedule (8 batches of 10 contexts, sampler seed index 0)",
+      "updates": 8,
+      "optimizer": "Adam (default betas)",
+      "gradient_norm_clip": 1.0,
+      "reset_moments_after_update": 1,
+      "lr_grid": [
+        0.0005,
+        0.002,
+        0.008
+      ],
+      "lr_rule": "on batch 1 at s = t = 0: Adam's first step is -lr sign(g); predicted decrease lr * sum|g|, realized = L(0) - L(step) on the same batch; take the largest grid LR whose realized decrease is at least min_realized_fraction of the predicted one; no such LR -> the host is not tuned",
+      "min_realized_fraction": 0.5,
+      "replay_max_abs": 0.0001
+    },
+    "evaluation": "C80 mixed loss (A + lambda Z) of the baseline and of the folded arm on all 80 contexts; held-out 40x2 + C1 swap of the folded arm (the baseline's held-out from phases 1 and 3)",
+    "decision": {
+      "rule": "closed loop of the tuned arms if on at least min_hosts hosts: C80 mixed loss after < before, held-out mixed loss <= mixed_ratio_max x the baseline's, and held-out future NMSE below the baseline's",
+      "min_hosts": 2,
+      "mixed_ratio_max": 0.97
+    },
+    "allocation": {
+      "job_name": "fwgt",
+      "queue": "normal",
+      "execution_queue": "g2",
+      "gpus": 3,
+      "ncpus": 8,
+      "ncpus_basis": "one process per host and GPU, ~2-3 busy cores each (26043905 CPU_SAMPLE); PBS sets 16 per GPU regardless",
+      "memory_gb": 150,
+      "memory_basis": "per process: runtime + 614 BF16 masters on the CPU (~9 GB) + reader staging",
+      "walltime": "03:00:00",
+      "soft_deadline_seconds": 10500,
+      "time_basis": "per host: C80 fit 2 x 80 queries, LR check ~10 min, 8 updates ~6 min each (26043905: ~30 s per context with a probe backward), held-out 80 queries + swap"
+    },
+    "loop": {
+      "purpose": "Submitted only on DECISION go: LIBERO-Plus 280 of the three tuned arms; per host paired against the baseline W2, McNemar, pooled over hosts",
+      "workers_per_gpu": 2,
+      "allocation": {
+        "job_name": "fwgtl",
+        "queue": "normal",
+        "execution_queue": "g3",
+        "gpus": 4,
+        "ncpus": 20,
+        "ncpus_basis": "8 loop workers ~2 cores each",
+        "memory_gb": 200,
+        "memory_basis": "26043905: 56 GB with 4 loop workers; here 8",
+        "walltime": "04:00:00",
+        "soft_deadline_seconds": 14100
+      }
+    }
+  },
+  "hosts": {
+    "QTIP": {
+      "tuned": false,
+      "lr": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "host": "QTIP",
+        "pbs_jobid": "26057132.pbs101",
+        "batch": [
+          2033,
+          2067,
+          2010,
+          2059,
+          2016,
+          2018,
+          2031,
+          2036,
+          2058,
+          2060
+        ],
+        "base": {
+          "az": 0.0031639694469049575,
+          "k": 0.031723603006685155,
+          "total": 0.0033569653336488533,
+          "replay_max_abs": 0.0
+        },
+        "grad_l1": 5.696350574493408,
+        "rows": [
+          {
+            "lr": 0.0005,
+            "predicted": 0.002848175287246704,
+            "realized": 0.0,
+            "loss": {
+              "az": 0.0031639694469049575,
+              "k": 0.031723603006685155,
+              "total": 0.0033569653336488533
+            }
+          },
+          {
+            "lr": 0.002,
+            "predicted": 0.011392701148986816,
+            "realized": -0.0023049756629412894,
+            "loss": {
+              "az": 0.005261479713954032,
+              "k": 0.06582562439143658,
+              "total": 0.005661940996590143
+            }
+          },
+          {
+            "lr": 0.008,
+            "predicted": 0.04557080459594726,
+            "realized": -0.017010850651250624,
+            "loss": {
+              "az": 0.01822943165898323,
+              "k": 0.35149586126208304,
+              "total": 0.02036781598489948
+            }
+          }
+        ],
+        "chosen": null
+      }
+    },
+    "GPTVQ": {
+      "tuned": false,
+      "lr": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "host": "GPTVQ",
+        "pbs_jobid": "26057132.pbs101",
+        "batch": [
+          2033,
+          2067,
+          2010,
+          2059,
+          2016,
+          2018,
+          2031,
+          2036,
+          2058,
+          2060
+        ],
+        "base": {
+          "az": 0.004356679483316838,
+          "k": 0.06390046831220389,
+          "total": 0.004745428754408938,
+          "replay_max_abs": 0.0
+        },
+        "grad_l1": 4.735514163970947,
+        "rows": [
+          {
+            "lr": 0.0005,
+            "predicted": 0.002367757081985474,
+            "realized": 0.0,
+            "loss": {
+              "az": 0.004356679483316838,
+              "k": 0.06390046831220389,
+              "total": 0.004745428754408938
+            }
+          },
+          {
+            "lr": 0.002,
+            "predicted": 0.009471028327941895,
+            "realized": 0.00043304771961090796,
+            "loss": {
+              "az": 0.003851864708121866,
+              "k": 0.07569714242126793,
+              "total": 0.0043123810347980305
+            }
+          },
+          {
+            "lr": 0.008,
+            "predicted": 0.03788411331176758,
+            "realized": -0.009899493773009652,
+            "loss": {
+              "az": 0.012549519492313265,
+              "k": 0.3444308329373598,
+              "total": 0.01464492252741859
+            }
+          }
+        ],
+        "chosen": null
+      }
+    },
+    "QUIPSHARP": {
+      "tuned": false,
+      "lr": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "host": "QUIPSHARP",
+        "pbs_jobid": "26057132.pbs101",
+        "batch": [
+          2033,
+          2067,
+          2010,
+          2059,
+          2016,
+          2018,
+          2031,
+          2036,
+          2058,
+          2060
+        ],
+        "base": {
+          "az": 0.003232410200871527,
+          "k": 0.030393524980172514,
+          "total": 0.003417314333721287,
+          "replay_max_abs": 0.0
+        },
+        "grad_l1": 5.052306175231934,
+        "rows": [
+          {
+            "lr": 0.0005,
+            "predicted": 0.0025261530876159667,
+            "realized": 0.0,
+            "loss": {
+              "az": 0.003232410200871527,
+              "k": 0.030393524980172514,
+              "total": 0.003417314333721287
+            }
+          },
+          {
+            "lr": 0.002,
+            "predicted": 0.010104612350463867,
+            "realized": -0.0011618395581751107,
+            "loss": {
+              "az": 0.004234810639172792,
+              "k": 0.05660125110298395,
+              "total": 0.004579153891896398
+            }
+          },
+          {
+            "lr": 0.008,
+            "predicted": 0.04041844940185547,
+            "realized": -0.009840204439371593,
+            "loss": {
+              "az": 0.011778790224343538,
+              "k": 0.24306527059525251,
+              "total": 0.013257518773092879
+            }
+          }
+        ],
+        "chosen": null
+      }
+    }
+  },
+  "decision": {
+    "hosts": {
+      "QTIP": {
+        "tuned": false,
+        "passed": false
+      },
+      "GPTVQ": {
+        "tuned": false,
+        "passed": false
+      },
+      "QUIPSHARP": {
+        "tuned": false,
+        "passed": false
+      }
+    },
+    "passed": 0,
+    "min_hosts": 2,
+    "go": false
+  },
+  "new_teacher_queries": 0
+}

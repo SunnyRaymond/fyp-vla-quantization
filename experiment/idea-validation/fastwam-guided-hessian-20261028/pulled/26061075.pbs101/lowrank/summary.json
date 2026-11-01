@@ -1,0 +1,855 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26061075.pbs101",
+  "status": "complete",
+  "complete": true,
+  "lowrank": {
+    "purpose": "C2 v2 gate: does a C1-derived objective repair the imagined future once the tuned parameters have capacity in every layer, and does decoupling the action term add to it? The diagonal-scale run (tune.json, QTIP 26059212) improved the action only: held-out mixed 0.923x, first10 motor 0.0324 -> 0.0279, future NMSE 0.05325 -> 0.05328, future share of motor MSE 0.44 -> 0.60; only 9 of 3.9M scales moved past BF16 rounding and |g|^2 sat in conditioning layers (time_projection, action_encoder). Here every target Linear gets the same rank-r BF16 branch, a model-agnostic parametrization (any Linear of any host, sequential or joint world-action model).",
+    "host": "QTIP",
+    "baseline_arm": "QTIP_U_W2",
+    "baseline_heldout": "results/heldout/QTIP_U_W2.json (phase 1, 26043905)",
+    "baseline_fit": "results/tune/QTIP/fit_before.json (26057132)",
+    "rank": 4,
+    "branch": "y = x W_host^T + b + (x V^T) U^T with U (out x r), V (r x in) stored in BF16: +16 r (out + in) bits per Linear; computed in FP32 and added to the BF16 output; the deployed weight stays the host's W2",
+    "init": {
+      "method": "EoRA-style closed form: L = [dW C]_r C^-1 minimizes tr((dW - L) H (dW - L)^T), dW = W_master - W_host, H = H_U + damping x mean(diag H_U) I = C C^T (Cholesky; damping x10 until positive definite); U = P S^1/2, V = S^1/2 Q^T C^-1 from the SVD P S Q^T of dW C",
+      "damping": 0.01
+    },
+    "arms": {
+      "E": {
+        "arm": "QTIP_LRE_W2",
+        "objective": "none: the init, prior-art reference (activation-weighted low-rank error compensation)"
+      },
+      "J": {
+        "arm": "QTIP_LRJ_W2",
+        "objective": "joint: mean of A + lambda Z + beta K (tune_worker's staged batch; A on the student's own action)"
+      },
+      "D": {
+        "arm": "QTIP_LRD_W2",
+        "objective": "decoupled: mean of A_tf + lambda Z + beta K; A_tf is the student's action reading the BF16 teacher future (the C1 swap path), so the action side gets no reward for compensating a corrupted future; Z on the student future; K the frozen BF16 reader on the student future"
+      }
+    },
+    "training": {
+      "start": "E's BF16 factors",
+      "schedule": "the loss-pair C80 schedule (8 batches of 10 contexts, sampler seed index 0)",
+      "updates": 8,
+      "update": "per factor tensor P (U or V of one Linear): P <- P - eta |P| g / |g|; every Linear moves by eta of its factor norm along its own descent direction (the max-normalized scale step spent everything on a few conditioning scales)",
+      "step_grid": [
+        0.0025,
+        0.005,
+        0.01,
+        0.02,
+        0.05,
+        0.1
+      ],
+      "step_grid_change": "post hoc, after the step checks of 26060556 (original grid 0.01 / 0.02 / 0.05 / 0.1): at eta 0.01 J realized 0.45 of the prediction (0.001056 / 0.002352) and D 0.51 (0.000961 / 0.001893), both negative or small above, so J was skipped and D trained at 0.01, which leaves no J vs D comparison. Extended downward (0.005, 0.0025); J rerun alone (job fwlj1) on the same 0.5 rule; D keeps 0.01, which is also its choice on the extended grid (the largest passing value). J's 26060556 files kept as step.r0_26060556.json / arm.r0_26060556.json.",
+      "step_rule": "on batch 1 from E: predicted decrease eta sum |P| |g|, realized L(E) - L(step) on the same batch; the largest grid eta whose realized decrease is at least min_realized_fraction of the predicted one; none -> the arm is not trained",
+      "min_realized_fraction": 0.5,
+      "replay_max_abs": 0.0001
+    },
+    "evaluation": "C80 fit (mixed loss A + lambda Z, first10 motor RMSE, future NMSE) and held-out 40x2 + C1 swap for E, J and D with the BF16 factors installed; U from the files above",
+    "decision": {
+      "rule": "an arm passes if trained and on held-out: future NMSE <= future_ratio_max x U's, mixed loss <= mixed_ratio_max x U's, and both below E's; closed loop if D passes. Reported, not gating: decoupling increment = D's held-out future NMSE below J's with D's mixed loss not above J's",
+      "future_ratio_max": 0.9,
+      "mixed_ratio_max": 0.97
+    },
+    "split": {
+      "basis": "user: race one g1 single-GPU job against one g2 two-GPU job, both > 2 h; whichever starts first stays, the other is cancelled (race.py)",
+      "one": {
+        "job_name": "fwlr1",
+        "queue": "normal",
+        "execution_queue": "g1",
+        "gpus": 1,
+        "ncpus": 4,
+        "memory_gb": 100,
+        "walltime": "06:00:00",
+        "soft_deadline_seconds": 20700,
+        "time_basis": "init ~45 min (factors, E's C80 fit, held-out); J ~75 min and D ~85 min in turn (26059212: 8 updates x 210 s, fits + held-out ~25 min)"
+      },
+      "two": {
+        "job_name": "fwlr2",
+        "queue": "normal",
+        "execution_queue": "g2",
+        "gpus": 2,
+        "ncpus": 6,
+        "memory_gb": 120,
+        "walltime": "04:00:00",
+        "soft_deadline_seconds": 13500,
+        "time_basis": "init ~45 min on GPU 0, then J and D one per GPU ~85 min"
+      },
+      "j": {
+        "job_name": "fwlj1",
+        "queue": "normal",
+        "execution_queue": "g1",
+        "gpus": 1,
+        "ncpus": 4,
+        "memory_gb": 100,
+        "walltime": "04:00:00",
+        "soft_deadline_seconds": 13500,
+        "arms": [
+          "J"
+        ],
+        "time_basis": "J only, after step_grid_change: load, step check on 6 grid values ~20 min, 8 updates ~4 min each (26060556), bits + fit + held-out ~30 min"
+      }
+    }
+  },
+  "rows": {
+    "U": {
+      "tuned": false,
+      "arm": "QTIP_U_W2",
+      "fit": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "host": "QTIP",
+        "arm": "QTIP_U_W2",
+        "mixed_loss": 0.0025389408248884136,
+        "first10motor_rmse": 0.028988335758913308,
+        "future_latent_nmse": 0.03858650027541444
+      },
+      "heldout": {
+        "first10motor_rmse": 0.032398840948008004,
+        "first10motor_mse": 0.0011035398099920712,
+        "future_latent_nmse": 0.05324625272769481,
+        "mixed_loss": 0.003364084218628705,
+        "full32motor_rmse": 0.035440620267763734,
+        "late22motor_rmse": 0.03602131861262023,
+        "first10gripper_rmse": 0.08595653278753161,
+        "first10gripper_disagreement": 0.005000000000000001,
+        "first10motor_rmse_swap": 0.024588405271060768,
+        "first10motor_mse_swap": 0.0006217636451765429,
+        "full32motor_rmse_swap": 0.024653597222641113
+      }
+    },
+    "E": {
+      "tuned": false,
+      "arm": "QTIP_LRE_W2",
+      "eta": null,
+      "fit": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "arm": "QTIP_LRE_W2",
+        "mixed_loss": 0.0022045192839868833,
+        "first10motor_rmse": 0.02216641210252419,
+        "future_latent_nmse": 0.03871192983351648
+      },
+      "quant": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "complete": true,
+        "pbs_jobid": "26060556.pbs101",
+        "arm": "QTIP_LRE_W2",
+        "method": "qtip",
+        "bits": 2,
+        "hessian": "U",
+        "rank": 4,
+        "target_weights": 6016317440,
+        "bpw": 2.0571340703724568,
+        "proxy_nmse_weighted": 0.005723854471922992,
+        "baseline_proxy_U_weighted": 0.005825155915274611
+      },
+      "heldout": {
+        "first10motor_rmse": 0.026437661866657438,
+        "first10motor_mse": 0.000782933913069428,
+        "future_latent_nmse": 0.05352569485548884,
+        "mixed_loss": 0.0030553419113857672,
+        "full32motor_rmse": 0.031128059013281015,
+        "late22motor_rmse": 0.032326107646804304,
+        "first10gripper_rmse": 0.027614865632494913,
+        "first10gripper_disagreement": 0.00375,
+        "first10motor_rmse_swap": 0.015705669997259974,
+        "first10motor_mse_swap": 0.000261191654499271,
+        "full32motor_rmse_swap": 0.01705433310708031
+      }
+    },
+    "J": {
+      "tuned": true,
+      "arm": "QTIP_LRJ_W2",
+      "eta": 0.005,
+      "fit": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "arm": "QTIP_LRJ_W2",
+        "mixed_loss": 0.0015927736458252184,
+        "first10motor_rmse": 0.01772423820802942,
+        "future_latent_nmse": 0.02943679877789691
+      },
+      "quant": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "complete": true,
+        "pbs_jobid": "26061075.pbs101",
+        "arm": "QTIP_LRJ_W2",
+        "method": "qtip",
+        "bits": 2,
+        "hessian": "U",
+        "rank": 4,
+        "target_weights": 6016317440,
+        "bpw": 2.0571340703724568,
+        "proxy_nmse_weighted": 0.005729201768564504,
+        "baseline_proxy_U_weighted": 0.005825155915274611
+      },
+      "heldout": {
+        "first10motor_rmse": 0.02455521826632321,
+        "first10motor_mse": 0.0006863291979243513,
+        "future_latent_nmse": 0.05229660673066974,
+        "mixed_loss": 0.0029065568407531826,
+        "full32motor_rmse": 0.029519538627937436,
+        "late22motor_rmse": 0.03085817560786381,
+        "first10gripper_rmse": 0.028784395987167956,
+        "first10gripper_disagreement": 0.00375,
+        "first10motor_rmse_swap": 0.01354603422805667,
+        "first10motor_mse_swap": 0.00019764238813877456,
+        "full32motor_rmse_swap": 0.014979064650833608
+      },
+      "step": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "arm": "QTIP_LRJ_W2",
+        "pbs_jobid": "26061075.pbs101",
+        "batch": [
+          2033,
+          2067,
+          2010,
+          2059,
+          2016,
+          2018,
+          2031,
+          2036,
+          2058,
+          2060
+        ],
+        "base": {
+          "az": 0.0026227495283819733,
+          "k": 0.024431993463076652,
+          "total": 0.0027713856792735947,
+          "replay_max_abs": 0.0
+        },
+        "predicted_per_eta": 0.2351975922648803,
+        "top_layers": [
+          {
+            "module": "video_expert.time_projection.1",
+            "share": 0.5470447773327903
+          },
+          {
+            "module": "action_expert.head",
+            "share": 0.11721902414301968
+          },
+          {
+            "module": "proprio_encoder",
+            "share": 0.019322174124998686
+          },
+          {
+            "module": "video_expert.blocks.25.ffn.2",
+            "share": 0.013027641279590163
+          },
+          {
+            "module": "video_expert.time_embedding.0",
+            "share": 0.010704236928320763
+          },
+          {
+            "module": "video_expert.blocks.22.ffn.0",
+            "share": 0.00982097328605959
+          },
+          {
+            "module": "video_expert.blocks.24.ffn.2",
+            "share": 0.008797302555002988
+          },
+          {
+            "module": "action_expert.action_encoder",
+            "share": 0.008756683326321828
+          },
+          {
+            "module": "video_expert.blocks.24.ffn.0",
+            "share": 0.008612157598979939
+          },
+          {
+            "module": "video_expert.blocks.20.ffn.0",
+            "share": 0.007751170389761941
+          }
+        ],
+        "rows": [
+          {
+            "lr": 0.0025,
+            "predicted": 0.0005879939806622007,
+            "realized": 0.000508786534054772,
+            "loss": {
+              "az": 0.0021430312597658487,
+              "k": 0.019653911772184073,
+              "total": 0.0022625991452188228
+            }
+          },
+          {
+            "lr": 0.005,
+            "predicted": 0.0011759879613244015,
+            "realized": 0.0008766180253527882,
+            "loss": {
+              "az": 0.0018127491581253707,
+              "k": 0.013481749501079322,
+              "total": 0.0018947676539208065
+            }
+          },
+          {
+            "lr": 0.01,
+            "predicted": 0.002351975922648803,
+            "realized": 0.0010563677286861077,
+            "loss": {
+              "az": 0.0016512135218363256,
+              "k": 0.010487821279093623,
+              "total": 0.001715017950587487
+            }
+          },
+          {
+            "lr": 0.02,
+            "predicted": 0.004703951845297606,
+            "realized": 0.00021102116459736486,
+            "loss": {
+              "az": 0.0024040322634391485,
+              "k": 0.025697036134079098,
+              "total": 0.00256036451467623
+            }
+          },
+          {
+            "lr": 0.05,
+            "predicted": 0.011759879613244015,
+            "realized": -0.004322465741161708,
+            "loss": {
+              "az": 0.006711779907345772,
+              "k": 0.06280281515792012,
+              "total": 0.007093851420435302
+            }
+          },
+          {
+            "lr": 0.1,
+            "predicted": 0.02351975922648803,
+            "realized": -0.01631558160821217,
+            "loss": {
+              "az": 0.017694862792268395,
+              "k": 0.22882648482918738,
+              "total": 0.019086967287485764
+            }
+          }
+        ],
+        "chosen": 0.005
+      },
+      "training": [
+        {
+          "update": 1,
+          "cases": [
+            2033,
+            2067,
+            2010,
+            2059,
+            2016,
+            2018,
+            2031,
+            2036,
+            2058,
+            2060
+          ],
+          "before": {
+            "az": 0.0026227495283819733,
+            "k": 0.024431993463076652,
+            "total": 0.0027713856792735947,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 210.14917543996125
+        },
+        {
+          "update": 2,
+          "cases": [
+            2037,
+            2020,
+            2057,
+            2072,
+            2000,
+            2047,
+            2062,
+            2044,
+            2024,
+            2014
+          ],
+          "before": {
+            "az": 0.0018945418007206172,
+            "k": 0.01524965891148895,
+            "total": 0.0019873156714421917,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 206.6514603816904
+        },
+        {
+          "update": 3,
+          "cases": [
+            2017,
+            2066,
+            2034,
+            2027,
+            2046,
+            2011,
+            2077,
+            2056,
+            2048,
+            2073
+          ],
+          "before": {
+            "az": 0.002079129364574328,
+            "k": 0.026479353429749608,
+            "total": 0.002240220974959902,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 208.76185455080122
+        },
+        {
+          "update": 4,
+          "cases": [
+            2038,
+            2079,
+            2003,
+            2054,
+            2039,
+            2009,
+            2002,
+            2049,
+            2065,
+            2078
+          ],
+          "before": {
+            "az": 0.0019759629270993174,
+            "k": 0.010917587438598275,
+            "total": 0.0020423819107302835,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 213.03236389998347
+        },
+        {
+          "update": 5,
+          "cases": [
+            2041,
+            2026,
+            2074,
+            2007,
+            2053,
+            2004,
+            2025,
+            2005,
+            2061,
+            2032
+          ],
+          "before": {
+            "az": 0.003047855681506917,
+            "k": 0.026722594164311886,
+            "total": 0.0032104270879058628,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 206.2119784350507
+        },
+        {
+          "update": 6,
+          "cases": [
+            2035,
+            2028,
+            2021,
+            2071,
+            2064,
+            2006,
+            2043,
+            2019,
+            2051,
+            2045
+          ],
+          "before": {
+            "az": 0.0024028652696870267,
+            "k": 0.01525962568121031,
+            "total": 0.002495699774932364,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 214.23812928097323
+        },
+        {
+          "update": 7,
+          "cases": [
+            2030,
+            2069,
+            2055,
+            2068,
+            2063,
+            2040,
+            2050,
+            2022,
+            2008,
+            2015
+          ],
+          "before": {
+            "az": 0.002008454920724034,
+            "k": 0.021147858025506137,
+            "total": 0.0021371114800532655,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 220.3105563451536
+        },
+        {
+          "update": 8,
+          "cases": [
+            2052,
+            2012,
+            2029,
+            2023,
+            2075,
+            2042,
+            2070,
+            2076,
+            2001,
+            2013
+          ],
+          "before": {
+            "az": 0.0014139848062768579,
+            "k": 0.008578438311815262,
+            "total": 0.001466173181869558,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 211.07788547314703
+        }
+      ]
+    },
+    "D": {
+      "tuned": true,
+      "arm": "QTIP_LRD_W2",
+      "eta": 0.01,
+      "fit": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "arm": "QTIP_LRD_W2",
+        "mixed_loss": 0.0014687553149997257,
+        "first10motor_rmse": 0.017144521698355675,
+        "future_latent_nmse": 0.026706503483001142
+      },
+      "quant": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "complete": true,
+        "pbs_jobid": "26060556.pbs101",
+        "arm": "QTIP_LRD_W2",
+        "method": "qtip",
+        "bits": 2,
+        "hessian": "U",
+        "rank": 4,
+        "target_weights": 6016317440,
+        "bpw": 2.0571340703724568,
+        "proxy_nmse_weighted": 0.00574392785118444,
+        "baseline_proxy_U_weighted": 0.005825155915274611
+      },
+      "heldout": {
+        "first10motor_rmse": 0.0238311996916309,
+        "first10motor_mse": 0.0006475212299847044,
+        "future_latent_nmse": 0.05177786065032706,
+        "mixed_loss": 0.0028457257416448557,
+        "full32motor_rmse": 0.02859498477773741,
+        "late22motor_rmse": 0.029895392910111698,
+        "first10gripper_rmse": 0.02942875994485803,
+        "first10gripper_disagreement": 0.00375,
+        "first10motor_rmse_swap": 0.012806581921176983,
+        "first10motor_mse_swap": 0.00017918527350957447,
+        "full32motor_rmse_swap": 0.013910973840393127
+      },
+      "step": {
+        "protocol": "fastwam-guided-hessian-20261028-v1",
+        "arm": "QTIP_LRD_W2",
+        "pbs_jobid": "26060556.pbs101",
+        "batch": [
+          2033,
+          2067,
+          2010,
+          2059,
+          2016,
+          2018,
+          2031,
+          2036,
+          2058,
+          2060
+        ],
+        "base": {
+          "az": 0.002326370542868972,
+          "k": 0.024431993463076652,
+          "total": 0.0024750066937605933,
+          "replay_max_abs": 0.0
+        },
+        "predicted_per_eta": 0.18934327693827346,
+        "top_layers": [
+          {
+            "module": "video_expert.time_projection.1",
+            "share": 0.5964892345628424
+          },
+          {
+            "module": "action_expert.head",
+            "share": 0.053593896863801574
+          },
+          {
+            "module": "proprio_encoder",
+            "share": 0.019093966287396517
+          },
+          {
+            "module": "video_expert.blocks.25.ffn.2",
+            "share": 0.012814116803087451
+          },
+          {
+            "module": "video_expert.time_embedding.0",
+            "share": 0.012327620255944204
+          },
+          {
+            "module": "video_expert.blocks.22.ffn.0",
+            "share": 0.009813249858004313
+          },
+          {
+            "module": "video_expert.blocks.24.ffn.2",
+            "share": 0.009011037860709144
+          },
+          {
+            "module": "video_expert.blocks.24.ffn.0",
+            "share": 0.008651537121450975
+          },
+          {
+            "module": "video_expert.blocks.23.ffn.0",
+            "share": 0.008309591856835002
+          },
+          {
+            "module": "video_expert.blocks.20.ffn.0",
+            "share": 0.008206241189030902
+          }
+        ],
+        "rows": [
+          {
+            "lr": 0.01,
+            "predicted": 0.0018934327693827346,
+            "realized": 0.0009607453754071271,
+            "loss": {
+              "az": 0.0014508402557112277,
+              "k": 0.010424805665388703,
+              "total": 0.0015142613183534662
+            }
+          },
+          {
+            "lr": 0.02,
+            "predicted": 0.0037868655387654692,
+            "realized": 0.0004467217163803697,
+            "loss": {
+              "az": 0.0018791204318404197,
+              "k": 0.02451884807087481,
+              "total": 0.0020282849773802236
+            }
+          },
+          {
+            "lr": 0.05,
+            "predicted": 0.009467163846913674,
+            "realized": -0.0019648566911591126,
+            "loss": {
+              "az": 0.004138007084839046,
+              "k": 0.0496174793690443,
+              "total": 0.004439863384919706
+            }
+          },
+          {
+            "lr": 0.1,
+            "predicted": 0.018934327693827347,
+            "realized": -0.007780569477064053,
+            "loss": {
+              "az": 0.00916041904129088,
+              "k": 0.1800159091129899,
+              "total": 0.010255576170824647
+            }
+          }
+        ],
+        "chosen": 0.01
+      },
+      "training": [
+        {
+          "update": 1,
+          "cases": [
+            2033,
+            2067,
+            2010,
+            2059,
+            2016,
+            2018,
+            2031,
+            2036,
+            2058,
+            2060
+          ],
+          "before": {
+            "az": 0.002326370542868972,
+            "k": 0.024431993463076652,
+            "total": 0.0024750066937605933,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 244.89660448394716
+        },
+        {
+          "update": 2,
+          "cases": [
+            2037,
+            2020,
+            2057,
+            2072,
+            2000,
+            2047,
+            2062,
+            2044,
+            2024,
+            2014
+          ],
+          "before": {
+            "az": 0.0015907665656413883,
+            "k": 0.014705549483187497,
+            "total": 0.0016802302549318493,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 237.04301347699948
+        },
+        {
+          "update": 3,
+          "cases": [
+            2017,
+            2066,
+            2034,
+            2027,
+            2046,
+            2011,
+            2077,
+            2056,
+            2048,
+            2073
+          ],
+          "before": {
+            "az": 0.0016988420160487295,
+            "k": 0.027025622921064495,
+            "total": 0.0018632569489728953,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 224.1029046899639
+        },
+        {
+          "update": 4,
+          "cases": [
+            2038,
+            2079,
+            2003,
+            2054,
+            2039,
+            2009,
+            2002,
+            2049,
+            2065,
+            2078
+          ],
+          "before": {
+            "az": 0.0017890510265715421,
+            "k": 0.011129794758744538,
+            "total": 0.0018567610092077773,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 228.956091347849
+        },
+        {
+          "update": 5,
+          "cases": [
+            2041,
+            2026,
+            2074,
+            2007,
+            2053,
+            2004,
+            2025,
+            2005,
+            2061,
+            2032
+          ],
+          "before": {
+            "az": 0.0024271088710520416,
+            "k": 0.028339327732101082,
+            "total": 0.002599515948653856,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 226.12876249081455
+        },
+        {
+          "update": 6,
+          "cases": [
+            2035,
+            2028,
+            2021,
+            2071,
+            2064,
+            2006,
+            2043,
+            2019,
+            2051,
+            2045
+          ],
+          "before": {
+            "az": 0.002084513084264472,
+            "k": 0.01439066503662616,
+            "total": 0.0021720611209421715,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 226.49862184515223
+        },
+        {
+          "update": 7,
+          "cases": [
+            2030,
+            2069,
+            2055,
+            2068,
+            2063,
+            2040,
+            2050,
+            2022,
+            2008,
+            2015
+          ],
+          "before": {
+            "az": 0.0017131946922745555,
+            "k": 0.019996509701013566,
+            "total": 0.0018348468299815104,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 226.60366007499397
+        },
+        {
+          "update": 8,
+          "cases": [
+            2052,
+            2012,
+            2029,
+            2023,
+            2075,
+            2042,
+            2070,
+            2076,
+            2001,
+            2013
+          ],
+          "before": {
+            "az": 0.001190753560513258,
+            "k": 0.00869188467040658,
+            "total": 0.001243632106152834,
+            "replay_max_abs": 0.0
+          },
+          "seconds": 227.6499474910088
+        }
+      ]
+    }
+  },
+  "decision": {
+    "arms": {
+      "J": {
+        "tuned": true,
+        "future_ratio": 0.9821650172852233,
+        "mixed_ratio": 0.8639964554567474,
+        "below_E": true,
+        "passed": false
+      },
+      "D": {
+        "tuned": true,
+        "future_ratio": 0.9724226212710739,
+        "mixed_ratio": 0.8459139417160173,
+        "below_E": true,
+        "passed": false
+      }
+    },
+    "decoupling_increment": true,
+    "go": false
+  },
+  "new_teacher_queries": 0
+}

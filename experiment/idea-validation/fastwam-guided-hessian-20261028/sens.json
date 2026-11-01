@@ -1,0 +1,124 @@
+{
+  "purpose": "FLAQ module 1 (measure): counterfactual per-group sensitivity of the C1 target on a host's W2 model. From the host's W2 weights, one group of Linears at a time takes the same host's W3 weights; on the C80 queries we record the action error A, the imagined-future error Z and the reader KL K (frozen BF16 reader on the student's own future), so each group gets the decrease of A + lambda Z + beta K its upgrade buys, measured end to end through both denoising loops (gate 1: Gauss-Newton puts the future -> action path at 6-7% while the BF16 reader on the student's future carries 35-60% of the motor MSE). Every host quantized each layer on the same BF16 Hessian with no sequential recollection, so a W2/W3 mix is exactly what the host produces under that bit assignment: no requantization.",
+  "host": "QTIP",
+  "hosts": {
+    "QTIP": {
+      "base_dir": "QTIP_W2",
+      "upgrade_dir": "QTIP_W3",
+      "fit_anchor": "tune/QTIP/fit_before.json"
+    },
+    "GPTVQ": {
+      "base_dir": "GPTVQ_W2",
+      "upgrade_dir": "GPTVQ_W3",
+      "fit_anchor": "tune/GPTVQ/fit_before.json"
+    },
+    "QUIPSHARP": {
+      "base_dir": "QUIPSHARP_W2",
+      "upgrade_dir": "QUIPSHARP_W3",
+      "fit_anchor": "tune/QUIPSHARP/fit_before.json"
+    }
+  },
+  "sources": "<baseline root>/results/quantized/<dir>/weights/<index>.pt and stats/<index>.json (bits_total) of the A16 baselines",
+  "groups": {
+    "blocks": "video.bNN / action.bNN: all 10 Linears of block NN of that expert (self_attn q k v o, cross_attn q k v o, ffn.0 ffn.2); 30 per expert",
+    "video.cond": "video_expert.text_embedding.0/.2, time_embedding.0/.2, time_projection.1",
+    "video.head": "video_expert.head.head",
+    "action.cond": "action_expert.text_embedding.0/.2, time_embedding.0/.2, time_projection.1",
+    "action.io": "action_expert.action_encoder, action_expert.head, proprio_encoder",
+    "count": 64,
+    "basis": "one video block is 2.77% of the target weights, one action block 0.56%: a +0.06 bpw budget buys about two video blocks or ten action blocks, so block-level groups are the finest the allocation needs; 64 groups x 80 contexts fit one gdev job"
+  },
+  "configs": "none (all W2), all (all W3), and each group upgraded alone; 66 configs",
+  "cases": "C80 (cases 2000-2079), sampler seed index 0: the calibration set every C2 arm so far used",
+  "per_case": "student query (no grad) -> metrics against the cached BF16 teacher (mixed_loss = A + lambda Z, first10motor_mse = A, future_latent_nmse = Z, gripper); the frozen BF16 reader reads the student's future -> reader_kl = K (loss-pair soft-bin KL, the beta K of every C2 run) and reader first10 motor MSE",
+  "score": {
+    "benefit": "per case: value(none) - value(group upgraded), for A, lambda Z, beta K and their sum T = A + lambda Z + beta K (positive = the upgrade helps)",
+    "density": "mean benefit over the cases / extra bits of the upgrade (sum over the group's Linears of bits_total(W3) - bits_total(W2)), per Mbit",
+    "objectives": {
+      "total": "T = A + lambda Z + beta K (C1)",
+      "action": "A only"
+    }
+  },
+  "allocation": {
+    "budgets_bpw": [
+      0.03,
+      0.06,
+      0.12,
+      0.25
+    ],
+    "rule": "greedy by density (highest first), a group enters if its extra bits still fit the budget (extra bits = budget x all target weights); groups with mean benefit <= 0 never enter",
+    "output": "selection.json: per objective and budget the groups and their bits, for step 2 (held-out evaluation of the allocated models)"
+  },
+  "stability": {
+    "split": "even / odd case ids (primary, pre-registered); also 200 random splits that halve each suite (seed 0), reported as mean and 10th percentile",
+    "top_k": 10,
+    "random_splits": 200,
+    "measures": "top-k overlap |T1 & T2| / k of the groups ranked by T density in each half; Spearman rho of the 64 T densities between halves; the same for A-only"
+  },
+  "checks": {
+    "anchor_tol": 1e-06,
+    "anchor": "config none reproduces the host's C80 fit (fit_anchor rows, mixed_loss and future_latent_nmse per case) within 1e-6 relative: the install and query path are the ones the earlier C2 runs used",
+    "restore": "after each group the base weights of its Linears are copied back; every shard measures case 2000 on the base weights before its first config and after its last one, and the two rows must be identical (and equal to none's case 2000)",
+    "coverage": "every Linear in exactly one group; group sizes 30 x 10 per expert, 5, 1, 5, 3"
+  },
+  "reading": {
+    "stable_overlap_min": 0.8,
+    "go": "even/odd top-10 overlap of the T ranking >= 0.8: the per-group C1 sensitivity is a property of the model, not of the calibration contexts; step 2 allocates bits by it and compares against A-only, layer-proxy and random allocations at the same budget on held-out",
+    "no_go": "overlap < 0.8: the ranking moves with the contexts; report which groups are unstable before deciding (finer groups do not help then; more contexts or a coarser allocation)",
+    "reported": "share of each group's T benefit from A, lambda Z and beta K (video vs action expert); additivity: sum of the single-group benefits against all-W3's benefit; how many groups have a benefit above 2 standard errors"
+  },
+  "allocation_jobs": {
+    "gdev": {
+      "job_name": "fwse1",
+      "queue": "normal",
+      "execution_queue": "gdev",
+      "gpus": 4,
+      "ncpus": 32,
+      "memory_gb": 400,
+      "walltime": "02:00:00",
+      "soft_deadline_seconds": 6900,
+      "shards": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "g1": {
+      "job_name": "fwse1g{k}",
+      "queue": "normal",
+      "execution_queue": "g1",
+      "gpus": 1,
+      "ncpus": 16,
+      "memory_gb": 110,
+      "walltime": "03:00:00",
+      "soft_deadline_seconds": 10500,
+      "shards": "[k] for k in 0..3"
+    },
+    "g3": {
+      "job_name": "fwse1x",
+      "queue": "normal",
+      "execution_queue": "g3",
+      "gpus": 4,
+      "ncpus": 32,
+      "memory_gb": 400,
+      "walltime": "03:00:00",
+      "soft_deadline_seconds": 10500,
+      "shards": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "cover": [
+        1,
+        2,
+        3
+      ],
+      "basis": "user 2026-10-31 (g3 was nearly empty): fwse1g0 won the race and runs shard 0; fwse1g1-g3 were cancelled in the queue and their configs (shards 1-3, 49 of 66) go to one g3 job, re-split over its 4 GPUs (12-13 configs each, ~1.1 h + load)"
+    },
+    "shards": 4,
+    "race": "user 2026-10-31: submit the < 2 h gdev job and the > 2 h g1 jobs together; the first to start wins: gdev first -> cancel the four g1 jobs; any g1 first -> cancel gdev, the other g1 jobs stay",
+    "time_basis": "tcond (26066073): 320 student query + BF16 reader pairs in 1384 s with the load, ~3.9 s each; 66 configs x 80 = 5280 pairs = 5.7 GPU-h; 4 shards ~1.45 h + ~5 min load"
+  }
+}

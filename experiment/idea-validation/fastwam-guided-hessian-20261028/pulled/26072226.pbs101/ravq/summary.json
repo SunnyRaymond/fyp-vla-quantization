@@ -1,0 +1,886 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26072226.pbs101",
+  "ravq": {
+    "purpose": "RAVQ, uncalibrated (no training of any parameter): QTIP rounding (the strongest A16 W2 host, same port, per-layer seeds and H_U as the A16 baselines) under a module-level bit budget derived from C1. C1 measurements on QTIP W2: the imagined future carries the main error channel (BF16-future swap removes 24-36% of first10 motor MSE on three hosts; W2 -> W3 on the video expert gives 71% of the A + lambda Z + beta K gain, mostly through Z + K), while upgrading all 30 action-expert blocks W2 -> W3 buys nothing (FLAQ module 1, 26070509: total -1.3e-5 of 1.9e-3; exactly 0 on Z / K). So bits move from the executing network (action-expert blocks) to the imagining network (video-expert blocks) at equal total bits. Video blocks are indistinguishable end to end (block benefit spread = sampling noise), so inside the video body the extra bits follow the standard rate-distortion rule on the layer proxy. Two protocol items that any WAM quantizer can use are given to the reference arms too: interface Linears in BF16 (action.io + video.head: stable top-2 of FLAQ module 1, 0.01% of the weights) and the timestep-only conditioning Linears as exact per-timestep output tables (tcond 26066073: inputs identical across contexts and seeds, 11 video / 10 action timesteps; outputs exact, fewer bits than W2).",
+    "host": "QTIP",
+    "method": "qtip",
+    "seed_base": 20261028,
+    "sources": {
+      "2": "<baseline root>/results/quantized/QTIP_W2 (A16 baselines, H_U)",
+      "3": "<baseline root>/results/quantized/QTIP_W3 (A16 baselines, H_U)",
+      "1": "results/ravq/qtip_K1 (this job: QTIP with K = 1, same code, seed and H_U)",
+      "4": "results/ravq/qtip_K4 (this job: QTIP with K = 4, only the video-body layers the W3 allocation selects)",
+      "bf16": "<baseline root>/results/prep/masters (the BF16 weights)"
+    },
+    "qtip_k1": "the port's quantize_layer accepts K in 2..4 because the official CUDA kernels exist for those; the trellis, Viterbi, packing and decoding are generic in K (bitshift_codebook L=16, V=2, K*V bits per step). ravq_qtip.quantize_layer is the port's routine with K in 1..4 that also returns the packed codes (trellis, SU, SV, Wscale, LUT) for the calibrated stage; for K = 2 it must reproduce the port bit for bit (test_ravq.py)",
+    "modules": {
+      "interfaces": [
+        "action_expert.action_encoder",
+        "action_expert.head",
+        "proprio_encoder",
+        "video_expert.head.head"
+      ],
+      "time_tables": [
+        "video_expert.time_embedding.0",
+        "video_expert.time_embedding.2",
+        "video_expert.time_projection.1",
+        "action_expert.time_embedding.0",
+        "action_expert.time_embedding.2",
+        "action_expert.time_projection.1"
+      ],
+      "video_body": "video_expert.blocks.* (300 Linears)",
+      "action_body": "action_expert.blocks.* (300 Linears)",
+      "text": "video_expert.text_embedding.0/.2, action_expert.text_embedding.0/.2: the family's base bits",
+      "table_bits": "per expert 16 x distinct timesteps x (out of time_embedding.2 + out of time_projection.1), the distinct timesteps from results/lowrank/tcond/input_check.json (26066073); booked on the expert's time_embedding.0, 0 on the other two; installed as the BF16 masters, whose outputs equal the table exactly"
+    },
+    "arms": {
+      "QTIP_W3": {
+        "reference": true,
+        "note": "the A16 baselines' QTIP_W3, unchanged (held-out not measured before)"
+      },
+      "QTIP_W2I": {
+        "family": 2,
+        "action_body": 2,
+        "video_body": 2,
+        "note": "uniform W2 under the protocol (interfaces BF16, time tables): the fair 2-bit reference"
+      },
+      "QTIP_A1W2I": {
+        "family": 2,
+        "action_body": 1,
+        "video_body": 2,
+        "note": "action floor at 2 bits: the action-expert blocks at K = 1, nothing given back"
+      },
+      "RAVQU_W2": {
+        "family": 2,
+        "action_body": 1,
+        "video_body": 2,
+        "upgrade": 3,
+        "budget_of": "QTIP_W2I",
+        "note": "ours: the action-body bits go to video-body layers W2 -> W3"
+      },
+      "QTIP_W3I": {
+        "family": 3,
+        "action_body": 3,
+        "video_body": 3,
+        "note": "uniform W3 under the protocol: the fair 3-bit reference"
+      },
+      "QTIP_A2W3I": {
+        "family": 3,
+        "action_body": 2,
+        "video_body": 3,
+        "note": "action floor at 3 bits: the action-expert blocks at W2"
+      },
+      "RAVQU_W3": {
+        "family": 3,
+        "action_body": 2,
+        "video_body": 3,
+        "upgrade": 4,
+        "budget_of": "QTIP_W3I",
+        "note": "ours: the action-body bits go to video-body layers W3 -> W4"
+      }
+    },
+    "allocation": {
+      "rule": "budget = total bits of budget_of - total bits of the arm before upgrades; video-body layers enter greedily by density n_l (p_l(base) - p_l(up)) / (bits_l(up) - bits_l(base)) (the reduction of the weight-averaged H_U proxy per stored bit, the baselines' proxy_nmse_weighted), highest first, ties by index; a layer that does not fit is skipped and the scan goes on; the result never exceeds the budget",
+      "proxy": "p_l(b) = tr(dW H_U dW^T) / tr(W H_U W^T) from the A16 baselines' stats (b = 2, 3); p_l(4) for selection only = p_l(3)^2 / p_l(2) (the layer's own W2 -> W3 ratio applied once more), the measured value is reported after quantization",
+      "bits": "QTIP bits_total per layer (trellis K bits per padded weight + SU 16 n_p + SV 32 m_p); for K = 1 and K = 4 the port's storage_bits before quantization, checked against the quantized layer"
+    },
+    "evaluation": "held-out 40x2 with the C1 swap (worker.Work.evaluate: first10 motor, future NMSE, gripper, the quantized reader on the BF16 teacher future); QTIP_U_W2 from results/heldout/QTIP_U_W2.json (26043905)",
+    "reading": {
+      "protocol": "QTIP_W2I / QTIP_U_W2 and QTIP_W3I / QTIP_W3 on held-out mixed loss, first10 motor RMSE, gripper RMSE: how much the interfaces + tables recover alone (the main table must give them to every host)",
+      "action_floor": "QTIP_A1W2I / QTIP_W2I and QTIP_A2W3I / QTIP_W3I: first10 motor RMSE with the BF16 future (swap, = the action expert's own error), first10 motor RMSE, gripper RMSE; future NMSE must be identical (the action expert cannot reach the future)",
+      "ravq": "RAVQU_Wb against QTIP_WbI at no more total bits",
+      "future_ratio_max": 0.9,
+      "mixed_ratio_max": 1.0,
+      "go": "per family: RAVQU future NMSE <= future_ratio_max x QTIP_WbI's and mixed loss <= mixed_ratio_max x QTIP_WbI's -> LIBERO-Plus closed loop of RAVQU_Wb paired against QTIP_WbI; QTIP_W2I's closed loop runs in any case (it resets the baseline table)"
+    },
+    "checks": {
+      "k2_bitwise": "on the cluster CPU test: ravq_qtip K = 2 equals the port's quantize_layer bit for bit",
+      "decode": "every K = 1 / K = 4 layer: the packed trellis decodes to the LDLQ output exactly (the port's VERIFY_DECODE)",
+      "bits": "every new layer's bits_total equals storage_bits(m, n, K)",
+      "budget": "every RAVQU arm's total bits <= its budget_of arm's",
+      "future_identity": "QTIP_A1W2I vs QTIP_W2I and QTIP_A2W3I vs QTIP_W3I held-out future NMSE equal (relative <= 1e-6)"
+    },
+    "allocation_job": {
+      "job_name": "fwrv1",
+      "queue": "normal",
+      "execution_queue": "gdev",
+      "gpus": 4,
+      "ncpus": 32,
+      "memory_gb": 400,
+      "walltime": "02:00:00",
+      "soft_deadline_seconds": 6900,
+      "time_basis": "quant: action body 1.0e9 weights at K = 1 + ~1.0e9 video weights at K = 4; the baselines' QTIP W3 took 1.88 GPU-h for 6.0e9 weights, K = 4 ~2x per weight -> ~1 GPU-h, 15-20 min on 4 GPUs plus H_U reads; eval: 7 arms x 80 endpoints x ~3.9 s (query + swap read, tcond 26066073) ~37 GPU-min, ~12 min on 4 GPUs plus ~5 min load"
+    },
+    "loop_job": {
+      "job_name": "fwrvl",
+      "queue": "normal",
+      "execution_queue": "g3",
+      "gpus": 4,
+      "ncpus": 20,
+      "memory_gb": 200,
+      "walltime": "04:00:00",
+      "soft_deadline_seconds": 14100,
+      "arms": "results/ravq/DECISION.json loops, in order",
+      "time_basis": "8 workers (2 per GPU) on one episode queue, ~80 s per episode (26069268): 280 / 8 x 80 s ~47 min per arm plus startup; up to 4 arms ~3.3 h; finished arms are skipped on rN"
+    }
+  },
+  "heldout": {
+    "QTIP_U_W2": {
+      "first10motor_rmse": 0.032398840948008004,
+      "first10motor_mse": 0.0011035398099920712,
+      "future_latent_nmse": 0.05324625272769481,
+      "mixed_loss": 0.003364084218628705,
+      "full32motor_rmse": 0.035440620267763734,
+      "late22motor_rmse": 0.03602131861262023,
+      "first10gripper_rmse": 0.08595653278753161,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.024588405271060768,
+      "first10motor_mse_swap": 0.0006217636451765429,
+      "full32motor_rmse_swap": 0.024653597222641113
+    },
+    "QTIP_W3": {
+      "first10motor_rmse": 0.01363284012186341,
+      "first10motor_mse": 0.0002539286583669309,
+      "future_latent_nmse": 0.01635703679639846,
+      "mixed_loss": 0.0009483589008596027,
+      "full32motor_rmse": 0.015344795503187925,
+      "late22motor_rmse": 0.015705191111192108,
+      "first10gripper_rmse": 0.037689264985965566,
+      "first10gripper_disagreement": 0.0025,
+      "first10motor_rmse_swap": 0.009167584258830175,
+      "first10motor_mse_swap": 8.850964854900667e-05,
+      "full32motor_rmse_swap": 0.009652955725323408
+    },
+    "QTIP_W2I": {
+      "first10motor_rmse": 0.024695285747293384,
+      "first10motor_mse": 0.0007098382629010303,
+      "future_latent_nmse": 0.049842018517665565,
+      "mixed_loss": 0.0028258575250220018,
+      "full32motor_rmse": 0.02884360351017676,
+      "late22motor_rmse": 0.029711500566918406,
+      "first10gripper_rmse": 0.03356375006551389,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.01301763028022833,
+      "first10motor_mse_swap": 0.0001913597161774305,
+      "full32motor_rmse_swap": 0.013610556366620584
+    },
+    "QTIP_A1W2I": {
+      "first10motor_rmse": 0.026743429247289896,
+      "first10motor_mse": 0.0008104858821752713,
+      "future_latent_nmse": 0.049842018517665565,
+      "mixed_loss": 0.002926505136565538,
+      "full32motor_rmse": 0.030416372744366527,
+      "late22motor_rmse": 0.031179842236451802,
+      "first10gripper_rmse": 0.039740420749876645,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.016196141636464743,
+      "first10motor_mse_swap": 0.00028810146000068926,
+      "full32motor_rmse_swap": 0.01698350574588403
+    },
+    "RAVQU_W2": {
+      "first10motor_rmse": 0.020623090851586312,
+      "first10motor_mse": 0.00047849466754996685,
+      "future_latent_nmse": 0.036481862037908284,
+      "mixed_loss": 0.002027314817678416,
+      "full32motor_rmse": 0.023923063406255097,
+      "late22motor_rmse": 0.024716080736834557,
+      "first10gripper_rmse": 0.039713780765305275,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.012706746353069322,
+      "first10motor_mse_swap": 0.00017481113623034618,
+      "full32motor_rmse_swap": 0.01346647156169638
+    },
+    "QTIP_W3I": {
+      "first10motor_rmse": 0.010733313267701307,
+      "first10motor_mse": 0.00018788318819815684,
+      "future_latent_nmse": 0.014862765726866201,
+      "mixed_loss": 0.0008188748606698937,
+      "full32motor_rmse": 0.01223282845458016,
+      "late22motor_rmse": 0.012485589607967994,
+      "first10gripper_rmse": 0.024976117791084107,
+      "first10gripper_disagreement": 0.0037500000000000007,
+      "first10motor_rmse_swap": 0.004973159640212543,
+      "first10motor_mse_swap": 2.761635302022114e-05,
+      "full32motor_rmse_swap": 0.005283010710263625
+    },
+    "QTIP_A2W3I": {
+      "first10motor_rmse": 0.011053779005305842,
+      "first10motor_mse": 0.00019407534837228015,
+      "future_latent_nmse": 0.014862765726866201,
+      "mixed_loss": 0.0008250670249253743,
+      "full32motor_rmse": 0.012517730426043271,
+      "late22motor_rmse": 0.012767972302390265,
+      "first10gripper_rmse": 0.02567641367932083,
+      "first10gripper_disagreement": 0.0037500000000000007,
+      "first10motor_rmse_swap": 0.005549570382572711,
+      "first10motor_mse_swap": 3.434538102169427e-05,
+      "full32motor_rmse_swap": 0.005931994234560988
+    },
+    "RAVQU_W3": {
+      "first10motor_rmse": 0.009745236791786738,
+      "first10motor_mse": 0.00013081350538186596,
+      "future_latent_nmse": 0.01105012985644862,
+      "mixed_loss": 0.0005999415190672152,
+      "full32motor_rmse": 0.01032129368686583,
+      "late22motor_rmse": 0.010344159256783315,
+      "first10gripper_rmse": 0.03366976643592352,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.004555052000796422,
+      "first10motor_mse_swap": 2.2834873351484927e-05,
+      "full32motor_rmse_swap": 0.004807517869630828
+    }
+  },
+  "bits": {
+    "QTIP_W2I": {
+      "bpw": 1.993151680507071,
+      "proxy_nmse_weighted": 0.005820482198738114,
+      "by_role": {
+        "text": {
+          "weight_share": 0.0045315055716209016,
+          "bpw": 2.016826923076923,
+          "proxy": 0.0017625084773708994
+        },
+        "time": {
+          "weight_share": 0.012374495984041693,
+          "bpw": 0.0662411971830986,
+          "proxy": 0.0
+        },
+        "video_body": {
+          "weight_share": 0.8156710028917623,
+          "bpw": 2.0123197115384617,
+          "proxy": 0.006848427026055176
+        },
+        "interface": {
+          "weight_share": 0.00010586675426488134,
+          "bpw": 16.0,
+          "proxy": 0.0
+        },
+        "action_body": {
+          "weight_share": 0.1673171287983102,
+          "bpw": 2.03271484375,
+          "proxy": 0.0013533105833554752
+        }
+      },
+      "upgraded_layers": 0,
+      "upgraded_weight_share": 0.0,
+      "budget": null,
+      "budget_used": 0,
+      "bits_total": 11991433216.0
+    },
+    "QTIP_A1W2I": {
+      "bpw": 1.8258345517087609,
+      "proxy_nmse_weighted": 0.007309210579272786,
+      "by_role": {
+        "text": {
+          "weight_share": 0.0045315055716209016,
+          "bpw": 2.016826923076923,
+          "proxy": 0.0017625084773708994
+        },
+        "time": {
+          "weight_share": 0.012374495984041693,
+          "bpw": 0.0662411971830986,
+          "proxy": 0.0
+        },
+        "video_body": {
+          "weight_share": 0.8156710028917623,
+          "bpw": 2.0123197115384617,
+          "proxy": 0.006848427026055176
+        },
+        "interface": {
+          "weight_share": 0.00010586675426488134,
+          "bpw": 16.0,
+          "proxy": 0.0
+        },
+        "action_body": {
+          "weight_share": 0.1673171287983102,
+          "bpw": 1.03271484375,
+          "proxy": 0.010250955380555146
+        }
+      },
+      "upgraded_layers": 0,
+      "upgraded_weight_share": 0.0,
+      "budget": null,
+      "budget_used": 0,
+      "bits_total": 10984800256.0
+    },
+    "RAVQU_W2": {
+      "bpw": 1.993151680507071,
+      "proxy_nmse_weighted": 0.00551587239758264,
+      "by_role": {
+        "text": {
+          "weight_share": 0.0045315055716209016,
+          "bpw": 2.016826923076923,
+          "proxy": 0.0017625084773708994
+        },
+        "time": {
+          "weight_share": 0.012374495984041693,
+          "bpw": 0.0662411971830986,
+          "proxy": 0.0
+        },
+        "video_body": {
+          "weight_share": 0.8156710028917623,
+          "bpw": 2.2174479166666665,
+          "proxy": 0.004649822226654065
+        },
+        "interface": {
+          "weight_share": 0.00010586675426488134,
+          "bpw": 16.0,
+          "proxy": 0.0
+        },
+        "action_body": {
+          "weight_share": 0.1673171287983102,
+          "bpw": 1.03271484375,
+          "proxy": 0.010250955380555146
+        }
+      },
+      "upgraded_layers": 48,
+      "upgraded_weight_share": 0.1673171287983102,
+      "budget": 1006632960.0,
+      "budget_used": 1006632960.0,
+      "bits_total": 11991433216.0
+    },
+    "QTIP_W3I": {
+      "bpw": 2.9806713177687647,
+      "proxy_nmse_weighted": 0.0014311259123261752,
+      "by_role": {
+        "text": {
+          "weight_share": 0.0045315055716209016,
+          "bpw": 3.016826923076923,
+          "proxy": 0.0003977004346849683
+        },
+        "time": {
+          "weight_share": 0.012374495984041693,
+          "bpw": 0.0662411971830986,
+          "proxy": 0.0
+        },
+        "video_body": {
+          "weight_share": 0.8156710028917623,
+          "bpw": 3.0123197115384617,
+          "proxy": 0.001688350365040419
+        },
+        "interface": {
+          "weight_share": 0.00010586675426488134,
+          "bpw": 16.0,
+          "proxy": 0.0
+        },
+        "action_body": {
+          "weight_share": 0.1673171287983102,
+          "bpw": 3.03271484375,
+          "proxy": 0.0003118945171972124
+        }
+      },
+      "upgraded_layers": 0,
+      "upgraded_weight_share": 0.0,
+      "budget": null,
+      "budget_used": 0,
+      "bits_total": 17932664832.0
+    },
+    "QTIP_A2W3I": {
+      "bpw": 2.8133541889704543,
+      "proxy_nmse_weighted": 0.0016053726584002068,
+      "by_role": {
+        "text": {
+          "weight_share": 0.0045315055716209016,
+          "bpw": 3.016826923076923,
+          "proxy": 0.0003977004346849683
+        },
+        "time": {
+          "weight_share": 0.012374495984041693,
+          "bpw": 0.0662411971830986,
+          "proxy": 0.0
+        },
+        "video_body": {
+          "weight_share": 0.8156710028917623,
+          "bpw": 3.0123197115384617,
+          "proxy": 0.001688350365040419
+        },
+        "interface": {
+          "weight_share": 0.00010586675426488134,
+          "bpw": 16.0,
+          "proxy": 0.0
+        },
+        "action_body": {
+          "weight_share": 0.1673171287983102,
+          "bpw": 2.03271484375,
+          "proxy": 0.0013533105833554752
+        }
+      },
+      "upgraded_layers": 0,
+      "upgraded_weight_share": 0.0,
+      "budget": null,
+      "budget_used": 0,
+      "bits_total": 16926031872.0
+    },
+    "RAVQU_W3": {
+      "bpw": 2.9806713177687647,
+      "proxy_nmse_weighted": 0.001189617477194054,
+      "by_role": {
+        "text": {
+          "weight_share": 0.0045315055716209016,
+          "bpw": 3.016826923076923,
+          "proxy": 0.0003977004346849683
+        },
+        "time": {
+          "weight_share": 0.012374495984041693,
+          "bpw": 0.0662411971830986,
+          "proxy": 0.0
+        },
+        "video_body": {
+          "weight_share": 0.8156710028917623,
+          "bpw": 3.2174479166666665,
+          "proxy": 0.0011786409604738787
+        },
+        "interface": {
+          "weight_share": 0.00010586675426488134,
+          "bpw": 16.0,
+          "proxy": 0.0
+        },
+        "action_body": {
+          "weight_share": 0.1673171287983102,
+          "bpw": 2.03271484375,
+          "proxy": 0.0013533105833554752
+        }
+      },
+      "upgraded_layers": 48,
+      "upgraded_weight_share": 0.1673171287983102,
+      "budget": 1006632960.0,
+      "budget_used": 1006632960.0,
+      "bits_total": 17932664832.0
+    },
+    "QTIP_W3": {
+      "bpw": 3.015861120519598,
+      "proxy_nmse_weighted": 0.001432006280616502
+    },
+    "QTIP_U_W2": {
+      "bpw": 2.0158526103303487,
+      "proxy_nmse_weighted": 0.005824207358468657
+    }
+  },
+  "k4": [
+    {
+      "index": 78,
+      "module": "video_expert.blocks.7.self_attn.o",
+      "estimated": 0.0007044143538040773,
+      "measured": 0.0008618681458756328,
+      "w3": 0.0028951535932719707
+    },
+    {
+      "index": 98,
+      "module": "video_expert.blocks.9.self_attn.o",
+      "estimated": 0.0007486156672005793,
+      "measured": 0.0009094350389204919,
+      "w3": 0.0030324910767376423
+    },
+    {
+      "index": 148,
+      "module": "video_expert.blocks.14.self_attn.o",
+      "estimated": 0.0007524862626270587,
+      "measured": 0.0009124531061388552,
+      "w3": 0.0030561743769794703
+    },
+    {
+      "index": 158,
+      "module": "video_expert.blocks.15.self_attn.o",
+      "estimated": 0.0008343066829039167,
+      "measured": 0.0010117227211594582,
+      "w3": 0.0033889920450747013
+    },
+    {
+      "index": 164,
+      "module": "video_expert.blocks.15.ffn.2",
+      "estimated": 0.0007589006196292263,
+      "measured": 0.000912292452994734,
+      "w3": 0.0030463479924947023
+    },
+    {
+      "index": 167,
+      "module": "video_expert.blocks.16.self_attn.v",
+      "estimated": 0.0007574949415127665,
+      "measured": 0.0009331641485914588,
+      "w3": 0.0031416043639183044
+    },
+    {
+      "index": 168,
+      "module": "video_expert.blocks.16.self_attn.o",
+      "estimated": 0.0009159081269244833,
+      "measured": 0.0011062314733862877,
+      "w3": 0.0036955703981220722
+    },
+    {
+      "index": 174,
+      "module": "video_expert.blocks.16.ffn.2",
+      "estimated": 0.0007725275147357837,
+      "measured": 0.0009292036993429065,
+      "w3": 0.003102479036897421
+    },
+    {
+      "index": 177,
+      "module": "video_expert.blocks.17.self_attn.v",
+      "estimated": 0.0008856235032816989,
+      "measured": 0.0010855111759155989,
+      "w3": 0.003650830825790763
+    },
+    {
+      "index": 178,
+      "module": "video_expert.blocks.17.self_attn.o",
+      "estimated": 0.0010296195083673119,
+      "measured": 0.0012391298078000546,
+      "w3": 0.0041481549851596355
+    },
+    {
+      "index": 184,
+      "module": "video_expert.blocks.17.ffn.2",
+      "estimated": 0.0007748841263470643,
+      "measured": 0.0009331517503596842,
+      "w3": 0.0031165038235485554
+    },
+    {
+      "index": 187,
+      "module": "video_expert.blocks.18.self_attn.v",
+      "estimated": 0.0010043177294732737,
+      "measured": 0.0012227395782247186,
+      "w3": 0.004098436329513788
+    },
+    {
+      "index": 188,
+      "module": "video_expert.blocks.18.self_attn.o",
+      "estimated": 0.001128851028245085,
+      "measured": 0.0013531333534047008,
+      "w3": 0.0045255022123456
+    },
+    {
+      "index": 194,
+      "module": "video_expert.blocks.18.ffn.2",
+      "estimated": 0.0007902784838457617,
+      "measured": 0.0009507423383183777,
+      "w3": 0.0031745415180921555
+    },
+    {
+      "index": 197,
+      "module": "video_expert.blocks.19.self_attn.v",
+      "estimated": 0.0011075251052702598,
+      "measured": 0.001345880446024239,
+      "w3": 0.004505832679569721
+    },
+    {
+      "index": 198,
+      "module": "video_expert.blocks.19.self_attn.o",
+      "estimated": 0.0007895975470383471,
+      "measured": 0.0009619785123504698,
+      "w3": 0.0032271353993564844
+    },
+    {
+      "index": 204,
+      "module": "video_expert.blocks.19.ffn.2",
+      "estimated": 0.0007545207808277307,
+      "measured": 0.0009079558658413589,
+      "w3": 0.0030306659173220396
+    },
+    {
+      "index": 207,
+      "module": "video_expert.blocks.20.self_attn.v",
+      "estimated": 0.0012213669560856896,
+      "measured": 0.0014777048490941525,
+      "w3": 0.004931123927235603
+    },
+    {
+      "index": 208,
+      "module": "video_expert.blocks.20.self_attn.o",
+      "estimated": 0.0008242817488407204,
+      "measured": 0.001003809622488916,
+      "w3": 0.0033696461468935013
+    },
+    {
+      "index": 214,
+      "module": "video_expert.blocks.20.ffn.2",
+      "estimated": 0.0008159084935131877,
+      "measured": 0.000980818527750671,
+      "w3": 0.0032728256192058325
+    },
+    {
+      "index": 217,
+      "module": "video_expert.blocks.21.self_attn.v",
+      "estimated": 0.0013527301268789489,
+      "measured": 0.0016357003478333354,
+      "w3": 0.005477556958794594
+    },
+    {
+      "index": 218,
+      "module": "video_expert.blocks.21.self_attn.o",
+      "estimated": 0.0011448579227520013,
+      "measured": 0.001382933696731925,
+      "w3": 0.004621822386980057
+    },
+    {
+      "index": 224,
+      "module": "video_expert.blocks.21.ffn.2",
+      "estimated": 0.000909804600957196,
+      "measured": 0.001091606798581779,
+      "w3": 0.0036393709015101194
+    },
+    {
+      "index": 227,
+      "module": "video_expert.blocks.22.self_attn.v",
+      "estimated": 0.0012938048973847214,
+      "measured": 0.0015773396007716656,
+      "w3": 0.005277387797832489
+    },
+    {
+      "index": 228,
+      "module": "video_expert.blocks.22.self_attn.o",
+      "estimated": 0.0013593754036950872,
+      "measured": 0.0016234841896221042,
+      "w3": 0.00542052648961544
+    },
+    {
+      "index": 234,
+      "module": "video_expert.blocks.22.ffn.2",
+      "estimated": 0.0009457142551899306,
+      "measured": 0.0011334929149597883,
+      "w3": 0.0037777004763484
+    },
+    {
+      "index": 237,
+      "module": "video_expert.blocks.23.self_attn.v",
+      "estimated": 0.0012022229054602475,
+      "measured": 0.0014709049137309194,
+      "w3": 0.004934289958328009
+    },
+    {
+      "index": 238,
+      "module": "video_expert.blocks.23.self_attn.o",
+      "estimated": 0.001529737683144465,
+      "measured": 0.0018233138835057616,
+      "w3": 0.006070949602872133
+    },
+    {
+      "index": 243,
+      "module": "video_expert.blocks.23.ffn.0",
+      "estimated": 0.0007273538731499002,
+      "measured": 0.0008753628935664892,
+      "w3": 0.002920949598774314
+    },
+    {
+      "index": 244,
+      "module": "video_expert.blocks.23.ffn.2",
+      "estimated": 0.0008855301922980098,
+      "measured": 0.001062848954461515,
+      "w3": 0.0035465569235384464
+    },
+    {
+      "index": 247,
+      "module": "video_expert.blocks.24.self_attn.v",
+      "estimated": 0.0013631558807363547,
+      "measured": 0.0016478041652590036,
+      "w3": 0.005511534865945578
+    },
+    {
+      "index": 248,
+      "module": "video_expert.blocks.24.self_attn.o",
+      "estimated": 0.0011957428415551052,
+      "measured": 0.0014333416474983096,
+      "w3": 0.004784972406923771
+    },
+    {
+      "index": 253,
+      "module": "video_expert.blocks.24.ffn.0",
+      "estimated": 0.0007496043480229688,
+      "measured": 0.0008984465966932476,
+      "w3": 0.002993156900629401
+    },
+    {
+      "index": 257,
+      "module": "video_expert.blocks.25.self_attn.v",
+      "estimated": 0.0013096671362387187,
+      "measured": 0.0015806363662704825,
+      "w3": 0.005274183116853237
+    },
+    {
+      "index": 258,
+      "module": "video_expert.blocks.25.self_attn.o",
+      "estimated": 0.000848006748641623,
+      "measured": 0.001036058645695448,
+      "w3": 0.0034757715184241533
+    },
+    {
+      "index": 264,
+      "module": "video_expert.blocks.25.ffn.2",
+      "estimated": 0.0007400499149993095,
+      "measured": 0.0008918250678107142,
+      "w3": 0.002976839430630207
+    },
+    {
+      "index": 267,
+      "module": "video_expert.blocks.26.self_attn.v",
+      "estimated": 0.0014401745928963737,
+      "measured": 0.0017333778087049723,
+      "w3": 0.005779907573014498
+    },
+    {
+      "index": 268,
+      "module": "video_expert.blocks.26.self_attn.o",
+      "estimated": 0.0009308748341643972,
+      "measured": 0.001130322110839188,
+      "w3": 0.003783747088164091
+    },
+    {
+      "index": 269,
+      "module": "video_expert.blocks.26.cross_attn.q",
+      "estimated": 0.0009418016252261123,
+      "measured": 0.0011170150246471167,
+      "w3": 0.0037146953400224447
+    },
+    {
+      "index": 273,
+      "module": "video_expert.blocks.26.ffn.0",
+      "estimated": 0.0007991466432598322,
+      "measured": 0.0009563066996634007,
+      "w3": 0.0031850188970565796
+    },
+    {
+      "index": 274,
+      "module": "video_expert.blocks.26.ffn.2",
+      "estimated": 0.0007822104710781524,
+      "measured": 0.000940935336984694,
+      "w3": 0.0031394532416015863
+    },
+    {
+      "index": 277,
+      "module": "video_expert.blocks.27.self_attn.v",
+      "estimated": 0.0016010997514218986,
+      "measured": 0.0019213398918509483,
+      "w3": 0.0064149233512580395
+    },
+    {
+      "index": 278,
+      "module": "video_expert.blocks.27.self_attn.o",
+      "estimated": 0.0007945201070064326,
+      "measured": 0.0009740638197399676,
+      "w3": 0.0032729003578424454
+    },
+    {
+      "index": 283,
+      "module": "video_expert.blocks.27.ffn.0",
+      "estimated": 0.0008853615010491066,
+      "measured": 0.001058185356669128,
+      "w3": 0.003524079453200102
+    },
+    {
+      "index": 284,
+      "module": "video_expert.blocks.27.ffn.2",
+      "estimated": 0.0007279318937905605,
+      "measured": 0.0008761259960010648,
+      "w3": 0.0029232462402433157
+    },
+    {
+      "index": 287,
+      "module": "video_expert.blocks.28.self_attn.v",
+      "estimated": 0.0015729084999438541,
+      "measured": 0.00188592413906008,
+      "w3": 0.006291008088737726
+    },
+    {
+      "index": 288,
+      "module": "video_expert.blocks.28.self_attn.o",
+      "estimated": 0.00071059422747218,
+      "measured": 0.0008692180272191763,
+      "w3": 0.002918507670983672
+    },
+    {
+      "index": 297,
+      "module": "video_expert.blocks.29.self_attn.v",
+      "estimated": 0.000964669185319528,
+      "measured": 0.0011754322331398726,
+      "w3": 0.003938501235097647
+    }
+  ],
+  "reading": {
+    "protocol": {
+      "QTIP_W2I": {
+        "mixed_loss": 0.8400079609701033,
+        "first10motor_rmse": 0.7622274447077632,
+        "future_latent_nmse": 0.9360662199565716,
+        "first10gripper_rmse": 0.3904735216400267,
+        "first10motor_rmse_swap": 0.529421495079609
+      },
+      "QTIP_W3I": {
+        "mixed_loss": 0.8634651500899677,
+        "first10motor_rmse": 0.7873130742938853,
+        "future_latent_nmse": 0.9086465911807895,
+        "first10gripper_rmse": 0.6626851916688882,
+        "first10motor_rmse_swap": 0.5424722042148037
+      }
+    },
+    "action_floor": {
+      "QTIP_A1W2I": {
+        "mixed_loss": 1.0356166617220919,
+        "first10motor_rmse": 1.082936618792556,
+        "future_latent_nmse": 1.0,
+        "first10gripper_rmse": 1.1840280264364489,
+        "first10motor_rmse_swap": 1.2441697365659596
+      },
+      "QTIP_A2W3I": {
+        "mixed_loss": 1.0075617955232075,
+        "first10motor_rmse": 1.0298571121154994,
+        "future_latent_nmse": 1.0,
+        "first10gripper_rmse": 1.028038620497166,
+        "first10motor_rmse_swap": 1.1159043312624353
+      }
+    },
+    "ravq": {
+      "RAVQU_W2": {
+        "mixed_loss": 0.7174157931626902,
+        "first10motor_rmse": 0.8351023374510502,
+        "future_latent_nmse": 0.7319499314615032,
+        "first10gripper_rmse": 1.1832343134419423,
+        "first10motor_rmse_swap": 0.9761182396129969,
+        "bits_ratio": 1.0,
+        "go": true
+      },
+      "RAVQU_W3": {
+        "mixed_loss": 0.7326412714348361,
+        "first10motor_rmse": 0.9079430133761316,
+        "future_latent_nmse": 0.7434773621220583,
+        "first10gripper_rmse": 1.3480784610946561,
+        "first10motor_rmse_swap": 0.9159271630785109,
+        "bits_ratio": 1.0,
+        "go": true
+      }
+    },
+    "decision": {
+      "RAVQU_W2": {
+        "reference": "QTIP_W2I",
+        "go": true,
+        "future_ratio": 0.7319499314615032,
+        "mixed_ratio": 0.7174157931626902
+      },
+      "RAVQU_W3": {
+        "reference": "QTIP_W3I",
+        "go": true,
+        "future_ratio": 0.7434773621220583,
+        "mixed_ratio": 0.7326412714348361
+      },
+      "loops": [
+        "QTIP_W2I",
+        "RAVQU_W2",
+        "QTIP_W3I",
+        "RAVQU_W3"
+      ]
+    },
+    "future_share": {
+      "QTIP_U_W2": 0.4365734343729655,
+      "QTIP_W3": 0.6514389154881887,
+      "QTIP_W2I": 0.7304178625207318,
+      "QTIP_A1W2I": 0.6445324140286679,
+      "RAVQU_W2": 0.6346644004928403,
+      "QTIP_W3I": 0.8530131765110633,
+      "QTIP_A2W3I": 0.8230306872575486,
+      "RAVQU_W3": 0.8254394813071769
+    },
+    "checks": {
+      "future_identity_worst": 0.0,
+      "budget_ok": true
+    }
+  }
+}

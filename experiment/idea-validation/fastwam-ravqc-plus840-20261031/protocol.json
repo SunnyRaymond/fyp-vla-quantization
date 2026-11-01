@@ -1,0 +1,153 @@
+{
+  "protocol": "fastwam-ravqc-plus840-20261031-v2",
+  "protocol_changes": [
+    {
+      "rule_id": "fastwam-ravqc-plus840-20261031-v1",
+      "when": "2026-11-01, after fwr840r3 26075168",
+      "change": "added the uncalibrated RAVQU_W2 / RAVQU_W3 arms (panels B + C here, A from their own loops; no held-out gate) ahead of the calibrated ones; install check reference per arm kind (anchor_reference)",
+      "archived": "protocol.v1.json in remote_root",
+      "v1_results": "none: fwr840 26073907, r1 26074318, r2/r3 26075168 ran no episode of a RAVQ arm (gated out or the gate-parse bug that test_gate_cli covers); results/prep (T5 merge, bf16 anchor) is protocol-independent and reused"
+    }
+  ],
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-ravqc-plus840-20261031",
+  "purpose": "LIBERO-Plus panels A + B + C (840 episodes per arm) for the RAVQ arms of fastwam-guided-hessian-20261028: the uncalibrated RAVQU_W2 / RAVQU_W3 (C1 module bit budget + QTIP rounding; panel A already run there, B + C here) and the calibrated RAVQC_W2 / RAVQC_W3 (dense BF16 weights plus calibrated biases, gated by held-out), on the A16 runtime (T5 cache, condition cache + CUDA Graph), paired with BF16 and the W2/W3 QTIP, GPTVQ, QuIP# arms that fastwam-plus-panelc-20261031 brings to 840",
+  "a16": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028",
+    "protocol": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/protocol.json",
+    "sources": [
+      "common.py",
+      "loop_worker.py",
+      "environment.sh"
+    ]
+  },
+  "ravqc": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028",
+    "weights": "results/quantized/<arm>/weights/<index>.pt (weight; bias when calibrated)",
+    "fit": "results/ravqc/<arm>/fit_after.json (the case-2000 row is the install check)",
+    "heldout": "results/ravqc/heldout/<arm>.json against results/heldout/<base>.json",
+    "rule": "user (2026-10-31): an arm goes to the closed loop if its held-out mixed loss is not above its uncalibrated base (RAVQU_Wb)"
+  },
+  "panel_a": {
+    "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "bf16_episodes": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl",
+    "bf16_arm": "bf16",
+    "loops": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/results/loops",
+    "ravq_loops": "/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028/results/loops"
+  },
+  "panel_b": {
+    "protocol": "fastwam-plus-panelb-20261031-v1",
+    "manifest": "/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031/results/panel/manifest.json",
+    "loops": "/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031/results/loops",
+    "index_offset": 280
+  },
+  "panel_c": {
+    "protocol": "fastwam-plus-panelc-20261031-v1",
+    "manifest": "/scratch/users/ntu/yguo017/fastwam-plus-panelc-20261031/results/panel/manifest.json",
+    "t5_cache": "/scratch/users/ntu/yguo017/fastwam-plus-panelc-20261031/results/prep/t5_cache.pt",
+    "t5_complete": "/scratch/users/ntu/yguo017/fastwam-plus-panelc-20261031/results/prep/T5_COMPLETE.json",
+    "loops": "/scratch/users/ntu/yguo017/fastwam-plus-panelc-20261031/results/loops",
+    "index_offset": 560
+  },
+  "t5": "prep/t5_cache.pt = the A16 cache (panel A prompts) merged with the panel-C job's cache (panel B and C prompts); every prompt in both must be bitwise equal; bf16_anchor.pt copied from the A16 prep",
+  "arms": {
+    "RAVQU_W2": {
+      "base": null,
+      "bits": 2,
+      "panels": [
+        "B",
+        "C"
+      ],
+      "uncalibrated": true
+    },
+    "RAVQU_W3": {
+      "base": null,
+      "bits": 3,
+      "panels": [
+        "B",
+        "C"
+      ],
+      "uncalibrated": true
+    },
+    "RAVQC_W2": {
+      "base": "RAVQU_W2",
+      "bits": 2,
+      "panels": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    "RAVQC_W3": {
+      "base": "RAVQU_W3",
+      "bits": 3,
+      "panels": [
+        "A",
+        "B",
+        "C"
+      ]
+    }
+  },
+  "arm_order": [
+    "RAVQU_W2",
+    "RAVQU_W3",
+    "RAVQC_W2",
+    "RAVQC_W3"
+  ],
+  "references": {
+    "BF16": {
+      "weights": null,
+      "bits": 16
+    },
+    "QTIP_W2": {
+      "weights": "QTIP_W2",
+      "bits": 2
+    },
+    "GPTVQ_W2": {
+      "weights": "GPTVQ_W2",
+      "bits": 2
+    },
+    "QUIPSHARP_W2": {
+      "weights": "QUIPSHARP_W2",
+      "bits": 2
+    },
+    "QTIP_W3": {
+      "weights": "QTIP_W3",
+      "bits": 3
+    },
+    "GPTVQ_W3": {
+      "weights": "GPTVQ_W3",
+      "bits": 3
+    },
+    "QUIPSHARP_W3": {
+      "weights": "QUIPSHARP_W3",
+      "bits": 3
+    }
+  },
+  "reference_sources": "panel A: the A16 loops (BF16: rotation-baselines JSONL); panel B: fastwam-plus-panelb-20261031 for BF16 and W2, fastwam-plus-panelc-20261031 for W3; panel C: fastwam-plus-panelc-20261031. RAVQU_W2 / RAVQU_W3 panel A: fastwam-guided-hessian-20261028 loops; their B + C run here",
+  "schedule": {
+    "rule": "panel C's: every worker slot picks the arm with the most unclaimed episodes per worker; it joins an arm that already has workers only if unclaimed / active >= join_min; claims by atomic mkdir on GPFS",
+    "slots_per_gpu": 2,
+    "join_min": 6,
+    "t5_wait_seconds": 7200,
+    "lock_stale_seconds": 120
+  },
+  "allocation": {
+    "job_name": "fwr840",
+    "queue": "normal",
+    "execution_queue": "g2",
+    "select": "1:ncpus=12:mem=200gb:ngpus=2",
+    "gpus": 2,
+    "ncpus": 12,
+    "memory_gb": 200,
+    "ncpus_basis": "4 loop workers ~2 busy cores each; PBS raises it to 16 per GPU on GPU queues, worker threads follow Resource_List.ncpus",
+    "walltime": "12:00:00",
+    "time_basis": "user (2026-10-31): one 2-GPU job, 840 episodes per arm; ~79 s per episode / 4 slots. RAVQU only (fwr840u, 2026-11-01): 2 arms x 560 = 1120 episodes ~6.1 h plus ~15 min load. RAVQC: 840 per kept arm, ~4.6 h each. The gate waits up to 4 h for the calibration job's DECISION.json; an uncalibrated arm needs none of it",
+    "gpu_memory_note": "one worker ~14.8 GB on an A100-40GB, two slots per GPU"
+  },
+  "ravqu": {
+    "weights": "fastwam-guided-hessian-20261028 results/quantized/<arm>/weights/<index>.pt (dense BF16, no bias; links to the QTIP_Wb / QTIP_W(b+1) layer files the module budget picked)",
+    "anchor": "panel_a.ravq_loops/<arm>/worker_0/startup.json anchor_action_vs_bf16.first10_motor_rmse: the case-2000 anchor of its own panel-A loop on the same A16 runtime (RAVQU_W2 26073056: 0.0216015)",
+    "panel_a": "panel_a.ravq_loops/<arm>/episodes (280, run in fastwam-guided-hessian-20261028); this job runs B + C",
+    "why": "2026-11-01: RAVQC r3 26075166 failed the held-out gate (W2 1.006x, W3 1.260x of RAVQU), while RAVQU itself is 0.72x (W2) / 0.73x (W3) of the fair QTIP reference on held-out mixed loss; panel A alone (RAVQU_W2 205 vs QTIP_W2 204) cannot rank quantizers, so the uncalibrated method gets its own 840. It is also the paired control any later RAVQC 840 needs"
+  }
+}

@@ -1,0 +1,150 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# RAVQ gripper attribution (ravq.json trace_job): replay the RAVQU_W2 / QTIP_W2 discordant closed-loop episodes with
+# per-step gripper logging (trace_worker.py, A16 loop runtime), then label them on the CPU (results/ravq/trace).
+# fwrvt = gdev x 4 GPUs, 2 workers per GPU. Finished replays are skipped, so fwrvtrN resumes.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028
+PARENT_RUNTIME=/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-loss-pair-20261022/artifacts/25921795.pbs101
+BASELINE_ROOT=/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028
+PILOT_ROOT=/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SMOOTH_ROOT=/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006
+SOURCE_ROOT=/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006
+R128_ROOT=/scratch/users/ntu/yguo017/fastwam-r128-improvements-20261021
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" || die 'PBS_JOBID is required'
+test -n "${PBS_NODEFILE:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS_NODEFILE is missing or empty'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Current host is outside the PBS allocation'
+FW_JOB=${PBS_JOBNAME:-}
+[[ "$FW_JOB" =~ ^fwrvt(r[0-9])?$ ]] || die "Unknown job name: $FW_JOB"
+QUEUE=gdev; NG=4; FW_SOFT_DEADLINE_SECONDS=5100
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'PBS job is not running'
+grep -Eq "^[[:space:]]*Job_Name[[:space:]]*=[[:space:]]*${PBS_JOBNAME}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die 'PBS job name differs'
+grep -Eiq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die "PBS did not route the job to $QUEUE"
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+
+FW_JOB_START_EPOCH=$(date +%s)
+FW_CPU_THREADS=$(( NCPUS / NG ))
+FW_SAVE_RESERVE_SECONDS=300
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+OUT=$ARTIFACTS
+RESULTS=$NEW_ROOT/results
+ROOT=$PILOT_ROOT
+DIAG_ROOT=$NEW_ROOT
+export FW_JOB_START_EPOCH FW_SOFT_DEADLINE_SECONDS FW_CPU_THREADS FW_SAVE_RESERVE_SECONDS FW_JOB
+export ROOT BASE SIF DIAG_ROOT NEW_ROOT SMOOTH_ROOT SOURCE_ROOT R128_ROOT ARTIFACTS
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+printf 'PBS_JOBID=%s host=%s start_epoch=%s route=%s gpus=%s\n' "$PBS_JOBID" "$HOST" "$FW_JOB_START_EPOCH" "$QUEUE" "$NG"
+
+GPU_MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  if [[ -n "$GPU_MONITOR_PID" ]]; then kill "$GPU_MONITOR_PID" 2>/dev/null; wait "$GPU_MONITOR_PID" 2>/dev/null; fi
+  (( rc == 0 )) || rm -f "$OUT/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$OUT/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+for name in protocol.json ravq.json run_ravq_trace.pbs environment.sh trace_worker.py; do
+  test -s "$NEW_ROOT/$name" || { echo "Uploaded source missing: $name" >&2; exit 65; }
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+RV_JSON=$ARTIFACTS/ravq.json
+source "$ARTIFACTS/environment.sh"
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || { echo "Expected $NG allocated GPUs, got ${#GPU_IDS[@]}" >&2; exit 65; }
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || exit 65
+  GPU_UUIDS+=("$uuid")
+done
+ME=$(id -un)
+(
+  n=0
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    if (( n % 4 == 0 )); then  # busy cores of this user's processes over 2 s (second top frame), against the request
+      top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+        '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+        || echo CPU_SAMPLE_ERROR
+    fi
+    n=$(( n + 1 ))
+    sleep 15
+  done
+) & GPU_MONITOR_PID=$!
+
+cd "$ARTIFACTS"
+
+python3 - "$BASELINE_ROOT/protocol.json" <<'PY' > "$ARTIFACTS/engine.txt"
+import json, sys
+p = json.load(open(sys.argv[1]))
+print(p["roots"]["engine_source"]); print(" ".join(p["engine_files"]))
+PY
+mapfile -t ENGINE < "$ARTIFACTS/engine.txt"
+test "${#ENGINE[@]}" -eq 2 || die 'Cannot read the engine configuration'
+ENGINE_SOURCE=${ENGINE[0]}; read -r -a ENGINE_FILES <<< "${ENGINE[1]}"; WPG=2
+
+# Replay directory: the A16 loop worker and engine files plus trace_worker.py; a protocol naming both arms under this
+# root. QTIP_W2's weights stay the baseline's (results/quantized/QTIP_W2 links there when absent).
+L=$ARTIFACTS/loop
+mkdir -p "$L"
+for name in common.py loop_worker.py environment.sh; do
+  test -s "$BASELINE_ROOT/$name" || die "Baseline loop source missing: $name"
+  cp "$BASELINE_ROOT/$name" "$L/"
+done
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+  cp "$ENGINE_SOURCE/$name" "$L/"
+done
+cp "$ARTIFACTS/trace_worker.py" "$L/"
+python3 - "$BASELINE_ROOT/protocol.json" "$L/protocol.json" "$NEW_ROOT" "$ARTIFACTS/ravq.json" <<'PY'
+import json, sys
+p, g = json.load(open(sys.argv[1])), json.load(open(sys.argv[4]))
+arms = {a: dict(method="qtip", bits=2) for a in g["trace_job"]["pair"]}
+p.update(protocol="fastwam-guided-hessian-20261028-v1", remote_root=sys.argv[3], arm_priority=list(arms), arms=arms)
+json.dump(p, open(sys.argv[2], "w"), indent=2)
+PY
+ln -sfn "$BASELINE_ROOT/results/prep" "$RESULTS/prep"
+[[ -e "$RESULTS/quantized/QTIP_W2" ]] || ln -s "$BASELINE_ROOT/results/quantized/QTIP_W2" "$RESULTS/quantized/QTIP_W2"
+
+(
+  ARTIFACTS=$L; DIAG_ROOT=$L; FW_CPU_THREADS=$(( NCPUS / (NG * WPG) ))
+  source "$L/environment.sh"
+  cd "$L"
+  TP=(--protocol "$L/protocol.json" --trace "$RV_JSON")
+  workers=$(( NG * WPG ))
+  echo "STEP trace workers=$workers $(date -u +%H:%M:%S)"
+  for (( w = 0; w < workers; w++ )); do
+    ( CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$(( w / WPG ))]} run_python "$L/trace_worker.py" "${TP[@]}" --worker "$w"         --workers "$workers" > "$OUT/trace_$w.log" 2>&1 ) &
+    sleep 10
+  done
+  for (( w = 0; w < workers; w++ )); do
+    wait -n || { for f in "$OUT"/trace_*.log; do tail -c 4000 "$f"; done; exit 1; }
+  done
+  echo "STEP analyze $(date -u +%H:%M:%S)"
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$L/trace_worker.py" "${TP[@]}" --analyze
+) || die 'trace failed'
+cat "$RESULTS/ravq/trace/RESULTS.zh.md"
+
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

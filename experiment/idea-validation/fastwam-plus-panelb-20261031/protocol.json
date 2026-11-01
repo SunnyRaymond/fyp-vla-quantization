@@ -1,0 +1,47 @@
+{
+  "protocol": "fastwam-plus-panelb-20261031-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031",
+  "purpose": "Second LIBERO-Plus 280 panel (panel B) for the A16 comparison arms, so each arm has 560 closed-loop episodes with panel A; same runtime as fastwam-a16-baselines-20261028 (dequantized dense BF16 weights, T5 cache, condition cache + CUDA Graph)",
+  "a16": {
+    "root": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028",
+    "protocol": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/protocol.json",
+    "sources": ["common.py", "loop_worker.py", "environment.sh"]
+  },
+  "panel_a": {
+    "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+    "bf16_episodes": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl",
+    "bf16_arm": "bf16",
+    "loops": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/results/loops"
+  },
+  "panel_b": {
+    "selection": "from each of the 28 suite/dimension cells of the 1,400-row official pilot pool, drop the 10 panel-A variants and pick 10 of the remaining 40 with the panel-A greedy balance (original_task, subtype, task/subtype pair, difficulty), seed 20261031 + cell index",
+    "seed": 20261031,
+    "per_cell": 10,
+    "index_offset": 280,
+    "seeds": "slot index = 280 + position, so env seed 800000000 + 1000*index and sampler seeds 900000000 + 1000*index + replan never repeat panel A",
+    "invalid_rule": "a variant whose task completes during the 30 dummy settling steps is invalid; settling uses no policy action, so validity is the same for every arm and the slot is dropped from every arm"
+  },
+  "arms": {
+    "QUIPSHARP_W2": {"weights": "QUIPSHARP_W2"},
+    "GPTVQ_W2": {"weights": "GPTVQ_W2"},
+    "QTIP_W2": {"weights": "QTIP_W2"},
+    "BF16": {"weights": null}
+  },
+  "arm_order": ["QUIPSHARP_W2", "GPTVQ_W2", "QTIP_W2", "BF16"],
+  "schedule": {
+    "rule": "every worker slot picks the arm with the most unclaimed episodes per worker (unclaimed / (active + 1)); it joins an arm that already has workers only if unclaimed / active >= join_min, so a reload (~5.5 min) is paid only while the arm still has several episodes per worker left; episodes are claimed by atomic mkdir on GPFS, so slots on both nodes share one queue per arm",
+    "slots_per_gpu": 2,
+    "join_min": 6,
+    "t5_wait_seconds": 2400,
+    "lock_stale_seconds": 120
+  },
+  "allocation": {
+    "job_name": "fwpb1",
+    "queue": "normal",
+    "execution_queue": "g4",
+    "select": "1:ncpus=64:mem=440gb:ngpus=4:mpiprocs=1+1:ncpus=16:mem=110gb:ngpus=1:mpiprocs=1",
+    "nodes": [{"gpus": 4, "ncpus": 64}, {"gpus": 1, "ncpus": 16}],
+    "walltime": "04:00:00",
+    "gpu_memory_note": "one worker holds ~14.8 GB on an A100-40GB (26069268: 29.6 GB for two), so two slots per GPU"
+  }
+}

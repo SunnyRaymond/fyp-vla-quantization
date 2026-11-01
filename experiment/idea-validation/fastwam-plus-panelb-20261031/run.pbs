@@ -1,0 +1,164 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+#PBS -l place=scatter
+# Panel-B closed loops for the A16 comparison arms on g4: node 0 (4 GPUs) + node 1 (1 GPU), two worker slots per GPU.
+#   1. panel.py builds (or re-verifies) the panel-B manifest; sched.py init drops stale claims of a previous attempt
+#   2. slot 0 builds the panel-B T5 cache first; slot 1 (same GPU) waits for it; every other slot loads its model at
+#      once and waits for the cache inside panel_worker
+#   3. slots on both nodes pull arms from sched.py (most unclaimed episodes per worker; reload only while worth it)
+#   4. analysis_b.py: per-arm panel-B summaries and the 560-episode table with panel A
+# Episodes are saved one by one, so a resubmitted job continues where this one stopped.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$HOST" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+a = json.load(open(p["a16"]["protocol"]))
+r, al, s = a["roots"], p["allocation"], p["schedule"]
+for value in (al["execution_queue"], al["nodes"][0]["gpus"], al["nodes"][0]["ncpus"], al["nodes"][1]["gpus"],
+              al["nodes"][1]["ncpus"], s["slots_per_gpu"], p["a16"]["root"], " ".join(p["a16"]["sources"]),
+              r["pilot"], r["base"], r["old_banks"], r["old_inputs"], r["sif"], r["engine_source"],
+              " ".join(a["engine_files"]), " ".join(p["arm_order"])):
+    print(value)
+PY
+)
+test "${#CFG[@]}" -eq 16 || die 'Malformed protocol'
+EXEC_QUEUE=${CFG[0]}; NODE0_GPUS=${CFG[1]}; NODE0_NCPUS=${CFG[2]}; NODE1_GPUS=${CFG[3]}; NODE1_NCPUS=${CFG[4]}
+SLOTS_PER_GPU=${CFG[5]}; A16_ROOT=${CFG[6]}; read -r -a A16_SOURCES <<< "${CFG[7]}"
+ROOT=${CFG[8]}; BASE=${CFG[9]}; SMOOTH_ROOT=${CFG[10]}; SOURCE_ROOT=${CFG[11]}; SIF=${CFG[12]}
+ENGINE_SOURCE=${CFG[13]}; read -r -a ENGINE_FILES <<< "${CFG[14]}"; read -r -a ARMS <<< "${CFG[15]}"
+
+ALLOCATION_QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the live PBS allocation'
+grep -Eq '^[[:space:]]*job_state[[:space:]]*=[[:space:]]*R([[:space:]]|$)' <<< "$ALLOCATION_QSTAT" || die 'Job not running'
+grep -Eq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${EXEC_QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" \
+  || die "PBS did not route this job to $EXEC_QUEUE"
+mapfile -t HOSTS < <(awk -F. '!seen[$1]++ {print $1}' "$PBS_NODEFILE")
+test "${#HOSTS[@]}" -eq 2 || die "Expected 2 nodes, PBS_NODEFILE has ${#HOSTS[@]}"
+test "${HOSTS[0]}" == "$HOST" || die "This script must run on the first node ${HOSTS[0]}, not $HOST"
+
+DIAG_ROOT=$NEW_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+NODE_TAG=node0
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS FW_JOB_START_EPOCH NODE_TAG
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+echo "JOB=$PBS_JOBID QUEUE=$EXEC_QUEUE NODES=${HOSTS[*]} ARMS=${ARMS[*]} START=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+MONITOR_PID=
+PBSDSH_PID=
+SLOT_PIDS=()
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  (( rc == 0 )) || [[ -e "$ARTIFACTS/FAILED" ]] || printf '%s node0 run.pbs exited %s\n' "$(date -u +%FT%TZ)" "$rc" >> "$ARTIFACTS/FAILED"
+  for pid in "${SLOT_PIDS[@]:-}"; do [[ -n "$pid" ]] && { pkill -TERM -P "$pid" 2>/dev/null; kill -TERM "$pid" 2>/dev/null; }; done
+  if [[ -n "$PBSDSH_PID" ]]; then
+    for _ in $(seq 1 18); do kill -0 "$PBSDSH_PID" 2>/dev/null || break; sleep 5; done  # node 1 sees FAILED within 20 s
+    kill -TERM "$PBSDSH_PID" 2>/dev/null
+  fi
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+for name in protocol.json run.pbs node.sh slots.sh panel.py sched.py t5_prep.py panel_worker.py analysis_b.py; do
+  test -s "$NEW_ROOT/$name" || die "Uploaded source missing: $name"
+  cp "$NEW_ROOT/$name" "$ARTIFACTS/"
+done
+for name in "${A16_SOURCES[@]}"; do
+  test -s "$A16_ROOT/$name" || die "A16 source missing: $name"
+  cp "$A16_ROOT/$name" "$ARTIFACTS/"
+done
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+  cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+done
+
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+  test "${#GPU_IDS[@]}" -eq "$NODE0_GPUS" || die "Expected $NODE0_GPUS GPUs on node 0, got ${#GPU_IDS[@]}"
+  GPU_UUIDS=()
+  for gpu in "${GPU_IDS[@]}"; do GPU_UUIDS+=("$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')"); done
+else
+  mapfile -t GPU_UUIDS < <(nvidia-smi --query-gpu=uuid --format=csv,noheader | tr -d '[:blank:]')
+  test "${#GPU_UUIDS[@]}" -eq "$NODE0_GPUS" || die "No CUDA_VISIBLE_DEVICES and nvidia-smi shows ${#GPU_UUIDS[@]} GPUs"
+fi
+for uuid in "${GPU_UUIDS[@]}"; do [[ "$uuid" == GPU-* ]] || die "Bad GPU UUID '$uuid'"; done
+
+source "$ARTIFACTS/environment.sh"
+source "$ARTIFACTS/slots.sh"
+command -v python3.11 > /dev/null || die "python3.11 missing after module load"
+monitor "$NODE0_NCPUS" "${GPU_UUIDS[@]}" & MONITOR_PID=$!
+
+python3.11 "$ARTIFACTS/panel.py" --protocol "$ARTIFACTS/protocol.json"
+python3.11 "$ARTIFACTS/sched.py" init --protocol "$ARTIFACTS/protocol.json"
+
+NODE0_SLOTS=$(( NODE0_GPUS * SLOTS_PER_GPU ))
+NODE1_SLOTS=$(( NODE1_GPUS * SLOTS_PER_GPU ))
+cat > "$ARTIFACTS/node_env.sh" <<EOF
+export NEW_ROOT=$NEW_ROOT ROOT=$ROOT BASE=$BASE SMOOTH_ROOT=$SMOOTH_ROOT SOURCE_ROOT=$SOURCE_ROOT DIAG_ROOT=$DIAG_ROOT
+export SIF=$SIF ARTIFACTS=$ARTIFACTS RESULTS=$RESULTS FW_JOB_START_EPOCH=$FW_JOB_START_EPOCH
+export PARENT_JOBID=$PBS_JOBID PARENT_NODEFILE=$PBS_NODEFILE NODE0_HOST=${HOSTS[0]} NODE1_HOST=${HOSTS[1]}
+export NODE1_GPUS=$NODE1_GPUS NODE1_NCPUS=$NODE1_NCPUS NODE1_SLOTS=$NODE1_SLOTS NODE1_FIRST_SLOT=$NODE0_SLOTS
+export SLOTS_PER_GPU=$SLOTS_PER_GPU
+EOF
+rm -rf "$ARTIFACTS/node1_claim"
+/opt/pbs/bin/pbsdsh -- /bin/bash -l "$ARTIFACTS/node.sh" "$ARTIFACTS/node_env.sh" & PBSDSH_PID=$!
+echo "NODE1_LAUNCHED pbsdsh_pid=$PBSDSH_PID"
+
+THREADS=$(( NODE0_NCPUS / NODE0_SLOTS > 0 ? NODE0_NCPUS / NODE0_SLOTS : 1 ))
+t5_then_slot() {  # slot 0: build the T5 cache, then work like any other slot
+  if ! CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} FW_CPU_THREADS=$THREADS run_python "$ARTIFACTS/t5_prep.py" \
+      --protocol "$ARTIFACTS/protocol.json" > "$ARTIFACTS/t5_prep.log" 2>&1; then
+    tail -c 4000 "$ARTIFACTS/t5_prep.log"; fail 'T5 cache build failed'; return 1
+  fi
+  tail -n 2 "$ARTIFACTS/t5_prep.log"
+  slot_loop 0 "${GPU_UUIDS[0]}" "$THREADS"
+}
+wait_t5_then_slot() {  # slot 1 shares GPU 0 with the T5 build; it loads only after the cache exists
+  local waited=0
+  until [[ -s "$RESULTS/prep/T5_COMPLETE.json" ]]; do
+    [[ -e "$ARTIFACTS/FAILED" || -e "$RESULTS/prep/T5_FAILED.json" ]] && return 1
+    sleep 15; waited=$(( waited + 15 ))
+  done
+  echo "SLOT1_T5_READY after ${waited}s"
+  slot_loop 1 "${GPU_UUIDS[0]}" "$THREADS"
+}
+t5_then_slot & SLOT_PIDS+=("$!")
+wait_t5_then_slot & SLOT_PIDS+=("$!")
+for (( slot = 2; slot < NODE0_SLOTS; slot++ )); do
+  sleep 10
+  slot_loop "$slot" "${GPU_UUIDS[$(( slot / SLOTS_PER_GPU ))]}" "$THREADS" & SLOT_PIDS+=("$!")
+done
+
+supervise "${SLOT_PIDS[@]}" || die 'A node-0 slot failed (see FAILED)'
+SLOT_PIDS=()
+echo "NODE0_DONE $(date -u +%H:%M:%S); waiting for node 1"
+while kill -0 "$PBSDSH_PID" 2>/dev/null; do
+  [[ -e "$ARTIFACTS/FAILED" ]] && die 'Node 1 failed (see FAILED)'
+  sleep 20
+done
+wait "$PBSDSH_PID" || die 'pbsdsh reported a failure'
+PBSDSH_PID=
+[[ -e "$ARTIFACTS/FAILED" ]] && die 'A slot failed (see FAILED)'
+[[ -e "$ARTIFACTS/node1_claim" ]] || die 'No pbsdsh task ran on node 1'
+python3.11 "$ARTIFACTS/sched.py" status --protocol "$ARTIFACTS/protocol.json"
+
+python3.11 "$ARTIFACTS/analysis_b.py" --protocol "$ARTIFACTS/protocol.json"
+for arm in "${ARMS[@]}"; do date -u +%Y-%m-%dT%H:%M:%SZ > "$RESULTS/loops/$arm/DONE"; done
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

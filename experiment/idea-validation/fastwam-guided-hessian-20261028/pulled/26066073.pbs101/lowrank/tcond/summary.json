@@ -1,0 +1,300 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26066073.pbs101",
+  "tcond": {
+    "purpose": "Attribution after tfdiag: 86% of the teacher-forced future gradient energy and its shared part sit in the video expert's 3 time-conditioning Linears (time_embedding.0/.2, time_projection.1). Their inputs are sinusoidal embeddings of the timestep only (per token: t, frame 0 at 0), so under the fixed 10-step schedule their outputs take a handful of values per expert, the same for every context. How much of W2's held-out future error do they carry? Restoring them to the BF16 masters gives the outputs exactly; a per-timestep table of those outputs gives the same at a negligible cost.",
+    "arms": {
+      "U_TV": {
+        "arm": "QTIP_TV_W2",
+        "base": "QTIP_U_W2",
+        "groups": [
+          "video_time"
+        ]
+      },
+      "U_TA": {
+        "arm": "QTIP_TA_W2",
+        "base": "QTIP_U_W2",
+        "groups": [
+          "action_time"
+        ]
+      },
+      "U_TVA": {
+        "arm": "QTIP_TVA_W2",
+        "base": "QTIP_U_W2",
+        "groups": [
+          "video_time",
+          "action_time"
+        ]
+      },
+      "E_TVA": {
+        "arm": "QTIP_LRE_TVA_W2",
+        "base": "QTIP_LRE_W2",
+        "groups": [
+          "video_time",
+          "action_time"
+        ]
+      }
+    },
+    "install": "the base arm (U: QTIP W2; E: QTIP W2 plus E's BF16 factors), then the Linears of the listed groups get their BF16 master weights; on E their branch factors are zeroed",
+    "modules_per_group": 3,
+    "evaluation": "held-out 40x2 + C1 swap (evaluate), against results/heldout/QTIP_U_W2.json and QTIP_LRE_W2.json",
+    "input_check": {
+      "samples": [
+        [
+          2000,
+          0
+        ],
+        [
+          2047,
+          1
+        ]
+      ],
+      "basis": "BF16, before any install: every call's input to the 6 time-conditioning Linears must be identical across two different contexts at different sampler seeds (max abs 0), and the distinct input rows per expert give the table size"
+    },
+    "bits": "as BF16 weights: base bpw + sum (16 n - host bits) / target weights; as a table: base bpw + 16 x distinct timesteps x (out of time_embedding.2 + out of time_projection.1) / target weights",
+    "reading": {
+      "primary": "r = held-out future NMSE of U_TV over U's",
+      "carries_max": 0.9,
+      "negligible_min": 0.97,
+      "carries": "r <= 0.9: the timestep-conditioning path carries at least a tenth of W2's held-out future error and its fix is exact and context-free: C2 v3 builds on per-timestep conditioning tables (any denoising WAM with a fixed schedule, joint DiT included); next the closed loop of U_TV against U",
+      "partial": "0.9 < r <= 0.97: a minor share; reported next to E_TVA before deciding",
+      "negligible": "r > 0.97: the shared local error tfdiag found is not where W2's future error comes from; weight-side future repair on this host is exhausted and C2 turns to the action side"
+    },
+    "allocation": {
+      "job_name": "fwtc1",
+      "queue": "normal",
+      "execution_queue": "g1",
+      "gpus": 1,
+      "ncpus": 4,
+      "memory_gb": 100,
+      "walltime": "04:00:00",
+      "soft_deadline_seconds": 13500,
+      "time_basis": "load ~10 min, input check 2 queries, 4 arms x held-out 40 x 2 with the swap reader ~20 min each (26060556): ~1.5 h"
+    }
+  },
+  "input_check": {
+    "protocol": "fastwam-guided-hessian-20261028-v1",
+    "pbs_jobid": "26066073.pbs101",
+    "samples": [
+      [
+        2000,
+        0
+      ],
+      [
+        2047,
+        1
+      ]
+    ],
+    "modules": {
+      "video_expert.time_embedding.0": {
+        "calls": 11,
+        "max_abs": 0.0,
+        "distinct_rows": 11,
+        "out_features": 3072,
+        "in_features": 256
+      },
+      "video_expert.time_embedding.2": {
+        "calls": 11,
+        "max_abs": 0.0,
+        "distinct_rows": 11,
+        "out_features": 3072,
+        "in_features": 3072
+      },
+      "video_expert.time_projection.1": {
+        "calls": 11,
+        "max_abs": 0.0,
+        "distinct_rows": 11,
+        "out_features": 18432,
+        "in_features": 3072
+      },
+      "action_expert.time_embedding.0": {
+        "calls": 10,
+        "max_abs": 0.0,
+        "distinct_rows": 10,
+        "out_features": 1024,
+        "in_features": 256
+      },
+      "action_expert.time_embedding.2": {
+        "calls": 10,
+        "max_abs": 0.0,
+        "distinct_rows": 10,
+        "out_features": 1024,
+        "in_features": 1024
+      },
+      "action_expert.time_projection.1": {
+        "calls": 10,
+        "max_abs": 0.0,
+        "distinct_rows": 10,
+        "out_features": 6144,
+        "in_features": 1024
+      }
+    },
+    "worst": 0.0
+  },
+  "bits": {
+    "QTIP_TV_W2": {
+      "base": "QTIP_U_W2",
+      "base_bpw": 2.0158526103303487,
+      "bpw_weights": 2.171257516624655,
+      "bpw_table": 1.9941121404657798,
+      "modules": [
+        "video_expert.time_embedding.0",
+        "video_expert.time_embedding.2",
+        "video_expert.time_projection.1"
+      ]
+    },
+    "QTIP_TA_W2": {
+      "base": "QTIP_U_W2",
+      "base_bpw": 2.0158526103303487,
+      "bpw_weights": 2.033493211422036,
+      "bpw_table": 2.013466353264764,
+      "modules": [
+        "action_expert.time_embedding.0",
+        "action_expert.time_embedding.2",
+        "action_expert.time_projection.1"
+      ]
+    },
+    "QTIP_TVA_W2": {
+      "base": "QTIP_U_W2",
+      "base_bpw": 2.0158526103303487,
+      "bpw_weights": 2.188898117716342,
+      "bpw_table": 1.9917258834001952,
+      "modules": [
+        "video_expert.time_embedding.0",
+        "video_expert.time_embedding.2",
+        "video_expert.time_projection.1",
+        "action_expert.time_embedding.0",
+        "action_expert.time_embedding.2",
+        "action_expert.time_projection.1"
+      ]
+    },
+    "QTIP_LRE_TVA_W2": {
+      "base": "QTIP_LRE_W2",
+      "base_bpw": 2.0571340703724568,
+      "bpw_weights": 2.2297384095477515,
+      "bpw_table": 2.0325661752316044,
+      "modules": [
+        "video_expert.time_embedding.0",
+        "video_expert.time_embedding.2",
+        "video_expert.time_projection.1",
+        "action_expert.time_embedding.0",
+        "action_expert.time_embedding.2",
+        "action_expert.time_projection.1"
+      ]
+    }
+  },
+  "heldout": {
+    "QTIP_TV_W2": {
+      "first10motor_rmse": 0.03250376305077225,
+      "first10motor_mse": 0.0011103497054136824,
+      "future_latent_nmse": 0.053215425985399634,
+      "mixed_loss": 0.0033695853810058905,
+      "full32motor_rmse": 0.035404369817115366,
+      "late22motor_rmse": 0.035929666063748304,
+      "first10gripper_rmse": 0.07876540981233121,
+      "first10gripper_disagreement": 0.00375,
+      "first10motor_rmse_swap": 0.02462578371632844,
+      "first10motor_mse_swap": 0.000623165560682537,
+      "full32motor_rmse_swap": 0.024632460041902955
+    },
+    "QTIP_TA_W2": {
+      "first10motor_rmse": 0.03199881592299789,
+      "first10motor_mse": 0.0010799020987178666,
+      "future_latent_nmse": 0.05324625272769481,
+      "mixed_loss": 0.0033404465037165207,
+      "full32motor_rmse": 0.035059307934716344,
+      "late22motor_rmse": 0.03562749268021435,
+      "first10gripper_rmse": 0.08812184915877878,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.024097980046644808,
+      "first10motor_mse_swap": 0.0005998437081871089,
+      "full32motor_rmse_swap": 0.024173123762011528
+    },
+    "QTIP_TVA_W2": {
+      "first10motor_rmse": 0.032079721125774084,
+      "first10motor_mse": 0.0010855342443392146,
+      "future_latent_nmse": 0.053215425985399634,
+      "mixed_loss": 0.0033447698995587413,
+      "full32motor_rmse": 0.03502135458402336,
+      "late22motor_rmse": 0.03554204937536269,
+      "first10gripper_rmse": 0.08085257480852305,
+      "first10gripper_disagreement": 0.00375,
+      "first10motor_rmse_swap": 0.02415283205918968,
+      "first10motor_mse_swap": 0.0006019953816576162,
+      "full32motor_rmse_swap": 0.024146215594373643
+    },
+    "QTIP_LRE_TVA_W2": {
+      "first10motor_rmse": 0.026278954918961973,
+      "first10motor_mse": 0.0007752692623398616,
+      "future_latent_nmse": 0.05277791739208623,
+      "mixed_loss": 0.0030159307345456908,
+      "full32motor_rmse": 0.030960389715619388,
+      "late22motor_rmse": 0.032150855695363134,
+      "first10gripper_rmse": 0.027470786875346674,
+      "first10gripper_disagreement": 0.00375,
+      "first10motor_rmse_swap": 0.015594663470983506,
+      "first10motor_mse_swap": 0.00025781539943636744,
+      "full32motor_rmse_swap": 0.01697223649825901
+    },
+    "QTIP_U_W2": {
+      "first10motor_rmse": 0.032398840948008004,
+      "first10motor_mse": 0.0011035398099920712,
+      "future_latent_nmse": 0.05324625272769481,
+      "mixed_loss": 0.003364084218628705,
+      "full32motor_rmse": 0.035440620267763734,
+      "late22motor_rmse": 0.03602131861262023,
+      "first10gripper_rmse": 0.08595653278753161,
+      "first10gripper_disagreement": 0.005000000000000001,
+      "first10motor_rmse_swap": 0.024588405271060768,
+      "first10motor_mse_swap": 0.0006217636451765429,
+      "full32motor_rmse_swap": 0.024653597222641113
+    },
+    "QTIP_LRE_W2": {
+      "first10motor_rmse": 0.026437661866657438,
+      "first10motor_mse": 0.000782933913069428,
+      "future_latent_nmse": 0.05352569485548884,
+      "mixed_loss": 0.0030553419113857672,
+      "full32motor_rmse": 0.031128059013281015,
+      "late22motor_rmse": 0.032326107646804304,
+      "first10gripper_rmse": 0.027614865632494913,
+      "first10gripper_disagreement": 0.00375,
+      "first10motor_rmse_swap": 0.015705669997259974,
+      "first10motor_mse_swap": 0.000261191654499271,
+      "full32motor_rmse_swap": 0.01705433310708031
+    }
+  },
+  "ratios": {
+    "QTIP_TV_W2": {
+      "future_latent_nmse": 0.999421053300167,
+      "mixed_loss": 1.0016352629778775,
+      "first10motor_rmse": 1.0032384523549043,
+      "first10gripper_rmse": 0.9163400064893787,
+      "first10motor_rmse_swap": 1.0015201654948995
+    },
+    "QTIP_TA_W2": {
+      "future_latent_nmse": 1.0,
+      "mixed_loss": 0.992973506792342,
+      "first10motor_rmse": 0.9876531069228047,
+      "first10gripper_rmse": 1.0251908296091867,
+      "first10motor_rmse_swap": 0.9800546144001797
+    },
+    "QTIP_TVA_W2": {
+      "future_latent_nmse": 0.999421053300167,
+      "mixed_loss": 0.9942586695769952,
+      "first10motor_rmse": 0.9901502704141167,
+      "first10gripper_rmse": 0.9406216396416944,
+      "first10motor_rmse_swap": 0.9822854224554476
+    },
+    "QTIP_LRE_TVA_W2": {
+      "future_latent_nmse": 0.9860295608413587,
+      "mixed_loss": 0.987100894766242,
+      "first10motor_rmse": 0.9939969370780242,
+      "first10gripper_rmse": 0.9947825653376093,
+      "first10motor_rmse_swap": 0.9929320731751122
+    }
+  },
+  "reading": {
+    "r": 0.999421053300167,
+    "verdict": "negligible"
+  }
+}

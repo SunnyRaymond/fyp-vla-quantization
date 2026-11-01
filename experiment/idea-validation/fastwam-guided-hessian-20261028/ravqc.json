@@ -1,0 +1,226 @@
+{
+ "purpose": "RAVQ calibrated (C2 = our own WAM VQ framework): (1) the reader metric M on the imagined future, estimated once from the BF16 model, is the calibration target of the future part; (4) only QTIP's own shared parameters are calibrated (the decode LUT tied per module and bit width, the row / column scales SV / SU, the output biases), on A + lam_M Z_M + beta K, starting from the uncalibrated RAVQ arms (QTIP rounding under the C1 module budget, results/ravq). C1 motivates each piece: the action expert reads the future through a narrow, context-shared channel (the reader), so the future error that matters is the one in that channel (M); shared parameters carry corrections that generalize, per-layer free parameters memorize C80 (fwld1, lowrank gate).",
+ "base_arms": {
+  "RAVQC_W2": {
+   "base": "RAVQU_W2",
+   "family": 2,
+   "fair_reference": "QTIP_W2I",
+   "host_reference": "QTIP_W2"
+  },
+  "RAVQC_W3": {
+   "base": "RAVQU_W3",
+   "family": 3,
+   "fair_reference": "QTIP_W3I",
+   "host_reference": "QTIP_W3"
+  }
+ },
+ "zm_arms": [
+  "QTIP_U_W2",
+  "QTIP_W2I",
+  "RAVQU_W2",
+  "QTIP_W3",
+  "QTIP_W3I",
+  "RAVQU_W3"
+ ],
+ "metric": {
+  "definition": "M_c = J_R(z_T)^T diag(h/2) J_R(z_T): the Gauss-Newton matrix of K at the BF16 point (BF16 reader at the teacher future of context c, h = soft-bin KL curvature at the teacher action, first10 x 6 motor), probed by c = J_R^T (eps sqrt(h/2)), eps Rademacher; frames 1: of the future only (frame 0 is the clamped observation)",
+  "contexts": "C80 (case 2000..2079), sampler seed index 0",
+  "probes_per_context": 4,
+  "seed": 20261101,
+  "normalization": "each context to unit trace (probe vectors divided by sqrt(P tr_c)), then the mean: every context weighs the same (the GN masses of the earlier phases had context ESS 1-26 of 80)",
+  "rank": 32,
+  "rho": 0.1,
+  "form": "M_R = E^T diag(lam) E + diag(d_res) from the normalized probes (top-r eigenpairs, residual diagonal); M = (1 - rho) (D / tr M_R) M_R + rho I, so tr M = D and M = I gives the plain NMSE back",
+  "Z_M": "Z_M = (z_S - z_T)^T M (z_S - z_T) / |z_T|^2 over frames 1:, the NMSE in the reader metric",
+  "lam_rule": "lam_M = lambda x mean_C80(Z) / mean_C80(Z_M) of the arm at its start (RAVQU): lam_M Z_M carries the same initial loss mass as lambda Z did in Q0's A + lambda Z",
+  "stability": "split by case parity: Pearson correlation of the two halves' diagonals, mean squared cosine between the halves' top-r subspaces; reported, not gated"
+ },
+ "families": {
+  "lut": "per (role, K) group one [512, 2] offset on QTIP's decode table (HYB, quantlut_sym): every pair coded with entry k of a layer in the group moves by (sign * d_k0, d_k1) in units of the layer's Wscale, in the rotated domain; one table per group = a codebook shared by all layers of a module at one bit width",
+  "row": "per output row a log-scale s (folds into QTIP's SV, stored FP32 per row: 0 extra bits)",
+  "col": "per input column a log-scale t (folds into QTIP's SU, stored BF16 per column: 0 extra bits)",
+  "bias": "per output channel an additive offset on layers that have a bias (folds into the bias: 0 extra bits)",
+  "roles": [
+   "text",
+   "video_body",
+   "action_body"
+  ],
+  "excluded": "interfaces (BF16 for every arm) and the time-conditioning tables (exact): not calibrated",
+  "weight": "W' = bf16(e^s * (W_hi + dW_lut) * e^t), W_hi = diag(SV) H_m^T (Wscale D(tlut)) H_n diag(SU) the FP32 decode of the layer's codes (its BF16 rounding is the stored W_q bit for bit), dW_lut = diag(SV) H_m^T (Wscale D(d)) H_n diag(SU); b' = bf16(b + db); at zero parameters W' = W_q bitwise",
+  "calibrated": "training.families (v3: lut)"
+ },
+ "loss": {
+  "objective": "A + lam_M Z_M + beta K: A first10 x 6 motor MSE of the student's executed action, Z_M on the student's future, K the frozen BF16 reader on the student's future (biases reset to the originals inside the reader)",
+  "beta": 0.006083668576461056,
+  "lambda": 0.04245452683169643
+ },
+ "training": {
+  "schedule": "the loss-pair C80 schedule: 8 batches of 10 contexts, sampler seed index 0 (Q0's budget)",
+  "updates": 8,
+  "update": "one gradient step in relative units, tune.json's rule, over the families in training.families: u = row / column log-scale s_r, t_c as they are; a bias element relative to its row's output scale, u_i = db_i / (|W_r| rms(x)); a table entry relative to the table's rms, u_k = d_k / rms(tlut); delta u = -eta g_u / max|g_u| over every element of the calibrated families, so the element with the largest relative gradient moves eta and the rest in proportion",
+  "step_grid": [
+   0.00125,
+   0.0025,
+   0.005,
+   0.01,
+   0.02,
+   0.05
+  ],
+  "step_rule": "batch 1 at the start: predicted first-order decrease eta sum g_u^2 / max|g_u| against the realized decrease on the same batch; the largest eta with realized >= min_realized_fraction x predicted; that step is update 1; none passing -> the arm is not trained",
+  "min_realized_fraction": 0.5,
+  "replay_max_abs": 0.0001,
+  "step_grid_basis": "v2's grid plus 0.00125: with the tables alone the scale max|g_u| is a table entry's, below v2's (a bias or row element), so each eta is a larger table step than in v2; in fwrc2r2 the table part alone predicted about 4% of the batch loss at eta 0.0025 in both arms under v2's larger scale",
+  "update_rule_id": "lut-only-fp32-fold-v3",
+  "families": [
+   "lut"
+  ],
+  "families_basis": "v3: the shared decode tables only, one [512, 2] offset per (role, K) = a codebook shared by every layer of a module at one bit width (4 groups, 4096 numbers per arm). Row / column scales and biases are per-layer, per-channel and memorized C80 in fwrc2r2 26074313 (update_rule_changes[1]); they stay defined in families for the ablations",
+  "update_rule_changes": [
+   {
+    "when": "2026-11-01, after fwrc2r1 26073904",
+    "old_update": "per tensor (a layer's row, column or bias vector; a group's table) a relative step in metric coordinates: delta u = -eta ref g_u / |g_u|, u the coordinates whose Euclidean norm is the Frobenius norm of the weight change (row: s_r |W_r|, column: t_c |W^c|, table: d_k sqrt(sum_layers Wscale^2 n_k), bias: db itself), ref = |W|_F (table: sqrt of the group's sum |W|^2, bias: |W|_F sqrt(E|x|^2 / n))",
+    "old_step_grid": [
+     0.000625,
+     0.00125,
+     0.0025,
+     0.005,
+     0.01,
+     0.02
+    ],
+    "why": "with the per-tensor normalized step every one of ~1800 tensors moved eta ref regardless of its gradient, i.e. a sign-like step that concentrates each tensor's budget on its largest rows / columns (text_embedding.0 column scales ~4% at eta 0.000625); the loss rose at every grid point (W2 total 0.00169 -> 0.00235 at the smallest, predicted decrease 7x the loss itself), both arms untrained. tune.json 26057132 saw the same with Adam's sign step (+34-69%) and fixed it with this max-normalized gradient step",
+    "archived": "results/ravqc/<arm>/{arm,step}.r0_26073904.json; fit_before and the zm files are rule-independent and reused",
+    "rule_id": "per-tensor-metric-v1"
+   },
+   {
+    "when": "2026-11-01, after fwrc2r2 26074313",
+    "rule_id": "max-relative-gradient-v2",
+    "old_families": [
+     "row",
+     "col",
+     "bias",
+     "lut"
+    ],
+    "old_step_grid": [
+     0.0025,
+     0.005,
+     0.01,
+     0.02,
+     0.05
+    ],
+    "changes": [
+     "fold: W' = bf16(e^s (W_hi + dW_lut) e^t) from the FP32 decode W_hi of the layer's codes (bf16(W_hi) = W0 bit for bit, codes stage) instead of the stored BF16 W0: folding onto W0 rounded twice, so an element change under half a BF16 spacing (~0.2%) fell back onto W0 and the realized step was the gradient step thresholded there; from W_hi a change moves a proportional share of the elements by one spacing (unbiased in the mean)",
+     "families: the shared decode tables only (training.families_basis)",
+     "step grid: 0.00125 added (training.step_grid_basis)"
+    ],
+    "why": "fwrc2r2: RAVQC_W3 trained at eta 0.005 (realized 0.65 of predicted). C80 after: mixed 0.58x, future NMSE 0.56x, Z_M 0.57x. Held-out 40x2: mixed 1.22x, future NMSE 1.15x, Z_M 1.14x, motor RMSE 1.06x, motor with the BF16 future 0.99x; worse in all four suites (libero_object mixed 1.45x). Unseen C80 batches before their own update: Z 0.78x summed, one batch 0.35x and the other six 0.95-1.10x. The per-channel parameters memorized the trained contexts. The largest relative gradient was a video_expert.text_embedding.0 bias element in 6 of 8 updates (that bias moved 26% relative); block weights moved 0.19% (one BF16 spacing on a share of the elements, the rest rounded back). RAVQC_W2: realized 0.28 / 0.16 / 0.065 of predicted at eta 0.0025 / 0.005 / 0.01 (loss down 8% at each, saturated: the thresholded step), none >= 0.5, not trained",
+    "archived": "results/ravqc/<arm>/{arm,step,training,checkpoint,fit_after,params}.r0_26074313.*, results/ravqc/heldout/RAVQC_W3.r0_26074313.json, endpoints/RAVQC_W3.r0_26074313, quantized/RAVQC_W3.r0_26074313; fit_before and the zm files are rule-independent and reused"
+   }
+  ]
+ },
+ "codes": {
+  "need": "every (layer, K) the base arms' sources.json gives a QTIP K (text, video body, action body)",
+  "K1_K4": "results/ravq/qtip_K<k>/codes: the stored trellis -> 16-bit states -> (LUT entry, sign) per pair (quantlut_sym hash)",
+  "K2_K3": "the A16 baselines stored dense weights only; nearest-candidate recovery from the BF16 weight misreads ~0.2% of the pairs (CPU test 26073382: sign twins of table entries near t0 = 0 lie within the BF16 noise), so each layer is requantized with ravq_qtip (the port, same seed and H_U) and its trellis taken; it must reproduce the stored weight bit for bit, otherwise the fresh QTIP rounding becomes that layer's start (counted and reported)",
+  "check": "every layer: bf16(inverse incoherence of Wscale x D(codes)) equals the arm's stored weight bit for bit"
+ },
+ "reading": {
+  "primary": "held-out 40x2 of RAVQC_Wb against RAVQU_Wb (same bits): future NMSE, Z_M, mixed loss, first10 motor, gripper; and against the fair reference QTIP_WbI and the A16 host QTIP_Wb",
+  "loop": "both calibrated arms run LIBERO-Plus 280, paired with QTIP_Wb (A16), RAVQU_Wb and QTIP_WbI where those loops exist"
+ },
+ "allocation_job": {
+  "job_name": "fwrc1",
+  "queue": "normal",
+  "execution_queue": "gdev",
+  "gpus": 4,
+  "ncpus": 32,
+  "memory_gb": 400,
+  "walltime": "02:00:00",
+  "soft_deadline_seconds": 6900,
+  "steps": [
+   "codes 4",
+   "metric 4",
+   "metric_final 1"
+  ],
+  "time_basis": "codes: 1208 (layer, K) items; K = 1 / 4 (604) decode their stored trellis; K = 2 / 3 (860 layers minus overlap) are requantized: the baselines' QTIP W2 / W3 took 1.86 / 1.88 GPU-h for all 614 layers, the needed share ~87% / 85% -> ~3.2 GPU-h, ~50 min on 4 GPUs; metric: 80 contexts x (BF16 reader read + 4 probe VJPs) ~5 s -> ~2 min per GPU"
+ },
+ "calib_job": {
+  "job_name": "fwrc2",
+  "queue": "normal",
+  "execution_queue": "g2",
+  "gpus": 2,
+  "ncpus": 32,
+  "memory_gb": 220,
+  "walltime": "08:00:00",
+  "soft_deadline_seconds": 28200,
+  "steps": [
+   "calib 2",
+   "zm 2",
+   "final 1"
+  ],
+  "time_basis": "per arm and GPU: fit before 80 queries (~3 min); step check: 1 gradient batch (10 x (staged queries + reader + grad replay ~30 s + table reduction ~50 s)) ~14 min + 4 grid evaluations x 10 (query + reader) ~3 min; 7 more updates ~95 min; deploy + fit after + held-out 80 x 4 s ~12 min: ~2.2 h; zm 6 arms x 80 queries / 2 GPUs ~8 min"
+ },
+ "loop_job": {
+  "job_name": "fwrcl",
+  "queue": "normal",
+  "execution_queue": "g3",
+  "gpus": 4,
+  "ncpus": 20,
+  "memory_gb": 200,
+  "walltime": "04:00:00",
+  "soft_deadline_seconds": 14100,
+  "arms": [
+   "RAVQC_W2",
+   "RAVQC_W3"
+  ],
+  "time_basis": "8 workers (2 per GPU) on one episode queue, ~80 s per episode: 280 / 8 x 80 s ~47 min per arm plus startup"
+ },
+ "gradtx": {
+  "purpose": "diagnostic after fwrc2r3 26075166 (v3, tables only, FP32 fold): does the shared-table gradient transfer across contexts? r3 trained (W3 C80 mixed 0.55x) but held-out got worse (W3 mixed 1.26x, future 1.23x; W2 1.006x); prequential batches without a large-Z outlier gained nothing before their own update (W3 batches 4/7/8: 0.998, 0.982, 1.046 of their start) and four contexts with future NMSE ~0.1 (2019, 2037, 2031, 2034; median 0.006) dropped ~12x and carried most of the C80 gain",
+  "point": "the base point of every calibration: zero table offsets after attach (the fwrc2r3 start, so the batch-1 mean must reproduce results/ravqc/<arm>/step.json table_grad_norm)",
+  "contexts": "C80 (80 contexts, sampler seed index 0), every context once",
+  "parts": "per context two grad replays of the same staged query: the action part (cotangent dA/da at the action, zero at the future) and the future part (zero at the action, lam_M dZ_M/dz + beta dK/dz at the future); their sum is the context gradient objective() averages",
+  "units": "u = g x rms(tlut) on table entries some pair uses (the update rule's relative units)",
+  "statistics": "transfer_stats per part: generic share (n|mean|^2 - mean|g_c|^2) / ((n-1) mean|g_c|^2); split-half T = h1.h2/|h1|^2 and cos over random 40/40 halves; batch T between the 8 training batches; top-5 contexts' share of |mean|^2; also the sum reweighted per context by its own loss (total_normalized) and with contexts Z > trim_factor x median Z removed (total_trimmed); per group of the sum",
+  "go_generic": 0.06,
+  "go_generic_basis": "the threshold of the earlier transfer diagnostic (per-step teacher forcing: G 0.030 < 0.06, no-go)",
+  "trim_factor": 5.0,
+  "splits": 1000,
+  "seed": 0,
+  "chunk": 10,
+  "outputs": "results/ravqc/gradtx/<arm>/{meta.pt, <case>.pt (A, Z, Z_M, K, cotangent norms, action / future table gradients), summary.json, RESULTS.zh.md}"
+ },
+ "gradtx_jobs": {
+  "RAVQC_W2": {
+   "job_name": "fwrcg2",
+   "arm": "RAVQC_W2",
+   "queue": "normal",
+   "execution_queue": "gdev",
+   "gpus": 4,
+   "ncpus": 32,
+   "memory_gb": 400,
+   "walltime": "02:00:00",
+   "soft_deadline_seconds": 6900,
+   "steps": [
+    "gradtx 4",
+    "gradtx_final 1"
+   ],
+   "time_basis": "fwrc2r3: one training update = 10 contexts x (staged query + reader + one grad replay with the table reduction) = 640 s, ~64 s per context, the replay ~50 s of it; two replays ~115 s per context, 80 / 4 GPUs = 20 per GPU ~38 min plus ~8 min load"
+  },
+  "RAVQC_W3": {
+   "job_name": "fwrcg3",
+   "arm": "RAVQC_W3",
+   "queue": "normal",
+   "execution_queue": "gdev",
+   "gpus": 4,
+   "ncpus": 32,
+   "memory_gb": 400,
+   "walltime": "02:00:00",
+   "soft_deadline_seconds": 6900,
+   "steps": [
+    "gradtx 4",
+    "gradtx_final 1"
+   ],
+   "time_basis": "fwrc2r3: one training update = 10 contexts x (staged query + reader + one grad replay with the table reduction) = 640 s, ~64 s per context, the replay ~50 s of it; two replays ~115 s per context, 80 / 4 GPUs = 20 per GPU ~38 min plus ~8 min load"
+  }
+ }
+}

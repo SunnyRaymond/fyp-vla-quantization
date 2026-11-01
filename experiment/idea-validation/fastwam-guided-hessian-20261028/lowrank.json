@@ -1,0 +1,165 @@
+{
+  "purpose": "C2 v2 gate: does a C1-derived objective repair the imagined future once the tuned parameters have capacity in every layer, and does decoupling the action term add to it? The diagonal-scale run (tune.json, QTIP 26059212) improved the action only: held-out mixed 0.923x, first10 motor 0.0324 -> 0.0279, future NMSE 0.05325 -> 0.05328, future share of motor MSE 0.44 -> 0.60; only 9 of 3.9M scales moved past BF16 rounding and |g|^2 sat in conditioning layers (time_projection, action_encoder). Here every target Linear gets the same rank-r BF16 branch, a model-agnostic parametrization (any Linear of any host, sequential or joint world-action model).",
+  "host": "QTIP",
+  "baseline_arm": "QTIP_U_W2",
+  "baseline_heldout": "results/heldout/QTIP_U_W2.json (phase 1, 26043905)",
+  "baseline_fit": "results/tune/QTIP/fit_before.json (26057132)",
+  "rank": 4,
+  "branch": "y = x W_host^T + b + (x V^T) U^T with U (out x r), V (r x in) stored in BF16: +16 r (out + in) bits per Linear; computed in FP32 and added to the BF16 output; the deployed weight stays the host's W2",
+  "init": {
+    "method": "EoRA-style closed form: L = [dW C]_r C^-1 minimizes tr((dW - L) H (dW - L)^T), dW = W_master - W_host, H = H_U + damping x mean(diag H_U) I = C C^T (Cholesky; damping x10 until positive definite); U = P S^1/2, V = S^1/2 Q^T C^-1 from the SVD P S Q^T of dW C",
+    "damping": 0.01
+  },
+  "arms": {
+    "E": {"arm": "QTIP_LRE_W2", "objective": "none: the init, prior-art reference (activation-weighted low-rank error compensation)"},
+    "J": {"arm": "QTIP_LRJ_W2", "objective": "joint: mean of A + lambda Z + beta K (tune_worker's staged batch; A on the student's own action)"},
+    "D": {"arm": "QTIP_LRD_W2", "objective": "decoupled: mean of A_tf + lambda Z + beta K; A_tf is the student's action reading the BF16 teacher future (the C1 swap path), so the action side gets no reward for compensating a corrupted future; Z on the student future; K the frozen BF16 reader on the student future"}
+  },
+  "training": {
+    "start": "E's BF16 factors",
+    "schedule": "the loss-pair C80 schedule (8 batches of 10 contexts, sampler seed index 0)",
+    "updates": 8,
+    "update": "per factor tensor P (U or V of one Linear): P <- P - eta |P| g / |g|; every Linear moves by eta of its factor norm along its own descent direction (the max-normalized scale step spent everything on a few conditioning scales)",
+    "step_grid": [0.0025, 0.005, 0.01, 0.02, 0.05, 0.1],
+    "step_grid_change": "post hoc, after the step checks of 26060556 (original grid 0.01 / 0.02 / 0.05 / 0.1): at eta 0.01 J realized 0.45 of the prediction (0.001056 / 0.002352) and D 0.51 (0.000961 / 0.001893), both negative or small above, so J was skipped and D trained at 0.01, which leaves no J vs D comparison. Extended downward (0.005, 0.0025); J rerun alone (job fwlj1) on the same 0.5 rule; D keeps 0.01, which is also its choice on the extended grid (the largest passing value). J's 26060556 files kept as step.r0_26060556.json / arm.r0_26060556.json.",
+    "step_rule": "on batch 1 from E: predicted decrease eta sum |P| |g|, realized L(E) - L(step) on the same batch; the largest grid eta whose realized decrease is at least min_realized_fraction of the predicted one; none -> the arm is not trained",
+    "min_realized_fraction": 0.5,
+    "replay_max_abs": 0.0001
+  },
+  "evaluation": "C80 fit (mixed loss A + lambda Z, first10 motor RMSE, future NMSE) and held-out 40x2 + C1 swap for E, J and D with the BF16 factors installed; U from the files above",
+  "decision": {
+    "rule": "an arm passes if trained and on held-out: future NMSE <= future_ratio_max x U's, mixed loss <= mixed_ratio_max x U's, and both below E's; closed loop if D passes. Reported, not gating: decoupling increment = D's held-out future NMSE below J's with D's mixed loss not above J's",
+    "future_ratio_max": 0.9,
+    "mixed_ratio_max": 0.97,
+    "outcome": "no-go (results/lowrank/DECISION.json, 26061075): held-out future / mixed vs U: J 0.982 / 0.864 (eta 0.005), D 0.972 / 0.846 (eta 0.01), both below E (1.005 / 0.908) but far from 0.9 on the future; decoupling increment true by the rule but 1% future / 2% mixed, at half J's step, and not consistent across suites. C80 future NMSE E 0.0387 -> J 0.0294 / D 0.0267 after a single pass over C80, held-out only -2 / -3%."
+  },
+  "diag": {
+    "purpose": "why the C80 future repair does not reach held-out. C80 and held-out are the same 40 tasks (2 vs 1 disjoint demo snapshots per task, same phase positions), and before each update J's loss on that fresh C80 batch is 0.93-1.07x E's on the same batch while the trained batches end at 0.64-0.77x: the gain stays on the contexts trained on, held-out is not a different distribution. Open: is it attached to the context (scene) or to its single sampler-seed trajectory, and how much of a batch's gradient do other contexts and seeds share",
+    "seed": 1,
+    "teacher_check": {"cases": 2, "future_nmse_max": 0.001,
+                      "basis": "the C80 teacher cache holds seed 0 only: seed-1 teachers are the BF16 query generated here, so the cached seed-0 teachers of the first cases are regenerated the same way first"},
+    "fit_arms": ["E", "J", "D"],
+    "grad": {"arm": "E", "objective": "D", "batches": 4, "seeds": [0, 1], "eta": 0.01, "predicted_check_rel": 0.01,
+             "basis": "per (context, seed) gradient of D's objective at E, split by path: F = lambda Z + beta K through the student query (the future), A = A_tf through the teacher-future read (the action); contexts = the first 4 training batches (40); per-tensor Gram matrices of the 160 vectors; the batch-1 in-batch first-order decrease must reproduce step.json's predicted_per_eta"},
+    "reading": {
+      "seed_retained": "rho = (1 - r1) / (1 - r0) on C80 future NMSE, r = arm / E at seed index 0 (the trained trajectories) and 1 (same contexts, unseen noise)",
+      "context_rho_min": 0.5,
+      "noise_rho_max": 0.25,
+      "first_order": "T_seed, T_ctx = mean first-order decrease of the future-path loss (F) from one training step on a batch, on the same contexts at seed 1 and on the other 30 contexts at seed 0, over that on the batch itself; mean over the 4 batches",
+      "shared_min": 0.2,
+      "next": "context-attached (rho >= 0.5) with T_ctx < 0.2: each context's repair is its own, so more calibration contexts or a parametrization restricted to shared directions; noise-attached (rho <= 0.25): the objective fits one denoising trajectory, so average over sampler seeds or train on a per-step teacher-forced objective"
+    },
+    "outcome": "both (26063678): D rho future 0.34 / mixed 0.67 (J 0.36 / 0.58); F path cos same context across seeds 0.33, across contexts 0.01, T_seed 0.31, T_ctx 0.10 at seed 0 and 0.02 at seed 1 (seed-0 C80 trajectories are the H_U / EoRA calibration set); per-sample F energy 67% trajectory, 33% context, 0.2% generic; A path 16% / 77% / 7%. 8 x 0.021 against 1 + 7 x (0..0.10) predicts held-out / C80 0.10-0.17, realized 0.106",
+    "allocation": {"job_name": "fwld1", "queue": "normal", "execution_queue": "g1", "gpus": 1, "ncpus": 4, "memory_gb": 100,
+                   "walltime": "04:00:00", "soft_deadline_seconds": 13500,
+                   "time_basis": "load ~10 min, 82 BF16 teacher queries + 240 fit queries at ~7 s, 80 per-sample gradients at ~25 s (26060556: 10-context update 245 s), Gram a few min: ~1.5 h"}
+  },
+  "tfdiag": {
+    "purpose": "fwld1 (26063678): the rollout future gradient of a sample is 67% its own denoising trajectory, 33% its context and 0.2% generic. Does a per-step teacher-forced objective, which drops the trajectory part by construction, have a generic part, and does a step on it lower the rollout future of other contexts at fresh noise? Teacher forcing applies to any WAM that denoises a future (sequential IDM or joint DiT).",
+    "samples": "diag's: E, the 40 contexts of the first 4 training batches x sampler seed indices 0 and 1",
+    "objective": {
+      "tf": "lambda Z(x~) + beta K(x~) with x~ = x_T + sum_i delta_i (v_S(x_i^T, t_i) - v_T,i) on frames 1:, FP32: the student's velocity at each of the BF16 teacher's 10 video states (its own context and timestep), the displacements summed onto the teacher future x_T; Z the future NMSE against x_T, K the frozen BF16 reader at x~",
+      "ro": "diag's F path: lambda Z + beta K through the student's own 10-step rollout (recomputed: fwld1 kept only the Gram)",
+      "states": "the BF16 teacher's video stage per sample, recorded before any install: per step the state read, timestep, velocity and delta (Euler x <- x + delta v, frame 0 clamped to the observation after each step), stopped before the action stage"
+    },
+    "eta": 0.01,
+    "checks": {"state_future_nmse_max": 1e-6, "state_chain_max_abs": 0.0, "bf16_tf_max_abs": 0.0, "ro_gram_rel_max": 0.001,
+               "step_check_eta": 0.0025,
+               "basis": "the recorded stage must reproduce the teacher future and each recorded state the clamped step before it; with the masters installed teacher forcing must return the recorded velocities; the recomputed ro gradients must reproduce the F block of diag/gram.pt; the step check (first sample, tf objective along its own gradient) is reported, not gating"},
+    "reading": {
+      "T": "per step source (tf or ro: D's relative step along the mean of a batch's seed-0 gradients of that path), first-order decrease of its own loss on each category over that on the batch itself, summed over the 4 batches (diag's T)",
+      "G": "first-order decrease of the rollout loss (ro) on each category from the step along the tf batch mean, over the decrease the ro step of the same eta gives on its own batch, summed over the 4 batches",
+      "shared_min": 0.2,
+      "rollout_fresh_min": 0.06,
+      "basis": "fwld1: the ro step reaches other contexts at fresh noise at 0.021 of its in-batch decrease, and 8 updates of D gave held-out future -3.3%; 3x that (0.06) at 8 updates of the same step size reaches the 0.9x line",
+      "go": "T_tf(other context, seed 1) >= shared_min and G_tf(other context, seed 1) >= rollout_fresh_min: train an arm on A_tf + lambda Z(x~) + beta K(x~)",
+      "next": "shared with G below the bar: the denoiser's local error is shared, but the rollout future error of other contexts is not made of it (propagation through the later steps dominates), so teacher forcing alone does not reach the held-out future; not shared: the local error is per context as well, and repairing the future through the weights from a C80-scale calibration set is not viable"
+    },
+    "outcome": "no-go (26065573, fwlt1r1; 26065237 failed: the recorded future kept the pre-clamp frame 0, fixed). T_tf(other context, seed 1) 0.521, shared; G_tf 0.030 < 0.06 (ro 0.021). Z_tf 0.0407 vs Z_ro 0.0368, cos(tf displacement, rollout displacement) 0.65, per-step displacements coherent (|sum|^2 = 7.1 x sum of step energies). tf gradient 86% in the 6 video time-conditioning tensors, cross-context cos 0.66; tf vs ro same-sample cos 0.24. Post hoc (tfpool.py, 26065919): time-conditioning-only tf step G 0.011; directions pooled over 20/40/60 samples: ro 0.077-0.106 on left-out seed 0 but -0.011..-0.019 at fresh noise, tf 0.024-0.028 at fresh noise",
+    "allocation": {"job_name": "fwlt1", "queue": "normal", "execution_queue": "g1", "gpus": 1, "ncpus": 4, "memory_gb": 100,
+                   "walltime": "04:00:00", "soft_deadline_seconds": 13500,
+                   "time_basis": "load ~10 min; 80 BF16 video stages at ~3 s; per sample the ro gradient ~15 s (fwld1: 80 samples x F + A in ~25 min) and the tf gradient ~10 s; Gram a few min: ~1 h"}
+  },
+  "tcond": {
+    "purpose": "Attribution after tfdiag: 86% of the teacher-forced future gradient energy and its shared part sit in the video expert's 3 time-conditioning Linears (time_embedding.0/.2, time_projection.1). Their inputs are sinusoidal embeddings of the timestep only (per token: t, frame 0 at 0), so under the fixed 10-step schedule their outputs take a handful of values per expert, the same for every context. How much of W2's held-out future error do they carry? Restoring them to the BF16 masters gives the outputs exactly; a per-timestep table of those outputs gives the same at a negligible cost.",
+    "arms": {
+      "U_TV": {"arm": "QTIP_TV_W2", "base": "QTIP_U_W2", "groups": ["video_time"]},
+      "U_TA": {"arm": "QTIP_TA_W2", "base": "QTIP_U_W2", "groups": ["action_time"]},
+      "U_TVA": {"arm": "QTIP_TVA_W2", "base": "QTIP_U_W2", "groups": ["video_time", "action_time"]},
+      "E_TVA": {"arm": "QTIP_LRE_TVA_W2", "base": "QTIP_LRE_W2", "groups": ["video_time", "action_time"]}
+    },
+    "install": "the base arm (U: QTIP W2; E: QTIP W2 plus E's BF16 factors), then the Linears of the listed groups get their BF16 master weights; on E their branch factors are zeroed",
+    "modules_per_group": 3,
+    "evaluation": "held-out 40x2 + C1 swap (evaluate), against results/heldout/QTIP_U_W2.json and QTIP_LRE_W2.json",
+    "input_check": {"samples": [[2000, 0], [2047, 1]],
+                    "basis": "BF16, before any install: every call's input to the 6 time-conditioning Linears must be identical across two different contexts at different sampler seeds (max abs 0), and the distinct input rows per expert give the table size"},
+    "bits": "as BF16 weights: base bpw + sum (16 n - host bits) / target weights; as a table: base bpw + 16 x distinct timesteps x (out of time_embedding.2 + out of time_projection.1) / target weights",
+    "reading": {
+      "primary": "r = held-out future NMSE of U_TV over U's",
+      "carries_max": 0.9,
+      "negligible_min": 0.97,
+      "carries": "r <= 0.9: the timestep-conditioning path carries at least a tenth of W2's held-out future error and its fix is exact and context-free: C2 v3 builds on per-timestep conditioning tables (any denoising WAM with a fixed schedule, joint DiT included); next the closed loop of U_TV against U",
+      "partial": "0.9 < r <= 0.97: a minor share; reported next to E_TVA before deciding",
+      "negligible": "r > 0.97: the shared local error tfdiag found is not where W2's future error comes from; weight-side future repair on this host is exhausted and C2 turns to the action side"
+    },
+    "outcome": "negligible (26066073): r = U_TV / U held-out future NMSE 0.999 (U_TA 1.000, U_TVA 0.999, E_TVA / E 0.986); mixed 1.002 / 0.993 / 0.994 / 0.987. Input check passed: identical across contexts and seeds, 11 video and 10 action timesteps. bpw as BF16 weights 2.171 / 2.034 / 2.189 / 2.230, as tables 1.994 / 2.014 / 1.992 / 2.033. The tf gradient concentrates on these layers by sensitivity; their W2 error does not drive the future error",
+    "allocation": {"job_name": "fwtc1", "queue": "normal", "execution_queue": "g1", "gpus": 1, "ncpus": 4, "memory_gb": 100,
+                   "walltime": "04:00:00", "soft_deadline_seconds": 13500,
+                   "time_basis": "load ~10 min, input check 2 queries, 4 arms x held-out 40 x 2 with the swap reader ~20 min each (26060556): ~1.5 h"}
+  },
+  "loop": {
+    "purpose": "user request (2026-10-31): LIBERO-Plus 280 closed loop of J alone (EoRA init + joint objective; held-out mixed 0.864x, future 0.982x of QTIP W2), paired against the host's own closed loop QTIP_W2 (204/280; BF16 216). Not gated by the decision.",
+    "arm": "J",
+    "host_loop_arm": "QTIP_W2",
+    "workers_per_gpu": 2,
+    "runtime": "the A16 baselines' loop worker (BF16 condition cache + CUDA Graph) through lowrank_loop.py: host dense W2 weights, branch y += bf16((x V^T) U^T) in FP32 from the BF16 factors on all 614 Linears, eager and in the graph regions",
+    "checks": "per worker: host weights alone reproduce QTIP_W2's loop anchor (case-2000 first10 motor RMSE), the branch reproduces J's C80 fit row of case 2000, both within 1e-4 relative; then the baselines' eager vs cache+Graph bitwise check",
+    "allocation": {"job_name": "fwljl", "queue": "normal", "execution_queue": "g2", "gpus": 2, "ncpus": 8, "memory_gb": 120,
+                   "walltime": "04:00:00", "soft_deadline_seconds": 14100,
+                   "time_basis": "QTIP_W2 loop 26042316: 78 s per episode; 280 episodes on 4 workers ~1.5 h plus the branch's extra kernels and load"},
+    "mode": "branch",
+    "mode_note": "lowrank_loop.py --lr-mode for the next loop; 26066178 (J 209/280) ran branch. Bench 26068632: fused (action 0.041, future 0.056) and merged (0.050, 0.073) both fail the 0.05 rule, so the rule keeps branch (0.703 s vs host 0.497 s per call).",
+    "bench": {
+      "purpose": "user request (2026-10-31): cut the branch's latency before further closed loops. 26066178: policy call p50 0.745 s vs QTIP_W2 0.505 s; per episode 83.9 s vs 78.4 s, the rest is CPU simulation (GPU mostly idle).",
+      "modes": "branch (exact, as 26066178), fused (BF16 x V^T + in-place addmm into the output), merged (W' = bf16(W + U V), plain Linear), host (QTIP_W2 weights alone, latency reference); one process per mode on one GPU",
+      "calls": 40,
+      "warmup": 5,
+      "rule": "fast mode passes if its startup check passes and, on the case-2000 anchor, first10 motor RMSE(fast - branch) / RMSE(branch - host) <= 0.05 and ||future_fast - future_branch|| / ||future_branch - future_host|| <= 0.05; adopt merged if it passes, else fused, else branch",
+      "allocation": {"job_name": "fwljb", "queue": "normal", "execution_queue": "gdev", "gpus": 1, "ncpus": 16, "memory_gb": 60,
+                     "walltime": "01:00:00", "soft_deadline_seconds": 3300,
+                     "time_basis": "per mode: load + T5 cache + 3 anchors + graph capture ~3-5 min (26066178 startup), 45 calls < 1 min; 4 modes ~20 min"}
+    }
+  },
+  "xfer": {
+    "purpose": "user request (2026-10-31): migrate EoRA-J to GPTVQ_W2 and QuIP#_W2 and run each one's LIBERO-Plus 280 closed loop, paired against the host's own closed loop (GPTVQ_W2 201/280, QUIPSHARP_W2 198/280; QTIP: J 209 vs 204). The method moves unchanged: rank 4, EoRA init on the same H_U and damping, lambda and beta, step grid and 0.5 rule, 8 updates on the C80 batches; only the host weights differ.",
+    "hosts": {
+      "GPTVQ": {"method": "gptvq", "baseline_arm": "GPTVQ_W2", "baseline_loop": "GPTVQ_W2"},
+      "QUIPSHARP": {"method": "quipsharp", "baseline_arm": "QUIPSHARP_W2", "baseline_loop": "QUIPSHARP_W2"}
+    },
+    "arms": "<HOST>_LRE_W2 (E: init, C80 fit, held-out 40x2 + swap) and <HOST>_LRJ_W2 (J: step check from E, 8 updates, fit, held-out); D is not run",
+    "baselines": "U held-out = results/heldout/<baseline_arm>.json (26050310), U C80 fit = results/tune/<HOST>/fit_before.json",
+    "init": {"allocation": {"job_name": "fwlx1", "queue": "normal", "execution_queue": "gdev", "gpus": 2, "ncpus": 32, "memory_gb": 220,
+                            "walltime": "02:00:00", "soft_deadline_seconds": 6900,
+                            "time_basis": "one host per GPU: load ~10 min, EoRA factors, E bits + C80 fit + held-out ~45 min (QTIP 26060556)"}},
+    "train": {"allocation": {"job_name": "fwlx2", "queue": "normal", "execution_queue": "gdev", "gpus": 2, "ncpus": 32, "memory_gb": 220,
+                             "walltime": "02:00:00", "soft_deadline_seconds": 6900,
+                             "time_basis": "one host per GPU: load ~10 min, step check 6 grid values ~20 min, 8 updates ~4 min each, bits + fit + held-out ~30 min (QTIP fwlj1); checkpointed, rN resumes"}},
+    "loop": {"workers_per_gpu": 2, "gpus_per_host": 2, "mode": "branch",
+             "checks": "per worker (lowrank_loop.py --lr-mode branch): host weights alone reproduce the host's own loop anchor, the branch reproduces the arm's C80 fit row of case 2000, both within 1e-4 relative; then eager vs cache+Graph bitwise",
+             "allocation": {"job_name": "fwlxl", "queue": "normal", "execution_queue": "g3", "gpus": 4, "ncpus": 20, "memory_gb": 200,
+                            "walltime": "04:00:00", "soft_deadline_seconds": 14100,
+                            "time_basis": "two arms in parallel, 2 GPUs x 2 workers each: 280 x ~84 s / 4 ~1.6 h (26066178) plus load"}}
+  },
+  "split": {
+    "basis": "user: race one g1 single-GPU job against one g2 two-GPU job, both > 2 h; whichever starts first stays, the other is cancelled (race.py)",
+    "one": {"job_name": "fwlr1", "queue": "normal", "execution_queue": "g1", "gpus": 1, "ncpus": 4, "memory_gb": 100,
+            "walltime": "06:00:00", "soft_deadline_seconds": 20700,
+            "time_basis": "init ~45 min (factors, E's C80 fit, held-out); J ~75 min and D ~85 min in turn (26059212: 8 updates x 210 s, fits + held-out ~25 min)"},
+    "two": {"job_name": "fwlr2", "queue": "normal", "execution_queue": "g2", "gpus": 2, "ncpus": 6, "memory_gb": 120,
+            "walltime": "04:00:00", "soft_deadline_seconds": 13500,
+            "time_basis": "init ~45 min on GPU 0, then J and D one per GPU ~85 min"},
+    "j": {"job_name": "fwlj1", "queue": "normal", "execution_queue": "g1", "gpus": 1, "ncpus": 4, "memory_gb": 100,
+          "walltime": "04:00:00", "soft_deadline_seconds": 13500, "arms": ["J"],
+          "time_basis": "J only, after step_grid_change: load, step check on 6 grid values ~20 min, 8 updates ~4 min each (26060556), bits + fit + held-out ~30 min"}
+  }
+}

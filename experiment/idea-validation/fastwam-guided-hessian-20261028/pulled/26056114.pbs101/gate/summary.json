@@ -1,0 +1,737 @@
+{
+  "protocol": "fastwam-guided-hessian-20261028-v1",
+  "pbs_jobid": "26056114.pbs101",
+  "status": "complete",
+  "complete": true,
+  "gate": {
+    "purpose": "Gate 1 for the operating-point curvature: the Gauss-Newton probes of A + lambda Z + beta K linearized at each host's own W2 model (the A16 baselines' H_U weights) instead of at BF16. Phase 1 at BF16: 6.9% of the A head goes through the future and beta K carries 1.2% of the mass, while at W2 the BF16-future swap removes 44-61% of the held-out first10 motor MSE; on every host the phase-1 H~ raised both the held-out mixed loss and the future share of the motor MSE.",
+    "hosts": {
+      "QTIP": {
+        "method": "qtip",
+        "bits": 2,
+        "baseline_arm": "QTIP_U_W2",
+        "baseline_loop": "QTIP_W2",
+        "bf16_point_arm": "QTIP_G_W2"
+      },
+      "GPTVQ": {
+        "method": "gptvq",
+        "bits": 2,
+        "baseline_arm": "GPTVQ_W2",
+        "baseline_loop": "GPTVQ_W2",
+        "bf16_point_arm": "GPTVQ_G_W2"
+      },
+      "QUIPSHARP": {
+        "method": "quipsharp",
+        "bits": 2,
+        "baseline_arm": "QUIPSHARP_W2",
+        "baseline_loop": "QUIPSHARP_W2",
+        "bf16_point_arm": "QUIPSHARP_G_W2"
+      }
+    },
+    "probes": {
+      "contexts": "C80, sampler seed index 0, the host's W2 weights installed in all 614 target Linears",
+      "A": "executed action: the model's own (W2) prefill + action loop from the query's future, as in phase 1",
+      "K": "frozen BF16 reader (the 614 BF16 masters, same biases) on the student's own future z_hat; c_K = J^T g_K with g_K = Rademacher * sqrt(h/2), h the soft-bin KL curvature at the teacher action; computed in a separate pass before the probe pass, without the query graph",
+      "Z": "Rademacher / |z_T[:,:,1:]| on future[:,:,1:], as in phase 1",
+      "k_seed": 20261030,
+      "generators": "A and Z cotangents from protocol probes.seed + case (A then Z per probe), K from k_seed + case"
+    },
+    "selection": {
+      "layers": 16,
+      "damage": "per layer sigma_l^2 * mass_l: sigma_l^2 = mean squared error of the host's baseline W2 weight, mass_l = sum over calls and heads of sum_t u_t |x_t|^2 at the operating point, C80 mean (isotropic rounding noise: E[(g . dW x)^2] = sigma^2 |g|^2 |x|^2)",
+      "same_layers": "the G and O arms of a host replace the same layers"
+    },
+    "hessian": "H~_op = sum_t (u_t / ubar_l + gamma) x_t x_t^T / sum_t (u_t / ubar_l + gamma), phase-1 form and gamma (protocol hessian.gamma); u and x from the operating-point probes and a replay of the C80 queries with the host's W2 weights installed",
+    "arms": {
+      "U": "the host's baseline W2 (held-out from phases 1 and 3)",
+      "G": "GATE_<host>_G: baseline W2 with the selected layers taken from the phase-1 H~ arm (BF16 linearization point)",
+      "O": "GATE_<host>_O: baseline W2 with the selected layers requantized by the host on H~_op, baseline seeds"
+    },
+    "decision": {
+      "rule": "go to the full run if on at least min_hosts hosts the O arm lowers both the held-out mixed loss and the future share of the first10 motor MSE (1 - mse_swap / mse) against U",
+      "min_hosts": 2,
+      "reported": "the same two quantities for the G arm, the head shares at both linearization points, ESS over contexts"
+    },
+    "allocation": {
+      "job_name": "fwgo",
+      "queue": "normal",
+      "execution_queue": "g2",
+      "gpus": 2,
+      "ncpus": 8,
+      "ncpus_basis": "one probe / replay / quant / eval process per GPU, ~3 busy cores each (26043905 CPU_SAMPLE); PBS sets 16 per GPU on g2 regardless",
+      "memory_gb": 120,
+      "memory_basis": "per process: runtime + 614 BF16 masters on the CPU (~9 GB) + the C80 probe statistics during the replay",
+      "walltime": "05:00:00",
+      "soft_deadline_seconds": 17400
+    },
+    "steps": [
+      "probe (2 GPUs, contexts split): per host install the baseline W2, sigma (shard 0), K pass, probe pass -> results/gate/<host>/{sigma.json, kpass/, stats/}",
+      "select (1): damage, top layers, head shares at both points, ESS -> results/gate/selection.json",
+      "hessian (2, layers split): H~_op of the selected layers -> results/gate/<host>/hessians/",
+      "quant (2): the host on H~_op for the selected layers -> results/gate/<host>/{weights, wstats}/",
+      "eval (2): held-out 40x2 + swap of the six GATE arms -> results/heldout/GATE_*.json",
+      "final (1): results/gate/{summary.json, RESULTS.zh.md, DECISION.json}"
+    ],
+    "full": {
+      "purpose": "Submitted only on DECISION go: H~_op of all 614 layers per host, every layer requantized by the host on it with the baseline seeds (the gate's selected layers reused bitwise: same H~_op, seed and code), held-out 40x2 and LIBERO-Plus 280 of the three O arms; per host against the baseline (H_U) and the phase-1 H~ arm, paired McNemar, pooled over the hosts.",
+      "arm_suffix": "_O_W2",
+      "closed_loop": {
+        "workers_per_gpu": 2
+      },
+      "allocation": {
+        "job_name": "fwgf",
+        "queue": "normal",
+        "execution_queue": "g3",
+        "gpus": 4,
+        "ncpus": 20,
+        "ncpus_basis": "8 loop workers ~2 cores each, quant ~1 per GPU (26043905 / 26050310 CPU_SAMPLE); PBS sets 16 per GPU regardless",
+        "memory_gb": 200,
+        "memory_basis": "26043905: 56 GB with 4 loop workers; here 8",
+        "walltime": "08:00:00",
+        "soft_deadline_seconds": 28200,
+        "time_basis": "replay ~10 min per host on 2 GPUs (26043905); host quantization 1.86 + 3.84 + 1.28 GPU-h (A16 baselines) / 4; closed loop ~40 min per arm on 4 GPUs"
+      },
+      "steps": [
+        "full_hessian (4): H~_op of the remaining layers per host -> results/gate/<host>/hessians/",
+        "full_quant (4): every (host, layer) on H~_op -> results/quantized/<host>_O_W2/{weights, stats}/",
+        "full_complete (1): quantized/<arm>/COMPLETE.json",
+        "full_eval (4): held-out 40x2 + swap of the O arms",
+        "loop: LIBERO-Plus 280 of each O arm, 8 workers",
+        "full_final (1): results/full/{summary.json, RESULTS.zh.md}"
+      ]
+    }
+  },
+  "selection": {
+    "protocol": "fastwam-guided-hessian-20261028-v1",
+    "pbs_jobid": "26056114.pbs101",
+    "selection": {
+      "layers": 16,
+      "damage": "per layer sigma_l^2 * mass_l: sigma_l^2 = mean squared error of the host's baseline W2 weight, mass_l = sum over calls and heads of sum_t u_t |x_t|^2 at the operating point, C80 mean (isotropic rounding noise: E[(g . dW x)^2] = sigma^2 |g|^2 |x|^2)",
+      "same_layers": "the G and O arms of a host replace the same layers"
+    },
+    "hosts": {
+      "QTIP": {
+        "layers": [
+          153,
+          163,
+          173,
+          183,
+          193,
+          203,
+          213,
+          223,
+          233,
+          243,
+          253,
+          263,
+          273,
+          305,
+          306,
+          612
+        ],
+        "modules": [
+          "video_expert.blocks.14.ffn.0",
+          "video_expert.blocks.15.ffn.0",
+          "video_expert.blocks.16.ffn.0",
+          "video_expert.blocks.17.ffn.0",
+          "video_expert.blocks.18.ffn.0",
+          "video_expert.blocks.19.ffn.0",
+          "video_expert.blocks.20.ffn.0",
+          "video_expert.blocks.21.ffn.0",
+          "video_expert.blocks.22.ffn.0",
+          "video_expert.blocks.23.ffn.0",
+          "video_expert.blocks.24.ffn.0",
+          "video_expert.blocks.25.ffn.0",
+          "video_expert.blocks.26.ffn.0",
+          "video_expert.head.head",
+          "action_expert.action_encoder",
+          "action_expert.head"
+        ],
+        "coverage": 0.3114960923814123,
+        "damage": {
+          "153": 5.028876663234539e-05,
+          "163": 6.005770370433459e-05,
+          "173": 7.020402756234976e-05,
+          "183": 7.544483152515497e-05,
+          "193": 7.429276247998883e-05,
+          "203": 7.019348577750857e-05,
+          "213": 6.68149817824e-05,
+          "223": 6.209959532127031e-05,
+          "233": 4.7796903766319426e-05,
+          "243": 4.678388922313356e-05,
+          "253": 4.8506356617777585e-05,
+          "263": 4.7035488266234986e-05,
+          "273": 4.67300226625842e-05,
+          "305": 9.837495262010406e-05,
+          "306": 8.97169556871349e-05,
+          "612": 0.00020156695790335497
+        },
+        "damage_total": 0.003710825624472494,
+        "head_share_unit_noise": {
+          "A": 0.47103389839137955,
+          "Az": 0.0287306478755536,
+          "K": 0.006847960853597883,
+          "Z": 0.49338749287946904,
+          "A_via_future": 0.06254742998896964
+        },
+        "head_share_sigma_weighted": {
+          "A": 0.2363648091971333,
+          "Az": 0.04384834402348556,
+          "K": 0.009866375981840944,
+          "Z": 0.7099204707975402,
+          "A_via_future": 0.168840598619934
+        },
+        "head_share_sigma_weighted_bf16_point": {
+          "A": 0.1577270385778852,
+          "Az": 0.032572692966832545,
+          "K": 0.014854809828692823,
+          "Z": 0.7948454586265894,
+          "A_via_future": 0.18629952203151529
+        },
+        "context_ess": 25.722945130516866,
+        "context_ess_unit_noise": 39.13305869003896,
+        "contexts": 80,
+        "groups": {
+          "video_steps": [
+            0.18689291241795578,
+            0.10198455495544316,
+            0.03733696329310355,
+            0.013215832044278588,
+            0.007244681477495685,
+            0.006286452828621563,
+            0.007429441128022822,
+            0.011168473945890251,
+            0.021093525073294345,
+            0.08424144319729182
+          ],
+          "video_prefill": 0.05524679743751319,
+          "action_steps": [
+            9.10096268946801e-05,
+            0.00011939349635346076,
+            0.00015165663753967203,
+            0.00020229185858189233,
+            0.0002874595839520365,
+            0.0004595754982172224,
+            0.0008302358876794137,
+            0.0018764093458466288,
+            0.007016220733181413,
+            0.45679822285865085
+          ],
+          "other": 2.644667419191351e-05
+        },
+        "student_first10motor_mse": 0.000900769216241315,
+        "bf16_reader_first10motor_mse": 0.0003176488106873876,
+        "parity_max": 0.0,
+        "signature_worst": 0.0
+      },
+      "GPTVQ": {
+        "layers": [
+          53,
+          63,
+          73,
+          77,
+          83,
+          93,
+          103,
+          113,
+          123,
+          133,
+          143,
+          153,
+          163,
+          173,
+          183,
+          193
+        ],
+        "modules": [
+          "video_expert.blocks.4.ffn.0",
+          "video_expert.blocks.5.ffn.0",
+          "video_expert.blocks.6.ffn.0",
+          "video_expert.blocks.7.self_attn.v",
+          "video_expert.blocks.7.ffn.0",
+          "video_expert.blocks.8.ffn.0",
+          "video_expert.blocks.9.ffn.0",
+          "video_expert.blocks.10.ffn.0",
+          "video_expert.blocks.11.ffn.0",
+          "video_expert.blocks.12.ffn.0",
+          "video_expert.blocks.13.ffn.0",
+          "video_expert.blocks.14.ffn.0",
+          "video_expert.blocks.15.ffn.0",
+          "video_expert.blocks.16.ffn.0",
+          "video_expert.blocks.17.ffn.0",
+          "video_expert.blocks.18.ffn.0"
+        ],
+        "coverage": 0.29146003213972765,
+        "damage": {
+          "53": 0.0015173909858279514,
+          "63": 0.0020245044482722087,
+          "73": 0.002271775983304671,
+          "77": 0.0018511479016301835,
+          "83": 0.0016516940434819017,
+          "93": 0.0019081515367074474,
+          "103": 0.0019536426433555895,
+          "113": 0.00193398452145553,
+          "123": 0.0017635092624095556,
+          "133": 0.0018136356742785198,
+          "143": 0.002077763599778382,
+          "153": 0.0019647325462593406,
+          "163": 0.0019015878725323495,
+          "173": 0.0020093536900379952,
+          "183": 0.002088548561989734,
+          "193": 0.001970067511931343
+        },
+        "damage_total": 0.10533688121098617,
+        "head_share_unit_noise": {
+          "A": 0.5315894985543709,
+          "Az": 0.037133432044107184,
+          "K": 0.014503364840663913,
+          "Z": 0.41677370456085816,
+          "A_via_future": 0.07101883637224056
+        },
+        "head_share_sigma_weighted": {
+          "A": 0.2892869744260063,
+          "Az": 0.06491973745580396,
+          "K": 0.02676502759640109,
+          "Z": 0.6190282605217887,
+          "A_via_future": 0.19640007698874679
+        },
+        "head_share_sigma_weighted_bf16_point": {
+          "A": 0.14366630923304385,
+          "Az": 0.032974068391924884,
+          "K": 0.015029081616933096,
+          "Z": 0.8083305407580982,
+          "A_via_future": 0.20130061327626675
+        },
+        "context_ess": 1.1484848690367333,
+        "context_ess_unit_noise": 1.2072996901309052,
+        "contexts": 80,
+        "groups": {
+          "video_steps": [
+            0.18089824779103697,
+            0.09681026392148709,
+            0.03214760643225352,
+            0.012034393187366753,
+            0.007009487760707946,
+            0.006063344015924879,
+            0.007249861444396394,
+            0.01106573068863507,
+            0.022297972241241918,
+            0.07931574495004945
+          ],
+          "video_prefill": 0.05737946104218785,
+          "action_steps": [
+            0.0001193611355908553,
+            0.0001571769147652608,
+            0.00019985285880678877,
+            0.00026606101702641397,
+            0.0003850530462943189,
+            0.0006073207795935024,
+            0.0010824746144231525,
+            0.0023782551913972367,
+            0.008434125646556496,
+            0.4740695138357121
+          ],
+          "other": 2.8691484546227886e-05
+        },
+        "student_first10motor_mse": 0.0013767492564511485,
+        "bf16_reader_first10motor_mse": 0.0006651100355611561,
+        "parity_max": 0.0,
+        "signature_worst": 0.0
+      },
+      "QUIPSHARP": {
+        "layers": [
+          2,
+          4,
+          103,
+          113,
+          143,
+          153,
+          163,
+          173,
+          183,
+          193,
+          203,
+          213,
+          223,
+          305,
+          309,
+          612
+        ],
+        "modules": [
+          "video_expert.time_embedding.0",
+          "video_expert.time_projection.1",
+          "video_expert.blocks.9.ffn.0",
+          "video_expert.blocks.10.ffn.0",
+          "video_expert.blocks.13.ffn.0",
+          "video_expert.blocks.14.ffn.0",
+          "video_expert.blocks.15.ffn.0",
+          "video_expert.blocks.16.ffn.0",
+          "video_expert.blocks.17.ffn.0",
+          "video_expert.blocks.18.ffn.0",
+          "video_expert.blocks.19.ffn.0",
+          "video_expert.blocks.20.ffn.0",
+          "video_expert.blocks.21.ffn.0",
+          "video_expert.head.head",
+          "action_expert.time_embedding.0",
+          "action_expert.head"
+        ],
+        "coverage": 0.3962398510659723,
+        "damage": {
+          "2": 0.0011436592956032188,
+          "4": 0.0004149632286400278,
+          "103": 0.00013032091924645853,
+          "113": 0.00011907957575409664,
+          "143": 0.00012892692023876943,
+          "153": 0.0001317138776303583,
+          "163": 0.0001540826366727661,
+          "173": 0.00017131048850140324,
+          "183": 0.000182117637886204,
+          "193": 0.00017930251382859697,
+          "203": 0.00016972860938689583,
+          "213": 0.0001545185648333882,
+          "223": 0.00014105250239036232,
+          "305": 0.000142674945059909,
+          "309": 0.0001638789070907263,
+          "612": 0.0009673574162519915
+        },
+        "damage_total": 0.011343351828251183,
+        "head_share_unit_noise": {
+          "A": 0.5421258780491658,
+          "Az": 0.03122231838440285,
+          "K": 0.010381729827551601,
+          "Z": 0.41627007373887975,
+          "A_via_future": 0.05904158990284747
+        },
+        "head_share_sigma_weighted": {
+          "A": 0.4344462516400833,
+          "Az": 0.03893275148565902,
+          "K": 0.012812479699340837,
+          "Z": 0.5138085171749168,
+          "A_via_future": 0.08880521481965374
+        },
+        "head_share_sigma_weighted_bf16_point": {
+          "A": 0.25991206587798,
+          "Az": 0.028233636679914808,
+          "K": 0.013403957710932574,
+          "Z": 0.6984503397311728,
+          "A_via_future": 0.10417804282318129
+        },
+        "context_ess": 12.337662590891595,
+        "context_ess_unit_noise": 15.796462557722352,
+        "contexts": 80,
+        "groups": {
+          "video_steps": [
+            0.19741653713682086,
+            0.11553507009783652,
+            0.035580769249958094,
+            0.01410607764628904,
+            0.007835055510750918,
+            0.006614645191262869,
+            0.00770483214364418,
+            0.011561156753378744,
+            0.022022017513249375,
+            0.08799090372674076
+          ],
+          "video_prefill": 0.054536528128532234,
+          "action_steps": [
+            5.4112306048771585e-05,
+            7.115736868452846e-05,
+            9.103708393969603e-05,
+            0.00012241167915719186,
+            0.0001758536431220141,
+            0.000284415156319264,
+            0.0005173923551789134,
+            0.0012057569937138786,
+            0.004751715019776336,
+            0.4317710104582689
+          ],
+          "other": 5.1544837326996937e-05
+        },
+        "student_first10motor_mse": 0.0008240573462899193,
+        "bf16_reader_first10motor_mse": 0.0004960359510619127,
+        "parity_max": 0.0,
+        "signature_worst": 0.0
+      }
+    },
+    "bf16_point": {
+      "head_share_unit_noise": {
+        "A": 0.3650814825220643,
+        "Az": 0.02442857428946388,
+        "K": 0.01188650903969713,
+        "Z": 0.5986034341487747,
+        "A_via_future": 0.06861217874028266
+      },
+      "context_ess_unit_noise": 23.25074075019228
+    }
+  },
+  "heldout": {
+    "QTIP": {
+      "U": {
+        "first10motor_rmse": 0.032398840948008004,
+        "first10motor_mse": 0.0011035398099920712,
+        "future_latent_nmse": 0.05324625272769481,
+        "mixed_loss": 0.003364084218628705,
+        "full32motor_rmse": 0.035440620267763734,
+        "late22motor_rmse": 0.03602131861262023,
+        "first10gripper_rmse": 0.08595653278753161,
+        "first10gripper_disagreement": 0.005000000000000001,
+        "first10motor_rmse_swap": 0.024588405271060768,
+        "first10motor_mse_swap": 0.0006217636451765429,
+        "full32motor_rmse_swap": 0.024653597222641113
+      },
+      "G": {
+        "first10motor_rmse": 0.03237226800993085,
+        "first10motor_mse": 0.0011094000361481448,
+        "future_latent_nmse": 0.054073667037300766,
+        "mixed_loss": 0.0034050719390506857,
+        "full32motor_rmse": 0.036960895662195986,
+        "late22motor_rmse": 0.037833459000103174,
+        "first10gripper_rmse": 0.09461377812549471,
+        "first10gripper_disagreement": 0.006250000000000001,
+        "first10motor_rmse_swap": 0.02407264402136207,
+        "first10motor_mse_swap": 0.0005941571693256264,
+        "full32motor_rmse_swap": 0.024067868059501053
+      },
+      "O": {
+        "first10motor_rmse": 0.032187227881513535,
+        "first10motor_mse": 0.001101779774398892,
+        "future_latent_nmse": 0.05111160828964785,
+        "mixed_loss": 0.0032716988411266353,
+        "full32motor_rmse": 0.03597626371774822,
+        "late22motor_rmse": 0.03683344325982034,
+        "first10gripper_rmse": 0.08678881246596575,
+        "first10gripper_disagreement": 0.005000000000000001,
+        "first10motor_rmse_swap": 0.024652039096690715,
+        "first10motor_mse_swap": 0.000624075186351547,
+        "full32motor_rmse_swap": 0.024743899330496786
+      },
+      "G_full": {
+        "first10motor_rmse": 0.033169926539994773,
+        "first10motor_mse": 0.0011736811273294733,
+        "future_latent_nmse": 0.06234649998368696,
+        "mixed_loss": 0.003820572223048657,
+        "full32motor_rmse": 0.03868070153985172,
+        "late22motor_rmse": 0.04002916160970926,
+        "first10gripper_rmse": 0.08761983653530478,
+        "first10gripper_disagreement": 0.005,
+        "first10motor_rmse_swap": 0.023926196538377555,
+        "first10motor_mse_swap": 0.0005878867439605528,
+        "full32motor_rmse_swap": 0.024230299633927643
+      }
+    },
+    "GPTVQ": {
+      "U": {
+        "first10motor_rmse": 0.04030083275865763,
+        "first10motor_mse": 0.0018078010751196413,
+        "future_latent_nmse": 0.09557235662359745,
+        "mixed_loss": 0.005865280149737373,
+        "full32motor_rmse": 0.047546789539046584,
+        "late22motor_rmse": 0.04955008095130324,
+        "first10gripper_rmse": 0.03649309842148796,
+        "first10gripper_disagreement": 0.0025,
+        "first10motor_rmse_swap": 0.025861716154031454,
+        "first10motor_mse_swap": 0.0006963686861126917,
+        "full32motor_rmse_swap": 0.02722578882239759
+      },
+      "G": {
+        "first10motor_rmse": 0.04149245568551123,
+        "first10motor_mse": 0.0019402202000492251,
+        "future_latent_nmse": 0.09826139360666276,
+        "mixed_loss": 0.006111861058161593,
+        "full32motor_rmse": 0.048655673325993125,
+        "late22motor_rmse": 0.050499254208989444,
+        "first10gripper_rmse": 0.04743120014900342,
+        "first10gripper_disagreement": 0.005000000000000001,
+        "first10motor_rmse_swap": 0.026153842045459896,
+        "first10motor_mse_swap": 0.0007151685767894378,
+        "full32motor_rmse_swap": 0.027481801668182017
+      },
+      "O": {
+        "first10motor_rmse": 0.04190717882011086,
+        "first10motor_mse": 0.001964578438855824,
+        "future_latent_nmse": 0.09728349708020687,
+        "mixed_loss": 0.006094703206326813,
+        "full32motor_rmse": 0.047953502833843226,
+        "late22motor_rmse": 0.04953281683847308,
+        "first10gripper_rmse": 0.05177842533448711,
+        "first10gripper_disagreement": 0.005,
+        "first10motor_rmse_swap": 0.026140507240779695,
+        "first10motor_mse_swap": 0.0007138397453672951,
+        "full32motor_rmse_swap": 0.02746689941268414
+      },
+      "G_full": {
+        "first10motor_rmse": 0.038975310837849976,
+        "first10motor_mse": 0.0016959343098278622,
+        "future_latent_nmse": 0.09638019339181482,
+        "mixed_loss": 0.005787709716241806,
+        "full32motor_rmse": 0.047592309513129295,
+        "late22motor_rmse": 0.04995217374525964,
+        "first10gripper_rmse": 0.049911686009727424,
+        "first10gripper_disagreement": 0.005,
+        "first10motor_rmse_swap": 0.023864649643655863,
+        "first10motor_mse_swap": 0.0005919110108152381,
+        "full32motor_rmse_swap": 0.025380370090715587
+      }
+    },
+    "QUIPSHARP": {
+      "U": {
+        "first10motor_rmse": 0.031053637049626555,
+        "first10motor_mse": 0.00107988008785469,
+        "future_latent_nmse": 0.07175812474451959,
+        "mixed_loss": 0.0041263372535468084,
+        "full32motor_rmse": 0.037947662803344426,
+        "late22motor_rmse": 0.039754835539497435,
+        "first10gripper_rmse": 0.07482744748704136,
+        "first10gripper_disagreement": 0.005000000000000001,
+        "first10motor_rmse_swap": 0.020036371471360323,
+        "first10motor_mse_swap": 0.00041906232181645466,
+        "full32motor_rmse_swap": 0.020659557322505864
+      },
+      "G": {
+        "first10motor_rmse": 0.03213570127263665,
+        "first10motor_mse": 0.001205923482666549,
+        "future_latent_nmse": 0.07626477568410336,
+        "mixed_loss": 0.0044437083241064095,
+        "full32motor_rmse": 0.039587796409614386,
+        "late22motor_rmse": 0.04156719422899187,
+        "first10gripper_rmse": 0.09129523986484855,
+        "first10gripper_disagreement": 0.007500000000000001,
+        "first10motor_rmse_swap": 0.020035958290100096,
+        "first10motor_mse_swap": 0.00042899083346128466,
+        "full32motor_rmse_swap": 0.021534220420289782
+      },
+      "O": {
+        "first10motor_rmse": 0.03268839971860871,
+        "first10motor_mse": 0.0012291271134017734,
+        "future_latent_nmse": 0.07648770997766405,
+        "mixed_loss": 0.004476376593811437,
+        "full32motor_rmse": 0.040399127779528504,
+        "late22motor_rmse": 0.04240607608808204,
+        "first10gripper_rmse": 0.08324898392893373,
+        "first10gripper_disagreement": 0.006250000000000001,
+        "first10motor_rmse_swap": 0.020081621780991554,
+        "first10motor_mse_swap": 0.000422109601640841,
+        "full32motor_rmse_swap": 0.02156792734749615
+      },
+      "G_full": {
+        "first10motor_rmse": 0.03348098667338491,
+        "first10motor_mse": 0.0012571535433380631,
+        "future_latent_nmse": 0.07893765037879348,
+        "mixed_loss": 0.004608414044196252,
+        "full32motor_rmse": 0.04128368345554918,
+        "late22motor_rmse": 0.0435243368614465,
+        "first10gripper_rmse": 0.092800770746544,
+        "first10gripper_disagreement": 0.007500000000000001,
+        "first10motor_rmse_swap": 0.020704303076490762,
+        "first10motor_mse_swap": 0.00046460869780275973,
+        "full32motor_rmse_swap": 0.022854044963605703
+      }
+    }
+  },
+  "proxies": {
+    "QTIP": {
+      "U": {
+        "H_U": 0.009956366420311322,
+        "H_G": 0.012524492480688761,
+        "H_O": 0.012763534682639667
+      },
+      "G": {
+        "H_U": 0.013386275723286425,
+        "H_G": 0.00697301230916712,
+        "H_O": 0.010588933635204705
+      },
+      "O": {
+        "H_U": 0.013193763158617946,
+        "H_G": 0.009968035630646225,
+        "H_O": 0.007812063500606199
+      },
+      "bpw_selected": 2.011768484207442
+    },
+    "GPTVQ": {
+      "U": {
+        "H_U": 0.009235344757216638,
+        "H_G": 0.011769276654496438,
+        "H_O": 0.012302897892402652
+      },
+      "G": {
+        "H_U": 0.012959073441968838,
+        "H_G": 0.005577978159917492,
+        "H_O": 0.0060299989142118485
+      },
+      "O": {
+        "H_U": 0.012671128059671799,
+        "H_G": 0.012834110021801062,
+        "H_O": 0.0017115595731927965
+      },
+      "bpw_selected": 2.062509169600939
+    },
+    "QUIPSHARP": {
+      "U": {
+        "H_U": 0.00900667469597522,
+        "H_G": 0.011405202744089397,
+        "H_O": 0.01247639844775505
+      },
+      "G": {
+        "H_U": 0.013514155184850522,
+        "H_G": 0.005720551597939494,
+        "H_O": 0.011481816474785774
+      },
+      "O": {
+        "H_U": 0.013553903938330558,
+        "H_G": 0.009934353091716997,
+        "H_O": 0.00574690217808125
+      },
+      "bpw_selected": 2.006578885301826
+    }
+  },
+  "decision": {
+    "hosts": {
+      "QTIP": {
+        "G": {
+          "mixed_down": false,
+          "future_share_down": false,
+          "c1_direction": false
+        },
+        "O": {
+          "mixed_down": true,
+          "future_share_down": true,
+          "c1_direction": true
+        }
+      },
+      "GPTVQ": {
+        "G": {
+          "mixed_down": false,
+          "future_share_down": false,
+          "c1_direction": false
+        },
+        "O": {
+          "mixed_down": false,
+          "future_share_down": false,
+          "c1_direction": false
+        }
+      },
+      "QUIPSHARP": {
+        "G": {
+          "mixed_down": false,
+          "future_share_down": false,
+          "c1_direction": false
+        },
+        "O": {
+          "mixed_down": false,
+          "future_share_down": false,
+          "c1_direction": false
+        }
+      }
+    },
+    "passed": 1,
+    "min_hosts": 2,
+    "go": false
+  },
+  "ucheck_relative_max": {
+    "QTIP": 0.0,
+    "GPTVQ": 0.0,
+    "QUIPSHARP": 0.0
+  },
+  "new_teacher_queries": 0,
+  "training_updates": 0
+}

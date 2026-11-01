@@ -1,0 +1,34 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU-node tests: bash syntax of the job scripts, then test_panelb.py (host python 3.11 module; real panel A / pool
+# files read-only for the balance-rule reproduction check).
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+OUT=$NEW_ROOT/results/cputest/$PBS_JOBID
+WORK=$NEW_ROOT/artifacts/cputest_$PBS_JOBID
+mkdir -p "$OUT" "$WORK"
+A16_ROOT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["a16"]["root"])' "$NEW_ROOT/protocol.json")
+for name in protocol.json run.pbs node.sh slots.sh panel.py sched.py t5_prep.py panel_worker.py analysis_b.py test_panelb.py; do
+  cp "$NEW_ROOT/$name" "$WORK/"
+done
+cp "$A16_ROOT/common.py" "$A16_ROOT/loop_worker.py" "$WORK/"
+module purge
+module load python/3.11.7-gcc11
+start=$(date +%s)
+set +e
+{
+  for f in run.pbs node.sh slots.sh; do bash -n "$WORK/$f" && echo "bash -n ok $f"; done
+  cd "$WORK" && FW_REAL_FILES=1 python3.11 -B test_panelb.py
+} > "$OUT/test.log" 2>&1
+rc=$?
+set -e
+bad=$(grep -c 'syntax error' "$OUT/test.log" || true)
+(( bad == 0 )) || rc=2
+printf '{"exit_code": %d, "seconds": %d}\n' "$rc" "$(( $(date +%s) - start ))" > "$OUT/result.json"
+cat "$OUT/test.log"
+exit "$rc"

@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU-node tests: bash syntax of the job scripts, Python syntax of the container scripts, then test_840.py (host
+# python 3.11, stdlib only).
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-ravqc-plus840-20261031
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+OUT=$NEW_ROOT/results/cputest/$PBS_JOBID
+WORK=$NEW_ROOT/artifacts/cputest_$PBS_JOBID
+mkdir -p "$OUT" "$WORK"
+for name in protocol.json run.pbs slots.sh panel.py sched.py t5_merge.py gate.py panel_worker.py analysis_840.py test_840.py; do
+  cp "$NEW_ROOT/$name" "$WORK/"
+done
+module purge
+module load python/3.11.7-gcc11
+start=$(date +%s)
+set +e
+{
+  for f in run.pbs slots.sh; do bash -n "$WORK/$f" && echo "bash -n ok $f"; done
+  for f in panel_worker.py t5_merge.py; do python3.11 -m py_compile "$WORK/$f" && echo "py_compile ok $f"; done
+  cd "$WORK" && python3.11 -B test_840.py
+} > "$OUT/test.log" 2>&1
+rc=$?
+set -e
+bad=$(grep -c 'syntax error\|SyntaxError' "$OUT/test.log" || true)
+(( bad == 0 )) || rc=2
+printf '{"exit_code": %d, "seconds": %d}\n' "$rc" "$(( $(date +%s) - start ))" > "$OUT/result.json"
+cat "$OUT/test.log"
+exit "$rc"

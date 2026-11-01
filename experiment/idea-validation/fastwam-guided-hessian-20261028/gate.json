@@ -1,0 +1,78 @@
+{
+  "purpose": "Gate 1 for the operating-point curvature: the Gauss-Newton probes of A + lambda Z + beta K linearized at each host's own W2 model (the A16 baselines' H_U weights) instead of at BF16. Phase 1 at BF16: 6.9% of the A head goes through the future and beta K carries 1.2% of the mass, while at W2 the BF16-future swap removes 44-61% of the held-out first10 motor MSE; on every host the phase-1 H~ raised both the held-out mixed loss and the future share of the motor MSE.",
+  "hosts": {
+    "QTIP": {"method": "qtip", "bits": 2, "baseline_arm": "QTIP_U_W2", "baseline_loop": "QTIP_W2", "bf16_point_arm": "QTIP_G_W2"},
+    "GPTVQ": {"method": "gptvq", "bits": 2, "baseline_arm": "GPTVQ_W2", "baseline_loop": "GPTVQ_W2", "bf16_point_arm": "GPTVQ_G_W2"},
+    "QUIPSHARP": {"method": "quipsharp", "bits": 2, "baseline_arm": "QUIPSHARP_W2", "baseline_loop": "QUIPSHARP_W2", "bf16_point_arm": "QUIPSHARP_G_W2"}
+  },
+  "probes": {
+    "contexts": "C80, sampler seed index 0, the host's W2 weights installed in all 614 target Linears",
+    "A": "executed action: the model's own (W2) prefill + action loop from the query's future, as in phase 1",
+    "K": "frozen BF16 reader (the 614 BF16 masters, same biases) on the student's own future z_hat; c_K = J^T g_K with g_K = Rademacher * sqrt(h/2), h the soft-bin KL curvature at the teacher action; computed in a separate pass before the probe pass, without the query graph",
+    "Z": "Rademacher / |z_T[:,:,1:]| on future[:,:,1:], as in phase 1",
+    "k_seed": 20261030,
+    "generators": "A and Z cotangents from protocol probes.seed + case (A then Z per probe), K from k_seed + case"
+  },
+  "selection": {
+    "layers": 16,
+    "damage": "per layer sigma_l^2 * mass_l: sigma_l^2 = mean squared error of the host's baseline W2 weight, mass_l = sum over calls and heads of sum_t u_t |x_t|^2 at the operating point, C80 mean (isotropic rounding noise: E[(g . dW x)^2] = sigma^2 |g|^2 |x|^2)",
+    "same_layers": "the G and O arms of a host replace the same layers"
+  },
+  "hessian": "H~_op = sum_t (u_t / ubar_l + gamma) x_t x_t^T / sum_t (u_t / ubar_l + gamma), phase-1 form and gamma (protocol hessian.gamma); u and x from the operating-point probes and a replay of the C80 queries with the host's W2 weights installed",
+  "arms": {
+    "U": "the host's baseline W2 (held-out from phases 1 and 3)",
+    "G": "GATE_<host>_G: baseline W2 with the selected layers taken from the phase-1 H~ arm (BF16 linearization point)",
+    "O": "GATE_<host>_O: baseline W2 with the selected layers requantized by the host on H~_op, baseline seeds"
+  },
+  "decision": {
+    "rule": "go to the full run if on at least min_hosts hosts the O arm lowers both the held-out mixed loss and the future share of the first10 motor MSE (1 - mse_swap / mse) against U",
+    "min_hosts": 2,
+    "reported": "the same two quantities for the G arm, the head shares at both linearization points, ESS over contexts"
+  },
+  "allocation": {
+    "job_name": "fwgo",
+    "queue": "normal",
+    "execution_queue": "g2",
+    "gpus": 2,
+    "ncpus": 8,
+    "ncpus_basis": "one probe / replay / quant / eval process per GPU, ~3 busy cores each (26043905 CPU_SAMPLE); PBS sets 16 per GPU on g2 regardless",
+    "memory_gb": 120,
+    "memory_basis": "per process: runtime + 614 BF16 masters on the CPU (~9 GB) + the C80 probe statistics during the replay",
+    "walltime": "05:00:00",
+    "soft_deadline_seconds": 17400
+  },
+  "steps": [
+    "probe (2 GPUs, contexts split): per host install the baseline W2, sigma (shard 0), K pass, probe pass -> results/gate/<host>/{sigma.json, kpass/, stats/}",
+    "select (1): damage, top layers, head shares at both points, ESS -> results/gate/selection.json",
+    "hessian (2, layers split): H~_op of the selected layers -> results/gate/<host>/hessians/",
+    "quant (2): the host on H~_op for the selected layers -> results/gate/<host>/{weights, wstats}/",
+    "eval (2): held-out 40x2 + swap of the six GATE arms -> results/heldout/GATE_*.json",
+    "final (1): results/gate/{summary.json, RESULTS.zh.md, DECISION.json}"
+  ],
+  "full": {
+    "purpose": "Submitted only on DECISION go: H~_op of all 614 layers per host, every layer requantized by the host on it with the baseline seeds (the gate's selected layers reused bitwise: same H~_op, seed and code), held-out 40x2 and LIBERO-Plus 280 of the three O arms; per host against the baseline (H_U) and the phase-1 H~ arm, paired McNemar, pooled over the hosts.",
+    "arm_suffix": "_O_W2",
+    "closed_loop": {"workers_per_gpu": 2},
+    "allocation": {
+      "job_name": "fwgf",
+      "queue": "normal",
+      "execution_queue": "g3",
+      "gpus": 4,
+      "ncpus": 20,
+      "ncpus_basis": "8 loop workers ~2 cores each, quant ~1 per GPU (26043905 / 26050310 CPU_SAMPLE); PBS sets 16 per GPU regardless",
+      "memory_gb": 200,
+      "memory_basis": "26043905: 56 GB with 4 loop workers; here 8",
+      "walltime": "08:00:00",
+      "soft_deadline_seconds": 28200,
+      "time_basis": "replay ~10 min per host on 2 GPUs (26043905); host quantization 1.86 + 3.84 + 1.28 GPU-h (A16 baselines) / 4; closed loop ~40 min per arm on 4 GPUs"
+    },
+    "steps": [
+      "full_hessian (4): H~_op of the remaining layers per host -> results/gate/<host>/hessians/",
+      "full_quant (4): every (host, layer) on H~_op -> results/quantized/<host>_O_W2/{weights, stats}/",
+      "full_complete (1): quantized/<arm>/COMPLETE.json",
+      "full_eval (4): held-out 40x2 + swap of the O arms",
+      "loop: LIBERO-Plus 280 of each O arm, 8 workers",
+      "full_final (1): results/full/{summary.json, RESULTS.zh.md}"
+    ]
+  }
+}

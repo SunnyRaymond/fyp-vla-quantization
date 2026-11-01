@@ -1,0 +1,93 @@
+{
+  "purpose": "RAVQ, uncalibrated (no training of any parameter): QTIP rounding (the strongest A16 W2 host, same port, per-layer seeds and H_U as the A16 baselines) under a module-level bit budget derived from C1. C1 measurements on QTIP W2: the imagined future carries the main error channel (BF16-future swap removes 24-36% of first10 motor MSE on three hosts; W2 -> W3 on the video expert gives 71% of the A + lambda Z + beta K gain, mostly through Z + K), while upgrading all 30 action-expert blocks W2 -> W3 buys nothing (FLAQ module 1, 26070509: total -1.3e-5 of 1.9e-3; exactly 0 on Z / K). So bits move from the executing network (action-expert blocks) to the imagining network (video-expert blocks) at equal total bits. Video blocks are indistinguishable end to end (block benefit spread = sampling noise), so inside the video body the extra bits follow the standard rate-distortion rule on the layer proxy. Two protocol items that any WAM quantizer can use are given to the reference arms too: interface Linears in BF16 (action.io + video.head: stable top-2 of FLAQ module 1, 0.01% of the weights) and the timestep-only conditioning Linears as exact per-timestep output tables (tcond 26066073: inputs identical across contexts and seeds, 11 video / 10 action timesteps; outputs exact, fewer bits than W2).",
+  "host": "QTIP",
+  "method": "qtip",
+  "seed_base": 20261028,
+  "sources": {
+    "2": "<baseline root>/results/quantized/QTIP_W2 (A16 baselines, H_U)",
+    "3": "<baseline root>/results/quantized/QTIP_W3 (A16 baselines, H_U)",
+    "1": "results/ravq/qtip_K1 (this job: QTIP with K = 1, same code, seed and H_U)",
+    "4": "results/ravq/qtip_K4 (this job: QTIP with K = 4, only the video-body layers the W3 allocation selects)",
+    "bf16": "<baseline root>/results/prep/masters (the BF16 weights)"
+  },
+  "qtip_k1": "the port's quantize_layer accepts K in 2..4 because the official CUDA kernels exist for those; the trellis, Viterbi, packing and decoding are generic in K (bitshift_codebook L=16, V=2, K*V bits per step). ravq_qtip.quantize_layer is the port's routine with K in 1..4 that also returns the packed codes (trellis, SU, SV, Wscale, LUT) for the calibrated stage; for K = 2 it must reproduce the port bit for bit (test_ravq.py)",
+  "modules": {
+    "interfaces": ["action_expert.action_encoder", "action_expert.head", "proprio_encoder", "video_expert.head.head"],
+    "time_tables": ["video_expert.time_embedding.0", "video_expert.time_embedding.2", "video_expert.time_projection.1",
+                    "action_expert.time_embedding.0", "action_expert.time_embedding.2", "action_expert.time_projection.1"],
+    "video_body": "video_expert.blocks.* (300 Linears)",
+    "action_body": "action_expert.blocks.* (300 Linears)",
+    "text": "video_expert.text_embedding.0/.2, action_expert.text_embedding.0/.2: the family's base bits",
+    "table_bits": "per expert 16 x distinct timesteps x (out of time_embedding.2 + out of time_projection.1), the distinct timesteps from results/lowrank/tcond/input_check.json (26066073); booked on the expert's time_embedding.0, 0 on the other two; installed as the BF16 masters, whose outputs equal the table exactly"
+  },
+  "arms": {
+    "QTIP_W3": {"reference": true, "note": "the A16 baselines' QTIP_W3, unchanged (held-out not measured before)"},
+    "QTIP_W2I": {"family": 2, "action_body": 2, "video_body": 2, "note": "uniform W2 under the protocol (interfaces BF16, time tables): the fair 2-bit reference"},
+    "QTIP_A1W2I": {"family": 2, "action_body": 1, "video_body": 2, "note": "action floor at 2 bits: the action-expert blocks at K = 1, nothing given back"},
+    "RAVQU_W2": {"family": 2, "action_body": 1, "video_body": 2, "upgrade": 3, "budget_of": "QTIP_W2I", "note": "ours: the action-body bits go to video-body layers W2 -> W3"},
+    "QTIP_W3I": {"family": 3, "action_body": 3, "video_body": 3, "note": "uniform W3 under the protocol: the fair 3-bit reference"},
+    "QTIP_A2W3I": {"family": 3, "action_body": 2, "video_body": 3, "note": "action floor at 3 bits: the action-expert blocks at W2"},
+    "RAVQU_W3": {"family": 3, "action_body": 2, "video_body": 3, "upgrade": 4, "budget_of": "QTIP_W3I", "note": "ours: the action-body bits go to video-body layers W3 -> W4"}
+  },
+  "allocation": {
+    "rule": "budget = total bits of budget_of - total bits of the arm before upgrades; video-body layers enter greedily by density n_l (p_l(base) - p_l(up)) / (bits_l(up) - bits_l(base)) (the reduction of the weight-averaged H_U proxy per stored bit, the baselines' proxy_nmse_weighted), highest first, ties by index; a layer that does not fit is skipped and the scan goes on; the result never exceeds the budget",
+    "proxy": "p_l(b) = tr(dW H_U dW^T) / tr(W H_U W^T) from the A16 baselines' stats (b = 2, 3); p_l(4) for selection only = p_l(3)^2 / p_l(2) (the layer's own W2 -> W3 ratio applied once more), the measured value is reported after quantization",
+    "bits": "QTIP bits_total per layer (trellis K bits per padded weight + SU 16 n_p + SV 32 m_p); for K = 1 and K = 4 the port's storage_bits before quantization, checked against the quantized layer"
+  },
+  "evaluation": "held-out 40x2 with the C1 swap (worker.Work.evaluate: first10 motor, future NMSE, gripper, the quantized reader on the BF16 teacher future); QTIP_U_W2 from results/heldout/QTIP_U_W2.json (26043905)",
+  "reading": {
+    "protocol": "QTIP_W2I / QTIP_U_W2 and QTIP_W3I / QTIP_W3 on held-out mixed loss, first10 motor RMSE, gripper RMSE: how much the interfaces + tables recover alone (the main table must give them to every host)",
+    "action_floor": "QTIP_A1W2I / QTIP_W2I and QTIP_A2W3I / QTIP_W3I: first10 motor RMSE with the BF16 future (swap, = the action expert's own error), first10 motor RMSE, gripper RMSE; future NMSE must be identical (the action expert cannot reach the future)",
+    "ravq": "RAVQU_Wb against QTIP_WbI at no more total bits",
+    "future_ratio_max": 0.9,
+    "mixed_ratio_max": 1.0,
+    "go": "per family: RAVQU future NMSE <= future_ratio_max x QTIP_WbI's and mixed loss <= mixed_ratio_max x QTIP_WbI's -> LIBERO-Plus closed loop of RAVQU_Wb paired against QTIP_WbI; QTIP_W2I's closed loop runs in any case (it resets the baseline table)"
+  },
+  "checks": {
+    "k2_bitwise": "on the cluster CPU test: ravq_qtip K = 2 equals the port's quantize_layer bit for bit",
+    "decode": "every K = 1 / K = 4 layer: the packed trellis decodes to the LDLQ output exactly (the port's VERIFY_DECODE)",
+    "bits": "every new layer's bits_total equals storage_bits(m, n, K)",
+    "budget": "every RAVQU arm's total bits <= its budget_of arm's",
+    "future_identity": "QTIP_A1W2I vs QTIP_W2I and QTIP_A2W3I vs QTIP_W3I held-out future NMSE equal (relative <= 1e-6)"
+  },
+  "allocation_job": {
+    "job_name": "fwrv1",
+    "queue": "normal",
+    "execution_queue": "gdev",
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 400,
+    "walltime": "02:00:00",
+    "soft_deadline_seconds": 6900,
+    "time_basis": "quant: action body 1.0e9 weights at K = 1 + ~1.0e9 video weights at K = 4; the baselines' QTIP W3 took 1.88 GPU-h for 6.0e9 weights, K = 4 ~2x per weight -> ~1 GPU-h, 15-20 min on 4 GPUs plus H_U reads; eval: 7 arms x 80 endpoints x ~3.9 s (query + swap read, tcond 26066073) ~37 GPU-min, ~12 min on 4 GPUs plus ~5 min load"
+  },
+  "trace_job": {
+    "purpose": "user, 2026-10-31: RAVQU_W2 205 vs QTIP_W2 204 (12 W / 11 L) despite held-out mixed 0.60x; are the lost episodes gripper mistakes (RAVQU's action body is K = 1, held-out gripper 1.18x of the fair reference)? Replay the 23 discordant episodes of both arms with per-step gripper logging (trace_worker.py)",
+    "pair": ["RAVQU_W2", "QTIP_W2"],
+    "loops": {"RAVQU_W2": "/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028/results/loops/RAVQU_W2",
+              "QTIP_W2": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/results/loops/QTIP_W2"},
+    "job_name": "fwrvt",
+    "queue": "normal",
+    "execution_queue": "gdev",
+    "gpus": 4,
+    "ncpus": 32,
+    "memory_gb": 400,
+    "walltime": "01:30:00",
+    "soft_deadline_seconds": 5100,
+    "time_basis": "8 workers (2 per GPU, one of each arm), 46 replays, failures run to the 400 / 700 step cap (~2-3 min), ~6 replays per worker ~20 min plus ~5 min load"
+  },
+  "loop_job": {
+    "job_name": "fwrvl",
+    "queue": "normal",
+    "execution_queue": "g3",
+    "gpus": 4,
+    "ncpus": 20,
+    "memory_gb": 200,
+    "walltime": "04:00:00",
+    "soft_deadline_seconds": 14100,
+    "arms": "results/ravq/DECISION.json loops, in order, restricted to run",
+    "run": ["RAVQU_W2", "RAVQU_W3"],
+    "run_note": "user, 2026-10-31: the two RAVQU arms first, the protocol references (QTIP_W2I, QTIP_W3I) later; until those run, each RAVQU arm is paired with the A16 baseline loop of its family (QTIP_W2, QTIP_W3)",
+    "time_basis": "8 workers (2 per GPU) on one episode queue, ~80 s per episode (26069268): 280 / 8 x 80 s ~47 min per arm plus startup; up to 4 arms ~3.3 h; finished arms are skipped on rN"
+  }
+}
