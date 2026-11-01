@@ -22,13 +22,13 @@ Post-training quantizers round each linear layer $\bW$ to $\hat\bW$ by minimizin
   \label{eq:layer}
 \end{equation}
 where $\bx$ is the layer input on calibration data~\cite{frantar2023gptq,tseng2024quipsharp,tseng2024qtip}.
-QTIP~\cite{tseng2024qtip} stores each layer as
+Trellis-coded quantization~\cite{tseng2024qtip} stores each layer as
 \begin{equation}
   \hat\bW = \operatorname{diag}(\mathbf{s}_v)\,\Phi_m^\top\,\big(\gamma\, C[\mathbf{c}]\big)\,\Phi_n\,\operatorname{diag}(\mathbf{s}_u),
   \label{eq:qtip}
 \end{equation}
 where $\Phi_m, \Phi_n$ are random Hadamard transforms, $\mathbf{s}_u, \mathbf{s}_v$ are column and row scales, $\gamma$ is a layer scale, and $C[\mathbf{c}]$ decodes the weights from trellis codes $\mathbf{c}$ through a small lookup table $C$ that is shared across layers.
-The codes spend $K$ bits per weight.
+Each code spends $b$ bits per weight.
 We report bits per weight (bpw) as the total storage of codes, scales, tables and any full-precision layers divided by the number of weights.
 
 \paragraph{Errors.}

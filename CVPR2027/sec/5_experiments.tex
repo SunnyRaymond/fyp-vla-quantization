@@ -1,39 +1,25 @@
 \section{Experiments}
 \label{sec:exp}
 
-We answer four questions.
-Does \method improve closed-loop success over existing ultra-low-bit quantizers at the same bits per weight, across WAMs (\cref{sec:exp:main})?
-Does the improvement hold on a real robot (\cref{sec:exp:real})?
-What does each component contribute, and is the future term necessary (\cref{sec:exp:ablation})?
-How much memory does it save, and how fast does it run (\cref{sec:exp:efficiency})?
-
 \subsection{Experimental setup}
 \label{sec:exp:setup}
 
-\paragraph{Models.}
-We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and \XX \TODO{second WAM, \eg Cosmos-Policy~\cite{kim2026cosmospolicy}}.
-Fast-WAM first denoises the future latent in 10 steps and then denoises a 32-step action chunk in 10 steps while attending to it; the robot executes the first 10 actions and replans.
-For a model that denoises the future and the action jointly, the reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action.
-Each model is compared with its own BF16 reference.
+\paragraph{Models and benchmarks.}
+We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and \XX \TODO{second WAM, \eg Cosmos-Policy~\cite{kim2026cosmospolicy}}, and compare each with its own BF16 reference.
+Fast-WAM first denoises the future latent and then denoises an action chunk while attending to it; for a model that denoises the future and the action jointly, the reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action.
+We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, and on a real robot arm (\cref{sec:exp:real}).
 
-\paragraph{Benchmarks.}
-We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions.
-We draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
-Real-world experiments are described in \cref{sec:exp:real}.
-
-\paragraph{Baselines.}
+\paragraph{Baselines and quantization settings.}
 We compare with scalar GPTQ~\cite{frantar2023gptq} and with the vector, lattice and trellis quantizers GPTVQ~\cite{vanbaalen2024gptvq}, QuIP\#~\cite{tseng2024quipsharp} and QTIP~\cite{tseng2024qtip}, at 2 and 3 bits per weight.
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables; both are counted in bits per weight.
-All methods use the same calibration data and inference runtime.
+All methods calibrate on the same 80 LIBERO contexts and share one inference runtime.
+For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and calibration uses $\lambda = \XX$, $\beta = \XX$ and 8 updates of 10 contexts each.
+On Fast-WAM, the allocation moves one bit per weight from the action expert, which only reads the future, to the video expert, which generates it (\cref{sec:supp:bits}).
 
-\paragraph{Metrics.}
+\paragraph{Evaluation metrics.}
 We report closed-loop success rates per suite and on average.
 For efficiency, we report weight storage, peak memory and the latency of one policy call.
-
-\paragraph{Calibration and implementation.}
-All methods calibrate on the same 80 LIBERO contexts.
-\method uses $\lambda = \XX$ and $\beta = \XX$ (\cref{sec:supp:method}) and 8 calibration updates.
-Quantization runs on NVIDIA A100 GPUs; further details are in \cref{sec:supp:eval}.
+Further implementation and evaluation details are provided in \cref{sec:supp:eval}.
 
 \subsection{Main results}
 \label{sec:exp:main}
@@ -77,7 +63,7 @@ Quantization runs on NVIDIA A100 GPUs; further details are in \cref{sec:supp:eva
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
     \bottomrule
   \end{tabular}
-  \caption{Closed-loop success rates (\%) on LIBERO-Plus over 840 paired episodes per method.
+  \caption{Closed-loop success rates (\%) on LIBERO-Plus.
   Within each model, the upper group is at 3 bits per weight and the lower group at 2 bits.
   \textbf{Bold}: best quantized result in a group; \underline{underline}: second best.
   At 2 bits, \method is the only method within \XX points of BF16 on both models.}
@@ -158,7 +144,7 @@ The quantized model stores \XX\,GB of weights instead of 12\,GB.
     & Variant & Avg. (\%) \\
     \midrule
     \multirow{3}{*}{Components}
-      & QTIP (uniform bits)                     & \XX \\
+      & Trellis-coded init., uniform bits (iii) & \XX \\
       & + future-aware allocation (ii)          & \XX \\
       & + reader metric and calibration (i, iv) & \XX \\
     \midrule
@@ -180,7 +166,7 @@ The quantized model stores \XX\,GB of weights instead of 12\,GB.
       & Low-rank + diagonal + $\alpha\mathbf{I}$ & \XX \\
     \bottomrule
   \end{tabular}
-  \caption{Ablations on Fast-WAM at 2 bits per weight (LIBERO-Plus, \XX paired episodes).
+  \caption{Ablations on Fast-WAM at 2 bits per weight (LIBERO-Plus).
   The last row of each block is the full \method.
   All variants use the same bit budget.}
   \label{tab:ablation}
@@ -189,7 +175,7 @@ The quantized model stores \XX\,GB of weights instead of 12\,GB.
 \cref{tab:ablation} isolates each component on Fast-WAM at 2 bits per weight with the bit budget held fixed.
 
 \paragraph{Each component contributes.}
-Future-aware allocation raises the success rate of QTIP from \XX\% to \XX\%, and the reader metric with shared-table calibration adds \XX points.
+Future-aware allocation raises the success rate of uniform-bit trellis-coded rounding from \XX\% to \XX\%, and the reader metric with shared-table calibration adds \XX points.
 
 \paragraph{Future fidelity is necessary.}
 Calibrating the tables on the action alone reaches \XX\%.
@@ -226,5 +212,5 @@ The full reader metric reaches \XX\%, compared with \XX\% for its diagonal alone
 
 \cref{tab:efficiency} reports the cost of 2-bit \method on Fast-WAM.
 It reduces weight storage from 12\,GB to \XX\,GB and peak memory from \XX\,GB to \XX\,GB, with a policy-call latency of \XX\,ms compared with \XX\,ms for BF16.
-Its storage and latency match QTIP at the same bits per weight, since the two share the decoder and format.
+It adds no storage or latency over QTIP at the same bits per weight: the allocation only changes how many bits each layer receives, and the calibrated tables take the place of the original ones.
 Quantization takes \XX GPU-hours, of which the reader metric and calibration take \XX.

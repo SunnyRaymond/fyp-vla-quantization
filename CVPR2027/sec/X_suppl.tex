@@ -10,7 +10,9 @@ Protocol of \cref{sec:observations}: held-out contexts and seeds, module groups 
 
 \section{Evaluation details}
 \label{sec:supp:eval}
-Construction of the 840 LIBERO-Plus episodes, seed rules, runtime consistency checks, and results of each subset.
+Implementation details: Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10 steps, and the robot executes the first 10 actions before replanning; quantization runs on NVIDIA A100 GPUs.
+LIBERO-Plus protocol: we draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
+To be written: seed rules, runtime consistency checks, and results of each subset.
 
 \section{Additional results}
 \label{sec:supp:results}
@@ -18,7 +20,30 @@ Success rates per suite and perturbation dimension for all methods and bit width
 
 \section{Bit accounting}
 \label{sec:supp:bits}
-Bit widths of every layer type, interface layers, timestep tables and decode tables.
+On Fast-WAM, the action expert only reads the future, so raising it leaves the predicted future unchanged, and the allocation moves one bit per weight from the action expert to the video expert.
+At a 2-bit budget, the freed bits upgrade 48 video layers (16.7\% of the weights), mostly the attention output and value projections and the second feed-forward layer in the last 15 blocks.
+\cref{tab:bits} lists the resulting bit widths; the total equals that of uniform bit widths.
+To be written: bit widths of every layer type, interface layers, timestep tables and decode tables.
+
+\begin{table}[h]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Method & Video expert & Action expert & Text cond. & Total \\
+    \midrule
+    QTIP, 2-bit    & 2.01 & 2.03 & 2.02 & 1.99 \\
+    \method, 2-bit & 2.22 & 1.03 & 2.02 & 1.99 \\
+    \midrule
+    QTIP, 3-bit    & 3.01 & 3.03 & 3.02 & 2.98 \\
+    \method, 3-bit & 3.22 & 2.03 & 3.02 & 2.98 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Bits per weight by module on Fast-WAM.
+  Interface layers and timestep tables are identical for all methods (\cref{sec:exp:setup}) and are included in the total.}
+  \label{tab:bits}
+\end{table}
 
 \section{Method details}
 \label{sec:supp:method}

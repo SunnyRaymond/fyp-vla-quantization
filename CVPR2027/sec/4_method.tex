@@ -1,139 +1,91 @@
-\section{Reader-Aware Vector Quantization}
+\section{Methodology}
 \label{sec:method}
 
-\begin{figure*}[t]
-  \centering
-  \figbox{Placeholder for Fig.~3 (method overview).\\[2pt]
-  Top row: a WAM (modules generating the future $\rightarrow$ predicted future $\bz$ $\rightarrow$ reader $\rightarrow$ action).\\
-  Bottom row: four boxes linked to where they act:
-  (i) reader metric $\bM$ $\rightarrow$ $\bz$;
-  (ii) future-aware bit allocation $\rightarrow$ modules, shaded by bit width;\\
-  (iii) trellis-coded initialization $\rightarrow$ every linear layer;
-  (iv) shared-table calibration $\rightarrow$ decode tables.\\[2pt]
-  Solid arrows: inference; dashed arrows: offline quantization; red: calibration signals $A$, $Z_{\bM}$, $K$.}{0.27\textwidth}
-  \caption{Overview of \method.
-  \method makes the predicted future an explicit quantization target.
-  It measures future error as the reader sees it~(i), spends bits where they preserve the future~(ii), initializes the codes with a trellis quantizer that supports mixed bit widths~(iii), and calibrates the shared decode tables toward action and future fidelity~(iv).
-  The deployed model has the storage format and inference graph of QTIP.}
-  \label{fig:method}
-\end{figure*}
-
-\method quantizes a pretrained WAM in four steps, each answering one of the observations in \cref{sec:observations} (\cref{fig:method}, \cref{alg:ravq}).
-The reader is used only during quantization; the deployed model has the inference graph and storage format of QTIP~\cite{tseng2024qtip}.
+As illustrated in \cref{fig:method}, \method makes the predicted future an explicit quantization target in four stages (\cref{alg:lavq}).
+It first estimates a reader metric that measures future error as the policy reads it (\cref{sec:method:metric}).
+Guided by each module's measured impact on future fidelity in this metric, future-aware bit allocation distributes a fixed bit budget across modules (\cref{sec:method:alloc}), and trellis-coded initialization rounds every layer at its assigned bit width (\cref{sec:method:init}).
+Shared-table calibration then tunes the shared decode tables toward action and future fidelity while the codes stay fixed (\cref{sec:method:calib}).
+The reader is used only during quantization; the deployed model runs a standard trellis decoder and adds no storage.
 
 \subsection{Reader metric}
 \label{sec:method:metric}
 
-\paragraph{What it fixes.}
-A uniform future error such as $Z$ weighs every latent dimension equally, whereas the action depends on a small part of the future (\cref{sec:observations}c).
-
-\paragraph{Definition.}
+As shown in \cref{sec:observations}(c), the action depends on a narrow part of the predicted future, whereas the uniform future error $Z$ weighs every latent dimension equally.
+We therefore measure future error in the metric through which the reader sees it.
 For a calibration context $c$, let $\bJ_c = \partial R(\bo_c, \ell_c, \bz)/\partial \bz$ at $\bz = \bz^\star_c$, and let $\bD_c$ be the diagonal curvature of the reader error $K$ (\cref{eq:reader-kl}) with respect to the reader output at $\ba^\star_c$.
-The reader metric is the Gauss--Newton matrix of $K$ averaged over contexts,
+We define the reader metric as the Gauss--Newton matrix of $K$ averaged over contexts, and the corresponding future error:
 \begin{equation}
   \bM = \mathbb{E}_c\big[\bJ_c^\top \bD_c \bJ_c\big],
   \qquad
   Z_{\bM} = \frac{(\hat\bz - \bz^\star)^\top \bM\, (\hat\bz - \bz^\star)}{\|\bz^\star\|^2}.
   \label{eq:metric}
 \end{equation}
-$Z_{\bM}$ is the second-order change of the reader error caused by the future error $\hat\bz - \bz^\star$.
-With $\bM = \mathbf{I}$, it reduces to the uniform future error $Z$.
+Here, $Z_{\bM}$ is the second-order change of the reader error caused by the future error $\hat\bz - \bz^\star$, and it reduces to the uniform future error $Z$ when $\bM = \mathbf{I}$.
 
-\paragraph{Estimation.}
-We never form $\bJ_c$.
-For a Rademacher vector $\boldsymbol{\epsilon}$, the probe $\mathbf{v} = \bJ_c^\top(\bD_c^{1/2}\boldsymbol{\epsilon})$ satisfies $\mathbb{E}[\mathbf{v}\mathbf{v}^\top] = \bJ_c^\top \bD_c \bJ_c$ and costs one backward pass through the reader.
-We draw four probes per context, normalize each context's estimate to unit trace so that no single context dominates, and average.
-Only the predicted frames enter $\bM$; the observed frame is fixed by the input.
-
-\paragraph{Form.}
-We keep the leading 32 eigendirections of the estimate together with its residual diagonal, which gives $\bM_r$, and mix in the identity:
+Forming $\bJ_c$ would require one reverse pass per action coordinate and storing a dense matrix over the latent.
+Instead, we estimate $\bM$ with Rademacher projections~\cite{hutchinson1989trace}: for a Rademacher vector $\boldsymbol{\epsilon}$, the probe $\mathbf{v} = \bJ_c^\top(\bD_c^{1/2}\boldsymbol{\epsilon})$ satisfies $\mathbb{E}[\mathbf{v}\mathbf{v}^\top] = \bJ_c^\top \bD_c \bJ_c$ and costs one reverse pass through the reader.
+We normalize each context's estimate to unit trace, so that no single context dominates, and average over contexts.
+Only the predicted frames enter $\bM$, since the observed frame is fixed by the input.
+We keep the leading $r$ eigendirections of the estimate together with its residual diagonal, which gives $\bM_r$, and mix in the identity:
 \begin{equation}
-  \bM = (1-\alpha)\,\frac{D}{\tr \bM_r}\,\bM_r + \alpha\,\mathbf{I},
+  \bM = (1-\alpha)\,\frac{d}{\tr \bM_r}\,\bM_r + \alpha\,\mathbf{I},
   \label{eq:metric-form}
 \end{equation}
-with $\alpha = 0.1$ and $D$ the latent dimension.
-The low-rank part captures the dominant directions, the diagonal part is stable across contexts (\cref{sec:observations}c), and the identity keeps every latent direction constrained.
-$\bM$ depends only on the full-precision model; we estimate it once and share it across bit widths.
+where $d$ is the latent dimension and $\alpha \in (0, 1)$.
+The low-rank part captures the dominant directions, the diagonal part is stable across contexts (\cref{sec:observations}(c)), and the identity keeps every latent direction constrained.
+Since $\bM$ depends only on the full-precision model, we estimate it once and share it across bit widths.
+\cref{sec:supp:method} details the estimator and its stability.
 
 \subsection{Future-aware bit allocation}
 \label{sec:method:alloc}
 
-\paragraph{What it fixes.}
-Uniform bit widths assume that all modules matter equally, but their impact on future fidelity differs sharply (\cref{sec:observations}b).
-
-\paragraph{Allocation.}
+\cref{sec:observations}(b) shows that modules differ sharply in their impact on future fidelity, so uniform bit widths spend bits where they do not preserve the future.
+We instead distribute a fixed bit budget according to each module's measured impact.
 Let layer $l$ have $n_l$ weights and $b_l$ bits per weight.
-Under a budget of $B$ bits per weight,
+Under a budget of $B$ bits per weight, the allocation satisfies
 \begin{equation}
   \textstyle\sum_l n_l\, b_l \;\le\; B \sum_l n_l .
   \label{eq:budget}
 \end{equation}
-For each module group $g$, we measure its impact on future fidelity, $\Delta_g$, as the reduction of $\lambda Z_{\bM} + \beta K$ when $g$ is raised by one bit.
-Groups with $\Delta_g = 0$ are lowered by one bit, and the freed bits go to the groups with the largest $\Delta_g$ per bit.
-Inside a group, layers receive the extra bits in the order of the reduction in their weighted error (\cref{eq:layer}) per added bit, the standard rate--distortion criterion for mixed precision~\cite{wang2019haq,malinovskii2025higgs}.
-
-\paragraph{On Fast-WAM.}
-The action expert only reads the future, so its $\Delta_g$ is exactly zero, and the allocation moves one bit per weight from the action expert to the video expert, which generates the future.
-At a 2-bit budget, the freed bits upgrade 48 video layers (16.7\% of the weights), mostly the attention output and value projections and the second feed-forward layer in the last 15 blocks.
-\cref{tab:bits} lists the resulting bit widths; the total matches QTIP exactly.
-
-\begin{table}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}lcccc@{}}
-    \toprule
-    Method & Video expert & Action expert & Text cond. & Total \\
-    \midrule
-    QTIP, 2-bit   & 2.01 & 2.03 & 2.02 & 1.99 \\
-    \method, 2-bit & 2.22 & 1.03 & 2.02 & 1.99 \\
-    \midrule
-    QTIP, 3-bit   & 3.01 & 3.03 & 3.02 & 2.98 \\
-    \method, 3-bit & 3.22 & 2.03 & 3.02 & 2.98 \\
-    \bottomrule
-  \end{tabular}
-  \caption{Bits per weight by module on Fast-WAM.
-  Interface layers and timestep tables are identical for all methods (\cref{sec:exp:setup}) and are included in the total.}
-  \label{tab:bits}
-\end{table}
+For each module group $g$, we measure its impact on future fidelity, $\Delta_g$, as the reduction of the future terms $\lambda_{\bM} Z_{\bM} + \beta K$ of \cref{eq:objective} when $g$ alone is raised by one bit.
+Groups that leave the future unchanged ($\Delta_g = 0$) are lowered by one bit, and the freed bits go to the groups with the largest $\Delta_g$ per bit.
+Within a group, layers receive the extra bits in the order of the reduction in their weighted error (\cref{eq:layer}) per added bit, the standard rate--distortion criterion for mixed precision~\cite{wang2019haq,malinovskii2025higgs}.
+Because the allocation meets \cref{eq:budget}, the model has the same bits per weight as a quantizer with uniform bit widths.
 
 \subsection{Trellis-coded initialization}
 \label{sec:method:init}
 
-We initialize the codes of every layer with trellis-coded rounding~\cite{tseng2024qtip} at the bit width assigned by \cref{sec:method:alloc}, minimizing \cref{eq:layer}.
-We choose a trellis code because it natively supports the mixed bit widths produced by the allocation: the number of bits per weight only changes how many bits enter the trellis state at each step, while decoding uses the same lookup table, so layers at 1 to 4 bits share one code family and one decoder.
-Its lookup tables are also shared across layers, which makes them the natural carrier for calibration (\cref{sec:method:calib}).
-We extend the implementation from 2--4 to 1--4 bits per weight; at 2 bits it reproduces the original exactly.
+The allocation produces layers at different bit widths, which the initialization must support without a separate code or decoder for each width.
+We therefore initialize the codes of every layer with trellis-coded rounding~\cite{tseng2024qtip} at its assigned bit width, minimizing \cref{eq:layer}.
+In a trellis code, the bit width only changes how many bits enter the trellis state at each step, while decoding uses the same lookup table, so layers at different bit widths share one code family and one decoder.
+We extend trellis-coded rounding from 2--4 to 1--4 bits per weight to cover the lowered groups.
+The lookup tables are shared across layers, which makes them a natural carrier for the calibration that follows.
 
 \subsection{Shared-table calibration}
 \label{sec:method:calib}
 
-\paragraph{What it fixes.}
-Layer-wise rounding sees only each layer's own reconstruction error, not the fidelity of the predicted future or of the action (\cref{sec:observations}a).
-
-\paragraph{Parameters.}
-We group layers by role and bit width and learn an offset $\Delta C_g$ to the lookup table of each group $g$, shared by all layers in the group.
-Codes, scales and rotations stay fixed, and $\Delta C_g = 0$ reproduces the initialization exactly.
+Layer-wise rounding sees only each layer's own reconstruction error, not the fidelity of the predicted future or of the action (\cref{sec:observations}(a)).
+We therefore calibrate the quantized model end to end toward both.
+We group layers by role and bit width and learn an offset $\Delta C_g$ to the lookup table $C$ of each group $g$, shared by all layers in the group.
+Codes, scales and rotations stay fixed, and $\Delta C_g = 0$ recovers the initialization.
 \TODO{final parameter set follows the closed-loop configuration: tables only, or tables plus row/column scales}
-
-\paragraph{Objective.}
 We minimize
 \begin{equation}
   \mathcal{L} = \mathbb{E}_c\big[\,A + \lambda_{\bM} Z_{\bM} + \beta K\,\big]
   \label{eq:objective}
 \end{equation}
 over the calibration contexts.
-The three terms keep the action, the future as the reader sees it, and the action read from the future close to the full-precision model.
-We set $\lambda_{\bM} = \lambda\, \mathbb{E}[Z] / \mathbb{E}[Z_{\bM}]$ at initialization so that the future term starts at the same scale as with the uniform metric; $\lambda$ and $\beta$ are fixed once from the initial loss magnitudes (\cref{sec:supp:method}).
+Here, the three terms keep the action, the future as the reader sees it, and the action read from the future close to the full-precision model.
+We set $\lambda_{\bM} = \lambda\, \mathbb{E}[Z] / \mathbb{E}[Z_{\bM}]$ at initialization, so that the future term starts at the same scale as with the uniform metric, and fix $\lambda$ and $\beta$ once from the initial loss magnitudes (\cref{sec:supp:method}).
 
-\paragraph{Optimization.}
 Gradients reach the tables through the decoder of \cref{eq:qtip}, without dense weight gradients.
-We take normalized gradient steps $\Delta C \leftarrow \Delta C - \eta\, \mathbf{g} / \|\mathbf{g}\|_\infty$ and fold the tables into the weights from the full-precision decode, using 8 updates of 10 contexts each.
-Because every table entry is used by all layers of its group, an update corrects error that many layers share rather than fitting any single layer, and the calibrated tables replace the original ones at no storage cost.
+We take normalized gradient steps $\Delta C_g \leftarrow \Delta C_g - \eta\, \mathbf{g} / \|\mathbf{g}\|_\infty$ and fold the calibrated tables into the weights from the full-precision decode.
+Because every table entry is used by all layers of its group, an update corrects error that many layers share rather than fitting any single layer.
+The calibrated tables take the place of the original ones, so calibration adds no storage.
 
 \begin{algorithm}[t]
   \caption{\method}
-  \label{alg:ravq}
+  \label{alg:lavq}
   \small
   \begin{algorithmic}[1]
     \Require full-precision WAM $\bW$, calibration contexts $\mathcal{C}$, budget $B$
@@ -149,10 +101,3 @@ Because every table entry is used by all layers of its group, an update corrects
     \Ensure codes, scales and calibrated tables
   \end{algorithmic}
 \end{algorithm}
-
-\subsection{Cost}
-\label{sec:method:cost}
-
-\method stores the same codes, scales and tables as QTIP at the same bits per weight; the calibrated tables replace the original ones.
-Quantizing Fast-WAM takes \XX GPU-hours in total, compared with \XX for QTIP (\cref{sec:supp:cost}).
-At inference, the reader is not used and the model runs the QTIP decoder (\cref{sec:exp:efficiency}).

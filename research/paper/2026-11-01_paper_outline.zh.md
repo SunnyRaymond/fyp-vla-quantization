@@ -1,4 +1,4 @@
-# 论文大纲（CVPR 2027 投稿稿，2026-11-01 第五版）
+# 论文大纲（CVPR 2027 投稿稿，2026-11-01 第六版）
 
 依据：[论文写作指南笔记](../writing-guide/论文写作指南笔记.md) 的结构要求 + 已定的论文主线（C1 → C2 → C3）+ 截至 2026-11-01 的实验结果。
 
@@ -9,6 +9,15 @@
 - Takeaways 删掉，方法各部件改为引用 §3.2 (a)–(c)。
 - 原 §5–§7 依次改为 §4–§6，附录 Supplementary 改为 §7。原 Fig. 2 和 Fig. 3 合并为 Fig. 2，后面的图依次前移一号。
 - 2.1 压缩到两三句；Fast-WAM 的具体结构和联合去噪模型的 reader 都挪到 §5.1（第四版起，原先放在跨 WAM 小节的 reader 说明也并入 §5.1）。
+
+**第六版（按你在 Overleaf 改稿后的意见）**：
+- 方法改名为 LAVQ（Latent-Aware Vector Quantization），题目、摘要、正文同步。
+- §4 标题改为 Methodology，按 SteerQuant 的方法叙事写：开头一段串起四个阶段，各小节用连贯段落，不再用 run-in 小标题；删去 "On Fast-WAM" 段（Fast-WAM 的分配结果和按模块位宽表移到附录 Bit accounting，§5.1 留一句）；删去 §4.5 Cost（效率表已覆盖）。
+- 全文不再说"以 QTIP 为取整阶段 / 沿用 QTIP 的格式"，改说 trellis-coded rounding、standard trellis decoder；§3.1 的 eq:qtip 改称 trellis-coded quantization；码字位宽符号由 K 改为 b，避免与读者误差 K 冲突。
+- 除附录的实现细节外，一律只说 LIBERO-Plus，不提 840 / paired。
+- §5 删去开头四个问题，Setup 合成三段（Models and benchmarks / Baselines and quantization settings / Evaluation metrics），超参数（r = 32、α = 0.1、4 个探针、λ、β、8 次更新）集中在第二段。
+- 方法大图挪到相关工作开头，排在第 3 页成为 Fig. 2；观察三联图顺延为 Fig. 3。
+- §6 Limitations and Future Work（仿 SteerQuant，三条笼统方向），§7 Conclusion，其后加 CVPR 2027 要求的 LLM Usage Statement（正文后、参考文献前，不计页数）。
 
 **第五版（初稿已写成 LaTeX）**：
 - 初稿在 `CVPR2027/`（main.tex + sec/0_abstract … 6_conclusion，X_suppl 只有大纲）。图先放空白占位框，表格已搭好，缺数据的地方写 XX。
@@ -32,10 +41,10 @@
 
 ## 题目与命名
 
-方法名沿用 **RAVQ（Reader-Aware Vector Quantization）**。"Reader" 泛指 WAM 里"从预测的 future 到动作"的那段计算，任何 WAM 都有，正是 C1 的核心对象。
+方法名改为 **LAVQ（Latent-Aware Vector Quantization）**。"Reader" 仍作为术语保留，泛指 WAM 里"从预测的 future 到动作"的那段计算，任何 WAM 都有，是 ① 读者度量和 K 的基础。
 
 题目候选（按推荐顺序；第二版按"保住 future"的叙事改写，不再绑定"先想象后执行"或"比特分配"）：
-1. **Don't Lose the Future: Reader-Aware Vector Quantization for World Action Models**
+1. **Don't Lose the Future: Latent-Aware Vector Quantization for World Action Models**
 2. **Future-Faithful Ultra-Low-Bit Quantization of World Action Models**
 3. **Quantizing World Action Models Without Losing the Future They Predict**
 
@@ -47,7 +56,7 @@
 
 **整段草稿**（数字待填处用 XX）：
 
-> World action models (WAMs) jointly predict how a scene will evolve and how to act, conditioning their actions on the predicted future. Deploying them on a robot's onboard computer is memory-bound (the 6B-parameter Fast-WAM needs 12 GB for its BF16 weights alone), which calls for ultra-low-bit weight quantization, a regime where scalar quantizers collapse and vector quantization (VQ) is the method of choice. However, existing VQ methods, developed for language models, fail to preserve the fidelity of the predicted future: they reconstruct each layer or the final output, and nothing in their objectives deliberately protects the future on which the action depends. We propose RAVQ, a reader-aware vector quantization framework that makes future-latent fidelity an explicit quantization target. RAVQ (i) measures future-latent error in the metric through which the policy reads the future, (ii) distributes a fixed bit budget according to each module's measured impact on future fidelity, (iii) initializes the codes with trellis-coded rounding, which natively supports the resulting mixed bit widths, and (iv) calibrates the shared decode tables toward action and future-latent fidelity at no extra storage. We evaluate RAVQ across XX WAMs, both in simulation and in real-world deployment. On 840 paired LIBERO-Plus episodes, 2-bit RAVQ raises Fast-WAM's success rate from 73.3% (QTIP, the strongest 2-bit baseline) to XX%, within XX points of BF16 (77.6%), [while XX on WAM-2]. On an AgileX PiPER arm, 2-bit RAVQ succeeds in XX/XX real-world trials across XX tasks, compared with XX/XX for QTIP and XX/XX for BF16, with about 1.5 GB of weights.
+> World action models (WAMs) jointly predict how a scene will evolve and how to act, conditioning their actions on the predicted future. Deploying them on a robot's onboard computer is memory-bound (the 6B-parameter Fast-WAM needs 12 GB for its BF16 weights alone), which calls for ultra-low-bit weight quantization, a regime where scalar quantizers collapse and vector quantization (VQ) is the method of choice. However, existing VQ methods, developed for language models, fail to preserve the fidelity of the predicted future: they reconstruct each layer or the final output, and nothing in their objectives deliberately protects the future on which the action depends. We propose LAVQ, a latent-aware vector quantization framework that makes future-latent fidelity an explicit quantization target. LAVQ (i) measures future-latent error in the metric through which the policy reads the future, (ii) distributes a fixed bit budget according to each module's measured impact on future fidelity, (iii) initializes the codes with trellis-coded rounding, which natively supports the resulting mixed bit widths, and (iv) calibrates the shared decode tables toward action and future-latent fidelity at no extra storage. We evaluate LAVQ across XX WAMs, both in simulation and in real-world deployment. On 840 paired LIBERO-Plus episodes, 2-bit LAVQ raises Fast-WAM's success rate from 73.3% (QTIP, the strongest 2-bit baseline) to XX%, within XX points of BF16 (77.6%), [while XX on WAM-2]. On an AgileX PiPER arm, 2-bit LAVQ succeeds in XX/XX real-world trials across XX tasks, compared with XX/XX for QTIP and XX/XX for BF16, with about 1.5 GB of weights.
 
 | 句 | 功能 | 草稿要点 | 状态 |
 |---|---|---|---|
@@ -55,9 +64,9 @@
 | S2（前半） | 背景：端侧部署 → 为什么必须极低比特 | 机载算力受显存限制；6B 的 Fast-WAM 仅 BF16 权重就要 12 GB | ✅ 6B 出自 Fast-WAM 论文（1B 动作专家，总 6B）；12 GB = 6B × 2 字节 |
 | S2（后半） | 背景：为什么是 VQ | 极低比特下标量量化崩溃，VQ 成为首选 | ✅ Fast-WAM 上 GPTQ W2（不分组）15/280，GPTVQ / QuIP# / QTIP W2 为 198–204/280（26042316 等） |
 | S3 | 问题 | 现有 VQ 为语言模型设计，**fail to preserve the fidelity of the predicted future**：它们重建每一层或最终输出，目标里没有任何一项有意识地保护动作所依赖的 future | 按意见只说"没有有意识保护"，不讲比特分布 |
-| S4 | 方法 | RAVQ 让 future-latent 保真度成为显式的量化目标，四个部件见下 | — |
+| S4 | 方法 | LAVQ 让 future-latent 保真度成为显式的量化目标，四个部件见下 | — |
 | S5 | 评测范围 | 先说覆盖范围：XX 个 WAM，仿真 + 真机 | ⏳ WAM 个数 |
-| S6 | 仿真结果 | LIBERO-Plus 840 配对：RAVQ vs QTIP 73.3% vs BF16 77.6%；第二个 WAM 一句 | ⏳ RAVQ 840；第二个 WAM |
+| S6 | 仿真结果 | LIBERO-Plus 840 配对：LAVQ vs QTIP 73.3% vs BF16 77.6%；第二个 WAM 一句 | ⏳ LAVQ 840；第二个 WAM |
 | S7 | 真机结果（收尾） | AgileX PiPER：成功次数 / 试次，对比 QTIP 与 BF16；附权重显存 | ⏳ 全部待跑；1.5 GB = 6B × 1.993 bit ÷ 8，是按 bpw 推算的权重大小，实测显存另测 |
 
 **四个部件的写法（S4 内）**
@@ -85,7 +94,7 @@
 
 按指南的四步：领域重要 → 已有工作 → gap → 本文。共 5 段，加一个贡献列表。这与 paper 库里 10 篇论文的引言（4–6 段，背景 → 痛点 → 已有方法局限 → 本文思路 → 结果概述）一致。
 
-**第二版叙事主线（与摘要一致）**：WAM 的动作依赖预测的 future → 端侧显存逼出极低比特 → 极低比特只有 VQ 可用 → 现有 VQ 没有有意识地保护 future，future 保真度因此丢失 → RAVQ 让 future 保真度成为显式量化目标 → 跨多个 WAM、仿真加真机验证。
+**第二版叙事主线（与摘要一致）**：WAM 的动作依赖预测的 future → 端侧显存逼出极低比特 → 极低比特只有 VQ 可用 → 现有 VQ 没有有意识地保护 future，future 保真度因此丢失 → LAVQ 让 future 保真度成为显式量化目标 → 跨多个 WAM、仿真加真机验证。
 全文统一用 *predicted future*（中文"预测的 future"），不用 *imagine-then-execute* 作限定。Fast-WAM 的"先去噪 future 再去噪动作"只作为具体实例出现在 §5.1（实验设置）。
 
 ### ¶1 大背景：WAM 依赖预测的 future，但放不进机器人
@@ -121,10 +130,10 @@
 - **闭环后果**：在 840 个 LIBERO-Plus episode 上，三个 2-bit VQ 方法比 BF16 少 36–50 次成功（4.3–6.0 个百分点，p ≤ 3e-4），3-bit 少 21–26 次（p ≤ 0.017）。✅（面板 A+B+C，26073449）
 - **避坑**：不写 "remains challenging"。三条观察就是"难在哪里"的具体答案。观察 2 讲的是"误差从哪里来"，不写成"比特该怎么分"，比特分配留给方法。
 
-### ¶4 本文方法：RAVQ
+### ¶4 本文方法：LAVQ
 
 - **作用**：直接说本文做了什么，每个部件对应 ¶3 的哪条观察。
-- **主题句草稿**：*Building on this diagnosis, we propose RAVQ, a reader-aware vector quantization framework that makes future-latent fidelity an explicit quantization target.*
+- **主题句草稿**：*Building on this diagnosis, we propose LAVQ, a latent-aware vector quantization framework that makes future-latent fidelity an explicit quantization target.*
 - **衔接写法（借鉴 QuantWAMs 和 DSAQuant 的"观察 → 原则 → 方法"）**：¶3 末尾的原则句之后，¶4 用 *Building on this diagnosis* 开头。每个部件明确对应一条观察，让读者看到方法是从诊断推出来的，不是一组技巧的拼盘。
 - **要点（一句一个部件，顺序与 §4 一致，措辞与摘要一致）**：
   - (i) 对应观察 3：用 policy 读 future 的度量（reader metric）衡量 future 误差，替代均匀的 NMSE。
@@ -135,18 +144,18 @@
 ### ¶5 结果预告
 
 - **作用**：先说评测范围，再给最重要的数字，和 ¶3 的问题对应；顺序与摘要一致。
-- **主题句草稿**：*We evaluate RAVQ across XX WAMs, both in simulation and in real-world deployment.*
+- **主题句草稿**：*We evaluate LAVQ across XX WAMs, both in simulation and in real-world deployment.*
 - **要点**：
-  - 仿真：LIBERO-Plus 840 配对，2-bit RAVQ 把 Fast-WAM 的成功率从 73.3%（QTIP，最强的 2-bit 基线）提高到 XX%，补回 BF16（77.6%）差距的 XX%。W2 是主说法；W3 作补充，因为 W3 基线到 BF16 只差 21–26 次，统计功效不够（见 §5.2）。
+  - 仿真：LIBERO-Plus 840 配对，2-bit LAVQ 把 Fast-WAM 的成功率从 73.3%（QTIP，最强的 2-bit 基线）提高到 XX%，补回 BF16（77.6%）差距的 XX%。W2 是主说法；W3 作补充，因为 W3 基线到 BF16 只差 21–26 次，统计功效不够（见 §5.2）。
   - 第二个 WAM 一句。
-  - 真机：AgileX PiPER 机械臂，XX 个任务，2-bit RAVQ 成功 XX/XX，QTIP XX/XX，BF16 XX/XX；权重约 1.5 GB。
-- **数字**：⏳ RAVQ 840；⏳ 第二个 WAM；⏳ 真机。
+  - 真机：AgileX PiPER 机械臂，XX 个任务，2-bit LAVQ 成功 XX/XX，QTIP XX/XX，BF16 XX/XX；权重约 1.5 GB。
+- **数字**：⏳ LAVQ 840；⏳ 第二个 WAM；⏳ 真机。
 
 ### 贡献列表（3 条 bullet，动词开头，具体可验证）
 
 - **C1** *We identify future-latent fidelity as a key quantization target for WAMs.* Counterfactual swaps and module-level upgrades show that most of the action error under ultra-low-bit quantization comes from a degraded predicted future, that this degradation originates in the modules that generate the future, and that the policy reads only a narrow part of it.
-- **C2** *We propose RAVQ*, a reader-aware vector quantization framework whose error metric, bit budget and calibration objective all follow from C1, at the same bits per weight as the baselines and with no extra storage.
-- **C3** *We evaluate RAVQ across XX WAMs in simulation and on a real AgileX PiPER arm*: [at 2 bits per weight it is the only method that XX]。
+- **C2** *We propose LAVQ*, a latent-aware vector quantization framework whose error metric, bit budget and calibration objective all follow from C1, at the same bits per weight as the baselines and with no extra storage.
+- **C3** *We evaluate LAVQ across XX WAMs in simulation and on a real AgileX PiPER arm*: [at 2 bits per weight it is the only method that XX]。
 
 （C3 的措辞等闭环数字出来再定。C1 的措辞按已定的 "Identify future-latent fidelity as a key quantization target"，只把限定从 "imagine-then-execute WAMs" 改成 "WAMs"。）
 
@@ -162,11 +171,11 @@
 两个方案：
 - **方案 A（推荐）**：左右两栏。
   - 左：通用的 WAM 示意（观测 → 预测的 future → 动作），两条误差路径用两种颜色的箭头标出：直接作用于动作的路径，以及先破坏 future、再传到动作的路径。箭头上标 "27%" / "73%"，并注明是 Fast-WAM 2-bit 的测量。
-  - 右：成功率–bpw 散点图。BF16 一条水平虚线；GPTVQ / QuIP# / QTIP 在 2、3 bpw 的点；RAVQ 在 2、3 bpw 的点，用颜色突出。
-- **方案 B**：具体样本驱动。同一个 LIBERO-Plus 场景下，BF16、QTIP-W2、RAVQ-W2 三行，每行是解码出的预测帧 + 实际执行结果（成功/失败）。最直接地展示"future 丢了"。直观，但需要 VAE 解码出的帧足够清楚，⏳ 待看效果。
-- **方案 C（GuidedQuant 式 teaser 表）**：第 1 页放一张小表，每个宿主一行，成对列出"宿主 → RAVQ"的成功率。首页就能看到增益。缺点是表格比图更难体现 C1。适合 RAVQ 的增益在多个比特档上都整齐的情况。
+  - 右：成功率–bpw 散点图。BF16 一条水平虚线；GPTVQ / QuIP# / QTIP 在 2、3 bpw 的点；LAVQ 在 2、3 bpw 的点，用颜色突出。
+- **方案 B**：具体样本驱动。同一个 LIBERO-Plus 场景下，BF16、QTIP-W2、LAVQ-W2 三行，每行是解码出的预测帧 + 实际执行结果（成功/失败）。最直接地展示"future 丢了"。直观，但需要 VAE 解码出的帧足够清楚，⏳ 待看效果。
+- **方案 C（GuidedQuant 式 teaser 表）**：第 1 页放一张小表，每个宿主一行，成对列出"宿主 → LAVQ"的成功率。首页就能看到增益。缺点是表格比图更难体现 C1。适合 LAVQ 的增益在多个比特档上都整齐的情况。
 - Paper 库里 QuIP#、AQLM、GuidedQuant、QuantWAMs 都把 teaser 放在第 1 页。CVPR 的双栏版面里，Fig. 1 通常放在第 1 页右栏顶部或横跨两栏。
-- Caption 草稿（借鉴 QuIP#：caption 两句话，直接写结论）：*Figure 1. Under 2-bit weight quantization, a WAM loses the fidelity of its predicted future, and most of its action error follows from it (left). RAVQ makes the predicted future an explicit quantization target and recovers closed-loop success at the same bits per weight (right).*
+- Caption 草稿（借鉴 QuIP#：caption 两句话，直接写结论）：*Figure 1. Under 2-bit weight quantization, a WAM loses the fidelity of its predicted future, and most of its action error follows from it (left). LAVQ makes the predicted future an explicit quantization target and recovers closed-loop success at the same bits per weight (right).*
 
 ---
 
@@ -203,7 +212,7 @@
 
 ### 2.4（可选，一段）Task-aware coding
 - **概括**：coding for machines、语义通信、不等差错保护（UEP）。共同思想是：编码误差的代价由接收端怎么用这些数据决定。
-- **定位**：RAVQ 的 ① 是这一思想在 WAM 内部的对应物，"接收端"就是从预测的 future 计算动作的那部分网络。只写一段，作为方法思想来源。
+- **定位**：LAVQ 的 ① 是这一思想在 WAM 内部的对应物，"接收端"就是从预测的 future 计算动作的那部分网络。只写一段，作为方法思想来源。
 
 ---
 
@@ -221,7 +230,7 @@
 - **作用**：只放 §3.2 和 §4 要用的定义，不讲具体模型。
 - **WAM 的通用形式**：
   - 主题句草稿：*A WAM maps an observation o and an instruction ℓ to a predicted future latent z and an action chunk a, and the action is conditioned on z.*
-  - reader：把"给定 z 计算 a"的那部分计算记为 R(o, ℓ, z)。它是 §4.1 中 ① 和 K 的基础，也是方法名里 "reader-aware" 的来源。
+  - reader：把"给定 z 计算 a"的那部分计算记为 R(o, ℓ, z)。它是 §4.1 中 ① 和 K 的基础，也是 ① 读者度量的来源。
   - 耦合方式只用一句话带过：*Whether z and a are generated sequentially or denoised jointly, R is well defined.* Fast-WAM 的具体结构和形状、联合去噪模型的 reader 实现，都放到 §5.1 和附录。
 - **Weight-only VQ**：
   - 层目标：min tr(ΔW H ΔWᵀ)，H = E[xxᵀ] 是校准集上的输入二阶矩（下文记 H_U）。
@@ -285,7 +294,7 @@
 
 ---
 
-## 4. Method: RAVQ（约 1.5 页，含主图 Fig. 3 + Algorithm 1）
+## 4. Method: LAVQ（约 1.5 页，含主图 Fig. 3 + Algorithm 1）
 
 指南要求：先 Overview（配主图），再分模块；每个模块讲清解决什么问题、输入、处理、输出、为什么这样设计；公式前后都要解释；novelty 点到即止。
 
@@ -294,11 +303,11 @@
 - AQLM 用动词短语作为同级小节标题。本节四个小节标题可以统一成"对象 + 动作"的结构（借鉴 QuantWAMs），方便和消融表对应，例如 *Measuring the future as the policy reads it* / *Allocating bits by future impact* / *Initializing with trellis codes* / *Calibrating shared decode tables*。
 
 ### 4.0 Overview
-- **主题句草稿**：*RAVQ quantizes a pretrained WAM in four steps, each answering one of the observations in Sec. 3.2.*
+- **主题句草稿**：*LAVQ quantizes a pretrained WAM in four steps, each answering one of the observations in Sec. 3.2.*
 - **流程（与主图从左到右一致）**：① 估计 reader 度量 M → ② 在总比特约束下，按各模块对 future 保真度的影响分配位宽 → ③ 用格栅码舍入初始化各层的码 → ④ 校准各组共享的解码表。
 - **一句交代不变量**：推理时的计算图、kernel 和存储格式都与 QTIP 相同；①、④ 只在离线量化阶段使用 reader，部署时不需要 reader。
 - **Fig. 3 主图设计**（按指南"方法主图"的五步）：
-  - Caption 一句话：*RAVQ makes the predicted future an explicit quantization target: it measures, allocates, initializes and calibrates with one signal, how the action reads the predicted future.*
+  - Caption 一句话：*LAVQ makes the predicted future an explicit quantization target: it measures, allocates, initializes and calibrates with one signal, how the action reads the predicted future.*
   - 布局：上方一行是通用的 WAM 结构（生成 future 的部分 → 预测的 z → reader → 动作；Fast-WAM 里分别对应视频专家和动作专家），下方一行是四个模块框，用虚线连回 WAM 中各自作用的部位：
     - ① 指向 z；
     - ② 指向各模块，用格子颜色深浅表示位宽；
@@ -341,14 +350,14 @@
   | | 视频主体 | 动作主体 | 文本条件 | 接口 | 时间表 | 总 bpw |
   |---|---:|---:|---:|---:|---:|---:|
   | QTIP（公平口径）2-bit | 2.01 | 2.03 | 2.02 | 16 | 0.07 | 1.993 |
-  | RAVQ 2-bit | 2.22 | 1.03 | 2.02 | 16 | 0.07 | 1.993 |
+  | LAVQ 2-bit | 2.22 | 1.03 | 2.02 | 16 | 0.07 | 1.993 |
   | QTIP（公平口径）3-bit | 3.01 | 3.03 | 3.02 | 16 | 0.07 | 2.981 |
-  | RAVQ 3-bit | 3.22 | 2.03 | 3.02 | 16 | 0.07 | 2.981 |
+  | LAVQ 3-bit | 3.22 | 2.03 | 3.02 | 16 | 0.07 | 2.981 |
 
   完整的逐层位宽分配图放附录。
 
 ### 4.3 Trellis-coded initialization（③）
-- **定位**：③ 是 RAVQ 的初始化选择，给 ④ 提供起点。正文要写清楚为什么选它。
+- **定位**：③ 是 LAVQ 的初始化选择，给 ④ 提供起点。正文要写清楚为什么选它。
 - **为什么选格栅码（按重要性排序）**：
   1. **原生支持 ② 给出的混合位宽**：格栅码的结构对任意每权重比特数 K 都成立：不同 K 只改变 trellis 每步移入的比特数，查表解码的结构（512×2 的 LUT）不变。所以按层混用 K = 1–4 时，编码和解码方式都是同一套。对照：格点码（如 QuIP# 的 E8P）的码本是按特定比特数设计的，换位宽要换码本或叠加残差级。（⚠ 这句对照写进正文前，再对一遍 QTIP / QuIP# 原文。）这是与 ② 直接衔接的理由，摘要 (iii) 写的就是这一条。
   2. **解码表全组共享**：同一（角色，位宽）组的所有层共用一张解码表，这正好是 ④ 要校准的对象，校准不增加存储。
@@ -380,7 +389,7 @@
 
 ### 4.5 Cost
 - 存储：与同 bpw 的 QTIP 相同（解码表为每组 512×2，全模型 ⏳ 个数，可忽略）。
-- 量化时间：① + ② + ③ + ④ 的 GPU·h，对比 QTIP / GPTVQ / QuIP# 的量化时间（A16 已有：QTIP W2 1.86，GPTVQ W2 3.84，QuIP# W2 1.28 GPU·h）。⏳ RAVQ 各阶段耗时。
+- 量化时间：① + ② + ③ + ④ 的 GPU·h，对比 QTIP / GPTVQ / QuIP# 的量化时间（A16 已有：QTIP W2 1.86，GPTVQ W2 3.84，QuIP# W2 1.28 GPU·h）。⏳ LAVQ 各阶段耗时。
 - 推理：与 QTIP 完全相同的 kernel 与格式。⏳ 混合 K（含 K = 1）的 kernel 支持情况要核实，见 §5.5。
 
 ---
@@ -403,7 +412,7 @@
 - 预测 future 的定性对比、失败案例：放附录。
 
 开头一段写清实验要回答的问题：
-- **Q1**：在多个 WAM 上、同 bpw 下，RAVQ 的闭环成功率是否超过现有的极低比特量化器？（§5.2）
+- **Q1**：在多个 WAM 上、同 bpw 下，LAVQ 的闭环成功率是否超过现有的极低比特量化器？（§5.2）
 - **Q2**：在真实机器人上是否成立？（§5.3）
 - **Q3**：每个部件的贡献是什么？future 保真项是否必要？（§5.4）
 - **Q4**：省了多少显存，速度如何？（§5.5）
@@ -435,14 +444,14 @@
 
 ### 5.2 Main results（Table 1，对应 Q1）
 
-- **作用**：一张表放全，兑现摘要里的 "across XX WAMs"，同时说明 C1 和 RAVQ 不依赖 Fast-WAM 的分专家结构。
+- **作用**：一张表放全，兑现摘要里的 "across XX WAMs"，同时说明 C1 和 LAVQ 不依赖 Fast-WAM 的分专家结构。
 - **Table 1 结构**（按 WAM 分块，参照 Q-WAM、QVGen、SteerQuant 的 Table 1）：
   - 分块：上下两块，Fast-WAM 和第二个 WAM；
-  - 行：每块内 BF16 一行，3 bpw 组（GPTQ / GPTVQ / QuIP# / QTIP / **RAVQ**），2 bpw 组（同上）；
+  - 行：每块内 BF16 一行，3 bpw 组（GPTQ / GPTVQ / QuIP# / QTIP / **LAVQ**），2 bpw 组（同上）；
   - 列：bpw | 权重（GB）| Spatial | Object | Goal | Long | Avg（按你的意见去掉了胜 / 负和 p 值列）；
   - 权重列直接并进主表（Q-WAM、QuantWAMs 都这样做），延迟放 §5.5；
-  - 标记：每个位宽组内最优加粗、次优下划线，RAVQ 行加浅色底；caption 里用一句话定义加粗和下划线；
-  - Caption 直接写结论，例如 *At 2 bpw, RAVQ is the only method within X points of BF16 on both WAMs.*
+  - 标记：每个位宽组内最优加粗、次优下划线，LAVQ 行加浅色底；caption 里用一句话定义加粗和下划线；
+  - Caption 直接写结论，例如 *At 2 bpw, LAVQ is the only method within X points of BF16 on both WAMs.*
 
   表的骨架（成功率为 840 个 episode 上的百分比，XX 待填）：
 
@@ -453,12 +462,12 @@
   | | 3 | GPTVQ | XX | XX | XX | XX | XX | XX | XX |
   | | 3 | QuIP# | XX | XX | XX | XX | XX | XX | XX |
   | | 3 | QTIP | 2.98 | XX | XX | XX | XX | XX | XX |
-  | | 3 | **RAVQ** | 2.98 | XX | XX | XX | XX | XX | XX |
+  | | 3 | **LAVQ** | 2.98 | XX | XX | XX | XX | XX | XX |
   | | 2 | GPTQ | XX | XX | XX | XX | XX | XX | XX |
   | | 2 | GPTVQ | XX | XX | XX | XX | XX | XX | XX |
   | | 2 | QuIP# | XX | XX | XX | XX | XX | XX | XX |
   | | 2 | QTIP | 1.99 | ≈1.5 | XX | XX | XX | XX | XX |
-  | | 2 | **RAVQ** | 1.99 | ≈1.5 | XX | XX | XX | XX | XX |
+  | | 2 | **LAVQ** | 1.99 | ≈1.5 | XX | XX | XX | XX | XX |
   | WAM-2 | 16 | BF16 | 16 | XX | XX | XX | XX | XX | XX |
   | | 3 / 2 | （同上五个方法 × 两个位宽） | | | | | | | |
 
@@ -469,8 +478,8 @@
   - 各 suite 的数字在面板 C 的 README 里。
   - 主表要的是公平口径下的数，所以除 BF16 外都要重跑（见附 C）。
 - **正文写法**：用 run-in 按模型分段（*Results on Fast-WAM.* / *Results on WAM-2.*）。按指南的要求，告诉读者应该从表里看出什么：
-  1. 先说 W2：RAVQ 与最强基线的差、配对 p 值、补回了 BF16 差距的百分之几。
-  2. 再说 W3：基线到 BF16 只差 21–26 次，RAVQ 的空间有限，如实描述。
+  1. 先说 W2：LAVQ 与最强基线的差、配对 p 值、补回了 BF16 差距的百分之几。
+  2. 再说 W3：基线到 BF16 只差 21–26 次，LAVQ 的空间有限，如实描述。
   3. 一句点出收益集中在哪些扰动维度。基线在相机视角、背景、传感器噪声上掉得最多，完整的按维度拆分表放附录。
      - ⚠ 如果要说"这些维度更依赖预测的 future"，需要在这些维度上单独算 future 占比，否则不写。
   4. 第二个模型一段，结构相同。
@@ -483,7 +492,7 @@
   - 平台：AgileX PiPER 机械臂（6 自由度 + 夹爪）。
   - 策略：在 PiPER 的遥操作数据上微调 Fast-WAM。数据用 LeRobot 采集，两路相机（第三人称 + 腕部），与 Fast-WAM LIBERO checkpoint 的双相机布局一致；每个任务约 80 条示教。
   - 量化：在微调后的 BF16 模型上做量化。校准场景取自 PiPER 示教（XX 个），reader 度量在微调后的模型上重新估计。⏳
-  - 对比：BF16 / QTIP-W2（最强的 2-bit 基线）/ RAVQ-W2，每个任务每个方法 XX 次试验。
+  - 对比：BF16 / QTIP-W2（最强的 2-bit 基线）/ LAVQ-W2，每个任务每个方法 XX 次试验。
   - 公平性：三种方法用同一组初始摆放（在桌面上做标记），方法的执行顺序随机打乱。
 - **Tasks**（正文各一句，写清它考验什么）：
   1. **Two-object pick-and-place**：把一个罐子和一个盒子先后放进篮子。长时程任务，考验量化模型能否完成多步序列。
@@ -500,11 +509,11 @@
   |---|---:|---:|---:|---:|---:|---:|---:|
   | BF16 | 16 | 12 | XX/XX | XX/XX | XX/XX | XX/XX | XX% |
   | QTIP | 2 | ≈1.5 | XX/XX | XX/XX | XX/XX | XX/XX | XX% |
-  | **RAVQ（本文）** | 2 | ≈1.5 | XX/XX | XX/XX | XX/XX | XX/XX | XX% |
+  | **LAVQ（本文）** | 2 | ≈1.5 | XX/XX | XX/XX | XX/XX | XX/XX | XX% |
 
   - 平均成功率按三个任务的最终成功计算（pick-and-place 取"两件"）。"第一件"一列只用来展示长时程任务在哪一步失败。
   - 如果要报告机载设备上的显存或延迟，就加一列，或放到 §5.5。
-- **Fig. 4**：左边是真机系统（PiPER 和两路相机的位置），右边每个任务一行关键帧。最好挑一个 QTIP 失败、RAVQ 成功的例子，说明失败发生在哪一步。
+- **Fig. 4**：左边是真机系统（PiPER 和两路相机的位置），右边每个任务一行关键帧。最好挑一个 QTIP 失败、LAVQ 成功的例子，说明失败发生在哪一步。
 - **❓**：每个任务单独微调一个 checkpoint，还是三个任务合训一个？试验次数定多少？Q-WAM 和 QuantWAMs 都是每任务 10 次，20 次统计上更稳。
 
 ### 5.4 Ablation study（Table 3，对应 Q3，你来跑）
@@ -513,16 +522,16 @@
 
 | 组 | 行 | 要证明什么 |
 |---|---|---|
-| A 逐步搭建 | QTIP（公平口径）→ +② → +②+① +④（完整 RAVQ） | 每一步的增量 |
+| A 逐步搭建 | QTIP（公平口径）→ +② → +②+① +④（完整 LAVQ） | 每一步的增量 |
 | B 校准目标（核心） | ④ 用 A only / A + λZ（M = I）/ A + λZ_M / A + λZ_M + βK | **future 保真项是否必要**：这一组是 C1 在方法层面的直接证据 |
-| C 比特分配 | 均匀 / 反向（把比特给对 future 影响最小的模块）/ RAVQ（按 future 影响）；更细粒度上随机选层 vs 率失真贪心 | 收益来自"按 future 影响分配"，而不是"任何混合精度都行" |
+| C 比特分配 | 均匀 / 反向（把比特给对 future 影响最小的模块）/ LAVQ（按 future 影响）；更细粒度上随机选层 vs 率失真贪心 | 收益来自"按 future 影响分配"，而不是"任何混合精度都行" |
 | D 度量形式 | M = I / 只用对角 / 低秩 + 对角 + ρI | ① 的形式选择 |
-| E 位宽曲线 | 1.75 / 2 / 2.5 / 3 bpw（RAVQ vs QTIP） | 收益随比特的变化。可以画成一张小图；版面不够就放附录 |
+| E 位宽曲线 | 1.75 / 2 / 2.5 / 3 bpw（LAVQ vs QTIP） | 收益随比特的变化。可以画成一张小图；版面不够就放附录 |
 
 - 表里只放闭环成功率和配对结果。开环指标要不要放，见 ❓1。
 - 表的形式参考 Q-WAM 的 Table 3 和 QuantWAMs 的 Table 3：累积式阶梯，每一行在上一行基础上加一个部件，比特预算固定。
   - A 组就按这个形式；
-  - B–D 组是在完整 RAVQ 上替换某一项，放在同一张表的下半部分，用横线分隔。
+  - B–D 组是在完整 LAVQ 上替换某一项，放在同一张表的下半部分，用横线分隔。
 - 消融正文围绕**设计动机**写（指南）：每组先说"如果 C1 成立，应该看到……"，再说结果。
 
 ### 5.5 Efficiency（Table 4，对应 Q4）
@@ -581,10 +590,10 @@
 | future 的失真来自生成它的模块 | §1 ¶3，§3.2 (b) | 视频专家拿走 71% 升位收益；只读 future 的动作专家对 future 的影响为 0 | ✅ 26069856 + 26070509 |
 | 动作只读 future 的一小部分 | §3.2 (c) | 有效秩 41.5 / 37,632，第 1 帧 98%，对角稳定 0.86 | ✅ 26073871 |
 | 极低比特下现有方法闭环显著掉点 | §1 ¶3，§5.2 | W2 −36…−50 / 840，W3 −21…−26 / 840 | ✅ 26073449 |
-| RAVQ 同 bpw 胜过最强基线（多个 WAM） | 摘要 S5–S6，§5.2 | RAVQ 840 vs 公平口径宿主 840 | ⏳ |
+| LAVQ 同 bpw 胜过最强基线（多个 WAM） | 摘要 S5–S6，§5.2 | LAVQ 840 vs 公平口径宿主 840 | ⏳ |
 | future 保真项必要 | §5.4 B 组 | A-only vs 完整目标的闭环 | ⏳（你来跑） |
 | 按 future 影响分配比特是收益来源 | §5.4 C 组 | 反向分配 / 随机选层 | ⏳ |
-| 跨 WAM 成立（C1 与 RAVQ） | 摘要 S5–S6，§5.2，附录 A | Table 1 第二个分块 + 附录 A 的 future 占比复现 | ⏳ ❓2 |
+| 跨 WAM 成立（C1 与 LAVQ） | 摘要 S5–S6，§5.2，附录 A | Table 1 第二个分块 + 附录 A 的 future 占比复现 | ⏳ ❓2 |
 | 省显存、可部署 | §1 ¶1，§5.5 | 打包格式下的显存和延迟 | ⏳ |
 | 真机成立 | 摘要 S7，§5.3 | AgileX PiPER 三个任务的成功次数 / 试次（Table 2） | ⏳ |
 
@@ -592,16 +601,16 @@
 
 | 编号 | 内容 | 位置 | 大小 | 状态 |
 |---|---|---|---|---|
-| Fig. 1 | Teaser：两条误差路径 + 成功率–bpw | §1 | 双栏宽，约 1/3 页 | ⏳ 需 RAVQ 数字 |
+| Fig. 1 | Teaser：两条误差路径 + 成功率–bpw | §1 | 双栏宽，约 1/3 页 | ⏳ 需 LAVQ 数字 |
 | Fig. 2 | 三联图：(a) future 占比（三方法 × 两口径 × 两位宽）；(b) 逐组升位收益（A / Z / K 堆叠）；(c) policy gaze 热力图 | §3.2 | 双栏宽 | (a)(b) ✅ 数据有，待画；(c) ⏳ 待导出 |
-| Fig. 3 | RAVQ 主图 | §4 | 双栏宽，约 1/3 页 | 待画 |
+| Fig. 3 | LAVQ 主图 | §4 | 双栏宽，约 1/3 页 | 待画 |
 | Fig. 4 | 真机系统与三个任务的关键帧 | §5.3 | 单栏或双栏 | ⏳ |
 | （可选）Fig. 5 | 位宽曲线（消融 E 组） | §5.4 | 单栏 | ⏳；版面不够放附录 |
 | Table 1 | 主表，按 WAM 分块 | §5.2 | 双栏宽 | 部分 ✅ |
 | Table 2 | 真机 | §5.3 | 单栏 | ⏳ |
 | Table 3 | 消融 | §5.4 | 单栏 | ⏳ |
 | Table 4 | 效率 | §5.5 | 单栏 | ⏳；可缩成正文数字 |
-| Alg. 1 | RAVQ 流程 | §4 | 单栏 | 待写 |
+| Alg. 1 | LAVQ 流程 | §4 | 单栏 | 待写 |
 
 逐层位宽分配图、更多 policy gaze、预测 future 的定性对比、按扰动维度的完整表都在附录（§7 C、E、H），不占正文版面。
 
@@ -624,9 +633,9 @@
 ## 附 C. 写论文需要、目前还没有的实验
 
 按对论文的必要性排序（第二版：摘要点名了跨 WAM 和真机，这两项上调）：
-1. **RAVQ W2 / W3 的 840 闭环**（完整版，含 ④）。未校准版 RAVQU 的 840 在跑（fwr840u 26075585）。
+1. **LAVQ W2 / W3 的 840 闭环**（完整版，含 ④）。未校准版 RAVQU 的 840 在跑（fwr840u 26075585）。
 2. **三个宿主在公平口径下的 840 闭环**（GPTVQ / QuIP# / QTIP × W2 / W3，加接口 BF16 + 时间表）。没有它，主表的比较不公平。
-3. **真机（AgileX PiPER）**：三个任务（两物体 pick-and-place、倒珠子、叠布），每任务约 80 条 LeRobot 示教（两路相机）→ 微调 BF16 的 Fast-WAM → 用 PiPER 示教做量化校准 → BF16 / QTIP-W2 / RAVQ-W2 各 XX 次试验。前置链条最长，要最早启动。
+3. **真机（AgileX PiPER）**：三个任务（两物体 pick-and-place、倒珠子、叠布），每任务约 80 条 LeRobot 示教（两路相机）→ 微调 BF16 的 Fast-WAM → 用 PiPER 示教做量化校准 → BF16 / QTIP-W2 / LAVQ-W2 各 XX 次试验。前置链条最长，要最早启动。
 4. **第二个 WAM**：先在它上面复现 future 占比（C1，进附录 A）和反事实升位（决定 ② 怎么分），再跑 Table 1 的第二个分块。
 5. **消融 B 组**（A-only vs 完整目标）：论证 C1 在方法层面的关键证据（你来跑）。
 6. **效率实测**：打包格式下的显存、延迟；核实 K = 1 的 kernel。

@@ -1,6 +1,24 @@
 \section{Related Work}
 \label{sec:related}
 
+% Method overview: placed here so that it floats to the top of page 3 as Fig. 2.
+\begin{figure*}[t]
+  \centering
+  \figbox{Placeholder for Fig.~2 (method overview).\\[2pt]
+  Top row: a WAM (modules generating the future $\rightarrow$ predicted future $\bz$ $\rightarrow$ reader $\rightarrow$ action).\\
+  Bottom row: four boxes linked to where they act:
+  (i) reader metric $\bM$ $\rightarrow$ $\bz$;
+  (ii) future-aware bit allocation $\rightarrow$ modules, shaded by bit width;\\
+  (iii) trellis-coded initialization $\rightarrow$ every linear layer;
+  (iv) shared-table calibration $\rightarrow$ decode tables.\\[2pt]
+  Solid arrows: inference; dashed arrows: offline quantization; red: calibration signals $A$, $Z_{\bM}$, $K$.}{0.27\textwidth}
+  \caption{Overview of \method.
+  \method makes the predicted future an explicit quantization target.
+  It measures future error as the reader sees it~(i), spends bits where they preserve the future~(ii), initializes the codes with trellis-coded rounding, which supports mixed bit widths~(iii), and calibrates the shared decode tables toward action and future fidelity~(iv).
+  The deployed model runs a standard trellis decoder and adds no storage.}
+  \label{fig:method}
+\end{figure*}
+
 \paragraph{World action models.}
 World action models train a video generator jointly with an action model, so that actions are conditioned on a predicted future~\cite{yuan2026fastwam,kim2026cosmospolicy,li2026lingbotva,ye2026dreamzero}.
 They extend vision-language-action policies~\cite{kim2024openvla,black2024pi0} with the visual priors of video backbones and inherit their size.
@@ -12,7 +30,7 @@ Activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\ci
 Vector, lattice and trellis quantizers push large language models to two bits per weight: AQLM learns additive codebooks~\cite{egiazarian2024aqlm}, GPTVQ extends second-order rounding to vector codebooks~\cite{vanbaalen2024gptvq}, QuIP\# rounds incoherence-processed weights to the $E_8$ lattice~\cite{tseng2024quipsharp}, and QTIP decodes weights from a bitshift trellis with a small lookup table~\cite{tseng2024qtip}.
 Mixed-precision methods allocate bit widths across layers~\cite{wang2019haq,malinovskii2025higgs}, and GuidedQuant weights the layer objective with gradients of the end loss~\cite{kim2025guidedquant}.
 These methods measure quantization error on layer outputs or on the final output of a generic network.
-\method keeps their machinery, uses QTIP as its rounding stage, and changes the signal that decides where bits go and what calibration preserves: the predicted future as the policy reads it.
+\method builds on trellis-coded rounding and mixed precision, and changes the signal that decides where bits go and what calibration preserves: the predicted future as the policy reads it.
 
 \paragraph{Quantization of generative and embodied models.}
 Post-training quantization of diffusion and video generators corrects errors that accumulate over the denoising loop~\cite{he2023ptqd} and handles outliers in diffusion transformers~\cite{zhao2025viditq,li2025svdquant}, with quantization-aware training reaching 4 bits and below~\cite{huang2026qvgen,li2026dsaquant}.
