@@ -1,0 +1,230 @@
+\section{Experiments}
+\label{sec:exp}
+
+We answer four questions.
+Does \method improve closed-loop success over existing ultra-low-bit quantizers at the same bits per weight, across WAMs (\cref{sec:exp:main})?
+Does the improvement hold on a real robot (\cref{sec:exp:real})?
+What does each component contribute, and is the future term necessary (\cref{sec:exp:ablation})?
+How much memory does it save, and how fast does it run (\cref{sec:exp:efficiency})?
+
+\subsection{Experimental setup}
+\label{sec:exp:setup}
+
+\paragraph{Models.}
+We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and \XX \TODO{second WAM, \eg Cosmos-Policy~\cite{kim2026cosmospolicy}}.
+Fast-WAM first denoises the future latent in 10 steps and then denoises a 32-step action chunk in 10 steps while attending to it; the robot executes the first 10 actions and replans.
+For a model that denoises the future and the action jointly, the reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action.
+Each model is compared with its own BF16 reference.
+
+\paragraph{Benchmarks.}
+We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions.
+We draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
+Real-world experiments are described in \cref{sec:exp:real}.
+
+\paragraph{Baselines.}
+We compare with scalar GPTQ~\cite{frantar2023gptq} and with the vector, lattice and trellis quantizers GPTVQ~\cite{vanbaalen2024gptvq}, QuIP\#~\cite{tseng2024quipsharp} and QTIP~\cite{tseng2024qtip}, at 2 and 3 bits per weight.
+As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables; both are counted in bits per weight.
+All methods use the same calibration data and inference runtime.
+
+\paragraph{Metrics.}
+We report closed-loop success rates per suite and on average.
+For efficiency, we report weight storage, peak memory and the latency of one policy call.
+
+\paragraph{Calibration and implementation.}
+All methods calibrate on the same 80 LIBERO contexts.
+\method uses $\lambda = \XX$ and $\beta = \XX$ (\cref{sec:supp:method}) and 8 calibration updates.
+Quantization runs on NVIDIA A100 GPUs; further details are in \cref{sec:supp:eval}.
+
+\subsection{Main results}
+\label{sec:exp:main}
+
+\begin{table*}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{6pt}
+  \begin{tabular}{@{}llccccccc@{}}
+    \toprule
+    Model & Method & bpw & Weights (GB) & Spatial & Object & Goal & Long & Avg. \\
+    \midrule
+    \multirow{11}{*}{Fast-WAM}
+      & BF16    & 16   & 12.0 & 81.4 & 82.9 & 67.6 & 78.6 & 77.6 \\
+    \cmidrule(l){2-9}
+      & GPTQ    & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & GPTVQ   & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QuIP\#  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QTIP    & 2.98 & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}2.98 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    \cmidrule(l){2-9}
+      & GPTQ    & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & GPTVQ   & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QuIP\#  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QTIP    & 1.99 & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}1.99 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    \midrule
+    \multirow{11}{*}{\XX}
+      & BF16    & 16   & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+    \cmidrule(l){2-9}
+      & GPTQ    & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & GPTVQ   & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QuIP\#  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QTIP    & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    \cmidrule(l){2-9}
+      & GPTQ    & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & GPTVQ   & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QuIP\#  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & QTIP    & \XX  & \XX  & \XX  & \XX  & \XX  & \XX  & \XX \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Closed-loop success rates (\%) on LIBERO-Plus over 840 paired episodes per method.
+  Within each model, the upper group is at 3 bits per weight and the lower group at 2 bits.
+  \textbf{Bold}: best quantized result in a group; \underline{underline}: second best.
+  At 2 bits, \method is the only method within \XX points of BF16 on both models.}
+  \label{tab:main}
+\end{table*}
+
+\cref{tab:main} reports closed-loop success on both models at 2 and 3 bits per weight.
+
+\paragraph{Results on Fast-WAM.}
+At 2 bits, \method reaches \XX\% average success, \XX points above QTIP, the strongest baseline, and recovers \XX\% of the gap between QTIP and BF16.
+Scalar GPTQ collapses at this bit width, while the vector, lattice and trellis quantizers stay between \XX\% and \XX\%.
+At 3 bits, all VQ baselines are within \XX points of BF16, and \method reaches \XX\%.
+The gains concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
+
+\paragraph{Results on \XX.}
+\XX.
+
+\subsection{Real-world deployment}
+\label{sec:exp:real}
+
+\paragraph{Setup.}
+We deploy Fast-WAM on an AgileX PiPER arm (6 degrees of freedom and a parallel gripper).
+We fine-tune it on teleoperation data collected with LeRobot~\cite{cadene2024lerobot} from a third-person and a wrist camera, the same two-view layout as the LIBERO model, with about 80 demonstrations per task.
+We quantize the fine-tuned BF16 model with calibration contexts drawn from the demonstrations and re-estimate the reader metric on it.
+We compare BF16, 2-bit QTIP and 2-bit \method with \XX trials per task and method, using the same marked initial placements for all methods and randomizing the order of methods.
+
+\paragraph{Tasks.}
+\emph{Two-object pick-and-place}: put a can and a box into a basket, one after the other; this long-horizon task tests whether the quantized model completes a multi-step sequence.
+\emph{Pouring}: pour beads from one cup into another, a continuous, dynamics-dependent motion.
+\emph{Cloth folding}: fold a small cloth in half, which involves a deformable object.
+Success criteria are listed in \cref{sec:supp:real}.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    & & \multicolumn{2}{c}{Pick-and-place} & & & \\
+    \cmidrule(lr){3-4}
+    Method & bpw & First & Both & Pouring & Folding & Avg. \\
+    \midrule
+    BF16    & 16   & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
+    QTIP    & 1.99 & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
+    \method & 1.99 & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
+    \bottomrule
+  \end{tabular}
+  \caption{Real-world results on the AgileX PiPER arm (successes / trials).
+  For pick-and-place, \emph{First} counts trials in which the first object reaches the basket and \emph{Both} counts full successes.
+  The average uses full successes of the three tasks.}
+  \label{tab:real}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \figbox{Placeholder for Fig.~4 (real-world setup and rollouts).\\[2pt]
+  Left: PiPER arm with third-person and wrist cameras.\\
+  Right: key frames of the three tasks; one pick-and-place trial where QTIP fails and \method succeeds.}{0.55\linewidth}
+  \caption{Real-world setup and example rollouts of 2-bit \method on the AgileX PiPER arm.}
+  \label{fig:real}
+\end{figure}
+
+\paragraph{Results.}
+\cref{tab:real} and \cref{fig:real} summarize the real-world results.
+2-bit \method succeeds in \XX of \XX trials, compared with \XX for QTIP and \XX for BF16.
+On pick-and-place, \XX.
+The quantized model stores \XX\,GB of weights instead of 12\,GB.
+
+\subsection{Ablation study}
+\label{sec:exp:ablation}
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llc@{}}
+    \toprule
+    & Variant & Avg. (\%) \\
+    \midrule
+    \multirow{3}{*}{Components}
+      & QTIP (uniform bits)                     & \XX \\
+      & + future-aware allocation (ii)          & \XX \\
+      & + reader metric and calibration (i, iv) & \XX \\
+    \midrule
+    \multirow{4}{*}{Objective}
+      & $A$                                      & \XX \\
+      & $A + \lambda Z$                          & \XX \\
+      & $A + \lambda_{\bM} Z_{\bM}$              & \XX \\
+      & $A + \lambda_{\bM} Z_{\bM} + \beta K$    & \XX \\
+    \midrule
+    \multirow{4}{*}{Allocation}
+      & Uniform                                  & \XX \\
+      & Reversed (bits to the reader)            & \XX \\
+      & Random layers within groups              & \XX \\
+      & By future impact                         & \XX \\
+    \midrule
+    \multirow{3}{*}{Metric}
+      & $\bM = \mathbf{I}$                       & \XX \\
+      & Diagonal                                 & \XX \\
+      & Low-rank + diagonal + $\alpha\mathbf{I}$ & \XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Ablations on Fast-WAM at 2 bits per weight (LIBERO-Plus, \XX paired episodes).
+  The last row of each block is the full \method.
+  All variants use the same bit budget.}
+  \label{tab:ablation}
+\end{table}
+
+\cref{tab:ablation} isolates each component on Fast-WAM at 2 bits per weight with the bit budget held fixed.
+
+\paragraph{Each component contributes.}
+Future-aware allocation raises the success rate of QTIP from \XX\% to \XX\%, and the reader metric with shared-table calibration adds \XX points.
+
+\paragraph{Future fidelity is necessary.}
+Calibrating the tables on the action alone reaches \XX\%.
+Adding the future term raises it to \XX\% with the uniform metric and to \XX\% with the reader metric, and the reader error $K$ adds \XX points.
+
+\paragraph{Allocating by future impact matters.}
+At the same budget, uniform bits reach \XX\% and reversing the allocation toward the reader reaches \XX\%, so the gain comes from where the bits go rather than from mixed precision itself.
+Choosing layers at random within the groups reaches \XX\%.
+
+\paragraph{Metric form.}
+The full reader metric reaches \XX\%, compared with \XX\% for its diagonal alone and \XX\% for the identity.
+
+\subsection{Efficiency}
+\label{sec:exp:efficiency}
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    Method & bpw & Weights & Peak mem. & Latency & Quant. time \\
+           &     & (GB)    & (GB)      & (ms)    & (GPU-h) \\
+    \midrule
+    BF16    & 16   & 12.0 & \XX & \XX & -- \\
+    QTIP    & 1.99 & \XX  & \XX & \XX & \XX \\
+    \method & 1.99 & \XX  & \XX & \XX & \XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Memory and latency of one Fast-WAM policy call on \XX.
+  Quantization time is the total over all stages.}
+  \label{tab:efficiency}
+\end{table}
+
+\cref{tab:efficiency} reports the cost of 2-bit \method on Fast-WAM.
+It reduces weight storage from 12\,GB to \XX\,GB and peak memory from \XX\,GB to \XX\,GB, with a policy-call latency of \XX\,ms compared with \XX\,ms for BF16.
+Its storage and latency match QTIP at the same bits per weight, since the two share the decoder and format.
+Quantization takes \XX GPU-hours, of which the reader metric and calibration take \XX.

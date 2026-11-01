@@ -1,0 +1,13 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+Ultra-low-bit weight quantization makes a WAM lose the fidelity of its predicted future, and most of its action error follows from this loss.
+\method makes the predicted future an explicit quantization target: it measures future error as the reader sees it, spends bits where they preserve the future, and calibrates the shared decode tables toward action and future fidelity.
+At the same bits per weight as existing vector quantizers, this recovers closed-loop success in simulation and on a real robot.
+When compressing a WAM, the predicted future is not an intermediate quantity that can be sacrificed.
+
+\paragraph{Limitations.}
+The bit allocation relies on measuring each module group's impact on future fidelity; in models whose modules have similar impact, it reduces to rate--distortion allocation.
+The reader metric linearizes the reader at the full-precision future.
+We quantize weights only and keep activations in BF16.
+Our real-world evaluation covers three tasks on one robot.

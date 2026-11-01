@@ -1,0 +1,22 @@
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{World action models.}
+World action models train a video generator jointly with an action model, so that actions are conditioned on a predicted future~\cite{yuan2026fastwam,kim2026cosmospolicy,li2026lingbotva,ye2026dreamzero}.
+They extend vision-language-action policies~\cite{kim2024openvla,black2024pi0} with the visual priors of video backbones and inherit their size.
+We do not modify how WAMs are trained and study only how to compress them for deployment.
+
+\paragraph{Post-training weight quantization.}
+Second-order rounding methods quantize one layer at a time and compensate the error with the inverse Hessian of a layer-wise reconstruction objective~\cite{frantar2022obc,frantar2023gptq}.
+Activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\cite{ashkboos2024quarot,liu2025spinquant} reduce outliers before rounding.
+Vector, lattice and trellis quantizers push large language models to two bits per weight: AQLM learns additive codebooks~\cite{egiazarian2024aqlm}, GPTVQ extends second-order rounding to vector codebooks~\cite{vanbaalen2024gptvq}, QuIP\# rounds incoherence-processed weights to the $E_8$ lattice~\cite{tseng2024quipsharp}, and QTIP decodes weights from a bitshift trellis with a small lookup table~\cite{tseng2024qtip}.
+Mixed-precision methods allocate bit widths across layers~\cite{wang2019haq,malinovskii2025higgs}, and GuidedQuant weights the layer objective with gradients of the end loss~\cite{kim2025guidedquant}.
+These methods measure quantization error on layer outputs or on the final output of a generic network.
+\method keeps their machinery, uses QTIP as its rounding stage, and changes the signal that decides where bits go and what calibration preserves: the predicted future as the policy reads it.
+
+\paragraph{Quantization of generative and embodied models.}
+Post-training quantization of diffusion and video generators corrects errors that accumulate over the denoising loop~\cite{he2023ptqd} and handles outliers in diffusion transformers~\cite{zhao2025viditq,li2025svdquant}, with quantization-aware training reaching 4 bits and below~\cite{huang2026qvgen,li2026dsaquant}.
+For robot policies, QuantVLA and BitVLA compress vision-language-action models~\cite{zhang2026quantvla,wang2025bitvla}.
+For WAMs, QuantWAMs calibrates protection decisions at the right granularity~\cite{zhou2026quantwams}, Q-WAM protects the activation subspace that drives the final action~\cite{akbari2026qwam}, and SteerQuant routes errors across semantic streams and denoising steps by their impact on the action~\cite{wang2026steerquant}.
+These methods preserve generation quality or the final action, mostly with 4-bit weights and activations.
+We study weight-only quantization at two to three bits and target the predicted future that the action is read from.
