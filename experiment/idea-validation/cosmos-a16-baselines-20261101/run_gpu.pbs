@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# Single-GPU stage of the Cosmos A16 baselines (qsub -v STAGE=t5|prep|quant[,PLAN="method:bits:shard:shards ..."]).
+#   t5     prep_t5.py    merged T5 cache with the panel B/C instructions
+#   prep   prep_hess.py  masters, C80 Hessians, BF16 anchor, panel-A reuse replay
+#   quant  quant_worker.py --plan PLAN
+# GPU utilization / memory are sampled into the job log every 60 s.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/cosmos-a16-baselines-20261101
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+case "${STAGE:-}" in t5|prep|quant) ;; *) die "STAGE must be t5, prep or quant (got '${STAGE:-}')";; esac
+[[ "$STAGE" != quant || -n "${PLAN:-}" ]] || die 'quant needs PLAN'
+PLAN=${PLAN:-}
+PLAN=${PLAN//+/ }  # control.py passes the plan with '+' for spaces (qsub -v)
+
+ASSET_ROOT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cosmos"]["asset_root"])' "$NEW_ROOT/protocol.json")
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+COSMOS_JOB_START_EPOCH=$(date +%s)
+export ASSET_ROOT ARTIFACTS COSMOS_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$NEW_ROOT/results"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the PBS allocation'
+printf '%s\n' "$QSTAT" > "$ARTIFACTS/allocation.txt"
+QUEUE=$(awk -F= '/^[[:space:]]*queue[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+NCPUS=$(awk -F= '/^[[:space:]]*Resource_List.ncpus[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+echo "JOB=$PBS_JOBID STAGE=$STAGE PLAN=${PLAN:-} QUEUE=$QUEUE NCPUS=$NCPUS HOST=$(hostname -s) START=$(date -u +%FT%TZ)"
+
+MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  echo "EXIT rc=$rc $(date -u +%FT%TZ)"
+  exit "$rc"
+}
+trap finish EXIT
+
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
+cp -r "$NEW_ROOT/methods" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+GPU_UUID=$(nvidia-smi --query-gpu=uuid --format=csv,noheader | head -n 1 | tr -d '[:space:]')
+monitor "$NCPUS" "$GPU_UUID" & MONITOR_PID=$!
+export COSMOS_CPU_THREADS=$(( NCPUS > 0 ? NCPUS : 8 ))
+
+case "$STAGE" in
+  t5) run_python "$ARTIFACTS/prep_t5.py" --protocol "$ARTIFACTS/protocol.json" ;;
+  prep) run_python "$ARTIFACTS/prep_hess.py" --protocol "$ARTIFACTS/protocol.json" ;;
+  quant) run_python "$ARTIFACTS/quant_worker.py" --protocol "$ARTIFACTS/protocol.json" --plan "$PLAN" ;;
+esac
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

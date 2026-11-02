@@ -1,0 +1,43 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU checks (test_cosmos_a16.py) in the Cosmos container before the GPU chain; results/cputest/<job>/result.json.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/cosmos-a16-baselines-20261101
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ASSET_ROOT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cosmos"]["asset_root"])' "$NEW_ROOT/protocol.json")
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+COSMOS_JOB_START_EPOCH=$(date +%s)
+export ASSET_ROOT ARTIFACTS COSMOS_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$NEW_ROOT/results/cputest/$PBS_JOBID"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+NCPUS=$(qstat -f "$PBS_JOBID" | awk -F= '/^[[:space:]]*Resource_List.ncpus[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}')
+echo "JOB=$PBS_JOBID HOST=$(hostname -s) NCPUS=$NCPUS START=$(date -u +%FT%TZ)"
+trap 'printf "%s\n" "$?" > "$ARTIFACTS/exit_code.txt"' EXIT
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
+cp -r "$NEW_ROOT/methods" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+export COSMOS_CPU_ONLY=1 COSMOS_CPU_THREADS=${NCPUS:-8}
+APPTAINERENV_TEST_OUT=$NEW_ROOT/results/cputest/$PBS_JOBID run_python -B "$ARTIFACTS/test_cosmos_a16.py"
+
+# loop_worker.gpu_lock across two separate containers: each holds it 60 s; the hold intervals must not overlap and
+# the later one must have asked while the earlier one held it (real contention, not start-up skew).
+probe() {
+  CUDA_VISIBLE_DEVICES=lockprobe run_python -B -c 'import time, loop_worker
+t = time.time(); fd = loop_worker.gpu_lock(); a = time.time(); time.sleep(60)
+print(f"LOCKPROBE {t:.3f} {a:.3f} {time.time():.3f}", flush=True)' | grep '^LOCKPROBE'
+}
+probe > "$ARTIFACTS/lock_a.txt" & pa=$!
+probe > "$ARTIFACTS/lock_b.txt" & pb=$!
+wait "$pa"; wait "$pb"
+python3.11 - "$ARTIFACTS/lock_a.txt" "$ARTIFACTS/lock_b.txt" <<'EOF'
+import sys
+first, second = sorted(([float(x) for x in open(f).read().split()[1:4]] for f in sys.argv[1:3]), key=lambda v: v[1])
+ok = second[1] >= first[2] - 0.5 and second[0] < first[2]
+print(f"LOCK_TEST {'PASS' if ok else 'FAIL'} first={first} second={second}")
+sys.exit(0 if ok else 1)
+EOF
+touch "$ARTIFACTS/PIPELINE_COMPLETE"

@@ -5,8 +5,8 @@
 \label{sec:exp:setup}
 
 \paragraph{Models and benchmarks.}
-We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and \XX \TODO{second WAM, \eg Cosmos-Policy~\cite{kim2026cosmospolicy}}, and compare each with its own BF16 reference.
-Fast-WAM first denoises the future latent and then denoises an action chunk while attending to it; for a model that denoises the future and the action jointly, the reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action.
+We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and Cosmos-Policy~\cite{kim2026cosmospolicy} (2B parameters), and compare each with its own BF16 reference.
+Fast-WAM first denoises the future latent and then denoises an action chunk while attending to it; Cosmos-Policy denoises the future and the action jointly, so its reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action.
 We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, and on a real robot arm (\cref{sec:exp:real}).
 
 \paragraph{Baselines and quantization settings.}
@@ -33,8 +33,11 @@ Scalar GPTQ collapses at this bit width, while the vector, lattice and trellis q
 At 3 bits, all VQ baselines are within \XX points of BF16, and \method reaches \XX\%.
 The gains concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 
-\paragraph{Results on \XX.}
-\XX.
+\paragraph{Results on Cosmos-Policy.}
+At 2 bits, \method reaches \XX\% average success, \XX points above QTIP (79.9\%), the strongest baseline, and recovers \XX\% of the gap between QTIP and BF16 (83.5\%).
+Scalar GPTQ collapses at this bit width, and the vector, lattice and trellis quantizers spread from 72.6\% to 79.9\%, a wider range than on Fast-WAM.
+At 3 bits, all VQ baselines are within 1.6 points of BF16, and \method reaches \XX\%.
+The 2-bit loss concentrates on the Goal suite, where QTIP, QuIP\# and GPTVQ lose 7.1, 14.3 and 21.0 points.
 
 \subsection{Real-world deployment}
 \label{sec:exp:real}

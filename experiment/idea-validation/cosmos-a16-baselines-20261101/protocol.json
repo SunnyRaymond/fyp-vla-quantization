@@ -1,0 +1,91 @@
+{
+  "protocol": "cosmos-a16-baselines-20261101-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/cosmos-a16-baselines-20261101",
+  "purpose": "Weight-only (A16) PTQ baselines on Cosmos-Policy-LIBERO-Predict2-2B: GPTQ, GPTVQ, QuIP#, QTIP at W3 and W2, LIBERO-Plus closed loop on panels A+B+C (840 per arm; GPTQ panel A only, 280). Same method ports, Hessian definition and panels as the Fast-WAM A16 baselines; dequantized dense BF16 weights in the official Cosmos get_action runtime.",
+  "model": "nvidia/Cosmos-Policy-LIBERO-Predict2-2B",
+  "cosmos": {
+    "asset_root": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015",
+    "runtime_protocol": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/protocol.json",
+    "runtime": "cosmos_runtime.CosmosRuntime of cosmos-policy-c8-w4a4 (the runtime of the BF16 panel-A run 25838062), arm bf16; quantized arms overwrite the 280 target Linear weights in place",
+    "targets": 280,
+    "target_scope": "quantization.select_target_linears: q/k/v/output_proj of self- and cross-attention and mlp.layer1/layer2 in the 28 DiT blocks (1.762 B weights); patch embed, final layer, time embedding, adaLN modulation and other conditioning projections stay BF16, as in every earlier Cosmos experiment"
+  },
+  "t5": {
+    "base_cache": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/results/text_embeddings.pkl",
+    "extra_cache": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/language_cache/embeddings.pkl",
+    "official_cache": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/cache/huggingface/hub/models--nvidia--Cosmos-Policy-LIBERO-Predict2-2B/snapshots/cb689ec0e3347c13667d70a78a3447388f5c3bb8/libero_t5_embeddings.pkl",
+    "rule": "merged = base (the cache the BF16 panel-A run used) + extra (C80 descriptions); keys present in both must be bitwise equal; panel B/C instructions not in it are encoded with CosmosT5TextEncoder(t5-11b, max_length 512) exactly as prepare_text_embeddings.py did, twice, bitwise repeat required",
+    "recheck": 8
+  },
+  "panels": {
+    "A": {"manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json", "protocol": "fastwam-rotation-baselines-v1", "offset": 0},
+    "B": {"manifest": "/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031/results/panel/manifest.json", "protocol": "fastwam-plus-panelb-20261031-v1", "offset": 280},
+    "C": {"manifest": "/scratch/users/ntu/yguo017/fastwam-plus-panelc-20261031/results/panel/manifest.json", "protocol": "fastwam-plus-panelc-20261031-v1", "offset": 560},
+    "seeds": "CosmosRuntime.episode: env seed 800000000 + 1000*index, sampler seed 900000000 + 1000*index + replan (index = slot index 0-839)",
+    "invalid_rule": "a variant whose task completes during the 30 dummy settling steps is invalid for every arm and is dropped from every comparison"
+  },
+  "reuse": {
+    "BF16_A": {
+      "episodes": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/results/evaluation/episodes/bf16",
+      "job": "25838062.pbs101",
+      "successes": 233,
+      "replay_indices": [0, 70, 140, 210],
+      "rule": "the prep job replays the first policy query of these panel-A episodes (env reset, settling, first get_action); if every first action chunk equals the stored first_action_chunk bitwise, BF16 panel A is reused, otherwise BF16 also runs panel A in the loop job"
+    }
+  },
+  "calibration": {
+    "plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+    "cases": [2000, 2079],
+    "seed_index": 0,
+    "anchor_case": 2000,
+    "hessian": "mean x x^T of the BF16 inputs of each target Linear over every denoiser call of the 80 C80 get_action queries (5 NFE each), original coordinates, FP32, no TF32; BF16 model for every method",
+    "headroom_gb": 6.0
+  },
+  "budget_rule": "total stored bits per weight ~= bits; scales, zero points, codebooks, sign vectors and padding counted in bits_total; no fine-tuning; every layer also stores its native codes (GPTQ integer codes, GPTVQ codebooks + indices, QuIP# E8P attr, QTIP trellis + SU/SV/LUT)",
+  "arms": {
+    "BF16": {"method": null, "bits": 16, "panels": ["B", "C"]},
+    "QTIP_W2": {"method": "qtip", "bits": 2, "panels": ["A", "B", "C"]},
+    "QUIPSHARP_W2": {"method": "quipsharp", "bits": 2, "panels": ["A", "B", "C"]},
+    "GPTVQ_W2": {"method": "gptvq", "bits": 2, "panels": ["A", "B", "C"]},
+    "QTIP_W3": {"method": "qtip", "bits": 3, "panels": ["A", "B", "C"]},
+    "QUIPSHARP_W3": {"method": "quipsharp", "bits": 3, "panels": ["A", "B", "C"]},
+    "GPTVQ_W3": {"method": "gptvq", "bits": 3, "panels": ["A", "B", "C"]},
+    "GPTQ_W3": {"method": "gptq", "bits": 3, "panels": ["A"]},
+    "GPTQ_W2": {"method": "gptq", "bits": 2, "panels": ["A"]}
+  },
+  "arm_order": ["BF16", "QTIP_W2", "QUIPSHARP_W2", "GPTVQ_W2", "QTIP_W3", "QUIPSHARP_W3", "GPTVQ_W3", "GPTQ_W3", "GPTQ_W2"],
+  "single_gpu": {
+    "select": "1:ncpus=16:mem=110gb:ngpus=1",
+    "queue": "normal",
+    "execution_queue": "gdev",
+    "soft_deadline_seconds": 6900,
+    "jobs": {
+      "t5": {"name": "cabt5", "walltime": "01:30:00", "stage": "t5"},
+      "prep": {"name": "cabhs", "walltime": "01:30:00", "stage": "prep"},
+      "gptq": {"name": "cabgq", "walltime": "01:00:00", "stage": "quant", "plan": "gptq:3:0:1 gptq:2:0:1", "after": ["prep"]},
+      "qtip3": {"name": "cabqt3", "walltime": "02:00:00", "stage": "quant", "plan": "qtip:3:0:1", "after": ["prep"]},
+      "qtip2": {"name": "cabqt2", "walltime": "02:00:00", "stage": "quant", "plan": "qtip:2:0:1", "after": ["prep"]},
+      "quip3": {"name": "cabqs3", "walltime": "02:00:00", "stage": "quant", "plan": "quipsharp:3:0:1", "after": ["prep"]},
+      "quip2": {"name": "cabqs2", "walltime": "02:00:00", "stage": "quant", "plan": "quipsharp:2:0:1", "after": ["prep"]},
+      "gptvq3a": {"name": "cabgv3a", "walltime": "02:00:00", "stage": "quant", "plan": "gptvq:3:0:2", "after": ["prep"]},
+      "gptvq3b": {"name": "cabgv3b", "walltime": "02:00:00", "stage": "quant", "plan": "gptvq:3:1:2", "after": ["prep"]},
+      "gptvq2a": {"name": "cabgv2a", "walltime": "02:00:00", "stage": "quant", "plan": "gptvq:2:0:2", "after": ["prep"]},
+      "gptvq2b": {"name": "cabgv2b", "walltime": "02:00:00", "stage": "quant", "plan": "gptvq:2:1:2", "after": ["prep"]}
+    },
+    "time_basis": "Fast-WAM A16 quantization of 6.0 B weights took QTIP 1.9, GPTVQ 3.0-3.8, QuIP# 1.3-1.4, GPTQ 0.1 GPU-h; Cosmos has 1.76 B target weights (x0.29), so QTIP ~0.6 h, QuIP# ~0.4 h, GPTVQ ~1.1 h per bit width (split over two jobs); every quant job resumes layer by layer and stops at the soft deadline"
+  },
+  "loop": {
+    "name": "cabloop",
+    "queue": "normal",
+    "execution_queue": "g3",
+    "select": "1:ncpus=64:mem=440gb:ngpus=4",
+    "gpus": 4,
+    "walltime": "16:00:00",
+    "after": ["t5", "prep", "gptq", "qtip3", "qtip2", "quip3", "quip2", "gptvq3a", "gptvq3b", "gptvq2a", "gptvq2b"],
+    "slots_per_gpu": 5,
+    "join_min": 6,
+    "lock_stale_seconds": 120,
+    "gpu_memory_basis": "old BF16 Cosmos episodes peak 6.2 GB reserved per query + ~0.6 GB context, so five workers per A100-40GB",
+    "time_basis": "6,160 new episodes (BF16 560, six W2/W3 arms 840, GPTQ 2 x 280); old Cosmos episodes 75-96 s when successful, up to ~230 s at the step cap; ~100 s mean -> ~616k worker-s / 20 slots ~8.6 h, plus GPU sharing and reloads"
+  }
+}
