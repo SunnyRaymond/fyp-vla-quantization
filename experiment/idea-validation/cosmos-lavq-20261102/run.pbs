@@ -1,0 +1,122 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# LAVQ on Cosmos-Policy (protocol.json, lavq_worker.py), one g2 job: every stage runs as one worker process per GPU
+# (shards 0..n-1) or one process (*_final), in order; the first failure ends the job. Finished items are skipped on a
+# resubmission. Each step runs a fresh copy of the *.py sources (sha256 in the job log), so a fix uploaded while the job
+# runs reaches the later steps. The job named jobs.smoke.name runs every stage after quant on 2 + 2 contexts
+# (LV_SMOKE=1, results under smoke/). GPU utilization / memory are sampled into the job log every 60 s (CPU every 120 s).
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/cosmos-lavq-20261102
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" "${PBS_JOBNAME:-}" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+key = next(k for k in ("pipeline", "smoke") if p["jobs"][k]["name"] == sys.argv[2])
+j = p["jobs"][key]
+for value in (p["cosmos"]["asset_root"], p["baseline_root"], j["gpus"], j["soft_deadline_seconds"], j["execution_queue"], key):
+    print(value)
+PY
+)
+test "${#CFG[@]}" -eq 6 || die 'Malformed protocol or unknown job name'
+ASSET_ROOT=${CFG[0]}; BASELINE_ROOT=${CFG[1]}; NG=${CFG[2]}; SOFT=${CFG[3]}; WANT_QUEUE=${CFG[4]}; JOBKEY=${CFG[5]}
+SMOKE=0; [[ "$JOBKEY" == smoke ]] && SMOKE=1
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+COSMOS_JOB_START_EPOCH=$(date +%s)
+export ASSET_ROOT ARTIFACTS COSMOS_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the PBS allocation'
+printf '%s\n' "$QSTAT" > "$ARTIFACTS/allocation.txt"
+QUEUE=$(awk -F= '/^[[:space:]]*queue[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+NCPUS=$(awk -F= '/^[[:space:]]*Resource_List.ncpus[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die "Cannot read Resource_List.ncpus ('$NCPUS')"
+[[ "$QUEUE" == "$WANT_QUEUE" ]] || echo "WARNING: routed to $QUEUE, protocol expects $WANT_QUEUE"
+echo "JOB=$PBS_JOBID KEY=$JOBKEY QUEUE=$QUEUE NCPUS=$NCPUS GPUS=$NG HOST=$(hostname -s) START=$(date -u +%FT%TZ)"
+
+for arm in QTIP_W2 QTIP_W3 QUIPSHARP_W2 QUIPSHARP_W3 GPTVQ_W2 GPTVQ_W3; do
+  grep -q '"complete": true' "$BASELINE_ROOT/results/quantized/$arm/COMPLETE.json" || die "Baseline $arm is incomplete"
+done
+for name in COMPLETE.json bf16_anchor.pt modules.json text_embeddings.pkl; do
+  test -s "$BASELINE_ROOT/results/prep/$name" || die "Baseline prep $name missing"
+done
+
+MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  (( rc == 0 )) || rm -f "$ARTIFACTS/PIPELINE_COMPLETE"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  echo "EXIT rc=$rc $(date -u +%FT%TZ)"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
+cp -r "$NEW_ROOT/methods" "$ARTIFACTS/"
+source "$ARTIFACTS/environment.sh"
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || die "Expected $NG allocated GPUs, got ${#GPU_IDS[@]}"
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  [[ "$uuid" == GPU-* ]] || die "Bad GPU UUID '$uuid'"
+  GPU_UUIDS+=("$uuid")
+done
+monitor "$NCPUS" "${GPU_UUIDS[@]}" & MONITOR_PID=$!
+THREADS=$(( NCPUS / NG > 0 ? NCPUS / NG : 1 ))
+
+step() {  # stage n: n worker processes (one per GPU, shards 0..n-1); the first failure ends the job
+  local stage=$1 n=$2 k pids=() src=$ARTIFACTS/src/$1
+  mkdir -p "$src"
+  cp "$NEW_ROOT"/*.py "$src/"
+  cp "$ARTIFACTS/protocol.json" "$src/"
+  ln -sfn "$ARTIFACTS/methods" "$src/methods"
+  echo "STEP $stage shards=$n $(date -u +%H:%M:%S) sources=$(cat "$src"/*.py | sha256sum | cut -c1-16)"
+  for (( k = 0; k < n; k++ )); do
+    ( export CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$k]} COSMOS_CPU_THREADS=$THREADS
+      export APPTAINERENV_LV_STAGE=$stage APPTAINERENV_LV_SHARD=$k APPTAINERENV_LV_SHARDS=$n APPTAINERENV_LV_SOFT_DEADLINE=$SOFT
+      export APPTAINERENV_LV_SMOKE=$SMOKE
+      run_python "$src/lavq_worker.py" > "$ARTIFACTS/${stage}_$k.log" 2>&1 ) &
+    pids+=("$!")
+  done
+  for (( k = 0; k < n; k++ )); do
+    if ! wait -n; then
+      for (( k = 0; k < n; k++ )); do echo "--- ${stage}_$k.log"; tail -c 6000 "$ARTIFACTS/${stage}_$k.log"; done
+      die "step $stage failed"
+    fi
+  done
+  for (( k = 0; k < n; k++ )); do grep LAVQ_PROGRESS "$ARTIFACTS/${stage}_$k.log" | tail -n 2; done
+}
+
+if (( ! SMOKE )); then
+  step quant "$NG"
+  step quant_final 1
+fi
+step teacher "$NG"
+step teacher_final 1
+step metric "$NG"
+step metric_final 1
+step sens "$NG"
+step sens_final 1
+step alloc "$NG"
+step alloc_final 1
+step heldout "$NG"
+step heldout_final 1
+step codes "$NG"
+step calib "$NG"
+step final 1
+(( SMOKE )) && RESULTS=$NEW_ROOT/smoke
+cat "$RESULTS/RESULTS.zh.md"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

@@ -1,0 +1,206 @@
+{
+ "protocol": "cosmos-lavq-20261102-v1",
+ "remote_root": "/scratch/users/ntu/yguo017/cosmos-lavq-20261102",
+ "purpose": "LAVQ on Cosmos-Policy-LIBERO-Predict2-2B at W2 and W3: (1) reader metric on the future slots of the joint denoising state at the reader cut, (2) future-aware bit allocation by measured group exchanges, (3) trellis-coded (QTIP) rounding at K = 1..4, (4) shared-table calibration on A + lam_M Z_M + beta K; held-out gates, then the LIBERO-Plus closed loop (panels A+B+C, 840) paired with the Cosmos A16 baselines.",
+ "baseline_root": "/scratch/users/ntu/yguo017/cosmos-a16-baselines-20261101",
+ "cosmos": {
+  "asset_root": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015",
+  "runtime_protocol": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/protocol.json",
+  "targets": 280,
+  "runtime": "cosmos_runtime.CosmosRuntime (arm bf16) of cosmos-policy-c8-w4a4, as the A16 baselines; arms overwrite the 280 target Linear weights in place",
+  "endpoint": "endpoint.run_endpoint of cosmos-policy-c8-w4a4 (the official five-evaluation res_multistep sampler with the no_grad boundaries removed), grad_enabled for every LAVQ query so staged and replayed queries share one path"
+ },
+ "panels": {
+  "A": {
+   "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+   "protocol": "fastwam-rotation-baselines-v1",
+   "offset": 0
+  },
+  "B": {
+   "manifest": "/scratch/users/ntu/yguo017/fastwam-plus-panelb-20261031/results/panel/manifest.json",
+   "protocol": "fastwam-plus-panelb-20261031-v1",
+   "offset": 280
+  },
+  "C": {
+   "manifest": "/scratch/users/ntu/yguo017/fastwam-plus-panelc-20261031/results/panel/manifest.json",
+   "protocol": "fastwam-plus-panelc-20261031-v1",
+   "offset": 560
+  },
+  "seeds": "CosmosRuntime.episode: env seed 800000000 + 1000*index, sampler seed 900000000 + 1000*index + replan (same as the A16 baselines)"
+ },
+ "calibration": {
+  "plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+  "cases": [
+   2000,
+   2079
+  ],
+  "seed_index": 0,
+  "anchor_case": 2000
+ },
+ "heldout": {
+  "cases": [
+   3000,
+   3039
+  ],
+  "seed_indices": [
+   0,
+   1
+  ]
+ },
+ "qtip": {
+  "seed_base": 20261101,
+  "new_bits": [
+   1,
+   4
+  ],
+  "rule": "ravq_qtip.quantize_layer (the baselines' QTIP port with K widened to 1..4) on the baselines' BF16 masters and C80 Hessians, seed seed_base + layer index (the baselines' per-layer seeds); K = 2 / 3 are the baselines' QTIP_W2 / QTIP_W3 with their native trellis codes"
+ },
+ "reader": {
+  "future_slots": [
+   6,
+   7
+  ],
+  "cut_candidates": [
+   2,
+   3,
+   4
+  ],
+  "cut_rule": "the cut whose future swap removes the largest share of the action error (future share rho, C80, mean of QTIP_W2 and QTIP_W3); exact ties go to the earlier cut",
+  "definition": "z = the future-image slots (6, 7) of the solver state just before the cut-th denoiser evaluation; R = the remaining solver steps and the final denoise from that state; the BF16 reader keeps the teacher's other slots and multistep history, the swap (rho) keeps the student's",
+  "soft_bins": 16,
+  "interior_min": -3.5,
+  "interior_max": 3.5,
+  "sigma": 0.375,
+  "std_floor": 0.02,
+  "identity_max_abs": 1e-05
+ },
+ "errors": {
+  "A": "mean squared error of the 16 x 6 motor actions (the executed chunk, unnormalized), gripper reported apart",
+  "Z": "|z_S - z_T|^2 / |z_T|^2 on the future slots of the cut state",
+  "Z_M": "(z_S - z_T)^T M (z_S - z_T) / |z_T|^2",
+  "K": "soft-bin KL(BF16 reader at z_T || BF16 reader at z_S) over the 16 x 6 normalized motor actions, C80 per-channel mean / std",
+  "rho": "1 - sum |R_S(z_T) - a_T|^2 / sum |a_S - a_T|^2 over the panel (16 x 6 motor), R_S the student's own remaining steps"
+ },
+ "metric": {
+  "probes_per_context": 4,
+  "rank": 32,
+  "rho": 0.1,
+  "seed": 20261102
+ },
+ "loss": {
+  "rho": 1.5,
+  "beta_fraction": 0.1,
+  "coefficient_arm": "QTIP_W2",
+  "rule": "lambda = rho mean A / mean Z and beta = beta_fraction lambda mean Z / mean K on C80 at the coefficient arm (the Fast-WAM loss-pair rule), fixed for both bit widths; lam_M = lambda mean Z / mean Z_M at each family's base"
+ },
+ "allocation": {
+  "bands": [
+   [
+    0,
+    9
+   ],
+   [
+    10,
+    18
+   ],
+   [
+    19,
+    27
+   ]
+  ],
+  "types": {
+   "self": [
+    "self_attn.q_proj",
+    "self_attn.k_proj",
+    "self_attn.v_proj",
+    "self_attn.output_proj"
+   ],
+   "cross": [
+    "cross_attn.q_proj",
+    "cross_attn.k_proj",
+    "cross_attn.v_proj",
+    "cross_attn.output_proj"
+   ],
+   "mlp": [
+    "mlp.layer1",
+    "mlp.layer2"
+   ]
+  },
+  "families": {
+   "2": {
+    "base": "QTIP_W2",
+    "down": 1,
+    "up": 3
+   },
+   "3": {
+    "base": "QTIP_W3",
+    "down": 2,
+    "up": 4
+   }
+  },
+  "max_exchanges": 4,
+  "rule": "per group g: gain = L(base) - L(g up one bit), cost = L(g down one bit) - L(base) on C80 with L = A + lam_M Z_M + beta K; donors by cost per freed bit (ascending), receivers by gain per added bit (descending, gain > 0); exchange j lowers donor j as a whole and spends its bits on receiver layers (receiver groups in order, inside a group by H-proxy reduction per added bit, a layer that does not fit is skipped); a donor is taken only while its cost density is below the gain density of the receiver it funds and it has received nothing; prefixes 0..J are measured on C80 and the one with the lowest L is the allocation (prefix 0 = the uniform host)"
+ },
+ "gates": {
+  "lavqu": "held-out L(LAVQU_Wb) <= L(QTIP_Wb), otherwise the family's allocation falls back to prefix 0",
+  "calibrated": "held-out L(LAVQ_Wb) <= L(LAVQU_Wb) (the Fast-WAM rule), otherwise the loop runs the uncalibrated arm",
+  "loop": "the chosen arm of a family runs the closed loop unless its weights are the uniform host's (then the host's loop is the result)"
+ },
+ "training": {
+  "roles": "self / cross / mlp (allocation.types), one [512, 2] table offset per (role, K)",
+  "families": [
+   "lut"
+  ],
+  "updates": 8,
+  "contexts_per_update": 10,
+  "schedule_seed": 20261102,
+  "step_grid": [
+   0.00125,
+   0.0025,
+   0.005,
+   0.01,
+   0.02,
+   0.05
+  ],
+  "min_realized_fraction": 0.5,
+  "replay_max_abs": 0.0001,
+  "update_rule_id": "lut-only-fp32-fold-v3",
+  "update": "delta u = -eta g_u / max|g_u| with u = table entry / rms(tlut) over live entries (ravqc v3); folded from the FP32 decode of the codes"
+ },
+ "jobs": {
+  "cputest": {
+   "name": "lvct",
+   "select": "1:ncpus=8:mem=32gb",
+   "walltime": "02:30:00"
+  },
+  "pipeline": {
+   "name": "lavq1",
+   "select": "1:ncpus=32:mem=220gb:ngpus=2",
+   "walltime": "07:00:00",
+   "gpus": 2,
+   "execution_queue": "g2",
+   "soft_deadline_seconds": 24600,
+   "time_basis": "quant K=1 and K=4 of 280 layers ~0.7 GPU-h each (baselines' QTIP W2 0.70 GPU-h; the Viterbi cost does not depend on K) -> ~0.7 h on 2 GPUs; teacher / cut / metric ~20 min; sensitivity 38 arms x 80 C80 queries ~0.5 s + BF16 reader reads ~45 min GPU; prefixes + held-out ~30 min GPU; calibration ~40 min per arm, one arm per GPU: ~3 h wall"
+  },
+  "smoke": {
+   "name": "lavqs",
+   "select": "1:ncpus=32:mem=220gb:ngpus=2",
+   "walltime": "01:30:00",
+   "gpus": 2,
+   "execution_queue": "gdev",
+   "soft_deadline_seconds": 5100,
+   "time_basis": "every stage after quant on 2 C80 + 2 held-out contexts (38 sensitivity arms x 2 queries, 2 calibration updates); < 1 h on 2 GPUs, gdev (walltime <= 2 h)"
+  },
+  "loop": {
+   "name": "lavql",
+   "select": "1:ncpus=64:mem=440gb:ngpus=4",
+   "walltime": "05:00:00",
+   "gpus": 4,
+   "execution_queue": "g3",
+   "slots_per_gpu": 5,
+   "join_min": 6,
+   "lock_stale_seconds": 120,
+   "time_basis": "up to 2 arms x 840 episodes; the A16 baselines ran 6160 episodes on 20 slots in 6 h 47 min (~900 per hour) -> ~2 h plus startup"
+  }
+ }
+}

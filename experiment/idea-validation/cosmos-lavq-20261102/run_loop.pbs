@@ -1,0 +1,106 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# Closed loops of the LAVQ arms named in results/DECISION.json (LIBERO-Plus panels A+B+C, 840 each) on one 4-GPU node,
+# with the A16 baselines' slots / scheduler / loop worker (loop.slots_per_gpu workers per GPU), then analysis.py pairs
+# them with the baselines' episodes. The loop protocol (arms, panels, loop settings) is written to
+# $ARTIFACTS/protocol.json from protocol.json + DECISION.json; episodes are saved one by one (a resubmission continues).
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/cosmos-lavq-20261102
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+RESULTS=$NEW_ROOT/results
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+test -s "$RESULTS/DECISION.json" || die 'DECISION.json missing (pipeline job not finished)'
+
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$ARTIFACTS/"
+cp "$NEW_ROOT/protocol.json" "$ARTIFACTS/lavq_protocol.json"
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" "$RESULTS/DECISION.json" "$ARTIFACTS/protocol.json" <<'PY'
+import json, sys
+p, d = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+arms = list(d["loop_arms"])
+lp = {k: p[k] for k in ("protocol", "remote_root", "baseline_root", "cosmos", "panels", "calibration")}
+lp["arms"] = {a: {"panels": ["A", "B", "C"]} for a in arms}
+lp["arm_order"] = arms
+lp["loop"] = p["jobs"]["loop"]
+json.dump(lp, open(sys.argv[3], "w"), indent=2)
+l = lp["loop"]
+h, m, s = (int(x) for x in l["walltime"].split(":"))
+for value in (p["cosmos"]["asset_root"], l["gpus"], l["slots_per_gpu"], 3600 * h + 60 * m + s, " ".join(arms)):
+    print(value)
+PY
+)
+test "${#CFG[@]}" -eq 5 || die 'Malformed protocol / decision'
+ASSET_ROOT=${CFG[0]}; GPUS=${CFG[1]}; SLOTS_PER_GPU=${CFG[2]}; WALL=${CFG[3]}
+read -r -a ARMS <<< "${CFG[4]}"
+COSMOS_JOB_START_EPOCH=$(date +%s)
+DEADLINE_EPOCH=$(( COSMOS_JOB_START_EPOCH + WALL - 900 ))
+export ASSET_ROOT ARTIFACTS COSMOS_JOB_START_EPOCH DEADLINE_EPOCH
+QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the PBS allocation'
+printf '%s\n' "$QSTAT" > "$ARTIFACTS/allocation.txt"
+QUEUE=$(awk -F= '/^[[:space:]]*queue[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+NCPUS=$(awk -F= '/^[[:space:]]*Resource_List.ncpus[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die "Cannot read Resource_List.ncpus ('$NCPUS')"
+echo "JOB=$PBS_JOBID QUEUE=$QUEUE HOST=$(hostname -s) NCPUS=$NCPUS ARMS=${ARMS[*]:-none} START=$(date -u +%FT%TZ)"
+if (( ${#ARMS[@]} == 0 )); then
+  echo 'NO_LOOP_ARMS: every family chose its uniform host (see DECISION.json)'
+  touch "$ARTIFACTS/PIPELINE_COMPLETE"
+  printf '0\n' > "$ARTIFACTS/exit_code.txt"
+  exit 0
+fi
+for arm in "${ARMS[@]}"; do test -s "$RESULTS/quantized/$arm/COMPLETE.json" || die "$arm is not assembled"; done
+
+MONITOR_PID=
+SLOT_PIDS=()
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  (( rc == 0 )) || [[ -e "$ARTIFACTS/FAILED" ]] || printf '%s run_loop.pbs exited %s\n' "$(date -u +%FT%TZ)" "$rc" >> "$ARTIFACTS/FAILED"
+  for pid in "${SLOT_PIDS[@]:-}"; do [[ -n "$pid" ]] && { pkill -TERM -P "$pid" 2>/dev/null; kill -TERM "$pid" 2>/dev/null; }; done
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+source "$ARTIFACTS/environment.sh"
+source "$ARTIFACTS/slots.sh"
+command -v python3.11 > /dev/null || die 'python3.11 missing after module load'
+
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+  GPU_UUIDS=()
+  for gpu in "${GPU_IDS[@]}"; do GPU_UUIDS+=("$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')"); done
+else
+  mapfile -t GPU_UUIDS < <(nvidia-smi --query-gpu=uuid --format=csv,noheader | tr -d '[:blank:]')
+fi
+test "${#GPU_UUIDS[@]}" -eq "$GPUS" || die "Expected $GPUS GPUs, got ${#GPU_UUIDS[@]}"
+for uuid in "${GPU_UUIDS[@]}"; do [[ "$uuid" == GPU-* ]] || die "Bad GPU UUID '$uuid'"; done
+monitor "$NCPUS" "${GPU_UUIDS[@]}" & MONITOR_PID=$!
+
+python3.11 "$ARTIFACTS/sched.py" init --protocol "$ARTIFACTS/protocol.json"
+python3.11 "$ARTIFACTS/sched.py" status --protocol "$ARTIFACTS/protocol.json"
+
+SLOTS=$(( GPUS * SLOTS_PER_GPU ))
+THREADS=$(( NCPUS / SLOTS > 0 ? NCPUS / SLOTS : 1 ))
+echo "SLOTS=$SLOTS THREADS=$THREADS DEADLINE=$(date -u -d "@$DEADLINE_EPOCH" +%FT%TZ)"
+for (( slot = 0; slot < SLOTS; slot++ )); do
+  slot_loop "$slot" "${GPU_UUIDS[$(( slot % GPUS ))]}" "$THREADS" & SLOT_PIDS+=("$!")
+  sleep 15
+done
+
+supervise "${SLOT_PIDS[@]}" || die 'A slot failed (see FAILED)'
+SLOT_PIDS=()
+echo "SLOTS_DONE $(date -u +%H:%M:%S)"
+python3.11 "$ARTIFACTS/sched.py" status --protocol "$ARTIFACTS/protocol.json"
+
+python3.11 "$ARTIFACTS/analysis.py" --protocol "$ARTIFACTS/protocol.json"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE
