@@ -23,15 +23,15 @@ Recent work on WAM quantization~\cite{zhou2026quantwams,akbari2026qwam,wang2026s
 None of these methods deliberately protects the predicted future on which the action depends.
 
 We find that this omission is costly: applied to a WAM, existing VQ methods fail to preserve the fidelity of the predicted future, and the loss propagates to the action.
+We call \emph{reader} the part of a WAM that maps the predicted future to the action.
 Three observations on Fast-WAM make this concrete (\cref{sec:motivation}).
 First, most of the action error comes from a degraded future: restoring the predicted future to full precision removes 73\% of the action error of a 2-bit model and 85\% of that of a 3-bit model (\cref{fig:teaser}).
 Second, future error originates in the modules that generate the future: raising them by one bit recovers 71\% of what an extra bit can buy, whereas the modules that only read the future leave it unchanged.
-Third, the action reads a narrow part of the future: its sensitivity concentrates on about 42 effective directions of a 37{,}632-dimensional latent.
+Third, the reader depends on a narrow part of the future: its sensitivity concentrates on about 42 effective directions of a 37{,}632-dimensional latent.
 In closed loop, the three VQ methods lose \XX--\XX percentage points of success at 2 bits relative to BF16 on LIBERO-Plus~\cite{fei2026liberoplus}.
-Preserving a WAM at ultra-low bit widths therefore requires treating the predicted future, as the policy reads it, as a quantization target in its own right.
+Preserving a WAM at ultra-low bit widths therefore requires treating the predicted future, as the reader sees it, as a quantization target in its own right.
 
 Building on this diagnosis, we propose \method, a latent-aware vector quantization framework for WAMs (\cref{fig:method}).
-We call \emph{reader} the part of a WAM that maps the predicted future to the action.
 \method (i) measures future error in the metric through which the reader sees it, (ii) distributes a fixed bit budget according to each module's measured impact on future fidelity, (iii) initializes the codes with trellis-coded rounding~\cite{tseng2024qtip}, which natively supports the resulting mixed bit widths, and (iv) calibrates the shared decode tables toward action and future fidelity.
 Each component answers one of the observations above.
 The quantized model runs a standard trellis decoder, and the calibrated tables add no storage.
@@ -40,7 +40,7 @@ We evaluate \method on \XX WAMs in simulation and on a real AgileX PiPER arm.
 On LIBERO-Plus, 2-bit \method raises the success rate of Fast-WAM from \XX\% (QTIP, the strongest 2-bit baseline) to \XX\%, within \XX points of BF16 (77.6\%), and \XX on \XX (\cref{tab:main}).
 On three real-world tasks (two-object pick-and-place, pouring and cloth folding), it succeeds in \XX/\XX trials, compared with \XX/\XX for QTIP. In summary, our contributions are threefold:
 \begin{itemize}
-  \item We identify future-latent fidelity as a key quantization target for WAMs. Counterfactual future swaps and module-level bit upgrades show that most of the action error under ultra-low-bit quantization comes from a degraded predicted future, that this degradation originates in the modules that generate the future, and that the policy reads only a narrow part of it.
+  \item We identify future-latent fidelity as a key quantization target for WAMs. Counterfactual future swaps and module-level bit upgrades show that most of the action error under ultra-low-bit quantization comes from a degraded predicted future, that this degradation originates in the modules that generate the future, and that the reader depends on only a narrow part of it.
   \item We propose \method, a latent-aware vector quantization framework whose error metric, bit budget and calibration objective all follow from this finding, at the same bits per weight as the baselines and with no extra storage.
   \item We evaluate \method across \XX WAMs in simulation and on a real robot arm, where at 2 bits per weight it \XX.
 \end{itemize}

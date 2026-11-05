@@ -2,7 +2,7 @@
 \label{sec:method}
 
 As illustrated in \cref{fig:method}, \method makes the predicted future an explicit quantization target in four stages (\cref{alg:lavq}).
-It first estimates a reader metric that measures future error as the policy reads it (\cref{sec:method:metric}).
+It first estimates a reader metric that measures future error as the reader sees it (\cref{sec:method:metric}).
 Guided by each module's measured impact on future fidelity in this metric, future-aware bit allocation distributes a fixed bit budget across modules (\cref{sec:method:alloc}), and trellis-coded initialization rounds every layer at its assigned bit width (\cref{sec:method:init}).
 Shared-table calibration then tunes the shared decode tables toward action and future fidelity while the codes stay fixed (\cref{sec:method:calib}).
 The reader is used only during quantization; the deployed model runs a standard trellis decoder and adds no storage.
@@ -10,7 +10,7 @@ The reader is used only during quantization; the deployed model runs a standard 
 \subsection{Reader metric}
 \label{sec:method:metric}
 
-As shown in \cref{sec:observations}(c), the action depends on a narrow part of the predicted future, whereas the uniform future error $Z$ weighs every latent dimension equally.
+As shown in \cref{sec:observations}(c), the reader depends on a narrow part of the predicted future, whereas the uniform future error $Z$ weighs every latent dimension equally.
 We therefore measure future error in the metric through which the reader sees it.
 For a calibration context $c$, let $\bJ_c = \partial R(\bo_c, \ell_c, \bz)/\partial \bz$ at $\bz = \bz^\star_c$, and let $\bD_c$ be the diagonal curvature of the reader error $K$ (\cref{eq:reader-kl}) with respect to the reader output at $\ba^\star_c$.
 We define the reader metric as the Gauss--Newton matrix of $K$ averaged over contexts, and the corresponding future error:

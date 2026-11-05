@@ -74,7 +74,7 @@ To locate where future error originates, we additionally raise one module group 
   \end{subfigure}\hfill
   \begin{subfigure}[t]{0.32\linewidth}
     \figbox{Placeholder: diagonal of the reader metric $\bM$ on the first predicted frame, overlaid on both camera views.}{3.6cm}
-    \caption{The action reads a narrow part of the future.}
+    \caption{The reader is sensitive to a narrow part of the future.}
     \label{fig:obs:gaze}
   \end{subfigure}
   \caption{What an ultra-low-bit WAM loses (Fast-WAM).
@@ -87,7 +87,7 @@ To locate where future error originates, we additionally raise one module group 
 \paragraph{(a) Most action error comes from a degraded future.}
 Restoring the predicted future removes 73\% of the action error of 2-bit QTIP and 85\% of that of 3-bit QTIP (\cref{fig:obs:share}).
 Across the three VQ methods, the future share at 2 bits ranges from \XX\% to \XX\%.
-The direct path through the action modules accounts for the remainder.
+The reader's own quantization error accounts for the remainder.
 This implies that the quantization objective must include the predicted future itself, not only the action.
 
 \paragraph{(b) Future error originates in the modules that generate it.}
@@ -96,10 +96,10 @@ Raising all 30 blocks of the action expert, which only reads the future, recover
 Conversely, lowering the action expert by one bit leaves the predicted future unchanged.
 This implies that the bit budget should follow each module's impact on future fidelity.
 
-\paragraph{(c) The action reads a narrow part of the future.}
+\paragraph{(c) The reader is sensitive to a narrow part of the future.}
 We linearize the reader at the full-precision future and compute its Gauss--Newton metric $\bM$ (\cref{sec:method:metric}).
 In a 37{,}632-dimensional latent, $\bM$ has an effective rank of 41.5; the first predicted frame carries 98\% of its trace, and the largest 10\% of its diagonal entries carry 62\%.
 Its diagonal is stable across disjoint halves of the calibration contexts (correlation 0.86), and it concentrates on a small region of the scene (\cref{fig:obs:gaze}).
-This implies that future error should be measured in the metric through which the action reads it, rather than by a uniform error over all latent dimensions.
+This implies that future error should be measured in the metric through which the reader sees it, rather than by a uniform error over all latent dimensions.
 
-Together, these observations call for a quantizer that treats the predicted future, as the policy reads it, as a quantization target in its own right.
+Together, these observations call for a quantizer that treats the predicted future, as the reader sees it, as a quantization target in its own right.
