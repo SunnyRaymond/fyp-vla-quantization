@@ -1,0 +1,87 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU job (q2): HDF5 -> LeRobot v2.1 conversion, video decode check (picks the training video backend), T5 prompt
+# cache on CPU, composed training config, dataset checks + normalisation stats, model build + checkpoint key check.
+# Each stage skips finished outputs, so a resubmission resumes. Writes results/prep/PREP_COMPLETE at the end.
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-agilex-bf16-20261106
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+TASK=agilex_optional_idm_2cam224
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+RESULTS=$ROOT/results/prep
+DATA=$ROOT/data
+mkdir -p "$ARTIFACTS" "$RESULTS" "$DATA"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+NCPUS=$(qstat -xf "$PBS_JOBID" | sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+FW_THREADS=$NCPUS
+NV=0
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) ncpus=$NCPUS start=$(date -u +%FT%TZ)"
+source "$ROOT/environment.sh"
+stage_sources
+
+finish() {
+  local rc=$?
+  trap - EXIT
+  set +e
+  [[ -n "${MON_PID:-}" ]] && kill "$MON_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  (( rc == 0 )) || printf 'prep failed rc=%s at %s\n' "$rc" "$(date -u +%FT%TZ)" > "$ARTIFACTS/FAILED"
+  exit "$rc"
+}
+trap finish EXIT
+ME=$(id -un)
+(
+  while :; do
+    top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+      '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+      || echo CPU_SAMPLE_ERROR
+    free -g | awk '/^Mem:/ {printf "MEM_SAMPLE used_gb=%s total_gb=%s\n", $3, $2}'
+    sleep 60
+  done
+) & MON_PID=$!
+cd "$ARTIFACTS"
+
+echo "STAGE convert $(date -u +%T)"
+if [[ ! -s "$DATA/agilex_pnp_lerobot/CONVERT_COMPLETE" ]]; then
+  run_python -B convert_agilex.py --raw "$ROOT/raw" --out "$DATA/agilex_pnp_lerobot" --report "$RESULTS/convert.json"
+fi
+
+echo "STAGE video $(date -u +%T)"
+if [[ ! -s "$RESULTS/backend.txt" ]]; then
+  run_python -B check_data.py video --raw "$ROOT/raw" --data "$DATA/agilex_pnp_lerobot" --out "$RESULTS"
+fi
+BACKEND=$(tr -d '[:space:]' < "$RESULTS/backend.txt")
+echo "video backend: $BACKEND"
+
+echo "STAGE text-embeds $(date -u +%T)"
+n_cache=$( (find "$DATA/text_embeds_cache/agilex" -name '*.t5_len128.wan22ti2v5b.pt' 2>/dev/null || true) | wc -l)
+if (( n_cache < 2 )); then
+  run_python -B scripts/precompute_text_embeds.py task=$TASK
+  n_cache=$(find "$DATA/text_embeds_cache/agilex" -name '*.t5_len128.wan22ti2v5b.pt' | wc -l)
+fi
+(( n_cache == 2 )) || die "expected 2 cached prompts, found $n_cache"
+
+echo "STAGE compose $(date -u +%T)"
+FW_DUMP_CONFIG="$RESULTS/composed_config.yaml" run_python -B scripts/train_agilex.py task=$TASK \
+  data.train.video_backend=$BACKEND
+grep -q 'fw_agilex.create_model' "$RESULTS/composed_config.yaml" || die 'composed config does not use fw_agilex.create_model'
+
+echo "STAGE dataset $(date -u +%T)"
+if [[ ! -s "$RESULTS/check_data.json" ]]; then
+  run_python -B check_data.py dataset --config "$RESULTS/composed_config.yaml" --stats "$DATA/dataset_stats.json" --out "$RESULTS"
+fi
+
+echo "STAGE model $(date -u +%T)"
+if [[ ! -s "$RESULTS/check_model.json" ]]; then
+  FW_THREADS=$NCPUS run_python -B check_model.py --config "$RESULTS/composed_config.yaml" --out "$RESULTS"
+fi
+
+date -u +%FT%TZ > "$RESULTS/PREP_COMPLETE"
+echo "PREP_COMPLETE $(date -u +%T)"

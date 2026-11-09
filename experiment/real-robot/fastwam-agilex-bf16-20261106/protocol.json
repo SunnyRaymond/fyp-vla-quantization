@@ -1,0 +1,88 @@
+{
+  "protocol": "fastwam-agilex-bf16-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/fastwam-agilex-bf16-20261106",
+  "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+  "init_checkpoint": "/scratch/users/ntu/yguo017/fastwam-smoke/checkpoints/libero_optional_idm_2cam224.clean.pt",
+  "data": {
+    "local_root": "agilex pepper training data",
+    "runs": [
+      "run_20261023_141641",
+      "run_20261023_150009"
+    ],
+    "cameras": {
+      "image": "realsense_fixed",
+      "wrist_image": "realsense_wrist"
+    },
+    "note": "episode_000039.hdf5 is 0 bytes in both runs and is skipped: 78 episodes, 7359 frames"
+  },
+  "train": {
+    "task": "agilex_optional_idm_2cam224",
+    "global_batch": 32,
+    "ladder": [
+      [
+        8,
+        1
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        2,
+        4
+      ]
+    ],
+    "optimizer_offload": "ZeRO-2 offload_optimizer=cpu, DeepSpeedCPUAdam (torch AdamW fallback), contiguous_gradients",
+    "max_steps": 10000,
+    "learning_rate": 0.0001,
+    "save_every": 2000,
+    "zero_stage": 2,
+    "optimizer_groups": 16,
+    "gradient_checkpointing": "per joint MoT layer via fw_agilex (non-reentrant); upstream flag stays off"
+  },
+  "jobs": {
+    "prep": {
+      "name": "fwagprep",
+      "select": "1:ncpus=8:mem=64gb",
+      "walltime": "03:00:00"
+    },
+    "train": {
+      "name": "fwagtrain",
+      "select": "1:ncpus=64:mem=440gb:ngpus=4",
+      "walltime": "20:00:00"
+    },
+    "memprobe": {
+      "name": "fwagmem",
+      "select": "1:ncpus=64:mem=440gb:ngpus=4",
+      "walltime": "00:45:00"
+    },
+    "openloop_gdev": {
+      "name": "fwagolgd",
+      "select": "1:ncpus=16:mem=110gb:ngpus=1",
+      "walltime": "01:30:00"
+    },
+    "openloop_g1": {
+      "name": "fwagolg1",
+      "select": "1:ncpus=16:mem=110gb:ngpus=1",
+      "walltime": "03:00:00"
+    },
+    "manifest": {
+      "name": "fwagsha",
+      "select": "1:ncpus=2:mem=8gb",
+      "walltime": "01:00:00"
+    }
+  },
+  "openloop": {
+    "checkpoint": "step_010000.pt",
+    "episodes": "8 per task: raw HDF5 indices 0,5,...,35",
+    "stride": 10,
+    "execute": 10,
+    "configs": [
+      "idm",
+      "idm_shift1",
+      "first_frame"
+    ],
+    "default": "idm",
+    "pass_rule": "default config, per task and pooled: joints exec MAE <= 0.5 x hold; gripper exec MAE <= max(0.5 x hold, 2 mm); all finite"
+  }
+}

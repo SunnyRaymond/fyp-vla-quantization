@@ -1,0 +1,142 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# GPU job (g3, 4x A100-40GB): BF16 Fast-WAM (Optional IDM) fine-tuned on the AgileX data from the LIBERO checkpoint,
+# DeepSpeed ZeRO-2 with the optimizer (fp32 master + Adam) offloaded to CPU (DeepSpeedCPUAdam, torch AdamW fallback),
+# per-joint-layer activation checkpointing (fw_agilex), global batch 32, 10k steps, weights every 2k steps.
+# Without offload ZeRO-2 keeps ~28 GiB of optimizer state per A100-40GB and only batch 1 without accumulation fits.
+# Runs after prep (afterok). Batch ladder (per-GPU batch x grad accumulation, global 32): 8x1 -> 4x2 -> 2x4, moving
+# down only when an attempt hits CUDA OOM before its first checkpoint. A resubmission resumes from the newest
+# DeepSpeed state with the batch pair recorded in train_spec.txt.
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-agilex-bf16-20261106
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+TASK=agilex_optional_idm_2cam224
+NG=4
+QUEUE=g3
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eiq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die "PBS did not route the job to $QUEUE"
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+OUT=$ROOT/runs/$TASK
+mkdir -p "$ARTIFACTS" "$OUT"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+echo "PBS_JOBID=$PBS_JOBID host=$HOST ncpus=$NCPUS gpus=$NG start=$(date -u +%FT%TZ)"
+test -s "$ROOT/results/prep/PREP_COMPLETE" || die 'prep has not completed'
+BACKEND=$(tr -d '[:space:]' < "$ROOT/results/prep/backend.txt")
+FW_THREADS=10  # per rank: CPU Adam threads; 4 ranks x 10 + 4 x 4 data workers on 64 cores
+FW_OFFLOAD=1
+NV=1
+source "$ROOT/environment.sh"
+stage_sources
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || die "Expected $NG allocated GPUs, got ${#GPU_IDS[@]}"
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || die "Cannot read the UUID of GPU $gpu"
+  GPU_UUIDS+=("$uuid")
+done
+MON_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  [[ -n "$MON_PID" ]] && { kill "$MON_PID" 2>/dev/null; wait "$MON_PID" 2>/dev/null; }
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  (( rc == 0 )) || printf 'train failed rc=%s at %s\n' "$rc" "$(date -u +%FT%TZ)" > "$ARTIFACTS/FAILED"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+ME=$(id -un)
+(
+  n=0
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    if (( n % 4 == 0 )); then
+      top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+        '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+        || echo CPU_SAMPLE_ERROR
+    fi
+    n=$(( n + 1 ))
+    sleep 30
+  done
+) >> "$ARTIFACTS/gpu_samples.log" 2>&1 & MON_PID=$!
+cd "$ARTIFACTS"
+
+echo "PREFLIGHT $(date -u +%T)"
+run_python -B -c "
+import torch, torch.utils.cpp_extension as ce, deepspeed, accelerate
+assert torch.cuda.device_count() == $NG, torch.cuda.device_count()
+import shutil
+print('torch', torch.__version__, 'cuda', torch.version.cuda, 'gpus', torch.cuda.device_count(),
+      'deepspeed', deepspeed.__version__, 'accelerate', accelerate.__version__, 'CUDA_HOME', ce.CUDA_HOME,
+      'c++', shutil.which('c++'), 'ninja', shutil.which('ninja'))
+" || die 'GPU-node import preflight failed'
+
+latest_state() { (ls -d "$OUT"/checkpoints/state/step_* 2>/dev/null || true) | sort | tail -n 1; }
+if [[ -n "$(latest_state)" ]]; then
+  test -s "$OUT/train_spec.txt" || die 'state exists but train_spec.txt is missing'
+  LADDER=("$(cat "$OUT/train_spec.txt")")
+else
+  LADDER=("8 1" "4 2" "2 4")
+fi
+PORT=$(( 29500 + ${PBS_JOBID%%.*} % 1000 ))
+rc=1
+for spec in "${LADDER[@]}"; do
+  read -r BS GA <<< "$spec"
+  (( NG * BS * GA == 32 )) || die "spec $spec does not give global batch 32"
+  STATE=$(latest_state)
+  RESUME=null
+  [[ -n "$STATE" ]] && RESUME=$STATE
+  printf '%s %s\n' "$BS" "$GA" > "$OUT/train_spec.txt"
+  LOG=$ARTIFACTS/train_bs${BS}_ga${GA}.log
+  echo "ATTEMPT batch_size=$BS grad_accum=$GA resume=$RESUME backend=$BACKEND $(date -u +%T)"
+  set +e
+  FW_INIT_REPORT="$OUT/init_load.json" run_python -m accelerate.commands.launch \
+    --config_file "$ARTIFACTS/accelerate_zero2.yaml" --num_processes "$NG" --main_process_port "$PORT" \
+    "$ARTIFACTS/scripts/train_agilex.py" task=$TASK output_dir="$OUT" batch_size=$BS gradient_accumulation_steps=$GA \
+    data.train.video_backend=$BACKEND resume="$RESUME" > "$LOG" 2>&1
+  rc=$?
+  set -e
+  tail -n 5 "$LOG"
+  (( rc == 0 )) && break
+  if grep -Eq 'CUDA out of memory|OutOfMemoryError' "$LOG" && [[ "$(latest_state)" == "$STATE" ]]; then
+    echo "OOM before the first checkpoint at batch_size=$BS; next rung"
+    rm -f "$OUT/train_spec.txt"
+    continue
+  fi
+  die "training failed rc=$rc (see $LOG)"
+done
+(( rc == 0 )) || die "every batch rung hit OOM"
+
+FINAL=$(latest_state)
+test -s "$OUT/checkpoints/weights/$(basename "$FINAL").pt" || die "final weights missing for $FINAL"
+for s in "$OUT"/checkpoints/state/step_*; do  # DeepSpeed states are 6B x 14 B; keep only the final one
+  [[ "$s" == "$FINAL" ]] || rm -rf "$s"
+done
+python3.11 - "$OUT" "$ARTIFACTS" <<'PY'
+import json, re, sys
+from pathlib import Path
+out, art = Path(sys.argv[1]), Path(sys.argv[2])
+lines = [l for f in sorted(art.glob("train_bs*_ga*.log")) for l in f.read_text(errors="replace").splitlines() if "[train]" in l]
+speed = [float(m.group(1)) for l in lines if (m := re.search(r"speed=([0-9.]+) step/s", l))]
+summary = dict(weights=sorted(p.name for p in (out / "checkpoints/weights").glob("*.pt")),
+               spec=(out / "train_spec.txt").read_text().split(), last_log=lines[-1] if lines else None,
+               steps_per_second_last=speed[-1] if speed else None)
+(art / "TRAIN_COMPLETE").write_text(json.dumps(summary, indent=2) + "\n")
+print("TRAIN_COMPLETE " + json.dumps(summary))
+PY

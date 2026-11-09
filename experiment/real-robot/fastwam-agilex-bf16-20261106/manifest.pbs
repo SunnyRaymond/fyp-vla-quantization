@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU job (q2): sha256 of every file in release/agilex_fastwam_bf16 (symlinks followed), written as SHA256SUMS in the
+# bundle, so the local download can be verified file by file without hashing 13 GB on the login node.
+set -euo pipefail
+ROOT=/scratch/users/ntu/yguo017/fastwam-agilex-bf16-20261106
+REL=$ROOT/release/agilex_fastwam_bf16
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) start=$(date -u +%FT%TZ)"
+test -s "$ROOT/results/openloop/OPENLOOP_COMPLETE" || die 'open-loop bundle not built'
+# per-step joint / gripper changes in the demonstrations (for the README's safety limits)
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+NCPUS=2; FW_THREADS=2; NV=0
+source "$ROOT/environment.sh"
+run_python -B - "$ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+import h5py, numpy as np
+root = Path(sys.argv[1])
+man = json.loads((root / "raw/manifest.json").read_text())
+d, first = [], []
+for m in man["files"]:
+    with h5py.File(root / "raw" / m["path"], "r") as h:
+        s = h["observation/state"][:].astype(np.float64)
+        a = h["action"][:].astype(np.float64)
+    d.append(np.abs(np.diff(s, axis=0)))
+    first.append(np.abs(a - s))  # action[t] - state[t]: the first step the robot is asked to make
+d, first = np.concatenate(d), np.concatenate(first)
+out = dict(episodes=len(man["files"]), steps=int(len(d)),
+           step_delta_joint_p50=np.percentile(d[:, :6], 50, axis=0).round(4).tolist(),
+           step_delta_joint_p99=np.percentile(d[:, :6], 99, axis=0).round(4).tolist(),
+           step_delta_joint_max=d[:, :6].max(axis=0).round(4).tolist(),
+           step_delta_gripper_p99=float(np.percentile(d[:, 6], 99).round(4)),
+           step_delta_gripper_max=float(d[:, 6].max().round(4)),
+           action_minus_state_joint_max=first[:, :6].max(axis=0).round(4).tolist())
+(root / "results/openloop/step_delta.json").write_text(json.dumps(out, indent=2) + "\n")
+print(json.dumps(out))
+PY
+cd "$REL"
+rm -f SHA256SUMS
+find -L . -type f ! -name 'SHA256SUMS*' -printf '%P\n' | sort | xargs -d '\n' -P 2 -n 1 sha256sum > "$ARTIFACTS/SHA256SUMS.tmp"
+sort -k2 "$ARTIFACTS/SHA256SUMS.tmp" > SHA256SUMS
+cp SHA256SUMS "$ROOT/results/openloop/SHA256SUMS"
+find -L . -type f -printf '%s %P\n' | sort -k2
+echo "MANIFEST_COMPLETE $(date -u +%FT%TZ)"
+echo 0 > "$ARTIFACTS/exit_code.txt"

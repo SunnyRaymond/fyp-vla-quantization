@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# Short GPU job (gdev, 4x A100-40GB): where does the backward pass spend the memory that OOMs every batch rung?
+# Two 2-step runs at batch 1 with fw_agilex's memory probe (CUDA memory + live ZeRO gradients inside the gradient
+# hook, largest live allocations by Python stack after the first forward and at OOM):
+#   A: ds_zero2.json as used by train.pbs (contiguous_gradients false)
+#   B: the same with contiguous_gradients true
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-agilex-bf16-20261106
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+TASK=agilex_optional_idm_2cam224
+NG=4
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+NCPUS=$(qstat -xf "$PBS_JOBID" | sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) ncpus=$NCPUS start=$(date -u +%FT%TZ)"
+test -s "$ROOT/results/prep/PREP_COMPLETE" || die 'prep has not completed'
+BACKEND=$(tr -d '[:space:]' < "$ROOT/results/prep/backend.txt")
+FW_THREADS=4
+NV=1
+source "$ROOT/environment.sh"
+stage_sources
+trap 'rc=$?; printf "%s\n" "$rc" > "$ARTIFACTS/exit_code.txt"; (( rc == 0 )) || echo "memprobe failed rc=$rc" > "$ARTIFACTS/FAILED"' EXIT
+python3.11 - "$ARTIFACTS" <<'PY'
+import json, sys
+from pathlib import Path
+art = Path(sys.argv[1])
+cfg = json.loads((art / "ds_zero2.json").read_text())
+cfg["zero_optimization"]["contiguous_gradients"] = True
+(art / "ds_zero2_contig.json").write_text(json.dumps(cfg, indent=2))
+PY
+sed "s#$ARTIFACTS/ds_zero2.json#$ARTIFACTS/ds_zero2_contig.json#" "$ARTIFACTS/accelerate_zero2.yaml" > "$ARTIFACTS/accelerate_zero2_contig.yaml"
+cd "$ARTIFACTS"
+PORT=$(( 29500 + ${PBS_JOBID%%.*} % 1000 ))
+for spec in "A accelerate_zero2.yaml" "B accelerate_zero2_contig.yaml"; do
+  read -r TAG CFG <<< "$spec"
+  echo "PROBE $TAG $CFG $(date -u +%T)"
+  set +e
+  FW_MEMPROBE="$ARTIFACTS/probe_$TAG" run_python -m accelerate.commands.launch \
+    --config_file "$ARTIFACTS/$CFG" --num_processes "$NG" --main_process_port "$PORT" \
+    "$ARTIFACTS/scripts/train_agilex.py" task=$TASK output_dir="$ROOT/runs/memprobe_$TAG" batch_size=1 \
+    gradient_accumulation_steps=1 max_steps=2 log_every=1 save_every=0 data.train.video_backend=$BACKEND \
+    > "$ARTIFACTS/probe_$TAG.log" 2>&1
+  echo "PROBE $TAG rc=$? $(date -u +%T)"
+  set -e
+  grep -a -h '"event": "\(ds_config\|oom\|end\|snapshot\)"' "$ARTIFACTS/probe_$TAG"/memprobe_rank0.jsonl 2>/dev/null | cut -c1-600 || true
+  PORT=$(( PORT + 1 ))
+done

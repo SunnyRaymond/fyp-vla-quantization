@@ -1,0 +1,150 @@
+{
+  "checkpoint": "step_010000.pt",
+  "model": {
+    "model_id": "Wan-AI/Wan2.2-TI2V-5B",
+    "tokenizer_model_id": "Wan-AI/Wan2.1-T2V-1.3B",
+    "tokenizer_max_len": 128,
+    "load_text_encoder": false,
+    "proprio_dim": 8,
+    "redirect_common_files": true,
+    "mot_checkpoint_mixed_attn": false,
+    "compile_training_denoise": false,
+    "action_idm_prob": 0.5,
+    "video_cond_noise_prob": 0.0,
+    "action_dit_pretrained_path": null,
+    "skip_dit_load_from_pretrain": true,
+    "video_dit_config": {
+      "has_image_input": false,
+      "patch_size": [
+        1,
+        2,
+        2
+      ],
+      "in_dim": 48,
+      "hidden_dim": 3072,
+      "ffn_dim": 14336,
+      "freq_dim": 256,
+      "text_dim": 4096,
+      "out_dim": 48,
+      "num_heads": 24,
+      "attn_head_dim": 128,
+      "num_layers": 30,
+      "eps": 1e-06,
+      "seperated_timestep": true,
+      "require_clip_embedding": false,
+      "require_vae_embedding": false,
+      "fuse_vae_embedding_in_latents": true,
+      "use_gradient_checkpointing": false,
+      "video_attention_mask_mode": "first_frame_causal",
+      "action_conditioned": false,
+      "action_dim": 7,
+      "action_group_causal_mask_mode": "group_diagonal"
+    },
+    "action_dit_config": {
+      "action_dim": 7,
+      "hidden_dim": 1024,
+      "ffn_dim": 4096,
+      "num_heads": 24,
+      "attn_head_dim": 128,
+      "num_layers": 30,
+      "text_dim": 4096,
+      "freq_dim": 256,
+      "eps": 1e-06,
+      "use_gradient_checkpointing": false
+    },
+    "video_scheduler": {
+      "train_shift": 5.0,
+      "infer_shift": 5.0,
+      "num_train_timesteps": 1000
+    },
+    "action_scheduler": {
+      "train_shift": 1.0,
+      "infer_shift": 1.0,
+      "num_train_timesteps": 1000
+    },
+    "loss": {
+      "lambda_video": 1.0,
+      "lambda_action": 1.0
+    }
+  },
+  "shape_meta": {
+    "action": [
+      {
+        "key": "joints",
+        "raw_shape": 6,
+        "shape": 6
+      },
+      {
+        "key": "gripper",
+        "raw_shape": 1,
+        "shape": 1
+      }
+    ],
+    "state": [
+      {
+        "key": "joints",
+        "raw_shape": 6,
+        "shape": 6
+      },
+      {
+        "key": "gripper",
+        "raw_shape": 1,
+        "shape": 1
+      }
+    ]
+  },
+  "joint_dims": 6,
+  "cameras": [
+    {
+      "key": "image",
+      "hdf5": "observation/images/realsense_fixed",
+      "raw_shape": [
+        3,
+        240,
+        320
+      ],
+      "shape": [
+        3,
+        224,
+        224
+      ]
+    },
+    {
+      "key": "wrist_image",
+      "hdf5": "observation/images/realsense_wrist",
+      "raw_shape": [
+        3,
+        240,
+        320
+      ],
+      "shape": [
+        3,
+        224,
+        224
+      ]
+    }
+  ],
+  "camera_input_hw": [
+    240,
+    320
+  ],
+  "camera_resize_hw": [
+    224,
+    224
+  ],
+  "concat": "horizontal",
+  "video_size": [
+    224,
+    448
+  ],
+  "control_hz": 10,
+  "prompt_template": "A video recorded from a robot's point of view executing the following instruction: {task}",
+  "inference": {
+    "action_infer_mode": "idm",
+    "num_inference_steps": 10,
+    "sigma_shift": null,
+    "action_horizon": 32,
+    "num_video_frames": 9,
+    "replan_steps": 10
+  }
+}

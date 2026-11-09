@@ -1,0 +1,32 @@
+# @package _global_
+# BF16 Fast-WAM (Optional IDM, same architecture as every LIBERO quantization run) fine-tuned on the AgileX data,
+# initialised from the released LIBERO checkpoint. Global batch 32 = 4 GPUs x batch_size x gradient_accumulation_steps
+# (train.pbs sets the pair), 10k steps, ZeRO-2 on 4x A100-40GB. Upstream MoT refuses its own gradient checkpointing
+# ("not supported by the compiled tensor core"), so it stays off here and fw_agilex checkpoints each joint layer.
+
+defaults:
+  - override /data: agilex_2cam
+  - override /model: fastwam_optional_idm
+  - _self_
+
+batch_size: 8
+num_workers: 4
+
+model:
+  _target_: fw_agilex.create_model
+  init_checkpoint: /scratch/users/ntu/yguo017/fastwam-smoke/checkpoints/libero_optional_idm_2cam224.clean.pt
+  skip_dit_load_from_pretrain: true
+  action_dit_pretrained_path: null
+  mot_checkpoint_mixed_attn: false
+
+lr_scheduler_type: "cosine"
+learning_rate: 1e-4
+num_epochs: 1
+max_steps: 10000
+log_every: 10
+save_every: 2000
+eval_every: 0
+
+gradient_accumulation_steps: 1
+weight_decay: 1e-2
+resume: null

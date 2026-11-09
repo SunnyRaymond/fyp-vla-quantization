@@ -1,0 +1,174 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# GPU job (1 GPU, gdev or g1): build the real-robot release bundle and run the open-loop check of step_010000.
+# Submitted twice by `control.py race-openloop` (walltime <= 2 h -> gdev, > 2 h -> g1). The first copy to start takes
+# the lock in control/, cancels its sibling and runs; a copy that finds the lock taken exits 0 without work.
+# Bundle: release/agilex_fastwam_bf16/ = policy code, policy_config.json, dataset_stats.json, the two cached text
+# contexts, the Wan2.2 VAE and the checkpoint (symlinks to the training outputs; the download resolves them),
+# two raw sample episodes and the self-test reference. The check loads the policy only from the bundle.
+set -euo pipefail
+
+ROOT=/scratch/users/ntu/yguo017/fastwam-agilex-bf16-20261106
+BASE=/scratch/users/ntu/yguo017/fastwam-smoke
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+TASK=agilex_optional_idm_2cam224
+STEP=step_010000
+NG=1
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+QUEUE=$(sed -nE 's/^[[:space:]]*queue[[:space:]]*=[[:space:]]*([^[:space:]]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$QUEUE" == gdev || "$QUEUE" == g1 ]] || die "unexpected execution queue $QUEUE"
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+ARTIFACTS=$ROOT/artifacts/$PBS_JOBID
+OUT=$ROOT/runs/$TASK
+REL=$ROOT/release/agilex_fastwam_bf16
+RES=$ROOT/results/openloop
+mkdir -p "$ARTIFACTS" "$ROOT/control"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+echo "PBS_JOBID=$PBS_JOBID host=$HOST queue=$QUEUE ncpus=$NCPUS start=$(date -u +%FT%TZ)"
+
+# --- race: the race file lists both copies; the first to mkdir the lock wins and cancels the other ---
+RACE=$ROOT/control/openloop_race.txt  # one line: RACE_ID JOB_ID JOB_ID (written by control.py after both qsubs)
+for _ in $(seq 60); do grep -qw "$PBS_JOBID" "$RACE" 2>/dev/null && break; sleep 5; done
+grep -qw "$PBS_JOBID" "$RACE" 2>/dev/null || die "job not listed in $RACE"
+read -r RACE_ID RACE_JOBS < "$RACE"
+if ! mkdir "$ROOT/control/openloop_lock_$RACE_ID" 2>/dev/null; then
+  echo "RACE_LOST $(cat "$ROOT/control/openloop_lock_$RACE_ID/owner" 2>/dev/null) holds the lock"
+  echo lost > "$ARTIFACTS/RACE_LOST"; echo 0 > "$ARTIFACTS/exit_code.txt"; exit 0
+fi
+echo "$PBS_JOBID" > "$ROOT/control/openloop_lock_$RACE_ID/owner"
+for other in $RACE_JOBS; do
+  [[ "$other" == "$PBS_JOBID" ]] && continue
+  qdel "$other" 2>&1 && echo "RACE_WON cancelled $other" || echo "RACE_WON qdel $other failed (already gone?)"
+done
+
+test -s "$OUT/checkpoints/weights/$STEP.pt" || die "missing $OUT/checkpoints/weights/$STEP.pt"
+FW_THREADS=8
+NV=1
+FW_MODEL_CACHE=$REL/model-cache
+source "$ROOT/environment.sh"
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || die "Expected $NG allocated GPU, got ${#GPU_IDS[@]}"
+UUID=$(nvidia-smi -i "${GPU_IDS[0]}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+MON_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  [[ -n "$MON_PID" ]] && { kill "$MON_PID" 2>/dev/null; wait "$MON_PID" 2>/dev/null; }
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  (( rc == 0 )) || printf 'openloop failed rc=%s at %s\n' "$rc" "$(date -u +%FT%TZ)" > "$ARTIFACTS/FAILED"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+ME=$(id -un)
+(
+  n=0
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi -i "$UUID" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    if (( n % 4 == 0 )); then
+      top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+        '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+        || echo CPU_SAMPLE_ERROR
+    fi
+    n=$(( n + 1 ))
+    sleep 30
+  done
+) >> "$ARTIFACTS/gpu_samples.log" 2>&1 & MON_PID=$!
+cd "$ARTIFACTS"
+
+# --- bundle ---
+echo "BUNDLE $(date -u +%T)"
+rm -rf "$REL"
+mkdir -p "$REL/text_embeds" "$REL/samples" "$REL/env" "$RES"
+for name in agilex_policy.py openloop_check.py; do cp "$ROOT/release/$name" "$REL/"; done
+ln -s "$OUT/checkpoints/weights/$STEP.pt" "$REL/$STEP.pt"
+cp "$OUT/dataset_stats.json" "$REL/"
+VAE_REL=DiffSynth-Studio/Wan-Series-Converted-Safetensors/Wan2.2_VAE.safetensors
+test -s "$BASE/model-cache/$VAE_REL" || die "VAE not found at $BASE/model-cache/$VAE_REL"
+mkdir -p "$(dirname "$REL/model-cache/$VAE_REL")"
+ln -s "$BASE/model-cache/$VAE_REL" "$REL/model-cache/$VAE_REL"
+SAMPLES=()
+for run in run_20261023_141641 run_20261023_150009; do
+  cp "$ROOT/raw/$run/data/chunk-000/episode_000000.hdf5" "$REL/samples/${run}_episode_000000.hdf5"
+  SAMPLES+=("$REL/samples/${run}_episode_000000.hdf5")
+done
+run_python -B - "$ROOT" "$REL" "$STEP" <<'PY'
+import hashlib, json, shutil, sys
+from pathlib import Path
+from omegaconf import OmegaConf
+root, rel, step = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+from fastwam.datasets.lerobot.robot_video_dataset import DEFAULT_PROMPT
+if not OmegaConf.has_resolver("now"):  # hydra-only resolver used by output_dir, never resolved below
+    OmegaConf.register_new_resolver("now", lambda fmt: "now")
+raw = OmegaConf.load(root / "results/prep/composed_config.yaml")
+model = OmegaConf.to_container(raw.model, resolve=True)
+model = {k: v for k, v in model.items() if k not in ("_target_", "init_checkpoint")}
+assert model["load_text_encoder"] is False and model["skip_dit_load_from_pretrain"] is True
+train = OmegaConf.to_container(raw.data.train, resolve=True)
+cfg = dict(eval_num_inference_steps=int(raw.eval_num_inference_steps))
+shape_meta = {k: train["shape_meta"][k] for k in ("action", "state")}
+images = train["shape_meta"]["images"]
+num_video_frames = (train["num_frames"] - 1) // train["action_video_freq_ratio"] + 1
+policy = dict(
+    checkpoint=f"{step}.pt", model=model, shape_meta=shape_meta, joint_dims=6,
+    cameras=[dict(key=m["key"], hdf5="observation/images/" + {"image": "realsense_fixed", "wrist_image": "realsense_wrist"}[m["key"]],
+                  raw_shape=m["raw_shape"], shape=m["shape"]) for m in images],
+    camera_input_hw=images[0]["raw_shape"][1:], camera_resize_hw=images[0]["shape"][1:],
+    concat=train.get("concat_multi_camera", "horizontal"), video_size=train["video_size"],
+    control_hz=10, prompt_template=DEFAULT_PROMPT,
+    inference=dict(action_infer_mode="idm", num_inference_steps=int(cfg["eval_num_inference_steps"]), sigma_shift=None,
+                   action_horizon=train["num_frames"] - 1, num_video_frames=num_video_frames, replan_steps=10),
+)
+(rel / "policy_config.json").write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
+cache = Path(train["text_embedding_cache_dir"])
+tasks = [json.loads(l)["task"] for l in (Path(train["dataset_dirs"][0]) / "meta/tasks.jsonl").read_text().splitlines() if l.strip()]
+prompts = {}
+for task in tasks:
+    digest = hashlib.sha256(DEFAULT_PROMPT.format(task=task).encode("utf-8")).hexdigest()
+    name = f"{digest}.t5_len{train['context_len']}.wan22ti2v5b.pt"
+    shutil.copy2(cache / name, rel / "text_embeds" / name)
+    prompts[task] = name
+(rel / "prompts.json").write_text(json.dumps(prompts, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("BUNDLE_CONFIG tasks", tasks, "video frames", num_video_frames)
+PY
+run_python -m pip freeze > "$REL/env/pip_freeze_cluster.txt" || echo "pip freeze failed rc=$?"
+run_python -B -c "
+import json, platform, sys, torch, torchvision, numpy, h5py
+print(json.dumps(dict(python=sys.version.split()[0], torch=torch.__version__, torch_cuda=torch.version.cuda,
+    torchvision=torchvision.__version__, numpy=numpy.__version__, h5py=h5py.__version__,
+    gpu=torch.cuda.get_device_name(0), platform=platform.platform()), indent=2))
+" > "$REL/env/versions_cluster.json"
+cat "$REL/env/versions_cluster.json"
+
+# --- open-loop check: 8 episodes per task (indices 0, 5, ..., 35), all three inference configs ---
+EPISODES=()
+for run in run_20261023_141641 run_20261023_150009; do
+  for i in 0 5 10 15 20 25 30 35; do EPISODES+=("$ROOT/raw/$run/data/chunk-000/$(printf 'episode_%06d.hdf5' "$i")"); done
+done
+echo "OPENLOOP $(date -u +%T)"
+set +e
+run_python -B "$REL/openloop_check.py" --bundle "$REL" --episodes "${EPISODES[@]}" \
+  --configs idm idm_shift1 first_frame --seed-spread 4 --out "$RES/report.json" > "$ARTIFACTS/openloop.log" 2>&1
+rc=$?
+set -e
+tail -n 12 "$ARTIFACTS/openloop.log"
+(( rc == 0 || rc == 3 )) || die "open-loop check crashed rc=$rc"
+echo "SELFTEST_REFERENCE $(date -u +%T)"
+run_python -B "$REL/openloop_check.py" --bundle "$REL" --episodes "${SAMPLES[@]}" --configs idm \
+  --write-reference "$REL/selftest_reference.json" --out "$RES/selftest.json" > "$ARTIFACTS/selftest.log" 2>&1 \
+  || echo "selftest exited $?"
+tail -n 4 "$ARTIFACTS/selftest.log"
+cp "$REL/policy_config.json" "$REL/prompts.json" "$REL/selftest_reference.json" "$REL/env/versions_cluster.json" "$RES/"
+(cd "$REL" && find -L . -type f -printf '%s %p\n' | sort -k2) > "$RES/bundle_listing.txt"
+if (( rc == 0 )); then
+  echo "OPENLOOP_COMPLETE pass $(date -u +%FT%TZ)" | tee "$RES/OPENLOOP_COMPLETE"
+else
+  echo "OPENLOOP_COMPLETE fail $(date -u +%FT%TZ)" | tee "$RES/OPENLOOP_COMPLETE"
+fi
