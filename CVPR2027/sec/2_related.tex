@@ -2,14 +2,15 @@
 \label{sec:related}
 
 % Method overview: placed here so that it floats to the top of page 3 as Fig. 2.
-% figures/figure2.pdf is exported from figures/figure2_lavq_editable_v2.pptx.
+% Placeholder: figures/figure2.pdf is the overview of the previous (2-bit VQ) draft and has to be redrawn.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/figure2.pdf}
   \caption{Overview of \method.
-  \method makes the predicted future an explicit quantization target.
-  It measures future error as the reader sees it~(i), spends bits where they preserve the future~(ii), initializes the codes with trellis-coded rounding, which supports mixed bit widths~(iii), and calibrates the shared decode tables toward action and future fidelity~(iv).
-  The deployed model runs a standard trellis decoder and adds no storage.}
+  A WAM writes its predicted future in a denoising loop, stores it in a key--value cache and reads it when it generates the action.
+  \method measures future error as the reader sees it~(i), weights each rounding error by the number of denoising steps that read it~(ii), allocates precision jointly over weights, activations and caches~(iii), and gives the tokens the reader attends to a second 4-bit pass in the loop and in the cache~(iv).
+  Every weight stays at 4 bits.
+  \TODO{redraw as one left-to-right pipeline: observation tokens (written once) $\rightarrow$ denoising loop that writes the future $\rightarrow$ future cache $\rightarrow$ action loop; read counts marked above each place; the selected tokens in one color through all three places; a dashed arrow carrying the gaze from the action loop to the next control step}}
   \label{fig:method}
 \end{figure*}
 
@@ -18,17 +19,23 @@ World action models train a video generator jointly with an action model, so tha
 They extend vision-language-action policies~\cite{kim2024openvla,black2024pi0} with the visual priors of video backbones and inherit their size.
 We do not modify how WAMs are trained and study only how to compress them for deployment.
 
-\paragraph{Post-training weight quantization.}
-Second-order rounding methods quantize one layer at a time and compensate the error with the inverse Hessian of a layer-wise reconstruction objective~\cite{frantar2022obc,frantar2023gptq}.
-Activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\cite{ashkboos2024quarot,liu2025spinquant} reduce outliers before rounding.
-Vector, lattice and trellis quantizers push large language models to two bits per weight: AQLM learns additive codebooks~\cite{egiazarian2024aqlm}, GPTVQ extends second-order rounding to vector codebooks~\cite{vanbaalen2024gptvq}, QuIP\# rounds incoherence-processed weights to the $E_8$ lattice~\cite{tseng2024quipsharp}, and QTIP decodes weights from a bitshift trellis with a small lookup table~\cite{tseng2024qtip}.
+\paragraph{Post-training quantization.}
+Second-order rounding quantizes one layer at a time and compensates the error with the inverse Hessian of a layer-wise reconstruction objective~\cite{frantar2022obc,frantar2023gptq}.
+Activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\cite{ashkboos2024quarot,liu2025spinquant} remove activation outliers before rounding and bring language models to 4-bit weights, activations and key--value caches.
 Mixed-precision methods allocate bit widths across layers~\cite{wang2019haq,malinovskii2025higgs}, and GuidedQuant weights the layer objective with gradients of the end loss~\cite{kim2025guidedquant}.
-These methods measure quantization error on layer outputs or on the final output of a generic network.
-\method builds on trellis-coded rounding and mixed precision, and changes the signal that decides where bits go and what calibration preserves: the predicted future as the reader sees it.
+For diffusion and video generators, post-training methods correct errors that accumulate over the denoising loop~\cite{he2023ptqd}, handle timestep-dependent activations~\cite{zhao2025viditq} and absorb outliers into a 16-bit low-rank branch~\cite{li2025svdquant}, and quantization-aware training reaches 4 bits and below~\cite{huang2026qvgen,li2026dsaquant}.
+These methods preserve layer outputs or generation quality.
+\method builds on rotation and second-order rounding, and changes what the quantizer preserves: the predicted future as the reader sees it.
 
-\paragraph{Quantization of generative and embodied models.}
-Post-training quantization of diffusion and video generators corrects errors that accumulate over the denoising loop~\cite{he2023ptqd} and handles outliers in diffusion transformers~\cite{zhao2025viditq,li2025svdquant}, with quantization-aware training reaching 4 bits and below~\cite{huang2026qvgen,li2026dsaquant}.
-For robot policies, QuantVLA and BitVLA compress vision-language-action models~\cite{zhang2026quantvla,wang2025bitvla}.
-For WAMs, QuantWAMs calibrates protection decisions at the right granularity~\cite{zhou2026quantwams}, Q-WAM protects the activation subspace that drives the final action~\cite{akbari2026qwam}, and SteerQuant routes errors across semantic streams and denoising steps by their impact on the action~\cite{wang2026steerquant}.
-These methods preserve generation quality or the final action, mostly with 4-bit weights and activations.
-We study weight-only quantization at two to three bits and target the predicted future that the action is read from.
+\paragraph{Quantization of robot policies and WAMs.}
+For vision-language-action models, QuantVLA and BitVLA compress the policy with calibrated scales and 1-bit weights~\cite{zhang2026quantvla,wang2025bitvla}.
+For WAMs, QuantWAMs calibrates protection decisions for channels, layers and denoising steps at the right granularity~\cite{zhou2026quantwams}, Q-WAM selects the activation subspace that drives the final action through the unrolled sampler and keeps it in a 16-bit branch~\cite{akbari2026qwam}, and SteerQuant routes errors across token streams and denoising steps by their impact on the action~\cite{wang2026steerquant}.
+PreDE predicts the task degradation of a quantization configuration from offline action deviations~\cite{xu2026prede}.
+These quantizers measure sensitivity with respect to the final action or the training loss, one denoising step at a time.
+\method instead targets the predicted future that the action is read from, counts how often each rounding error is read, and extends quantization to the caches.
+
+\paragraph{Token-level precision.}
+Several quantizers spend more bits on a few tokens.
+Squat keeps the tokens with the highest attention at 8 bits and the rest at 4~\cite{shen2024squat}, STaMP transforms activations along the sequence so that a few tokens carry most of the energy and receive higher precision~\cite{federici2026stamp}, SemanticDialect re-quantizes the residual of salient tokens in video diffusion transformers~\cite{jang2026semanticdialect}, and ZipCache assigns cache precision by token saliency~\cite{he2024zipcache}.
+In all of them, a model's own attention or activation energy decides which tokens matter.
+In a WAM, the predicted future is consumed by a different part of the model, and \method lets this reader decide: tokens are selected by their effect on the action, and tracked at run time through the attention of the action tokens.

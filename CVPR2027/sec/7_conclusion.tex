@@ -1,8 +1,8 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented \method, a latent-aware vector quantization framework for world action models.
-Under ultra-low-bit weight quantization, a WAM loses the fidelity of its predicted future, and most of its action error follows from this loss.
-\method makes the predicted future an explicit quantization target: it measures future error as the reader sees it, spends bits where they preserve the future, initializes the codes with trellis-coded rounding at mixed bit widths, and calibrates the shared decode tables toward action and future fidelity.
-At the same bits per weight as existing vector quantizers and with no extra storage, it recovers closed-loop success across \XX WAMs in simulation and on a real robot arm.
+We presented \method, a latent-aware quantization framework for 4-bit world action models.
+Once the action pathway of a 4-bit WAM is protected, its remaining action error enters through a degraded predicted future, which is damaged most by errors that are written once and read at every denoising step.
+\method preserves the future where it is written, stored and read: it measures future error as the reader sees it, weights each rounding error by how many times it is read, allocates precision jointly over weights, activations and caches, and gives the tokens the reader attends to a second 4-bit pass.
+With every weight at 4 bits and no recalibration per task, it recovers closed-loop success across two WAMs in simulation and on a real robot arm.
 When compressing a WAM, the predicted future is not an intermediate quantity that can be sacrificed.

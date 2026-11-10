@@ -2,61 +2,44 @@
 \setcounter{page}{1}
 \maketitlesupplementary
 
-% Outline only; to be written.
+% Outline only. Every \TODO below lists what the section has to contain.
 
 \section{Preliminary analysis}
 \label{sec:supp:prelim}
-Protocol of \cref{sec:observations}: held-out contexts and seeds, module groups used in \cref{fig:obs:modules}, soft-histogram parameters of $K$, definition of the effective rank, full results for the three VQ methods, and the future share on Cosmos-Policy.
+\TODO{protocol of \cref{sec:observations}: held-out contexts and seeds; how the action pathway is protected; the future swap behind \cref{eq:share}; the error-injection protocol (energy, frozen vs.\ redrawn, sources); soft-histogram parameters of $K$; definitions of the effective rank and of the overlap between eigenspaces; full results; the same measurements on Cosmos-Policy}
 
-\section{Evaluation details}
-\label{sec:supp:eval}
-Implementation details: Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10 steps, and the robot executes the first 10 actions before replanning; Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk before replanning; quantization runs on NVIDIA A100 GPUs.
-LIBERO-Plus protocol: we draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
-To be written: seed rules and runtime consistency checks.
-
-\section{Additional results}
-\label{sec:supp:results}
-Success rates per suite and perturbation dimension for all methods and bit widths; comparison with W4A4 methods on the same episodes.
-
-\section{Bit accounting}
-\label{sec:supp:bits}
-On Fast-WAM, the action expert only reads the future, so raising it leaves the predicted future unchanged, and the allocation moves one bit per weight from the action expert to the video expert.
-At a 2-bit budget, the freed bits upgrade 48 video layers (16.7\% of the weights), mostly the attention output and value projections and the second feed-forward layer in the last 15 blocks.
-\cref{tab:bits} lists the resulting bit widths; the total equals that of uniform bit widths.
-To be written: bit widths of every layer type, interface layers, timestep tables and decode tables.
-
-\begin{table}[h]
-  \centering
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}lcccc@{}}
-    \toprule
-    Method & Video expert & Action expert & Text cond. & Total \\
-    \midrule
-    QTIP, 2-bit    & 2.01 & 2.03 & 2.02 & 1.99 \\
-    \method, 2-bit & 2.22 & 1.03 & 2.02 & 1.99 \\
-    \midrule
-    QTIP, 3-bit    & 3.01 & 3.03 & 3.02 & 2.98 \\
-    \method, 3-bit & 3.22 & 2.03 & 3.02 & 2.98 \\
-    \bottomrule
-  \end{tabular}
-  \caption{Bits per weight by module on Fast-WAM.
-  Interface layers and timestep tables are identical for all methods (\cref{sec:exp:setup}) and are included in the total.}
-  \label{tab:bits}
-\end{table}
+\section{Derivations}
+\label{sec:supp:theory}
+\TODO{(i) the reader metric is the Hessian of the reader error at the full-precision future; (ii) for any rounding error outside the reader, the second-order action damage is $\Delta\bz^\top \bM\, \Delta\bz$; (iii) damage of fresh and frozen errors and the bound $n_u \in [0, T]$ of \cref{eq:count}; (iv) optimality of the threshold of \cref{eq:threshold} for the separable objective of \cref{eq:separable}; (v) error bound of the second 4-bit pass of \cref{eq:refine}; (vi) under frozen reads, the weight term is proportional to the reconstruction objective of \cref{eq:layer}}
 
 \section{Method details}
 \label{sec:supp:method}
-Definition of the reader error $K$; choice of $\lambda$ and $\beta$; estimation of the reader metric (probes, normalization, truncation) with its spectrum and stability; the layers selected by the allocation and the full bit-width map; step rule and folding of the calibration.
+\TODO{definition of the reader error $K$; choice of $\lambda_{\bM}$ and $\beta$; estimation of the reader metric (probes, normalization, truncation) and its spectrum; convergence of the estimate with the number of probes and contexts, and its split-half stability; measured read counts and step profile; agreement between the run-time gaze and the offline gaze}
 
-\section{Real-world experiments}
-\label{sec:supp:real}
-Data collection, fine-tuning, quantization calibration, success criteria and time limits per task, initial placements, and per-trial records.
+\section{Evaluation details}
+\label{sec:supp:eval}
+Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10 steps, and the robot executes the first 10 actions before replanning.
+Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk before replanning.
+Calibration runs on NVIDIA A100 GPUs.
+On LIBERO-Plus, we draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
+\TODO{seed rules, runtime consistency checks, and how the confidence intervals of \cref{tab:main} are computed}
 
-\section{Visualizations}
-\label{sec:supp:vis}
-Further reader-metric maps, decoded predicted futures of BF16, QTIP and \method, and failure cases.
+\section{Precision accounting}
+\label{sec:supp:bits}
+\TODO{average bits of weights, activations and caches for every method of \cref{tab:main}, including scales, high-precision branches, interface layers and timestep tables; for \method, the refined fraction of token-steps and of cached tokens at each place}
+
+\section{Additional results}
+\label{sec:supp:results}
+\TODO{success rates per suite and perturbation dimension for all methods; results without cache quantization (W4A4); results with calibration tasks disjoint from the evaluated tasks; ablations on Cosmos-Policy}
 
 \section{Computational cost}
 \label{sec:supp:cost}
-Time and memory of each quantization stage.
+\TODO{integer kernels and runtime; latency broken down into memory traffic, arithmetic and refinement; saving from computing the observation tokens once; time and memory of each calibration stage}
+
+\section{Real-world experiments}
+\label{sec:supp:real}
+\TODO{data collection, fine-tuning, calibration, success criteria and time limits per task, initial placements, and per-trial records}
+
+\section{Visualizations}
+\label{sec:supp:vis}
+\TODO{further gaze maps; the gaze tracked over an episode; decoded predicted futures of BF16, the strongest baseline and \method; failure cases}

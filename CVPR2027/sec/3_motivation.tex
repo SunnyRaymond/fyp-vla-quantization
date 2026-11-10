@@ -11,25 +11,33 @@ A WAM maps an observation $\bo$ and an instruction $\ell$ to a predicted future 
   \label{eq:wam}
 \end{equation}
 where $\bW$ collects all weights.
+Both are produced by iterative denoising over $T$ steps.
 We call $R$ the \emph{reader}: the computation that turns the predicted future into an action.
 Whether $\bz$ and $\ba$ are generated one after the other or denoised jointly, $R$ is well defined (\cref{sec:exp:setup}).
 We write $\bz^\star, \ba^\star$ for the outputs of the full-precision model and $\hat G, \hat R, \hat\bz, \hat\ba$ for those of a quantized one.
 
-\paragraph{Weight-only vector quantization.}
-Post-training quantizers round each linear layer $\bW$ to $\hat\bW$ by minimizing a reconstruction error weighted by input statistics,
+\paragraph{4-bit quantization.}
+A $b$-bit quantizer maps a tensor $X$ onto a scaled integer grid,
+\begin{equation}
+  Q_b(X) = \varsigma\cdot\operatorname{round}(X/\varsigma), \qquad \varsigma = \frac{\max|X|}{2^{b-1}-1},
+  \label{eq:quant}
+\end{equation}
+with one scale $\varsigma$ per group of entries.
+Weights are quantized once offline and activations per token at run time, so that a linear layer with weight $\bW$ and input $\bx$ computes $Q_4(\bW)\,Q_4(\bx)$.
+Post-training quantizers choose the rounded weight $\hat\bW$ by minimizing a reconstruction error weighted by input statistics,
 \begin{equation}
   \min_{\hat\bW}\; \tr\!\big((\hat\bW-\bW)\,\bH\,(\hat\bW-\bW)^\top\big), \qquad \bH = \mathbb{E}\big[\bx\bx^\top\big],
   \label{eq:layer}
 \end{equation}
-where $\bx$ is the layer input on calibration data~\cite{frantar2023gptq,tseng2024quipsharp,tseng2024qtip}.
-Trellis-coded quantization~\cite{tseng2024qtip} stores each layer as
-\begin{equation}
-  \hat\bW = \operatorname{diag}(\mathbf{s}_v)\,\Phi_m^\top\,\big(\gamma\, C[\mathbf{c}]\big)\,\Phi_n\,\operatorname{diag}(\mathbf{s}_u),
-  \label{eq:qtip}
-\end{equation}
-where $\Phi_m, \Phi_n$ are random Hadamard transforms, $\mathbf{s}_u, \mathbf{s}_v$ are column and row scales, $\gamma$ is a layer scale, and $C[\mathbf{c}]$ decodes the weights from trellis codes $\mathbf{c}$ through a small lookup table $C$ that is shared across layers.
-Each code spends $b$ bits per weight.
-We report bits per weight (bpw) as the total storage of codes, scales, tables and any full-precision layers divided by the number of weights.
+where $\bx$ is the layer input on calibration data~\cite{frantar2023gptq}.
+A WAM also caches keys and values.
+Tokens that are computed once per control step, such as those of the observation or of the finished future, are read by attention at every denoising step that follows.
+W4A4KV4 stores these keys and values at 4 bits as well~\cite{ashkboos2024quarot,liu2025spinquant}.
+
+\paragraph{Fresh and frozen errors.}
+Rounding errors differ in how they recur over the denoising steps.
+An error is \emph{fresh} if every step draws a new realization, as for the activations of tokens that are being denoised.
+It is \emph{frozen} if one realization is reused at every step, as for a weight, a cached key or value, or a token that does not change across steps.
 
 \paragraph{Errors.}
 We measure the action error $A = \|\hat\ba - \ba^\star\|^2$ on the executed part of the chunk, the future error $Z = \|\hat\bz - \bz^\star\|^2 / \|\bz^\star\|^2$ on the predicted frames, and the reader error
@@ -41,7 +49,7 @@ where $R$ is the full-precision reader and $\pi$ maps each standardized action c
 $K$ measures how much the future error alone changes the action.
 
 \paragraph{Two error paths.}
-A weight error can change the action directly, or by degrading the predicted future on which the action is conditioned.
+A rounding error can change the action directly, or by degrading the predicted future on which the action is conditioned.
 We measure the second path with the \emph{future share}
 \begin{equation}
   \rho = 1 - \frac{\mathbb{E}\,\|\hat R(\bz^\star) - \ba^\star\|^2}{\mathbb{E}\,\|\hat R(\hat\bz) - \ba^\star\|^2},
@@ -49,57 +57,63 @@ We measure the second path with the \emph{future share}
 \end{equation}
 the fraction of the action error that disappears when the quantized model reads the full-precision future instead of its own.
 It only requires the reader, so it can be computed for any WAM.
-Existing quantization objectives measure layer outputs, as in \cref{eq:layer}, or the final action, but never the predicted future on which the action depends.
+Existing objectives measure layer outputs, as in \cref{eq:layer}, or the final action one denoising step at a time, but never the predicted future on which the action depends, nor how often an error in it is read.
 We next ask what this omission costs.
 
 \subsection{Observations}
 \label{sec:observations}
 
-We examine how ultra-low-bit weight quantization affects the predicted future and, through it, the action.
-We quantize Fast-WAM~\cite{yuan2026fastwam} with three 2-bit VQ methods~\cite{vanbaalen2024gptvq,tseng2024quipsharp,tseng2024qtip} and measure $A$, $Z$ and $\rho$ on held-out LIBERO contexts.
-To locate where future error originates, we additionally raise one module group at a time from 2 to 3 bits.
-\cref{sec:supp:prelim} provides the full protocol and results.
+We examine what a W4A4KV4 WAM loses once its action pathway is protected.
+We quantize Fast-WAM~\cite{yuan2026fastwam} to W4A4KV4 with rotation and second-order rounding~\cite{ashkboos2024quarot,frantar2023gptq}, protect the action pathway by keeping the activations of the action tokens at 8 bits, and measure $A$, $Z$ and $\rho$ on held-out LIBERO contexts.
+To test how the number of reads changes the damage of an error, we additionally inject errors of equal energy that are either frozen across the denoising steps or redrawn at every step.
+\cref{fig:observations} summarizes the three observations that follow, and \cref{sec:supp:prelim} provides the full protocol and results.
 
 \begin{figure*}[t]
   \centering
   \begin{subfigure}[t]{0.32\linewidth}
-    \figbox{Placeholder: future share $\rho$ for GPTVQ, QuIP\#, QTIP at 2 and 3 bits (bar chart).}{3.6cm}
-    \caption{Restoring the future removes most of the action error.}
+    \figbox{Placeholder: action error of W4A4KV4, of W4A4KV4 with the action pathway protected, and of the 8-bit model; the middle bar split into the part that enters through the future and the direct part.}{3.6cm}
+    \caption{Protecting the action is not enough.}
     \label{fig:obs:share}
   \end{subfigure}\hfill
   \begin{subfigure}[t]{0.32\linewidth}
-    \figbox{Placeholder: gain of raising each module group from 2 to 3 bits, stacked by $A$, $Z$, $K$; video expert $|$ action expert $|$ interface.}{3.6cm}
-    \caption{Future error comes from the modules that generate it.}
-    \label{fig:obs:modules}
+    \figbox{Placeholder: future error caused by an error of equal energy, frozen vs.\ redrawn at every step, injected into the observation cache, the future cache and the future tokens.}{3.6cm}
+    \caption{Errors that are read many times add up.}
+    \label{fig:obs:reads}
   \end{subfigure}\hfill
   \begin{subfigure}[t]{0.32\linewidth}
-    \figbox{Placeholder: diagonal of the reader metric $\bM$ on the first predicted frame, overlaid on both camera views.}{3.6cm}
-    \caption{The reader is sensitive to a narrow part of the future.}
+    \figbox{Placeholder: diagonal of the reader metric $\bM$ on the first predicted frame, overlaid on both camera views; inset: stability of locations (0.86) vs.\ directions (0.19).}{3.6cm}
+    \caption{The reader depends on a narrow, location-stable part of the future.}
     \label{fig:obs:gaze}
   \end{subfigure}
-  \caption{What an ultra-low-bit WAM loses (Fast-WAM).
-  (a)~Replacing the predicted future of a quantized model with the full-precision one removes most of its action error.
-  (b)~Raising the modules that generate the future recovers most of the gain of an extra bit; the modules that only read it leave the future unchanged.
-  (c)~The reader is sensitive to a small region of the predicted future.}
+  \caption{What a 4-bit WAM loses (Fast-WAM, W4A4KV4).
+  (a)~With the action pathway protected, the action error stays far above that of the 8-bit model, and almost all of it enters through the degraded future.
+  (b)~An error that is frozen across the denoising steps damages the future more than an error of the same energy that is redrawn at each step.
+  (c)~The reader is sensitive to a small region of the predicted future, which is stable across contexts.}
   \label{fig:observations}
 \end{figure*}
 
-\paragraph{(a) Most action error comes from a degraded future.}
-Restoring the predicted future removes 73\% of the action error of 2-bit QTIP and 85\% of that of 3-bit QTIP (\cref{fig:obs:share}).
-Across the three VQ methods, the future share at 2 bits ranges from \XX\% to \XX\%.
-The reader's own quantization error accounts for the remainder.
-This implies that the quantization objective must include the predicted future itself, not only the action.
+\paragraph{(a) Protecting the action is not enough.}
+With every activation at 4 bits, the action error comes mostly from the rounding of the action tokens themselves, which is why sensitivities measured on the final action concentrate on the action pathway~\cite{akbari2026qwam}.
+Protecting this pathway removes that part.
+The action error nevertheless remains \XX$\times$ that of the 8-bit model, while the future error does not change at all (\cref{fig:obs:share}).
+Restoring the predicted future to full precision removes \XX\% of the remaining action error.
+\TODO{re-measure under W4A4KV4. With BF16 weights and per-token A4: action error 0.0426 with all activations at 4 bits, 0.0176 with the action loop at 8 bits (future error unchanged at 0.0384), 0.0028 at 8 bits, i.e.\ 6.3$\times$ and 97\%}
+This implies that the quantization target must include the predicted future itself, not only the action.
 
-\paragraph{(b) Future error originates in the modules that generate it.}
-Raising the video expert, which generates the future, from 2 to 3 bits recovers 71\% of the reduction in the combined error $A + \lambda Z + \beta K$ (\cref{eq:objective}) that an extra bit buys for the whole model, mostly through $Z$ and $K$ (\cref{fig:obs:modules}).
-Raising all 30 blocks of the action expert, which only reads the future, recovers almost nothing and leaves $Z$ and $K$ exactly unchanged.
-Conversely, lowering the action expert by one bit leaves the predicted future unchanged.
-This implies that the bit budget should follow each module's impact on future fidelity.
+\paragraph{(b) The future is damaged where it is written, and most by errors that are read many times.}
+Raising the precision of the reader leaves the future error exactly unchanged, so the future can only be preserved in the computation that writes it.
+Within this computation, rounding errors differ in how often they are read.
+The tokens of the observed frame do not change across denoising steps, so their rounding error is identical at every step; cached keys and values are written once and read at every step; and a weight is read by every token at every step.
+Injected into the cached tokens, an error of fixed energy damages the future \XX$\times$ more when it is frozen across the denoising steps than when it is redrawn at each step (\cref{fig:obs:reads}), because its effects on successive steps add up coherently.
+A sensitivity estimated one step at a time cannot tell the two cases apart: it attributes \XX\% of the action sensitivity to the pathway through the future, whereas restoring the future shows that this pathway carries \XX\% of the action error.
+\TODO{run the frozen-vs-redrawn injection. Earlier measurements under 2-bit weights: the velocity error summed over the 10 steps has 7.1$\times$ the energy of the per-step errors; a first-order per-step estimate gives 6.9\% against a measured 35--60\%}
+This implies that an error should be weighted by how many times it is read, not only by where it occurs.
 
-\paragraph{(c) The reader is sensitive to a narrow part of the future.}
+\paragraph{(c) The reader depends on a narrow part of the future, stable in location but not in direction.}
 We linearize the reader at the full-precision future and compute its Gauss--Newton metric $\bM$ (\cref{sec:method:metric}).
 In a 37{,}632-dimensional latent, $\bM$ has an effective rank of 41.5; the first predicted frame carries 98\% of its trace, and the largest 10\% of its diagonal entries carry 62\%.
-Its diagonal is stable across disjoint halves of the calibration contexts (correlation 0.86), and it concentrates on a small region of the scene (\cref{fig:obs:gaze}).
-This implies that future error should be measured in the metric through which the reader sees it, rather than by a uniform error over all latent dimensions.
+Which locations of the latent the reader depends on is stable: the diagonal of $\bM$ correlates at 0.86 across disjoint halves of the calibration contexts, and it concentrates on a small region of the scene (\cref{fig:obs:gaze}; further examples in \cref{sec:supp:vis}).
+The directions are not: the leading 32 eigenvectors estimated on the two halves overlap by only 0.19.
+This implies that protection should follow the tokens the reader depends on, rather than a fixed set of directions.
 
-Together, these observations call for a quantizer that treats the predicted future, as the reader sees it, as a quantization target in its own right.
+Together, these observations call for a quantizer that preserves the predicted future where it is written, stored and read, as the reader sees it.

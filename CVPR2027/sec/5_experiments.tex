@@ -6,38 +6,42 @@
 
 \paragraph{Models and benchmarks.}
 We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and Cosmos-Policy~\cite{kim2026cosmospolicy} (2B parameters), and compare each with its own BF16 reference.
-Fast-WAM first denoises the future latent and then denoises an action chunk while attending to it; Cosmos-Policy denoises the future and the action jointly, so its reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action.
+Fast-WAM first denoises the future latent and then denoises an action chunk that attends to it through a key--value cache; the tokens of its observed frame do not depend on the denoising step and are computed once.
+\TODO{confirm in the code that the observed-frame tokens are a pure prefix and implement the prefix cache}
+Cosmos-Policy denoises the future and the action jointly, so its reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action, and its keys and values are quantized at every step.
 We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, and on a real robot arm (\cref{sec:exp:real}).
 
 \paragraph{Baselines and quantization settings.}
-We compare with scalar GPTQ~\cite{frantar2023gptq} and with the vector, lattice and trellis quantizers GPTVQ~\cite{vanbaalen2024gptvq}, QuIP\#~\cite{tseng2024quipsharp} and QTIP~\cite{tseng2024qtip}, at 2 and 3 bits per weight.
-As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables; both are counted in bits per weight.
+We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant}, the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}, and the WAM quantizers QuantWAMs~\cite{zhou2026quantwams}, Q-WAM~\cite{akbari2026qwam} and SteerQuant~\cite{wang2026steerquant}.
+We also include a simple baseline, \emph{Action BF16}, which keeps the action tokens in BF16 and quantizes everything else.
+All methods run under W4A4KV4 and share the same quantizers wherever a method does not define its own: 4-bit weights with one scale per group of 32, rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
+\TODO{fix the group size and the KV quantizer before the runs}
+Methods that add higher-precision components keep them as published, and \cref{tab:main} lists the resulting average bits (accounting in \cref{sec:supp:bits}).
+As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
 All methods calibrate on the same 80 LIBERO contexts and share one inference runtime.
-For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and calibration uses $\lambda = \XX$, $\beta = \XX$ and 8 updates of 10 contexts each.
-On Fast-WAM, the allocation moves one bit per weight from the action expert, which only reads the future, to the video expert, which generates it (\cref{sec:supp:bits}).
+For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines \XX\% of the token-steps of the denoising loops and \XX\% of the cached tokens.
 
 \paragraph{Evaluation metrics.}
-We report closed-loop success rates per suite and on average.
-For efficiency, we report weight storage, peak memory and the latency of one policy call.
+We report closed-loop success rates per suite and on average, with 95\% confidence intervals.
+For efficiency, we report weight storage, the peak memory of the whole policy, the end-to-end latency from observation to action chunk, and the calibration time.
 Further implementation and evaluation details are provided in \cref{sec:supp:eval}.
 
 \subsection{Main results}
 \label{sec:exp:main}
 
 % Table 1 (tab:main) is defined in sec/4_method.tex so that it floats to the top of page 6.
-\cref{tab:main} reports closed-loop success on both models at 2 and 3 bits per weight.
+\cref{tab:main} reports closed-loop success on both models under W4A4KV4.
 
 \paragraph{Results on Fast-WAM.}
-At 2 bits, \method reaches \XX\% average success, \XX points above QTIP, the strongest baseline, and recovers \XX\% of the gap between QTIP and BF16.
-Scalar GPTQ collapses at this bit width, while the vector, lattice and trellis quantizers stay between \XX\% and \XX\%.
-At 3 bits, all VQ baselines are within \XX points of BF16, and \method reaches \XX\%.
-The gains concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
+\method reaches \XX\% average success, within \XX points of BF16 (77.6\%) and \XX points above \XX, the strongest baseline.
+The general-purpose and diffusion quantizers lose \XX--\XX points relative to BF16, and the WAM quantizers lose \XX--\XX points.
+Action BF16 recovers only \XX points over plain W4A4KV4 although its action tokens are exact, which confirms \cref{sec:observations}(a) in closed loop.
+The gains of \method concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 
 \paragraph{Results on Cosmos-Policy.}
-At 2 bits, \method reaches \XX\% average success, \XX points above QTIP (79.9\%), the strongest baseline, and recovers \XX\% of the gap between QTIP and BF16 (83.5\%).
-Scalar GPTQ collapses at this bit width, and the vector, lattice and trellis quantizers spread from 72.6\% to 79.9\%, a wider range than on Fast-WAM.
-At 3 bits, all VQ baselines are within 1.6 points of BF16, and \method reaches \XX\%.
-The 2-bit loss concentrates on the Goal suite, where QTIP, QuIP\# and GPTVQ lose 7.1, 14.3 and 21.0 points.
+\method reaches \XX\% average success, within \XX points of BF16 (83.5\%) and \XX points above \XX, the strongest baseline.
+The baselines lose \XX--\XX points, and the loss concentrates on the \XX suite.
+Results without cache quantization (W4A4) are reported in \cref{sec:supp:results}.
 
 \subsection{Real-world deployment}
 \label{sec:exp:real}
@@ -45,8 +49,8 @@ The 2-bit loss concentrates on the Goal suite, where QTIP, QuIP\# and GPTVQ lose
 \paragraph{Setup.}
 We deploy Fast-WAM on an AgileX PiPER arm (6 degrees of freedom and a parallel gripper).
 We fine-tune it on teleoperation data collected with LeRobot~\cite{cadene2024lerobot} from a third-person and a wrist camera, the same two-view layout as the LIBERO model, with 80 demonstrations per task.
-We quantize the fine-tuned BF16 model with calibration contexts drawn from the demonstrations and re-estimate the reader metric on it.
-We compare BF16, 2-bit QTIP and 2-bit \method with \XX trials per task and method, using the same marked initial placements for all methods and randomizing the order of methods.
+We quantize the fine-tuned BF16 model to W4A4KV4 with calibration contexts drawn from the demonstrations and re-estimate the reader metric on it.
+We compare BF16, \XX (the strongest baseline of \cref{tab:main}) and \method with \XX trials per task and method, using the same marked initial placements for all methods and randomizing the order of methods.
 
 \paragraph{Tasks.}
 \emph{Two-object pick-and-place}: put a can and a box into a basket, one after the other; this long-horizon task tests whether the quantized model completes a multi-step sequence.
@@ -57,21 +61,22 @@ Success criteria are listed in \cref{sec:supp:real}.
 \begin{table}[t]
   \centering
   \small
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{@{}lcccccc@{}}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lccccc@{}}
     \toprule
-    & & \multicolumn{2}{c}{Pick-and-place} & & & \\
-    \cmidrule(lr){3-4}
-    Method & bpw & First & Both & Pouring & Folding & Avg. \\
+    & \multicolumn{2}{c}{Pick-and-place} & & & \\
+    \cmidrule(lr){2-3}
+    Method & First & Both & Pouring & Folding & Avg. \\
     \midrule
-    BF16    & 16   & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
-    QTIP    & 1.99 & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
-    \method & 1.99 & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
+    BF16    & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
+    \XX     & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
+    \method & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
     \bottomrule
   \end{tabular}
-  \caption{Real-world results on the AgileX PiPER arm (successes / trials).
+  \caption{Real-world results on the AgileX PiPER arm (successes / trials) under W4A4KV4.
   For pick-and-place, \emph{First} counts trials in which the first object reaches the basket and \emph{Both} counts full successes.
-  The average uses full successes of the three tasks.}
+  The average uses full successes of the three tasks.
+  \TODO{middle row: the strongest baseline of \cref{tab:main}}}
   \label{tab:real}
 \end{table}
 
@@ -79,14 +84,14 @@ Success criteria are listed in \cref{sec:supp:real}.
   \centering
   \figbox{Placeholder for Fig.~4 (real-world setup and rollouts).\\[2pt]
   Left: PiPER arm with third-person and wrist cameras.\\
-  Right: key frames of the three tasks; one pick-and-place trial where QTIP fails and \method succeeds.}{0.55\linewidth}
-  \caption{Real-world setup and example rollouts of 2-bit \method on the AgileX PiPER arm.}
+  Right: key frames of the three tasks; one pick-and-place trial where the baseline fails and \method succeeds, with the gaze overlaid on the predicted frame.}{0.55\linewidth}
+  \caption{Real-world setup and example rollouts of \method on the AgileX PiPER arm.}
   \label{fig:real}
 \end{figure}
 
 \paragraph{Results.}
 \cref{tab:real} and \cref{fig:real} summarize the real-world results.
-2-bit \method succeeds in \XX of \XX trials, compared with \XX for QTIP and \XX for BF16.
+\method succeeds in \XX of \XX trials, compared with \XX for \XX and \XX for BF16.
 On pick-and-place, \XX.
 The quantized model stores \XX\,GB of weights instead of 12\,GB.
 
@@ -97,54 +102,56 @@ The quantized model stores \XX\,GB of weights instead of 12\,GB.
   \centering
   \small
   \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}llc@{}}
+  \begin{tabular}{@{}llccc@{}}
     \toprule
-    & Variant & Avg. (\%) \\
+    & Variant & A & KV & Avg. (\%) \\
     \midrule
-    \multirow{3}{*}{Components}
-      & Trellis-coded init., uniform bits (iii) & \XX \\
-      & + future-aware allocation (ii)          & \XX \\
-      & + reader metric and calibration (i, iv) & \XX \\
+    \multirow{8}{*}{Selection}
+      & No refinement                   & 4   & 4   & \XX \\
+      & Random tokens                   & \XX & \XX & \XX \\
+      & Activation energy               & \XX & \XX & \XX \\
+      & Video self-attention            & \XX & \XX & \XX \\
+      & Per-step action sensitivity     & \XX & \XX & \XX \\
+      & All tokens, last steps          & \XX & \XX & \XX \\
+      & Offline gaze                    & \XX & \XX & \XX \\
+      & Gaze, tracked at run time       & \XX & \XX & \XX \\
     \midrule
-    \multirow{4}{*}{Objective}
-      & $A$                                      & \XX \\
-      & $A + \lambda Z$                          & \XX \\
-      & $A + \lambda_{\bM} Z_{\bM}$              & \XX \\
-      & $A + \lambda_{\bM} Z_{\bM} + \beta K$    & \XX \\
+    \multirow{4}{*}{Places}
+      & Observation tokens              & \XX & \XX & \XX \\
+      & + caches                        & \XX & \XX & \XX \\
+      & + denoising loop                & \XX & \XX & \XX \\
+      & Random tokens, same budget      & \XX & \XX & \XX \\
     \midrule
-    \multirow{4}{*}{Allocation}
-      & Uniform                                  & \XX \\
-      & Reversed (bits to the action expert)     & \XX \\
-      & Random layers within groups              & \XX \\
-      & By future impact                         & \XX \\
-    \midrule
-    \multirow{3}{*}{Metric}
-      & $\bM = \mathbf{I}$                       & \XX \\
-      & Diagonal                                 & \XX \\
-      & Low-rank + diagonal + $\alpha\mathbf{I}$ & \XX \\
+    \multirow{2}{*}{Read count}
+      & $n_u = 1$ for every source      & \XX & \XX & \XX \\
+      & Measured $n_u$                  & \XX & \XX & \XX \\
     \bottomrule
   \end{tabular}
-  \caption{Ablations on Fast-WAM at 2 bits per weight (LIBERO-Plus).
-  The last row of each block is the full \method.
-  All variants use the same bit budget.}
+  \caption{Ablations on Fast-WAM under W4A4KV4 (LIBERO-Plus, closed-loop success).
+  A and KV give the average bits of activations and of cached keys and values.
+  In the first block, the pipeline, the budget and the refinement are fixed and only the criterion that selects the tokens changes.
+  The last row of the first and third blocks and the third row of the second block are the full \method.}
   \label{tab:ablation}
 \end{table}
 
-\cref{tab:ablation} isolates each component on Fast-WAM at 2 bits per weight with the bit budget held fixed.
+\cref{tab:ablation} isolates each component on Fast-WAM in closed loop.
 
-\paragraph{Each component contributes.}
-Future-aware allocation raises the success rate of uniform-bit trellis-coded rounding from \XX\% to \XX\%, and the reader metric with shared-table calibration adds \XX points.
+\paragraph{The reader decides which tokens matter.}
+With the pipeline, the budget and the refinement fixed, only the criterion that selects the tokens changes.
+Selecting by gaze reaches \XX\%, compared with \XX\% for random tokens and \XX\% for refining all tokens in the last denoising steps.
+Criteria computed from the video model itself, its activation energy~\cite{federici2026stamp} and its self-attention~\cite{shen2024squat,jang2026semanticdialect}, reach \XX\% and \XX\%, and a per-step sensitivity of the final action~\cite{akbari2026qwam,wang2026steerquant} reaches \XX\%.
+Tracking the gaze at run time adds \XX points over the offline gaze, and its gain concentrates on the \XX perturbations.
 
-\paragraph{Future fidelity is necessary.}
-Calibrating the tables on the action alone reaches \XX\%.
-Adding the future term raises it to \XX\% with the uniform metric and to \XX\% with the reader metric, and the reader error $K$ adds \XX points.
+\paragraph{Each place contributes.}
+Refining the observation tokens, which are written once, raises plain W4A4KV4 from \XX\% to \XX\%.
+Refining the selected tokens in the caches adds \XX points, and refining them in the denoising loop adds \XX points.
+Spending the same budget on random tokens reaches \XX\%.
 
-\paragraph{Allocating by future impact matters.}
-At the same budget, uniform bits reach \XX\% and reversing the allocation toward the action expert reaches \XX\%, so the gain comes from where the bits go rather than from mixed precision itself.
-Choosing layers at random within the groups reaches \XX\%.
+\paragraph{Counting reads matters.}
+Setting $n_u = 1$ for every source moves the budget from the caches to the denoising loop and lowers the success rate from \XX\% to \XX\%.
 
-\paragraph{Metric form.}
-The full reader metric reaches \XX\%, compared with \XX\% for its diagonal alone and \XX\% for the identity.
+\paragraph{No recalibration is needed.}
+When the calibration contexts come from tasks that are disjoint from the evaluated ones, \method reaches \XX\% (\cref{sec:supp:results}).
 
 \subsection{Efficiency}
 \label{sec:exp:efficiency}
@@ -153,22 +160,24 @@ The full reader metric reaches \XX\%, compared with \XX\% for its diagonal alone
   \centering
   \small
   \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{@{}lccccc@{}}
+  \begin{tabular}{@{}lcccc@{}}
     \toprule
-    Method & bpw & Weights & Peak mem. & Latency & Quant. time \\
-           &     & (GB)    & (GB)      & (ms)    & (GPU-h) \\
+    Method & Weights & Peak mem. & Latency & Calibration \\
+           & (GB)    & (GB)      & (ms)    & (GPU-h) \\
     \midrule
-    BF16    & 16   & 12.0 & \XX & \XX & -- \\
-    QTIP    & 1.99 & \XX  & \XX & \XX & \XX \\
-    \method & 1.99 & \XX  & \XX & \XX & \XX \\
+    BF16            & 12.0 & \XX & \XX & -- \\
+    QuaRot          & \XX  & \XX & \XX & \XX \\
+    Q-WAM$^\dagger$ & \XX  & \XX & \XX & \XX \\
+    \method         & \XX  & \XX & \XX & \XX \\
     \bottomrule
   \end{tabular}
-  \caption{Memory and latency of one Fast-WAM policy call on \XX.
-  Quantization time is the total over all stages.}
+  \caption{Cost of one Fast-WAM policy call on \XX, with all methods in the same runtime.
+  Peak memory covers the whole policy, and latency is measured end to end from observation to action chunk.}
   \label{tab:efficiency}
 \end{table}
 
-\cref{tab:efficiency} reports the cost of 2-bit \method on Fast-WAM.
-It reduces weight storage from 12\,GB to \XX\,GB and peak memory from \XX\,GB to \XX\,GB, with a policy-call latency of \XX\,ms compared with \XX\,ms for BF16.
-It adds no storage or latency over QTIP at the same bits per weight: the allocation only changes how many bits each layer receives, and the calibrated tables take the place of the original ones.
-Quantization takes \XX GPU-hours, of which the reader metric and calibration take \XX.
+\cref{tab:efficiency} reports the cost of \method on Fast-WAM.
+It reduces weight storage from 12\,GB to \XX\,GB and the peak memory of the whole policy from \XX\,GB to \XX\,GB.
+Its end-to-end latency is \XX\,ms, compared with \XX\,ms for BF16 and \XX\,ms for plain W4A4KV4: the second 4-bit pass accounts for \XX\% of it, and computing the observation tokens once saves \XX\%.
+Calibration takes \XX GPU-hours with a peak memory of \XX\,GB, since it runs reverse passes through the reader only, compared with \XX GPU-hours for Q-WAM, which differentiates through the unrolled sampler.
+\cref{sec:supp:cost} breaks the latency down into memory traffic, arithmetic and refinement.
