@@ -11,29 +11,23 @@
     \toprule
     Model & Method & W & A & KV & Spatial & Object & Goal & Long & Avg. \\
     \midrule
-    \multirow{10}{*}{Fast-WAM}
+    \multirow{7}{*}{Fast-WAM}
       & BF16                   & 16  & 16  & 16  & 81.4 & 82.9 & 67.6 & 78.6 & 77.6\ci{\XX} \\
     \cmidrule(l){2-10}
       & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & QuantWAMs$^\dagger$    & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & Q-WAM$^\dagger$        & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SteerQuant$^\dagger$   & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
     \midrule
-    \multirow{10}{*}{Cosmos-Policy}
+    \multirow{7}{*}{Cosmos-Policy}
       & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} \\
     \cmidrule(l){2-10}
       & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & QuantWAMs$^\dagger$    & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & Q-WAM$^\dagger$        & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SteerQuant$^\dagger$   & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
     \bottomrule
@@ -42,7 +36,6 @@
   W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
   $\pm$ is the 95\% confidence interval.
   \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
-  $^\dagger$: re-implemented in our pipeline.
   \emph{Action BF16} keeps the action tokens in BF16 and quantizes everything else.
   \TODO{run every quantized row under the protocol of \cref{sec:exp:setup}; the earlier W4A4 runs used per-token scales and BF16 caches and cannot be reused}}
   \label{tab:main}
@@ -59,7 +52,9 @@ Cosmos-Policy denoises the future and the action jointly, so its reader starts f
 We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, and on a real robot arm (\cref{sec:exp:real}).
 
 \paragraph{Baselines and quantization settings.}
-We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant}, the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}, and the WAM quantizers QuantWAMs~\cite{zhou2026quantwams}, Q-WAM~\cite{akbari2026qwam} and SteerQuant~\cite{wang2026steerquant}.
+We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant} and the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}.
+The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} have no public implementation, so we do not include them.
+\TODO{re-check code availability before submission}
 We also include a simple baseline, \emph{Action BF16}, which keeps the action tokens in BF16 and quantizes everything else.
 All methods run under W4A4KV4 and share the same quantizers wherever a method does not define its own: 4-bit weights with one scale per group of 32, rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
 \TODO{fix the group size and the KV quantizer before the runs}
@@ -80,7 +75,7 @@ Further implementation and evaluation details are provided in \cref{sec:supp:eva
 
 \paragraph{Results on Fast-WAM.}
 \method reaches \XX\% average success, within \XX points of BF16 (77.6\%) and \XX points above \XX, the strongest baseline.
-The general-purpose and diffusion quantizers lose \XX--\XX points relative to BF16, and the WAM quantizers lose \XX--\XX points.
+The general-purpose and diffusion quantizers lose \XX--\XX points relative to BF16.
 Action BF16 recovers only \XX points over plain W4A4KV4 although its action tokens are exact, which confirms \cref{sec:observations}(a) in closed loop.
 The gains of \method concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 
@@ -213,7 +208,6 @@ When the calibration contexts come from tasks that are disjoint from the evaluat
     \midrule
     BF16            & 12.0 & \XX & \XX & -- \\
     QuaRot          & \XX  & \XX & \XX & \XX \\
-    Q-WAM$^\dagger$ & \XX  & \XX & \XX & \XX \\
     \method         & \XX  & \XX & \XX & \XX \\
     \bottomrule
   \end{tabular}
@@ -225,5 +219,5 @@ When the calibration contexts come from tasks that are disjoint from the evaluat
 \cref{tab:efficiency} reports the cost of \method on Fast-WAM.
 It reduces weight storage from 12\,GB to \XX\,GB and the peak memory of the whole policy from \XX\,GB to \XX\,GB.
 Its end-to-end latency is \XX\,ms, compared with \XX\,ms for BF16 and \XX\,ms for plain W4A4KV4: the second 4-bit pass accounts for \XX\% of it, and computing the observation tokens once saves \XX\%.
-Calibration takes \XX GPU-hours with a peak memory of \XX\,GB, since it runs reverse passes through the reader only, compared with \XX GPU-hours for Q-WAM, which differentiates through the unrolled sampler.
+Calibration takes \XX GPU-hours with a peak memory of \XX\,GB, since it runs reverse passes through the reader only.
 \cref{sec:supp:cost} breaks the latency down into memory traffic, arithmetic and refinement.
