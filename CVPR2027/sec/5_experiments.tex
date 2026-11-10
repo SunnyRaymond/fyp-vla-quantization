@@ -1,6 +1,53 @@
 \section{Experiments}
 \label{sec:exp}
 
+% Main results table (Table 1): declared at the start of Sec. 5, which is typeset on page 7,
+% so that the float appears at the top of page 8.
+\begin{table*}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}llcccccccc@{}}
+    \toprule
+    Model & Method & W & A & KV & Spatial & Object & Goal & Long & Avg. \\
+    \midrule
+    \multirow{10}{*}{Fast-WAM}
+      & BF16                   & 16  & 16  & 16  & 81.4 & 82.9 & 67.6 & 78.6 & 77.6\ci{\XX} \\
+    \cmidrule(l){2-10}
+      & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & QuantWAMs$^\dagger$    & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & Q-WAM$^\dagger$        & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SteerQuant$^\dagger$   & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
+    \midrule
+    \multirow{10}{*}{Cosmos-Policy}
+      & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} \\
+    \cmidrule(l){2-10}
+      & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & QuantWAMs$^\dagger$    & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & Q-WAM$^\dagger$        & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SteerQuant$^\dagger$   & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Closed-loop success rates (\%) on LIBERO-Plus under W4A4KV4.
+  W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
+  $\pm$ is the 95\% confidence interval.
+  \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
+  $^\dagger$: re-implemented in our pipeline.
+  \emph{Action BF16} keeps the action tokens in BF16 and quantizes everything else.
+  \TODO{run every quantized row under the protocol of \cref{sec:exp:setup}; the earlier W4A4 runs used per-token scales and BF16 caches and cannot be reused}}
+  \label{tab:main}
+\end{table*}
+
 \subsection{Experimental setup}
 \label{sec:exp:setup}
 
@@ -29,7 +76,6 @@ Further implementation and evaluation details are provided in \cref{sec:supp:eva
 \subsection{Main results}
 \label{sec:exp:main}
 
-% Table 1 (tab:main) is defined in sec/4_method.tex so that it floats to the top of page 6.
 \cref{tab:main} reports closed-loop success on both models under W4A4KV4.
 
 \paragraph{Results on Fast-WAM.}

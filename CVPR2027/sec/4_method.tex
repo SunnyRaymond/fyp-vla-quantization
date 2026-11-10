@@ -69,52 +69,6 @@ We inject an error of fixed energy into $u$, once frozen across the denoising st
 Sources of the same kind share one read count (the weights, each cache, the tokens that do not change across steps, and the tokens that are being denoised), so a few dozen forward passes suffice.
 The measurement holds at the error level of the 4-bit quantizer, not only to first order.
 
-% Main results table (Table 1): defined here so that it floats to the top of page 6.
-\begin{table*}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{5pt}
-  \begin{tabular}{@{}llcccccccc@{}}
-    \toprule
-    Model & Method & W & A & KV & Spatial & Object & Goal & Long & Avg. \\
-    \midrule
-    \multirow{10}{*}{Fast-WAM}
-      & BF16                   & 16  & 16  & 16  & 81.4 & 82.9 & 67.6 & 78.6 & 77.6\ci{\XX} \\
-    \cmidrule(l){2-10}
-      & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & QuantWAMs$^\dagger$    & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & Q-WAM$^\dagger$        & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SteerQuant$^\dagger$   & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
-    \midrule
-    \multirow{10}{*}{Cosmos-Policy}
-      & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} \\
-    \cmidrule(l){2-10}
-      & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & QuantWAMs$^\dagger$    & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & Q-WAM$^\dagger$        & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SteerQuant$^\dagger$   & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
-    \bottomrule
-  \end{tabular}
-  \caption{Closed-loop success rates (\%) on LIBERO-Plus under W4A4KV4.
-  W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
-  $\pm$ is the 95\% confidence interval.
-  \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
-  $^\dagger$: re-implemented in our pipeline.
-  \emph{Action BF16} keeps the action tokens in BF16 and quantizes everything else.
-  \TODO{run every quantized row under the protocol of \cref{sec:exp:setup}; the earlier W4A4 runs used per-token scales and BF16 caches and cannot be reused}}
-  \label{tab:main}
-\end{table*}
-
 \subsection{Joint allocation}
 \label{sec:method:alloc}
 
@@ -163,9 +117,11 @@ Gaze-guided refinement gives the selected tokens a second 4-bit pass and follows
 
 For the activation $\bx$ of a selected token, we quantize the residual of the first pass a second time:
 \begin{equation}
-  \mathbf{q}_1 = \operatorname{round}\!\Big(\frac{\bx}{\varsigma_1}\Big), \quad
-  \mathbf{q}_2 = \operatorname{round}\!\Big(\frac{\bx - \varsigma_1 \mathbf{q}_1}{\varsigma_2}\Big), \quad
-  \boxed{\;\hat\bx = \varsigma_1 \mathbf{q}_1 + \varsigma_2 \mathbf{q}_2\;}
+  \begin{gathered}
+    \mathbf{q}_1 = \operatorname{round}\!\Big(\frac{\bx}{\varsigma_1}\Big), \qquad
+    \mathbf{q}_2 = \operatorname{round}\!\Big(\frac{\bx - \varsigma_1 \mathbf{q}_1}{\varsigma_2}\Big), \\[4pt]
+    \boxed{\;\hat\bx = \varsigma_1 \mathbf{q}_1 + \varsigma_2 \mathbf{q}_2\;}
+  \end{gathered}
   \label{eq:refine}
 \end{equation}
 with $\varsigma_1$ from \cref{eq:quant} and $\varsigma_2 = \max|\bx - \varsigma_1 \mathbf{q}_1| / 7 \le \varsigma_1 / 14$.
