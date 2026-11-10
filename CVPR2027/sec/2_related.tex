@@ -21,9 +21,10 @@ We do not modify how WAMs are trained and study only how to compress them for de
 
 \paragraph{Post-training quantization.}
 Second-order rounding quantizes one layer at a time and compensates the error with the inverse Hessian of a layer-wise reconstruction objective~\cite{frantar2022obc,frantar2023gptq}.
-Activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\cite{ashkboos2024quarot,liu2025spinquant} remove activation outliers before rounding and bring language models to 4-bit weights, activations and key--value caches.
+Activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\cite{ashkboos2024quarot,liu2025spinquant,chen2026prismquant} remove activation outliers before rounding and bring language models to 4-bit weights, activations and key--value caches.
 Mixed-precision methods allocate bit widths across layers~\cite{wang2019haq,malinovskii2025higgs}, and GuidedQuant weights the layer objective with gradients of the end loss~\cite{kim2025guidedquant}.
 For diffusion and video generators, post-training methods correct errors that accumulate over the denoising loop~\cite{he2023ptqd}, handle timestep-dependent activations~\cite{zhao2025viditq} and absorb outliers into a 16-bit low-rank branch~\cite{li2025svdquant}, and quantization-aware training reaches 4 bits and below~\cite{huang2026qvgen,li2026dsaquant}.
+For vision-language models, GRACE combines quantization-aware training with confidence-gated distillation to reach 4 bits~\cite{chen2026grace}.
 These methods preserve layer outputs or generation quality.
 \method builds on rotation and second-order rounding, and changes what the quantizer preserves: the predicted future as the reader sees it.
 
