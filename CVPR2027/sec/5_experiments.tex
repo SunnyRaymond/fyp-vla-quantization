@@ -89,14 +89,15 @@ The baselines lose 0.6--4.6 points, and the loss concentrates on the \XX suite.
 
 \paragraph{Setup.}
 We deploy Fast-WAM on an AgileX PiPER arm (6 degrees of freedom and a parallel gripper).
-We fine-tune it on teleoperation data collected with LeRobot~\cite{cadene2024lerobot} from a third-person and a wrist camera, the same two-view layout as the LIBERO model, with 80 demonstrations per task.
+We fine-tune it on teleoperation data collected with LeRobot~\cite{cadene2024lerobot} from a third-person and a wrist camera, the same two-view layout as the LIBERO model, with 75 to 80 demonstrations per task.
 We quantize the fine-tuned BF16 model to W4A4KV4 with calibration contexts drawn from the demonstrations and re-estimate the reader metric on it.
 We compare BF16, \XX (the strongest baseline of \cref{tab:main}) and \method with \XX trials per task and method, using the same marked initial placements for all methods and randomizing the order of methods.
 
 \paragraph{Tasks.}
-\emph{Two-object pick-and-place}: put a can and a box into a basket, one after the other; this long-horizon task tests whether the quantized model completes a multi-step sequence.
-\emph{Pouring}: pour beads from one cup into another, a continuous, dynamics-dependent motion.
-\emph{Cloth folding}: fold a small cloth in half, which involves a deformable object.
+\emph{Two-object pick-and-place}: put a red apple and then a green cube into a box, with three other objects on the table as distractors; this long-horizon task tests whether the quantized model completes a multi-step sequence and picks the named objects.
+\emph{Shelf placement}: place a bowl on the second floor of a shelf, a precise insertion under the top board that the third-person camera only partly sees, so the final placement relies on the wrist view.
+\emph{Box stacking}: stack a white box on a black base and then a brown box on the white one; each box must land on the small top face of the one below, which tests placement precision.
+\cref{fig:real} shows one demonstration of each task.
 Success criteria are listed in \cref{sec:supp:real}.
 
 \begin{table}[t]
@@ -107,7 +108,7 @@ Success criteria are listed in \cref{sec:supp:real}.
     \toprule
     & \multicolumn{2}{c}{Pick-and-place} & & & \\
     \cmidrule(lr){2-3}
-    Method & First & Both & Pouring & Folding & Avg. \\
+    Method & First & Both & Shelf & Stacking & Avg. \\
     \midrule
     BF16    & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
     \XX     & \XX/\XX & \XX/\XX & \XX/\XX & \XX/\XX & \XX\% \\
@@ -115,23 +116,23 @@ Success criteria are listed in \cref{sec:supp:real}.
     \bottomrule
   \end{tabular}
   \caption{Real-world results on the AgileX PiPER arm (successes / trials) under W4A4KV4.
-  For pick-and-place, \emph{First} counts trials in which the first object reaches the basket and \emph{Both} counts full successes.
+  For pick-and-place, \emph{First} counts trials in which the apple reaches the box and \emph{Both} counts full successes.
   The average uses full successes of the three tasks.
   \TODO{middle row: the strongest baseline of \cref{tab:main}}}
   \label{tab:real}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
   \centering
-  \figbox{Placeholder for Fig.~4 (real-world setup and rollouts).\\[2pt]
-  Left: PiPER arm with third-person and wrist cameras.\\
-  Right: key frames of the three tasks; one pick-and-place trial where the baseline fails and \method succeeds, with the gaze overlaid on the predicted frame.}{0.55\linewidth}
-  \caption{Real-world setup and example rollouts of \method on the AgileX PiPER arm.}
+  \includegraphics[width=\textwidth]{figures/figure4.pdf}
+  \caption{Real-world tasks on the AgileX PiPER arm.
+  Each row shows one teleoperated demonstration from left to right, with the wrist view inset at the same step.
+  The bar under each row spans the whole demonstration and is shaded where the gripper is closed; dots mark the frames shown.}
   \label{fig:real}
-\end{figure}
+\end{figure*}
 
 \paragraph{Results.}
-\cref{tab:real} and \cref{fig:real} summarize the real-world results.
+\cref{tab:real} summarizes the real-world results.
 \method succeeds in \XX of \XX trials, compared with \XX for \XX and \XX for BF16.
 On pick-and-place, \XX.
 The quantized model stores \XX\,GB of weights instead of 12\,GB.
