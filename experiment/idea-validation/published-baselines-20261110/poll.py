@@ -25,16 +25,20 @@ def main():
     args = parser.parse_args()
     failures = 0
     while True:
-        out = control("status")
-        if out.returncode != 0:
+        try:
+            out = control("status")
+            d = json.loads(out.stdout) if out.returncode == 0 else None
+            error = out.stderr[-500:]
+        except (subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            d, error = None, repr(exc)[-500:]
+        if d is None:
             failures += 1
             if failures >= 3:
-                print(json.dumps(dict(event="query_failed", stderr=out.stderr[-500:])), flush=True)
+                print(json.dumps(dict(event="query_failed", stderr=error)), flush=True)
                 return 1
             time.sleep(args.interval)
             continue
         failures = 0
-        d = json.loads(out.stdout)
         ended = [k for k in args.jobs if d["jobs"].get(k, {}).get("job_state") in ("F", "X")]
         if ended or d["failed"]:
             control("pull", timeout=900)

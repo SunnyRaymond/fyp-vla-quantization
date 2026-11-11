@@ -35,6 +35,8 @@ GPU 利用率和显存每 60 秒写入 `job.log`。
 
 ## 结果
 
+> 2026-11-11 用户改定 Table 1 口径：基线一律 W4A4KV16，LAQ 报 KV16 和 KV4 两行。Table 1 只用了这里 Cosmos 的 SVDQuant（它的原始配置本来就是 W4A4KV16）。QuaRot / SpinQuant 改用 10 月的 W4A4KV16 旧跑次（`fastwam-rotation-baselines`、`cosmos-policy-vqwam-20261024`），这里的 KV4 版本不进表。
+
 ### Cosmos-Policy（作业 26188483，2026-11-11 完成）
 
 LIBERO-Plus 面板 A，280 局配对，BF16 为同一面板、同一种子的参考。p 为对 BF16 的配对 McNemar 精确检验。
@@ -53,4 +55,4 @@ LIBERO-Plus 面板 A，280 局配对，BF16 为同一面板、同一种子的参
 
 ### Fast-WAM
 
-闭环作业 26188484 在 g3 排队，只跑 QuaRot / SpinQuant / SVDQuant。
+闭环作业 26188484 在排队时取消（2026-11-11），没有跑任何 episode。
