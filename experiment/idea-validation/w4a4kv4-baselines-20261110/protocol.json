@@ -1,0 +1,99 @@
+{
+  "protocol": "w4a4kv4-baselines-20261110-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/w4a4kv4-baselines-20261110",
+  "purpose": "W4A4KV4 baselines of Table 1 (QuaRot, SpinQuant, SVDQuant, ViDiT-Q) on Fast-WAM and Cosmos-Policy, LIBERO-Plus panel A (280 episodes), paired with the existing BF16 panel-A runs.",
+  "quantization": {
+    "group": 32,
+    "gptq_damp": 0.01,
+    "seed": 20261110,
+    "weights": "INT4, one BF16 scale per (row, group of 32 input channels); QuaRot/SpinQuant GPTQ in rotated coordinates, SVDQuant RTN on the low-rank residual, ViDiT-Q affine two-stage",
+    "activations": "dynamic per-token INT4 with one scale per group of 32 channels; symmetric except ViDiT-Q (affine)",
+    "kv": "the same per-token group-of-32 symmetric INT4 quantizer for every method (kv4.py)"
+  },
+  "arms": ["viditq", "quarot", "spinquant", "svdquant"],
+  "methods": {
+    "quarot": {"rotation": "fixed signed block-Hadamard R128 per stream"},
+    "spinquant": {"rotation": "fixed base times the learned Cayley R128 of the earlier W4A4 runs (not retrained)"},
+    "svdquant": {"alpha": 0.5, "rank": 32, "oversampling": 8, "power_iterations": 4},
+    "viditq": {"alpha": 0.5665}
+  },
+  "models": {
+    "fastwam": {
+      "targets": 614,
+      "target_weights": 6016317440,
+      "a16_prep": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/results/prep",
+      "frame_tokens": 98,
+      "video_tokens": 294,
+      "panel": {
+        "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+        "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+        "anchor_case": 2000
+      },
+      "rotation": {
+        "seed": 20261008,
+        "learned": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/rotation_training/learned_rotation.pt",
+        "learned_key": "state_dict"
+      },
+      "maxima": {
+        "kind": "shards",
+        "pattern": "/scratch/users/ntu/yguo017/fastwam-diffusion-baselines-20261019/results/calibration/worker_*.pt"
+      },
+      "reference_bf16": {
+        "kind": "jsonl",
+        "pattern": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl",
+        "arm": "bf16",
+        "successes": 216
+      },
+      "roots": {
+        "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+        "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+        "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+        "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006",
+        "sif": "/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif",
+        "engine_source": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101"
+      },
+      "engine_files": ["reference_profile.py", "export_runtime.py", "fused_input.py", "fused_vq.py", "kernel_runtime.py", "layer_runtime.py", "condition_cache.py", "abc_runtime.py", "graph_runtime.py", "decoder_runtime.py", "profile_worker.py", "runner.py", "quantization.py", "libero_state_loader.py", "previous_vq_adapter.py", "rotation_bank.py", "batched_transform.py", "smooth_vq.py", "codebook.py", "micro_codebook.py", "c8_train_banks.py", "sampler.py", "latent_reference.py", "checkpointing.py", "calibration_source.py"],
+      "jobs": {
+        "prep": {"name": "w4pfw", "gpus": 2, "ncpus": 32, "memory_gb": 220, "walltime": "05:00:00"},
+        "loop": {"name": "w4lfw", "gpus": 4, "ncpus": 64, "memory_gb": 440, "walltime": "24:00:00", "slots_per_gpu": 2, "join_min": 6}
+      }
+    },
+    "cosmos": {
+      "targets": 280,
+      "target_weights": 1761607680,
+      "attentions": 56,
+      "a16_prep": "/scratch/users/ntu/yguo017/cosmos-a16-baselines-20261101/results/prep",
+      "cosmos": {
+        "asset_root": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015",
+        "runtime_protocol": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/protocol.json"
+      },
+      "calibration": {
+        "plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+        "seed_index": 0,
+        "anchor_case": 2000
+      },
+      "panel": {
+        "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json"
+      },
+      "rotation": {
+        "alias_prefix": "video_expert.",
+        "seed": 20261015,
+        "learned": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/results/spinquant/deployment.pt",
+        "learned_key": "rotation_state"
+      },
+      "maxima": {
+        "kind": "statistics",
+        "path": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/teacher/statistics.pt"
+      },
+      "reference_bf16": {
+        "kind": "dir",
+        "path": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/results/evaluation/episodes/bf16",
+        "successes": 233
+      },
+      "jobs": {
+        "prep": {"name": "w4pco", "gpus": 1, "ncpus": 16, "memory_gb": 110, "walltime": "03:00:00"},
+        "loop": {"name": "w4lco", "gpus": 4, "ncpus": 64, "memory_gb": 440, "walltime": "12:00:00", "slots_per_gpu": 4, "join_min": 6}
+      }
+    }
+  }
+}

@@ -12,6 +12,14 @@
 \label{sec:supp:theory}
 \TODO{(i) the reader metric is the Hessian of the reader error at the full-precision future; (ii) for any rounding error outside the reader, the second-order action damage is $\Delta\bz^\top \bM\, \Delta\bz$; (iii) damage of fresh and frozen errors and the bound $n_u \in [0, T]$ of \cref{eq:count}; (iv) optimality of the threshold of \cref{eq:threshold} for the separable objective of \cref{eq:separable}; (v) error bound of the second 4-bit pass of \cref{eq:refine}; (vi) under frozen reads, the weight term is proportional to the reconstruction objective of \cref{eq:layer}}
 
+\subsection{Optimality of the threshold}
+\label{sec:supp:theory:threshold}
+\TODO{to be written: for any $\mu$, the threshold solution of \cref{eq:threshold} is optimal under the budget it spends (Everett's generalized Lagrange multiplier theorem); for a general $B$ it solves the continuous relaxation, and its gap to the 0/1 optimum is at most the damage removed by one unit}
+
+\subsection{Reader metric and reader error}
+\label{sec:supp:theory:metric-kl}
+\TODO{to be written: to second order, $K = \tfrac12\,\Delta\bz^\top \bJ_c^\top \bD_c \bJ_c\,\Delta\bz$, so up to the normalization of \cref{eq:metric-form}, $\lambda_{\bM} Z_{\bM} + \beta K$ is a combination of $K$ and the uniform future error $Z$; consequence for the choice of $\lambda_{\bM}$ and $\beta$}
+
 \section{Method details}
 \label{sec:supp:method}
 \TODO{definition of the reader error $K$; choice of $\lambda_{\bM}$ and $\beta$; estimation of the reader metric (probes, normalization, truncation) and its spectrum; convergence of the estimate with the number of probes and contexts, and its split-half stability; measured read counts and step profile; agreement between the run-time gaze and the offline gaze}
@@ -23,6 +31,14 @@ Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot ex
 Calibration runs on NVIDIA A100 GPUs.
 On LIBERO-Plus, we draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
 \TODO{seed rules, runtime consistency checks, and how the confidence intervals of \cref{tab:main} are computed}
+
+\paragraph{Baselines.}
+Every baseline follows its official code on the linear layers of the transformer blocks and calibrates on the same 80 contexts as \method; the Hessians of GPTQ come from the BF16 activations of these contexts.
+QuaRot rotates the input of every linear layer by a randomized Hadamard matrix and the attention output by Hadamard matrices within and across heads, rounds the weights by GPTQ with one clipped scale per output channel, quantizes activations symmetrically per token with clipping at 0.9, and quantizes keys (per head, after a Hadamard rotation of the head dimension) and values (per token and head) asymmetrically with clipping at 0.95.
+SpinQuant keeps this structure but learns the rotations of the layer inputs and the per-head rotations of the attention output on the Stiefel manifold (100 steps, learning rate 1.5), minimizing the error of the denoiser output against BF16 under 4-bit activations and caches, and quantizes activations, keys and values asymmetrically without clipping.
+At the input of the second feed-forward layer, both use a randomized Hadamard matrix instead of the plain one of the official code: a GELU output has a positive mean, which the plain Hadamard matrix concentrates in one coordinate.
+SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, a rank-32 BF16 branch fitted iteratively to the weight residual, 4-bit weights and dynamic 4-bit activations with one scale per group of 64, and unsigned activations at the input of the second feed-forward layer.
+ViDiT-Q follows its mixed-precision W4A8 configuration: channel balancing with exponent 0.5665, a randomized Hadamard rotation, asymmetric weights with one scale per output channel, and symmetric 8-bit activations per token; it uses the precision map by layer type of that configuration, without the metric-decoupled search.
 
 \section{Precision accounting}
 \label{sec:supp:bits}

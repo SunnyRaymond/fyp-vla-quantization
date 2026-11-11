@@ -1,0 +1,73 @@
+{
+  "protocol": "published-baselines-20261110-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/published-baselines-20261110",
+  "purpose": "Table 1 baselines as published: QuaRot and SpinQuant W4A4KV4, SVDQuant INT4 W4A4, ViDiT-Q W4A8 mixed precision, on Fast-WAM and Cosmos-Policy, LIBERO-Plus panel A (280 episodes), paired with the existing BF16 panel-A runs.",
+  "seed": 20261110,
+  "arms": ["quarot", "viditq", "svdquant", "spinquant"],
+  "methods": {
+    "quarot": {"weights": "GPTQ per row, MSE clip search", "activations": "symmetric per-token, clip 0.9", "kv": "asymmetric per head, clip 0.95, K Hadamard over head dim, V Hadamard over head dim"},
+    "spinquant": {"weights": "GPTQ per row, MSE clip search", "activations": "asymmetric per-token, per head at o_proj", "kv": "asymmetric per head, no clip, K Hadamard, V learned R2", "lr": 1.5, "steps": 100, "batch": 4, "seed": 20261110},
+    "svdquant": {"weights": "INT4 group 64, RTN on the low-rank residual", "activations": "INT4 dynamic group 64, unsigned shifted inputs at the MLP second layer", "rank": 32, "num_grids": 20, "num_iters": 100, "samples_per_call": 4, "samples_per_layer": 4096},
+    "viditq": {"alpha": 0.5665, "weights": "W4A8 mixed precision: attention W4, feed-forward and the first and last block W8, affine per row, two-stage", "activations": "A8 symmetric per-token"}
+  },
+  "models": {
+    "fastwam": {
+      "targets": 600,
+      "target_weights": 5913968640,
+      "blocks": 30,
+      "a16_prep": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/results/prep",
+      "frame_tokens": 98,
+      "video_tokens": 294,
+      "rotation_seed": 20261008,
+      "packet_indices": [0, 3, 6, 9],
+      "panel": {
+        "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+        "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+        "anchor_case": 2000
+      },
+      "maxima": {"kind": "shards", "pattern": "/scratch/users/ntu/yguo017/fastwam-diffusion-baselines-20261019/results/calibration/worker_*.pt"},
+      "reference_bf16": {"kind": "jsonl", "pattern": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl", "arm": "bf16", "successes": 216},
+      "roots": {
+        "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+        "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+        "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+        "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006",
+        "sif": "/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif",
+        "engine_source": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101"
+      },
+      "engine_files": ["reference_profile.py", "export_runtime.py", "fused_input.py", "fused_vq.py", "kernel_runtime.py", "layer_runtime.py", "condition_cache.py", "abc_runtime.py", "graph_runtime.py", "decoder_runtime.py", "profile_worker.py", "runner.py", "quantization.py", "libero_state_loader.py", "previous_vq_adapter.py", "rotation_bank.py", "batched_transform.py", "smooth_vq.py", "codebook.py", "micro_codebook.py", "c8_train_banks.py", "sampler.py", "latent_reference.py", "checkpointing.py", "calibration_source.py"],
+      "jobs": {
+        "calib": {"name": "pubcfw", "gpus": 1, "ncpus": 16, "memory_gb": 110, "walltime": "08:00:00"},
+        "prep": {"name": "pubpfw", "gpus": 2, "ncpus": 32, "memory_gb": 220, "walltime": "08:00:00"},
+        "loop": {"name": "publfw", "gpus": 4, "ncpus": 64, "memory_gb": 440, "walltime": "24:00:00", "slots_per_gpu": 2, "join_min": 6}
+      }
+    },
+    "cosmos": {
+      "targets": 280,
+      "target_weights": 1761607680,
+      "blocks": 28,
+      "attentions": 56,
+      "a16_prep": "/scratch/users/ntu/yguo017/cosmos-a16-baselines-20261101/results/prep",
+      "rotation_seed": 20261015,
+      "packet_indices": [0, 1, 2, 3, 4],
+      "cosmos": {
+        "asset_root": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015",
+        "runtime_protocol": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/protocol.json"
+      },
+      "calibration": {
+        "plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+        "seed_index": 0,
+        "anchor_case": 2000,
+        "cases": [2000, 2079]
+      },
+      "panel": {"manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json"},
+      "maxima": {"kind": "statistics", "path": "/scratch/users/ntu/yguo017/cosmos-policy-vqwam-20261024/results/teacher/statistics.pt"},
+      "reference_bf16": {"kind": "dir", "path": "/scratch/users/ntu/yguo017/cosmos-policy-c8-w4a4-20261015/results/evaluation/episodes/bf16", "successes": 233},
+      "jobs": {
+        "calib": {"name": "pubcco", "gpus": 1, "ncpus": 16, "memory_gb": 110, "walltime": "06:00:00"},
+        "prep": {"name": "pubpco", "gpus": 1, "ncpus": 16, "memory_gb": 110, "walltime": "06:00:00"},
+        "loop": {"name": "publco", "gpus": 4, "ncpus": 64, "memory_gb": 440, "walltime": "12:00:00", "slots_per_gpu": 4, "join_min": 6}
+      }
+    }
+  }
+}

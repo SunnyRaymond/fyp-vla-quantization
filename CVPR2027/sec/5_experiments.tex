@@ -14,30 +14,31 @@
     \multirow{7}{*}{Fast-WAM}
       & BF16                   & 16  & 16  & 16  & 81.4 & 82.9 & 67.6 & 78.6 & 77.6\ci{\XX} \\
     \cmidrule(l){2-10}
-      & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & QuaRot                 & 4.01 & 4  & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SpinQuant              & 4.01 & 4  & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & ViDiT-Q                & 6.12 & 8  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SVDQuant               & 4.81 & 4  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
     \midrule
     \multirow{7}{*}{Cosmos-Policy}
       & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} \\
     \cmidrule(l){2-10}
-      & QuaRot                 & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SpinQuant              & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & ViDiT-Q                & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SVDQuant               & \XX & 4   & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & QuaRot                 & 4.01 & 4  & 4   & 81.4 & 85.7 & 70.0 & 88.6 & 81.4\ci{4.5} \\
+      & SpinQuant              & 4.01 & 4  & 4   & 81.4 & 88.6 & 67.1 & 88.6 & 81.4\ci{4.5} \\
+      & ViDiT-Q                & 6.30 & 8  & 16  & 77.1 & 88.6 & 68.6 & 82.9 & 79.3\ci{4.7} \\
+      & SVDQuant               & 4.89 & 4  & 16  & 82.9 & 87.1 & 72.9 & 88.6 & 82.9\ci{4.4} \\
       & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
     \bottomrule
   \end{tabular}
-  \caption{Closed-loop success rates (\%) on LIBERO-Plus under W4A4KV4.
+  \caption{Closed-loop success rates (\%) on LIBERO-Plus.
+  Every baseline runs its published configuration.
   W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
   $\pm$ is the 95\% confidence interval.
   \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
   \emph{Action BF16} keeps the action tokens in BF16 and quantizes everything else.
-  \TODO{run every quantized row under the protocol of \cref{sec:exp:setup}; the earlier W4A4 runs used per-token scales and BF16 caches and cannot be reused}}
+  \TODO{baseline rows: Cosmos-Policy done, Fast-WAM running; both on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. Action BF16 and \method not run yet}}
   \label{tab:main}
 \end{table*}
 
@@ -56,9 +57,14 @@ We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} 
 The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} have no public implementation, so we do not include them.
 \TODO{re-check code availability before submission}
 We also include a simple baseline, \emph{Action BF16}, which keeps the action tokens in BF16 and quantizes everything else.
-All methods run under W4A4KV4 and share the same quantizers wherever a method does not define its own: 4-bit weights with one scale per group of 32, rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
-\TODO{fix the group size and the KV quantizer before the runs}
-Methods that add higher-precision components keep them as published, and \cref{tab:main} lists the resulting average bits (accounting in \cref{sec:supp:bits}).
+Each baseline runs its published recipe and configuration.
+QuaRot and SpinQuant quantize weights, activations, keys and values to 4 bits and round the weights with GPTQ~\cite{frantar2023gptq}, as in their main results.
+SVDQuant quantizes weights and activations to 4 bits, adds a 16-bit low-rank branch and keeps the caches in BF16.
+ViDiT-Q uses its mixed-precision W4A8 configuration, which keeps the feed-forward layers and the first and last blocks at 8 bits.
+Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer and fold the rotation into its weights (\cref{sec:supp:eval}).
+\method and Action BF16 use 4-bit weights with one scale per group of 32, rounded by GPTQ, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
+\TODO{fix the group size and the KV quantizer of \method before its runs}
+\cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
 All methods calibrate on the same 80 LIBERO contexts and share one inference runtime.
 For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines \XX\% of the token-steps of the denoising loops and \XX\% of the cached tokens.
@@ -71,7 +77,7 @@ Further implementation and evaluation details are provided in \cref{sec:supp:eva
 \subsection{Main results}
 \label{sec:exp:main}
 
-\cref{tab:main} reports closed-loop success on both models under W4A4KV4.
+\cref{tab:main} reports closed-loop success on both models.
 
 \paragraph{Results on Fast-WAM.}
 \method reaches \XX\% average success, within \XX points of BF16 (77.6\%) and \XX points above \XX, the strongest baseline.
@@ -80,8 +86,8 @@ Action BF16 recovers only \XX points over plain W4A4KV4 although its action toke
 The gains of \method concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 
 \paragraph{Results on Cosmos-Policy.}
-\method reaches \XX\% average success, within \XX points of BF16 (83.5\%) and \XX points above \XX, the strongest baseline.
-The baselines lose \XX--\XX points, and the loss concentrates on the \XX suite.
+\method reaches \XX\% average success, within \XX points of BF16 (83.5\%) and \XX points above SVDQuant, the strongest baseline.
+The baselines lose 0.6--4.2 points, and the loss concentrates on the Spatial and Goal suites.
 Results without cache quantization (W4A4) are reported in \cref{sec:supp:results}.
 
 \subsection{Real-world deployment}

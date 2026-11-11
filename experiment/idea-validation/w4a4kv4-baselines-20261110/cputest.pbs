@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU checks of the arithmetic, the per-layer fits, the KV4 installers and the scheduler, inside the Fast-WAM container.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/w4a4kv4-baselines-20261110
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))["models"]["fastwam"]["roots"]
+for key in ("pilot", "base", "old_banks", "old_inputs", "sif"):
+    print(r[key])
+PY
+)
+ROOT=${CFG[0]}; BASE=${CFG[1]}; SMOOTH_ROOT=${CFG[2]}; SOURCE_ROOT=${CFG[3]}; SIF=${CFG[4]}
+DIAG_ROOT=$NEW_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+echo "JOB=$PBS_JOBID HOST=$(hostname -s) START=$(date -u +%FT%TZ)"
+trap 'printf "%s\n" "$?" > "$ARTIFACTS/exit_code.txt"' EXIT
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
+source "$ARTIFACTS/env_fastwam.sh"
+NV_ARGS=()
+export FW_CPU_THREADS=8
+cd "$ARTIFACTS"
+run_python -B "$ARTIFACTS/test_w4a4kv4.py"
+python3.11 "$ARTIFACTS/sched.py" --help > /dev/null
+python3.11 -c "import ast, sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]" "$ARTIFACTS"/*.py
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE
