@@ -308,7 +308,7 @@ def test_sched_and_claim(tmp=Path("/tmp/pub_test")):
 
 
 def test_protocol():
-    assert set(P["arms"]) == {"quarot", "spinquant", "svdquant", "viditq"}
+    assert set(P["arms"]) == {"quarot", "spinquant", "svdquant"}
     assert P["models"]["fastwam"]["targets"] == 600 and P["models"]["fastwam"]["blocks"] == 30
     assert P["methods"]["spinquant"]["steps"] == 100 and P["methods"]["spinquant"]["lr"] == 1.5
     assert P["methods"]["svdquant"]["rank"] == 32

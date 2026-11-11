@@ -47,8 +47,10 @@ LIBERO-Plus 面板 A，280 局配对，BF16 为同一面板、同一种子的参
 | ViDiT-Q | 6.30 | 8 | 16 | 222 | 79.3 | 4.7 | 5 / 16 | 0.027 |
 | SVDQuant | 4.89 | 4 | 16 | 232 | 82.9 | 4.4 | 7 / 8 | 1.0 |
 
+2026-11-11 起 ViDiT-Q 不进 Table 1：它的原始配置是 W4A8 混合精度，和我们的 W4A4KV4 不同口径，以后要在同口径下另比。Fast-WAM 闭环已从协议里去掉它，代码和 Cosmos 的结果保留。
+
 只有 ViDiT-Q 显著低于 BF16。QuaRot 和 SpinQuant 在 W4A4KV4 下只掉 1.8 点，SVDQuant 与 BF16 持平。分 suite 与分扰动维度见 `pulled/results/cosmos/RESULTS.zh.md`。
 
 ### Fast-WAM
 
-闭环作业 26188484 在 g3 排队。
+闭环作业 26188484 在 g3 排队，只跑 QuaRot / SpinQuant / SVDQuant。

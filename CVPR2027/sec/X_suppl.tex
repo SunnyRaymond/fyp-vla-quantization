@@ -38,7 +38,6 @@ QuaRot rotates the input of every linear layer by a randomized Hadamard matrix a
 SpinQuant keeps this structure but learns the rotations of the layer inputs and the per-head rotations of the attention output on the Stiefel manifold (100 steps, learning rate 1.5), minimizing the error of the denoiser output against BF16 under 4-bit activations and caches, and quantizes activations, keys and values asymmetrically without clipping.
 At the input of the second feed-forward layer, both use a randomized Hadamard matrix instead of the plain one of the official code: a GELU output has a positive mean, which the plain Hadamard matrix concentrates in one coordinate.
 SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, a rank-32 BF16 branch fitted iteratively to the weight residual, 4-bit weights and dynamic 4-bit activations with one scale per group of 64, and unsigned activations at the input of the second feed-forward layer.
-ViDiT-Q follows its mixed-precision W4A8 configuration: channel balancing with exponent 0.5665, a randomized Hadamard rotation, asymmetric weights with one scale per output channel, and symmetric 8-bit activations per token; it uses the precision map by layer type of that configuration, without the metric-decoupled search.
 
 \section{Precision accounting}
 \label{sec:supp:bits}

@@ -11,23 +11,21 @@
     \toprule
     Model & Method & W & A & KV & Spatial & Object & Goal & Long & Avg. \\
     \midrule
-    \multirow{7}{*}{Fast-WAM}
+    \multirow{6}{*}{Fast-WAM}
       & BF16                   & 16  & 16  & 16  & 81.4 & 82.9 & 67.6 & 78.6 & 77.6\ci{\XX} \\
     \cmidrule(l){2-10}
       & QuaRot                 & 4.01 & 4  & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & SpinQuant              & 4.01 & 4  & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & ViDiT-Q                & 6.12 & 8  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
-      & SVDQuant               & 4.81 & 4  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
+      & SVDQuant              & 4.81 & 4  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
     \midrule
-    \multirow{7}{*}{Cosmos-Policy}
+    \multirow{6}{*}{Cosmos-Policy}
       & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} \\
     \cmidrule(l){2-10}
       & QuaRot                 & 4.01 & 4  & 4   & 81.4 & 85.7 & 70.0 & 88.6 & 81.4\ci{4.5} \\
       & SpinQuant              & 4.01 & 4  & 4   & 81.4 & 88.6 & 67.1 & 88.6 & 81.4\ci{4.5} \\
-      & ViDiT-Q                & 6.30 & 8  & 16  & 77.1 & 88.6 & 68.6 & 82.9 & 79.3\ci{4.7} \\
-      & SVDQuant               & 4.89 & 4  & 16  & 82.9 & 87.1 & 72.9 & 88.6 & 82.9\ci{4.4} \\
+      & SVDQuant              & 4.89 & 4  & 16  & 82.9 & 87.1 & 72.9 & 88.6 & 82.9\ci{4.4} \\
       & Action BF16            & \XX & \XX & 4   & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
     \bottomrule
@@ -53,14 +51,13 @@ Cosmos-Policy denoises the future and the action jointly, so its reader starts f
 We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, and on a real robot arm (\cref{sec:exp:real}).
 
 \paragraph{Baselines and quantization settings.}
-We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant} and the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}.
+We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant} and the diffusion quantizer SVDQuant~\cite{li2025svdquant}.
 The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} have no public implementation, so we do not include them.
 \TODO{re-check code availability before submission}
 We also include a simple baseline, \emph{Action BF16}, which keeps the action tokens in BF16 and quantizes everything else.
 Each baseline runs its published recipe and configuration.
 QuaRot and SpinQuant quantize weights, activations, keys and values to 4 bits and round the weights with GPTQ~\cite{frantar2023gptq}, as in their main results.
 SVDQuant quantizes weights and activations to 4 bits, adds a 16-bit low-rank branch and keeps the caches in BF16.
-ViDiT-Q uses its mixed-precision W4A8 configuration, which keeps the feed-forward layers and the first and last blocks at 8 bits.
 Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer and fold the rotation into its weights (\cref{sec:supp:eval}).
 \method and Action BF16 use 4-bit weights with one scale per group of 32, rounded by GPTQ, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
 \TODO{fix the group size and the KV quantizer of \method before its runs}
@@ -87,7 +84,7 @@ The gains of \method concentrate on the \XX and \XX perturbations, where the bas
 
 \paragraph{Results on Cosmos-Policy.}
 \method reaches \XX\% average success, within \XX points of BF16 (83.5\%) and \XX points above SVDQuant, the strongest baseline.
-The baselines lose 0.6--4.2 points, and the loss concentrates on the Spatial and Goal suites.
+The baselines lose 0.6--2.1 points, and the loss concentrates on the Goal suite.
 Results without cache quantization (W4A4) are reported in \cref{sec:supp:results}.
 
 \subsection{Real-world deployment}
