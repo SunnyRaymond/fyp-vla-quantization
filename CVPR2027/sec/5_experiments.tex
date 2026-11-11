@@ -58,7 +58,7 @@ The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} ha
 All baselines quantize weights and activations to 4 bits and keep the cached keys and values in BF16, whereas \method also quantizes the caches to 4 bits.
 Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128, fixed randomized Hadamard blocks for QuaRot and learned rotations for SpinQuant, and fold them into its weights; both round the weights to nearest with one scale per group of 128 and quantize activations with one scale per token (\cref{sec:supp:eval}).
 ViDiT-Q keeps its channel balancing, rotation and per-token activation quantization, SVDQuant follows its published recipe with a 16-bit low-rank branch of rank 32, and AQLM, which quantizes only the weights, is combined with per-token 4-bit activations.
-\method uses 4-bit weights rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
+\method uses 4-bit weights rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales, and 4-bit keys and values with per-token scales.
 \TODO{fix the group size and the KV quantizer of \method before its runs}
 \cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
