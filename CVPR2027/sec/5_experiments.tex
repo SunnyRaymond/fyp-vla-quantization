@@ -19,7 +19,7 @@
       & ViDiT-Q                & 4.33 & 4  & 16  & 77.1 & 70.0 & 68.6 & 74.3 & 72.5\ci{5.2} \\
       & SVDQuant               & 4.81 & 4  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} \\
       & AQLM                   & 4.03 & 4  & 16  & 78.6 & 75.7 & 65.7 & 68.6 & 72.1\ci{5.2} \\
-      & \cellcolor{gray!12}\method & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX\ci{\XX} \\
+      & \cellcolor{gray!12}\method & \cellcolor{gray!12}4.01 & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}81.4 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}67.1 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}74.3\ci{5.1} \\
     \midrule
     \multirow{7}{*}{Cosmos-Policy}
       & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} \\
@@ -37,7 +37,7 @@
   W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
   $\pm$ is the 95\% confidence interval.
   \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
-  \TODO{QuaRot, SpinQuant, ViDiT-Q and AQLM rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant and Cosmos-Policy AQLM not run. All on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. \method not run yet}}
+  \TODO{QuaRot, SpinQuant, ViDiT-Q and AQLM rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant and Cosmos-Policy AQLM not run. All on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. \method on Fast-WAM: panel A, 280 episodes, paired with the BF16 panel-A run (216/280 = 77.1\%; 5 wins, 13 losses, $p = 0.096$); its weights are the QuaRot W4 weights (GPTQ, one scale per row, 4.01 bits), and no plain W4A4KV4 run without refinement exists yet. \method on Cosmos-Policy not run yet}}
   \label{tab:main}
 \end{table*}
 
@@ -63,7 +63,7 @@ ViDiT-Q keeps its channel balancing, rotation and per-token activation quantizat
 \cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
 ViDiT-Q, SVDQuant, AQLM and \method calibrate on the same 80 LIBERO contexts, and SpinQuant learns its rotations on 8 LIBERO contexts.
-For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines \XX\% of the token-steps of the denoising loops and \XX\% of the cached tokens.
+For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines 15.4\% of the activation values of the denoising loops and 6.0\% of the cached keys and values.
 
 \paragraph{Evaluation metrics.}
 We report closed-loop success rates per suite and on average, with 95\% confidence intervals.
@@ -76,8 +76,8 @@ Further implementation and evaluation details are provided in \cref{sec:supp:eva
 \cref{tab:main} reports closed-loop success on both models.
 
 \paragraph{Results on Fast-WAM.}
-\method reaches \XX\% average success, within \XX points of BF16 (77.6\%) and \XX points above \XX, the strongest baseline, although the baselines keep their caches in BF16.
-The baselines lose \XX--\XX points relative to BF16.
+\method reaches 74.3\% average success, within 3.3 points of BF16 (77.6\%) and 1.8 points above SpinQuant and ViDiT-Q, the strongest baselines, although the baselines keep their caches in BF16.
+The baselines lose 5.1--8.0 points relative to BF16.
 The gains of \method concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 
 \paragraph{Results on Cosmos-Policy.}
