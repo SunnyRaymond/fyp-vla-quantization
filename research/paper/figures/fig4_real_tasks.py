@@ -66,6 +66,7 @@ BAR_GAP, BAR_H = 0.034, 0.036      # progress bar under each frame
 BAR_IN, PAD_B = 0.04, 0.03         # bar inset from the frame edges (keeps the end dots whole), bottom margin
 R_IMG = 0.03                       # corner radius of the photos
 INSET_FRAC = 0.31                  # wrist inset width / frame width; bottom-left corner is empty table in all tasks
+TONE_FIXED, TONE_WRIST = (210.0, 0.85), (255.0, 0.88)   # (white point, gamma) per camera, see photo()
 
 INK, MUTED = "#1F2329", "#5F6670"
 BADGE = "#2E3A4B"
@@ -109,11 +110,16 @@ def load(task, ep):
     return dict(T=T, segs=segs, idx=idx, fixed=fixed, wrist=wrist, instr=instr)
 
 
-def photo(a, k=2):
-    """Same global tone curve for every frame (the cameras are flat and slightly cold), then 2x Lanczos."""
-    im = Image.fromarray(a)
-    im = ImageEnhance.Contrast(im).enhance(1.12)
-    im = ImageEnhance.Color(im).enhance(1.15)
+def photo(a, white=255.0, gamma=1.0, k=2):
+    """Same global tone curve for every frame of a camera, then 2x Lanczos.
+
+    The third-person camera tops out at ~200 (the white table reads as grey, median ~140), so its frames get a levels
+    stretch (white point 210) and a gamma of 0.85; the wrist camera already spans 0-255 and only gets gamma 0.88.
+    """
+    x = np.clip(a.astype(np.float32) / white, 0, 1) ** gamma
+    im = Image.fromarray((x * 255 + 0.5).astype(np.uint8))
+    im = ImageEnhance.Contrast(im).enhance(1.05)
+    im = ImageEnhance.Color(im).enhance(1.12)
     im = im.resize((im.width * k, im.height * k), Image.LANCZOS)
     im = im.filter(ImageFilter.UnsharpMask(radius=1.4, percent=45, threshold=2))
     return np.asarray(im)
@@ -201,14 +207,14 @@ def draw(episodes, wrist=True):
         for j in range(N):
             fx = j * (fw + GAP_F)
             a = d["fixed"][j][task["crop_y0"]:task["crop_y0"] + CROP_H]
-            image(ax, photo(a), fx, fy, fw, fh, R_IMG)
+            image(ax, photo(a, *TONE_FIXED), fx, fy, fw, fh, R_IMG)
             if wrist:
                 iw, m = fw * INSET_FRAC, 0.035
                 ih = iw * 0.75
                 ix, iy = fx + m, fy + fh - ih - m
                 rounded(ax, ix - 0.012, iy - 0.012, iw + 0.024, ih + 0.024, 0.022, facecolor="white",
                         edgecolor="none", zorder=4)
-                image(ax, photo(d["wrist"][j]), ix, iy, iw, ih, 0.012, z=5)
+                image(ax, photo(d["wrist"][j], *TONE_WRIST), ix, iy, iw, ih, 0.012, z=5)
             ax.text(fx + 0.05, fy + 0.048, task["labels"][j], color="white", fontsize=FS_CHIP, fontweight="bold",
                     ha="left", va="top", zorder=7,
                     bbox=dict(boxstyle="round,pad=0.3,rounding_size=0.45", facecolor="#14181D", edgecolor="none",
