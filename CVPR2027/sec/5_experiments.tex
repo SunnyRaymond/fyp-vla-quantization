@@ -12,7 +12,7 @@
     Model & Method & W & A & KV & Spatial & Object & Goal & Long & Avg. \\
     \midrule
     \multirow{7}{*}{Fast-WAM}
-      & BF16                   & 16  & 16  & 16  & 81.4 & 82.9 & 67.6 & 78.6 & 77.6\ci{\XX} \\
+      & BF16                   & 16  & 16  & 16  & 80.0 & 78.6 & 72.9 & 77.1 & 77.1\ci{4.9} \\
     \cmidrule(l){2-10}
       & QuaRot                 & 4.13 & 4  & 16  & 72.9 & 74.3 & 64.3 & 67.1 & 69.6\ci{5.4} \\
       & SpinQuant              & 4.13 & 4  & 16  & 78.6 & 72.9 & 68.6 & 70.0 & 72.5\ci{5.2} \\
@@ -37,7 +37,7 @@
   W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
   $\pm$ is the 95\% confidence interval.
   \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
-  \TODO{QuaRot, SpinQuant, ViDiT-Q and AQLM rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant and Cosmos-Policy AQLM not run. All on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. \method on Fast-WAM: panel A, 280 episodes, paired with the BF16 panel-A run (216/280 = 77.1\%; 5 wins, 13 losses, $p = 0.096$); its weights are the QuaRot W4 weights (GPTQ, one scale per row, 4.01 bits), and no plain W4A4KV4 run without refinement exists yet. \method on Cosmos-Policy not run yet}}
+  \TODO{QuaRot, SpinQuant, ViDiT-Q and AQLM rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant and Cosmos-Policy AQLM not run. All on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. The Fast-WAM BF16 row is the panel-A run (216/280). \method on Fast-WAM: panel A, 280 episodes, paired with it (5 wins, 13 losses, $p = 0.096$); no plain W4A4KV4 run without refinement exists yet. \method on Cosmos-Policy not run yet}}
   \label{tab:main}
 \end{table*}
 
@@ -58,7 +58,7 @@ The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} ha
 All baselines quantize weights and activations to 4 bits and keep the cached keys and values in BF16, whereas \method also quantizes the caches to 4 bits.
 Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128, fixed randomized Hadamard blocks for QuaRot and learned rotations for SpinQuant, and fold them into its weights; both round the weights to nearest with one scale per group of 128 and quantize activations with one scale per token (\cref{sec:supp:eval}).
 ViDiT-Q keeps its channel balancing, rotation and per-token activation quantization, SVDQuant follows its published recipe with a 16-bit low-rank branch of rank 32, and AQLM, which quantizes only the weights, is combined with per-token 4-bit activations.
-\method uses 4-bit weights with one scale per group of 32, rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
+\method uses 4-bit weights rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales per group of 32, and 4-bit keys and values with per-token scales.
 \TODO{fix the group size and the KV quantizer of \method before its runs}
 \cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
@@ -76,8 +76,8 @@ Further implementation and evaluation details are provided in \cref{sec:supp:eva
 \cref{tab:main} reports closed-loop success on both models.
 
 \paragraph{Results on Fast-WAM.}
-\method reaches 74.3\% average success, within 3.3 points of BF16 (77.6\%) and 1.8 points above SpinQuant and ViDiT-Q, the strongest baselines, although the baselines keep their caches in BF16.
-The baselines lose 5.1--8.0 points relative to BF16.
+\method reaches 74.3\% average success, within 2.9 points of BF16 (77.1\%) and 1.8 points above SpinQuant and ViDiT-Q, the strongest baselines, although the baselines keep their caches in BF16.
+The baselines lose 4.6--7.5 points relative to BF16.
 The gains of \method concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 
 \paragraph{Results on Cosmos-Policy.}
