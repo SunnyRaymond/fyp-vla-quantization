@@ -1,0 +1,103 @@
+JOB=26206418.pbs101 KEY=int4 MODEL=fastwam STAGE=int4 QUEUE=g1 HOST=x1000c0s6b0n1 NCPUS=16 ARMS=laq START=2026-11-11T16:07:55Z
+GPU_SAMPLE timestamp=2026-11-11T16:07:57Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:07:57Z busy_cores=0.0 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:09:00Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:10:00Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:10:00Z busy_cores=0.0 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:11:02Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:12:02Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 0 %, 5 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:12:02Z busy_cores=0.1 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:13:04Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 0 %, 11415 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:14:05Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 2 %, 14373 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:14:05Z busy_cores=0.1 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:15:07Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 32 %, 14317 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:16:07Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 49 %, 14321 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:16:07Z busy_cores=1.0 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:17:09Z GPU-3b473ff2-ca04-1995-7d8a-167e6dd0e01c, NVIDIA A100-SXM4-40GB, 3 %, 7527 MiB, 40960 MiB
+LIBERO_NUMPY_COMPAT {"numpy": "2.2.6", "float_alias": "float64", "alias_added": true}
+[robosuite WARNING] No private macro file found! (macros.py:53)
+[robosuite WARNING] It is recommended to use a private macro file (macros.py:54)
+[robosuite WARNING] To setup, run: python /scratch/users/ntu/yguo017/fastwam-smoke/venv/lib/python3.11/site-packages/robosuite/scripts/setup_macros.py (macros.py:55)
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+MODEL_LOADING
+MODEL_READY
+INT4 built arm=laq load=335s
+INT4 fake spec=laq median=7.91s
+INT4 fake spec=plain median=5.57s
+INT4 installed layers=600 resident=4.62GiB (BF16 12.78GiB) checks={'rotation_max_abs': 3.814697265625e-06, 'code_mismatch': 0.0, 'scale_rel': 1.0189289696427295e-06, 'gemm_rel': 0.0, 'kv_rel': 1.0067375910693954e-07, 'layers': 8}
+Traceback (most recent call last):
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/graphs.py", line 114, in capture
+    region.out = fn(**static_kwargs)
+                 ^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/laq.py", line 479, in prefill_body
+    return st.cache_kv()
+           ^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/laq.py", line 330, in cache_kv
+    nk, nv = self.kv(k, "K", segs, f"K.video.{i}", "future"), self.kv(v, "V", segs, f"V.video.{i}", "future")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/int4.py", line 273, in kv
+    out = (self.ops.kvq(r, T, st.h, kind, idx) @ self.fd).reshape(x.shape).to(x.dtype)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/int4.py", line 173, in kvq
+    flags[idx] = 1
+    ~~~~~^^^^^
+RuntimeError: CUDA error: operation not permitted when stream is capturing
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/int4_bench.py", line 230, in <module>
+    main()
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/int4_bench.py", line 168, in main
+    results[name]["int4"] = native(name, spec, use_online, "packed")
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/int4_bench.py", line 151, in native
+    graphed, graph_s = run(runtime, datum, groups, torch)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/graph_bench.py", line 39, in run
+    action, _ = runtime.infer(datum, seed, measure=False)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/runner.py", line 229, in infer
+    action = self.model.infer_action(
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/graph_bench.py", line 32, in capture
+    out = original(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/fastwam-smoke/venv/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/fastwam-smoke/FastWAM/src/fastwam/models/wan22/fastwam_optional_idm.py", line 82, in infer_action
+    return FastWAMIDM.infer_action(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/fastwam-smoke/venv/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/fastwam-smoke/FastWAM/src/fastwam/models/wan22/fastwam_idm.py", line 555, in infer_action
+    video_cache_k, video_cache_v = prefill_video_cache(
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/laq.py", line 487, in prefill
+    return st.call("prefill", st.steps, prefill_body, dict(prefill_signature.bind(*args, **kwargs).arguments))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/graphs.py", line 83, in __call__
+    region = self.regions[key] = self.capture(key, fn, kwargs)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/users/ntu/yguo017/laq-speed-20261111/artifacts/26206418.pbs101/graphs.py", line 113, in capture
+    with torch.cuda.graph(region.graph, pool=self.pool):
+  File "/scratch/users/ntu/yguo017/fastwam-smoke/venv/lib/python3.11/site-packages/torch/cuda/graphs.py", line 186, in __exit__
+    self.cuda_graph.capture_end()
+  File "/scratch/users/ntu/yguo017/fastwam-smoke/venv/lib/python3.11/site-packages/torch/cuda/graphs.py", line 84, in capture_end
+    super().capture_end()
+RuntimeError: CUDA error: operation failed due to a previous error during capture
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+ERROR: int4_bench.py failed
+/var/spool/pbs/mom_priv/jobs/26206418.pbs101.SC: line 66: 2701234 Terminated              monitor "$NCPUS" "${GPU_UUIDS[@]}"
+EXIT rc=64 2026-11-11T16:17:48Z

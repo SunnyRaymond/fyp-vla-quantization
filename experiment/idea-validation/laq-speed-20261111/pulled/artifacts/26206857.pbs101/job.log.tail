@@ -1,0 +1,64 @@
+JOB=26206857.pbs101 KEY=int4 MODEL=fastwam STAGE=int4 QUEUE=g1 HOST=x1000c0s4b0n0 NCPUS=16 ARMS=laq START=2026-11-11T16:19:11Z
+GPU_SAMPLE timestamp=2026-11-11T16:19:12Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:19:12Z busy_cores=0.0 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:20:14Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:21:14Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:21:14Z busy_cores=0.0 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:22:17Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:23:17Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 5 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:23:17Z busy_cores=3.1 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:24:19Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 13563 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:25:19Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 0 %, 14373 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:25:19Z busy_cores=0.1 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:26:21Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 37 %, 14317 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:27:21Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 39 %, 7243 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:27:21Z busy_cores=1.0 requested=16
+GPU_SAMPLE timestamp=2026-11-11T16:28:24Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 32 %, 9081 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T16:29:24Z GPU-3db2237e-bbf2-1547-30c7-fdd76c708c21, NVIDIA A100-SXM4-40GB, 6 %, 14209 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T16:29:24Z busy_cores=1.0 requested=16
+INT4 built arm=laq load=313s
+INT4 fake spec=laq median=7.75s
+INT4 fake spec=plain median=5.46s
+INT4 installed layers=600 resident=4.62GiB (BF16 12.78GiB) checks={'rotation_max_abs': 3.814697265625e-06, 'code_mismatch': 0.0, 'scale_rel': 1.0189289696427295e-06, 'gemm_rel': 0.0, 'kv_rel': 1.0067375910693954e-07, 'layers': 8}
+INT4 packed spec=laq eager=4.772s graph=1.151s peak=5.62GiB vs_fake_motor=0.0147 vs_fake_future=0.01291
+INT4 packed spec=plain eager=3.702s graph=0.886s peak=6.02GiB vs_fake_motor=0.0193 vs_fake_future=0.02210
+INT4 resident8 spec=laq eager=4.528s graph=1.080s peak=11.71GiB vs_fake_motor=0.0147 vs_fake_future=0.01291
+INT4_DONE laq:graph=1.151s plain:graph=0.886s
+# LAQ 整数运行时（Fast-WAM，1 张 A100，单进程）
+
+作业 26206857.pbs101，NVIDIA A100-SXM4-40GB，torch 2.7.1+cu128。case 2000 的观测，7 次查询（5 次后 reset 一次，再 2 次；每次换采样种子），LAQ 用与闭环相同的在线 gaze。中位数不计第 1 次（录图模式的第 1 次包含录图）。
+
+## 一次 policy call
+
+| 设置 | 运行时 | eager 中位数 (ms) | 录图中位数 (ms) | 峰值显存 allocated (GiB) |
+|---|---|---:|---:|---:|
+| LAQ（15% 精修 + 在线 gaze） | 假量化（闭环所用） | 7755 | — | — |
+| LAQ（15% 精修 + 在线 gaze） | 整数，权重 4 bit 常驻 | 4772 | 1151 | 5.62 |
+| LAQ（15% 精修 + 在线 gaze） | 整数，权重解包成 8 bit 常驻 | 4528 | 1080 | 11.71 |
+| 不精修 | 假量化（闭环所用） | 5459 | — | — |
+| 不精修 | 整数，权重 4 bit 常驻 | 3702 | 886 | 6.02 |
+
+## 显存
+
+- BF16 算术、dense 权重的一次调用：峰值 13.03 GiB，常驻 12.78 GiB
+- 目标 Linear 的 BF16 权重 11.02 GiB → 4-bit 码加每行 scale 与 bias 2.77 GiB；INT8 scratch 0.041 GiB
+- 整数运行时常驻 4.62 GiB（解包成 8 bit 常驻时 11.17 GiB）
+- 一次查询的 K/V 缓存（按 token 数计算，30 层，文本 129 token）：BF16 194.1 MiB，4-bit 码 53.4 MiB（不精修 50.4 MiB）。运行时里缓存以反量化后的 BF16 张量保存，这两个数是存储格式的大小。
+
+## 开环一致性
+
+| 设置 | 对照 | first-10 motor RMSE（均值 / 最大） | future NMSE（均值 / 最大） |
+|---|---|---:|---:|
+| LAQ（15% 精修 + 在线 gaze） | 假量化 对 BF16（第 1 次查询） | 0.0130 / 0.0130 | 0.02616 / 0.02616 |
+| LAQ（15% 精修 + 在线 gaze） | 整数 对 BF16（第 1 次查询） | 0.0121 / 0.0121 | 0.02629 / 0.02629 |
+| LAQ（15% 精修 + 在线 gaze） | 整数 对 假量化（7 次查询） | 0.0147 / 0.0330 | 0.01291 / 0.02034 |
+| LAQ（15% 精修 + 在线 gaze） | 整数录图 对 整数 eager | 0.0000 / 0.0000 | 0.00000 / 0.00000 |
+| 不精修 | 假量化 对 BF16（第 1 次查询） | 0.0172 / 0.0172 | 0.00716 / 0.00716 |
+| 不精修 | 整数 对 BF16（第 1 次查询） | 0.0166 / 0.0166 | 0.03553 / 0.03553 |
+| 不精修 | 整数 对 假量化（7 次查询） | 0.0193 / 0.0259 | 0.02210 / 0.04141 |
+| 不精修 | 整数录图 对 整数 eager | 0.0000 / 0.0000 | 0.00000 / 0.00000 |
+
+kernel 对参考算术：旋转最大绝对差 3.81e-06，码不一致比例 0.00e+00，GEMM 输出最大相对差 0.00e+00，K/V 最大相对差 1.01e-07（8 种层形状）。
+PIPELINE_COMPLETE
+/var/spool/pbs/mom_priv/jobs/26206857.pbs101.SC: line 66: 2652194 Terminated              monitor "$NCPUS" "${GPU_UUIDS[@]}"
+EXIT rc=0 2026-11-11T16:30:02Z

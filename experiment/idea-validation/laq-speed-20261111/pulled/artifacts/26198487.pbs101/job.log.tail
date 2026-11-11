@@ -1,0 +1,28 @@
+JOB=26198487.pbs101 KEY=graph MODEL=fastwam STAGE=graph QUEUE=g1 HOST=x1000c0s7b0n1 NCPUS=16 ARMS=laq START=2026-11-11T08:26:49Z
+GPU_SAMPLE timestamp=2026-11-11T08:26:49Z GPU-14f3f4bc-aea1-563f-2aca-d08988c94079, NVIDIA A100-SXM4-40GB, 0 %, 1 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T08:26:49Z busy_cores=0.1 requested=16
+GPU_SAMPLE timestamp=2026-11-11T08:27:52Z GPU-14f3f4bc-aea1-563f-2aca-d08988c94079, NVIDIA A100-SXM4-40GB, 0 %, 13531 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T08:28:52Z GPU-14f3f4bc-aea1-563f-2aca-d08988c94079, NVIDIA A100-SXM4-40GB, 31 %, 14317 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T08:28:52Z busy_cores=1.1 requested=16
+GPU_SAMPLE timestamp=2026-11-11T08:29:54Z GPU-14f3f4bc-aea1-563f-2aca-d08988c94079, NVIDIA A100-SXM4-40GB, 100 %, 18957 MiB, 40960 MiB
+GPU_SAMPLE timestamp=2026-11-11T08:30:54Z GPU-14f3f4bc-aea1-563f-2aca-d08988c94079, NVIDIA A100-SXM4-40GB, 44 %, 18729 MiB, 40960 MiB
+CPU_SAMPLE timestamp=2026-11-11T08:30:54Z busy_cores=1.0 requested=16
+GRAPH built arm=laq anchor_motor_rmse=0.0130 load=72s
+GRAPH spec=laq eager=7.95s graph=2.63s capture_query=17.9s peak=14.0GiB regions=12
+GRAPH spec=plain eager=5.60s graph=2.08s capture_query=14.0s peak=14.3GiB regions=12
+GRAPH_DONE laq:eager=7.95s,graph=2.63s plain:eager=5.60s,graph=2.08s
+# CUDA Graph 测速（Fast-WAM，1 张 A100，单进程）
+
+作业 26198487.pbs101。case 2000 的观测，9 次查询（6 次后 reset 一次，再 3 次；每次换采样种子），LAQ 用与闭环相同的在线 gaze。每种设置下，录图模式每一次查询的动作和预测 future 都与 eager 逐位相同。中位数不计第 1 次（录图模式的第 1 次包含预热和录图）。
+
+| 设置 | eager 中位数 (s) | 录图中位数 (s) | 加速 | 录图那次查询 (s) | eager 峰值显存 (GiB) | 录图峰值显存 (GiB) |
+|---|---:|---:|---:|---:|---:|---:|
+| LAQ（15% 精修 + 在线 gaze） | 7.95 | 2.63 | 3.02× | 17.9 | 13.4 | 14.0 |
+| 不精修（= QuaRot 底座） | 5.60 | 2.08 | 2.69× | 14.0 | 14.1 | 14.3 |
+
+对照：正在跑的 LAQ 闭环（旧 eager 代码，每卡 2 个进程）53 局、1938 次调用的中位数 15.20 s。
+
+录图模式下文本 K/V 每步在图里重算（eager 下由 Python 端缓存复用），两者数值相同。
+PIPELINE_COMPLETE
+/var/spool/pbs/mom_priv/jobs/26198487.pbs101.SC: line 65: 2964822 Terminated              monitor "$NCPUS" "${GPU_UUIDS[@]}"
+EXIT rc=0 2026-11-11T08:31:20Z

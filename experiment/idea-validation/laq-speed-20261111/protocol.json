@@ -1,0 +1,143 @@
+{
+  "protocol": "laq-speed-20261111-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/laq-speed-20261111",
+  "purpose": "Speed of the LAQ policy call on Fast-WAM: eager against per-call CUDA graphs (bit-identical), for the LAQ arm and its plain QuaRot base. Reads the LAQ experiment (laq-fastwam-20261111) and never writes to it. Then the integer runtime (packed 4-bit weights, INT8 GEMM): memory, latency and open-loop agreement with the fake-quantized arm.",
+  "seed": 20261111,
+  "arms": [
+    "laq"
+  ],
+  "laq": {
+    "base": "the published QuaRot recipe: GPTQ per-row W4 in randomized-Hadamard coordinates, per-token symmetric A4 (clip 0.9), per-head asymmetric KV4 (clip 0.95)",
+    "bank": "/scratch/users/ntu/yguo017/published-baselines-20261110/results/fastwam/banks/quarot",
+    "arch": "/scratch/users/ntu/yguo017/published-baselines-20261110/results/fastwam/arch.json",
+    "plain_anchor": "/scratch/users/ntu/yguo017/published-baselines-20261110/results/fastwam/loops/quarot/anchor.pt",
+    "metric": "/scratch/users/ntu/yguo017/fastwam-guided-hessian-20261028/results/ravqc/metric/metric.pt",
+    "steps": 10,
+    "contexts": 16,
+    "seed": 20261111,
+    "stale_seconds": 2700,
+    "fractions": {
+      "laq": 0.15
+    },
+    "online": {
+      "laq": true
+    },
+    "objective": "A + lambda_M Z_M against the BF16 teacher; lambda_M = mean A / mean Z_M of the plain arm",
+    "refinement": "x^ = Q(x) + Q(x - Q(x)), per-token scales, no clipping; activations and cached K/V",
+    "budget": "fraction of the 4-bit operand values of one query (activations and cached K/V together) spent on second passes; the action rows are always refined"
+  },
+  "models": {
+    "fastwam": {
+      "targets": 600,
+      "blocks": 30,
+      "a16_prep": "/scratch/users/ntu/yguo017/fastwam-a16-baselines-20261028/results/prep",
+      "frame_tokens": 98,
+      "video_tokens": 294,
+      "rotation_seed": 20261008,
+      "panel": {
+        "manifest": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/manifest.json",
+        "calibration_plan": "/scratch/users/ntu/yguo017/fastwam-vq-calibration-suites-20261013/data/plan.json",
+        "anchor_case": 2000
+      },
+      "reference_bf16": {
+        "kind": "jsonl",
+        "pattern": "/scratch/users/ntu/yguo017/fastwam-rotation-baselines-20261008/results/worker_*/episodes.jsonl",
+        "arm": "bf16",
+        "successes": 216
+      },
+      "reference_arms": {
+        "quarot": "/scratch/users/ntu/yguo017/published-baselines-20261110/results/fastwam/loops/quarot/episodes"
+      },
+      "roots": {
+        "base": "/scratch/users/ntu/yguo017/fastwam-smoke",
+        "pilot": "/scratch/users/ntu/yguo017/fastwam-libero-plus-pilot-20261005",
+        "old_inputs": "/scratch/users/ntu/yguo017/fastwam-a4-phases12-20261006",
+        "old_banks": "/scratch/users/ntu/yguo017/fastwam-smooth-vq-phases12-20261006",
+        "sif": "/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif",
+        "engine_source": "/scratch/users/ntu/yguo017/fastwam-vq-r128-c80-c-decoder-buffer-20261024-r3-long/artifacts/25960283.pbs101"
+      },
+      "engine_files": [
+        "reference_profile.py",
+        "export_runtime.py",
+        "fused_input.py",
+        "fused_vq.py",
+        "kernel_runtime.py",
+        "layer_runtime.py",
+        "condition_cache.py",
+        "abc_runtime.py",
+        "graph_runtime.py",
+        "decoder_runtime.py",
+        "profile_worker.py",
+        "runner.py",
+        "quantization.py",
+        "libero_state_loader.py",
+        "previous_vq_adapter.py",
+        "rotation_bank.py",
+        "batched_transform.py",
+        "smooth_vq.py",
+        "codebook.py",
+        "micro_codebook.py",
+        "c8_train_banks.py",
+        "sampler.py",
+        "latent_reference.py",
+        "checkpointing.py",
+        "calibration_source.py"
+      ],
+      "jobs": {
+        "calib_short": {
+          "name": "laqcs",
+          "stage": "calib",
+          "gpus": 2,
+          "ncpus": 32,
+          "memory_gb": 220,
+          "walltime": "02:00:00"
+        },
+        "calib_long": {
+          "name": "laqcl",
+          "stage": "calib",
+          "gpus": 1,
+          "ncpus": 16,
+          "memory_gb": 110,
+          "walltime": "06:00:00"
+        },
+        "loop": {
+          "name": "laqlp",
+          "stage": "loop",
+          "gpus": 2,
+          "ncpus": 32,
+          "memory_gb": 220,
+          "walltime": "24:00:00",
+          "slots_per_gpu": 2,
+          "join_min": 6
+        },
+        "graph": {
+          "name": "lsgr",
+          "stage": "graph",
+          "gpus": 1,
+          "ncpus": 16,
+          "memory_gb": 110,
+          "walltime": "03:00:00"
+        },
+        "int4": {
+          "name": "lsi4",
+          "stage": "int4",
+          "gpus": 1,
+          "ncpus": 16,
+          "memory_gb": 110,
+          "walltime": "02:30:00"
+        }
+      }
+    }
+  },
+  "speed": {
+    "source_root": "/scratch/users/ntu/yguo017/laq-fastwam-20261111",
+    "source_protocol": "laq-fastwam-20261111-v1",
+    "arm": "laq",
+    "queries": 6,
+    "queries_after_reset": 3,
+    "int4": {
+      "queries": 5,
+      "queries_after_reset": 2
+    }
+  }
+}

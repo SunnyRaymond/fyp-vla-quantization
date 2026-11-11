@@ -1,0 +1,142 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# qsub -v JOB=graph run.pbs
+#   calib  one calib.py worker per GPU (workers of any job share the units through claims), finalize, then one
+#          anchor-query smoke per loop arm
+#   loop   worker slots pull arms from sched.py; analysis.py writes results/fastwam/summary.json + RESULTS.zh.md
+#   graph  graph_bench.py on one GPU: eager against CUDA graphs, LAQ arm and plain base, bit for bit
+#   int4   int4_bench.py on one GPU: the integer runtime (packed 4-bit weights) against the fake-quantized arm
+# Units and episodes are saved one by one, so a second or resubmitted job continues where the last one stopped.
+# GPU utilization and memory are sampled into the job log every 60 s.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/laq-speed-20261111
+MODEL=fastwam
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+case "${JOB:-}" in graph|int4) ;; *) die "JOB must be graph or int4 (got '${JOB:-}')";; esac
+
+mapfile -t CFG < <(python3 - "$NEW_ROOT/protocol.json" "$MODEL" "$JOB" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+m, j = p["models"][sys.argv[2]], p["models"][sys.argv[2]]["jobs"][sys.argv[3]]
+h, mi, s = (int(x) for x in j["walltime"].split(":"))
+r = m.get("roots", {})
+for value in (j["gpus"], j.get("slots_per_gpu", 1), 3600 * h + 60 * mi + s, " ".join(p["arms"]),
+              j["stage"], r.get("base", "-"), r.get("pilot", "-"), r.get("old_banks", "-"),
+              r.get("old_inputs", "-"), r.get("sif", "-"), r.get("engine_source", "-"), " ".join(m.get("engine_files", []))):
+    print(value)
+PY
+)
+test "${#CFG[@]}" -eq 12 || die 'Malformed protocol'
+GPUS=${CFG[0]}; SLOTS_PER_GPU=${CFG[1]}; WALL=${CFG[2]}; read -r -a ARMS <<< "${CFG[3]}"
+STAGE=${CFG[4]}; ASSET_ROOT=-; BASE=${CFG[5]}; ROOT=${CFG[6]}; SMOOTH_ROOT=${CFG[7]}; SOURCE_ROOT=${CFG[8]}; SIF=${CFG[9]}
+ENGINE_SOURCE=${CFG[10]}; read -r -a ENGINE_FILES <<< "${CFG[11]}"
+
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results/$MODEL
+DIAG_ROOT=$NEW_ROOT
+FW_JOB_START_EPOCH=$(date +%s)
+COSMOS_JOB_START_EPOCH=$FW_JOB_START_EPOCH
+DEADLINE_EPOCH=$(( FW_JOB_START_EPOCH + WALL - 900 ))
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ASSET_ROOT ARTIFACTS RESULTS FW_JOB_START_EPOCH COSMOS_JOB_START_EPOCH DEADLINE_EPOCH MODEL
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the PBS allocation'
+printf '%s\n' "$QSTAT" > "$ARTIFACTS/allocation.txt"
+QUEUE=$(awk -F= '/^[[:space:]]*queue[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+NCPUS=$(awk -F= '/^[[:space:]]*Resource_List.ncpus[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die "Cannot read Resource_List.ncpus ('$NCPUS')"
+echo "JOB=$PBS_JOBID KEY=$JOB MODEL=$MODEL STAGE=$STAGE QUEUE=$QUEUE HOST=$(hostname -s) NCPUS=$NCPUS ARMS=${ARMS[*]} START=$(date -u +%FT%TZ)"
+
+MONITOR_PID=
+PIDS=()
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  (( rc == 0 )) || [[ -e "$ARTIFACTS/FAILED" ]] || printf '%s run.pbs exited %s\n' "$(date -u +%FT%TZ)" "$rc" >> "$ARTIFACTS/FAILED"
+  for pid in "${PIDS[@]:-}"; do [[ -n "$pid" ]] && { pkill -TERM -P "$pid" 2>/dev/null; kill -TERM "$pid" 2>/dev/null; }; done
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  echo "EXIT rc=$rc $(date -u +%FT%TZ)"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
+if [[ "$MODEL" == fastwam ]]; then
+  for name in "${ENGINE_FILES[@]}"; do
+    test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+    cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+  done
+fi
+source "$ARTIFACTS/env_${MODEL}.sh"
+source "$ARTIFACTS/slots.sh"
+command -v python3.11 > /dev/null || die 'python3.11 missing after module load'
+
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  IFS=, read -r -a GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+  GPU_UUIDS=()
+  for gpu in "${GPU_IDS[@]}"; do GPU_UUIDS+=("$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')"); done
+else
+  mapfile -t GPU_UUIDS < <(nvidia-smi --query-gpu=uuid --format=csv,noheader | tr -d '[:blank:]')
+fi
+test "${#GPU_UUIDS[@]}" -eq "$GPUS" || die "Expected $GPUS GPUs, got ${#GPU_UUIDS[@]}"
+for uuid in "${GPU_UUIDS[@]}"; do [[ "$uuid" == GPU-* ]] || die "Bad GPU UUID '$uuid'"; done
+monitor "$NCPUS" "${GPU_UUIDS[@]}" & MONITOR_PID=$!
+PROTOCOL=$ARTIFACTS/protocol.json
+
+if [[ "$STAGE" == calib ]]; then
+  export FW_CPU_THREADS=$(( NCPUS / GPUS ))
+  for (( k = 0; k < GPUS; k++ )); do
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[$k]} run_python "$ARTIFACTS/calib.py" --protocol "$PROTOCOL" --worker "$k"       > "$ARTIFACTS/calib_worker_$k.log" 2>&1 & PIDS+=("$!")
+  done
+  failed=0
+  for (( k = 0; k < GPUS; k++ )); do
+    if ! wait "${PIDS[$k]}"; then failed=1; tail -c 4000 "$ARTIFACTS/calib_worker_$k.log"; fi
+  done
+  PIDS=()
+  grep -h '^CALIB\|^UNIT plain\|^UNIT base0\|^UNIT eval' "$ARTIFACTS"/calib_worker_*.log | tail -n 60 || true
+  (( failed == 0 )) || die 'A calibration worker failed or ran out of walltime'
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/calib.py" --protocol "$PROTOCOL" --finalize
+  cat "$RESULTS/calib/RESULTS.zh.md"
+  for arm in "${ARMS[@]}"; do
+    echo "SMOKE $MODEL $arm $(date -u +%H:%M:%S)"
+    CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/${MODEL}_loop.py" --protocol "$PROTOCOL" --arm "$arm" --smoke       > "$ARTIFACTS/smoke_$arm.log" 2>&1 || { tail -c 6000 "$ARTIFACTS/smoke_$arm.log"; die "Smoke failed for $arm"; }
+    grep '^SMOKE' "$ARTIFACTS/smoke_$arm.log"
+  done
+elif [[ "$STAGE" == graph ]]; then
+  export FW_CPU_THREADS=$NCPUS
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/graph_bench.py" --protocol "$PROTOCOL" \
+    > "$ARTIFACTS/graph.log" 2>&1 || { tail -c 6000 "$ARTIFACTS/graph.log"; die 'graph_bench.py failed'; }
+  grep '^GRAPH' "$ARTIFACTS/graph.log"
+  cat "$RESULTS/bench/${PBS_JOBID%%.*}/RESULTS.zh.md"
+elif [[ "$STAGE" == int4 ]]; then
+  export FW_CPU_THREADS=$NCPUS
+  CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/int4_bench.py" --protocol "$PROTOCOL"     > "$ARTIFACTS/int4.log" 2>&1 || { tail -c 8000 "$ARTIFACTS/int4.log"; die 'int4_bench.py failed'; }
+  grep '^INT4' "$ARTIFACTS/int4.log"
+  cat "$RESULTS/bench/${PBS_JOBID%%.*}/RESULTS.zh.md"
+else
+  test -s "$RESULTS/calib/COMPLETE.json" || die 'The calibration is not complete'
+  python3.11 "$ARTIFACTS/sched.py" init --protocol "$PROTOCOL" --model "$MODEL"
+  python3.11 "$ARTIFACTS/sched.py" status --protocol "$PROTOCOL" --model "$MODEL"
+  SLOTS=$(( GPUS * SLOTS_PER_GPU ))
+  THREADS=$(( NCPUS / SLOTS > 0 ? NCPUS / SLOTS : 1 ))
+  echo "SLOTS=$SLOTS THREADS=$THREADS DEADLINE=$(date -u -d "@$DEADLINE_EPOCH" +%FT%TZ)"
+  for (( slot = 0; slot < SLOTS; slot++ )); do
+    slot_loop "$slot" "${GPU_UUIDS[$(( slot % GPUS ))]}" "$THREADS" & PIDS+=("$!")
+    sleep 15
+  done
+  supervise "${PIDS[@]}" || die 'A slot failed (see FAILED)'
+  PIDS=()
+  echo "SLOTS_DONE $(date -u +%H:%M:%S)"
+  python3.11 "$ARTIFACTS/sched.py" status --protocol "$PROTOCOL" --model "$MODEL"
+  python3.11 "$ARTIFACTS/analysis.py" --protocol "$PROTOCOL" --model "$MODEL"
+fi
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

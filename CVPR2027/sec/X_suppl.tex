@@ -53,7 +53,29 @@ SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, 
 
 \section{Computational cost}
 \label{sec:supp:cost}
-\TODO{integer kernels and runtime; latency broken down into memory traffic, arithmetic and refinement; saving from computing the observation tokens once; time and memory of each calibration stage}
+\paragraph{Runtime.}
+The measurements of \cref{tab:efficiency} use a runtime in which the weights of the 600 quantized layers stay packed at 4 bits, two codes per byte, with one 32-bit scale per output row; no 16-bit copy of them is kept.
+A layer first rotates its input, written as two or three small matrix products over the Kronecker factors of the Hadamard transform, and one kernel writes the 4-bit codes and the scale of every token.
+A refined token contributes two rows of codes, its first pass and its second pass, so the second pass is the same integer product on additional rows.
+The product unpacks the weight into an 8-bit buffer shared by all layers and runs an 8-bit integer matrix product with 32-bit accumulation, which is exact, and one kernel scales the result by the token and row scales, adds the second pass and the bias, and writes the 16-bit output.
+Cached keys and values are rotated over the head dimension, quantized for each token and head, and rotated back.
+The keys and values of the text context are computed at the first denoising step of each loop and reused, and the three phases of a call (future denoising, cache write, action denoising) are replayed as CUDA graphs.
+For every layer shape, the codes and the integer products of the kernels equal a reference implementation exactly.
+
+\paragraph{Agreement with the simulated arithmetic.}
+The closed-loop evaluation simulates 4-bit arithmetic with 16-bit operands.
+On the same query, the action of the runtime differs from BF16 by 0.0121 (root-mean-square error of the first 10 actions, normalized units) and that of the simulation by 0.0130, and the future errors are 0.0263 and 0.0262.
+The two do not agree with each other bit for bit (0.0147 between them over 7 queries): the 16-bit rounding of the simulated operands changes some rounding decisions, and 4-bit rounding amplifies such differences along the denoising steps.
+
+\paragraph{Memory and latency.}
+The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales, and the shared 8-bit buffer adds 0.04\,GB.
+The resident memory of the policy falls from 13.7\,GB to 5.0\,GB.
+Keeping the weights unpacked at 8 bits instead lowers the latency from 1151\,ms to 1080\,ms and raises the peak memory from 6.0\,GB to 12.6\,GB.
+Measurements use one NVIDIA A100 (40\,GB) and one process, and report the median over the calls after the first.
+\TODO{only 7 calls on one observation; no breakdown of the latency into rotation, quantization, product and attention yet; the observation tokens are still recomputed at every step}
+
+\paragraph{Calibration.}
+Choosing the refined tokens runs 16 calibration contexts through the quantized model once for each class of tokens and takes 1.2 GPU-hours on one A100 with a peak memory of 27\,GB.
 
 \section{Real-world experiments}
 \label{sec:supp:real}

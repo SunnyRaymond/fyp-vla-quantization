@@ -71,7 +71,7 @@ For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per
 
 \paragraph{Evaluation metrics.}
 We report closed-loop success rates per suite and on average, with 95\% confidence intervals.
-For efficiency, we report weight storage, the peak memory of the whole policy, the end-to-end latency from observation to action chunk, and the calibration time.
+For efficiency, we report weight and cache storage, the peak memory of the whole policy, the end-to-end latency from observation to action chunk, and the calibration time.
 Further implementation and evaluation details are provided in \cref{sec:supp:eval}.
 
 \subsection{Main results}
@@ -142,7 +142,7 @@ Success criteria are listed in \cref{sec:supp:real}.
 \cref{tab:real} summarizes the real-world results.
 \method succeeds in \XX of \XX trials, compared with \XX for \XX and \XX for BF16.
 On pick-and-place, \XX.
-The quantized model stores \XX\,GB of weights instead of 12\,GB.
+The quantized model stores 3.2\,GB of weights instead of 12.0\,GB.
 
 \subsection{Ablation study}
 \label{sec:exp:ablation}
@@ -220,21 +220,25 @@ When the calibration contexts come from tasks that are disjoint from the evaluat
   \setlength{\tabcolsep}{3pt}
   \begin{tabular}{@{}lcccc@{}}
     \toprule
-    Method & Weights & Peak mem. & Latency & Calibration \\
-           & (GB)    & (GB)      & (ms)    & (GPU-h) \\
+    Method & Weights & Caches & Peak mem. & Latency \\
+           & (GB)    & (MB)   & (GB)      & (ms) \\
     \midrule
-    BF16            & 12.0 & \XX & \XX & -- \\
-    QuaRot          & \XX  & \XX & \XX & \XX \\
-    \method         & \XX  & \XX & \XX & \XX \\
+    BF16                       & 12.0 & 204 & 14.0 & 544 \\
+    W4A4KV4, no refinement     & 3.2  & 53  & 6.5  & 886 \\
+    \method                    & 3.2  & 56  & 6.0  & 1151 \\
     \bottomrule
   \end{tabular}
-  \caption{Cost of one Fast-WAM policy call on \XX, with all methods in the same runtime.
-  Peak memory covers the whole policy, and latency is measured end to end from observation to action chunk.}
+  \caption{Cost of one Fast-WAM policy call on an NVIDIA A100.
+  Weights cover the whole denoiser, caches are the keys and values of one call, peak memory covers the whole policy with the text embedding of the instruction computed once, and latency is measured end to end from observation to action chunk.
+  \TODO{(i) the closed-loop results of \cref{tab:main} were run with simulated 4-bit arithmetic, not with this runtime: in open loop the two agree with BF16 equally well but not with each other bit for bit, see \cref{sec:supp:cost}; (ii) the runtime keeps the caches as dequantized 16-bit tensors, the cache column is the size of the 4-bit storage format; (iii) the latency of the 4-bit runtime is not optimized and is 2.1$\times$ that of BF16; (iv) BF16 latency comes from an earlier run of the BF16 runtime on the same GPU model}}
   \label{tab:efficiency}
 \end{table}
 
-\cref{tab:efficiency} reports the cost of \method on Fast-WAM.
-It reduces weight storage from 12\,GB to \XX\,GB and the peak memory of the whole policy from \XX\,GB to \XX\,GB.
-Its end-to-end latency is \XX\,ms, compared with \XX\,ms for BF16 and \XX\,ms for plain W4A4KV4: the second 4-bit pass accounts for \XX\% of it, and computing the observation tokens once saves \XX\%.
-Calibration takes \XX GPU-hours with a peak memory of \XX\,GB, since it runs reverse passes through the reader only.
-\cref{sec:supp:cost} breaks the latency down into memory traffic, arithmetic and refinement.
+\cref{tab:efficiency} reports the cost of \method on Fast-WAM with its weights stored and multiplied as 4-bit codes.
+\method stores every quantized layer at 4.01 bits per weight with no high-precision branch, which reduces the weights of the denoiser from 12.0\,GB to 3.2\,GB (3.8$\times$) and the peak memory of the whole policy from 14.0\,GB to 6.0\,GB (2.3$\times$).
+The cached keys and values of one call shrink from 204\,MB to 56\,MB, of which the second 4-bit pass of the refined tokens takes 3\,MB.
+One policy call takes 1151\,ms, compared with 886\,ms without refinement, so the second 4-bit pass and the run-time gaze account for 23\% of the latency.
+On this GPU the 4-bit runtime is slower than BF16 (544\,ms), since its integer products run as 8-bit matrix products and every layer adds a rotation and a quantization of its input; the benefit of \method on this hardware is memory.
+Beyond the GPTQ weights that it shares with QuaRot and the reader metric, the calibration of \method takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model.
+\TODO{add the time and memory of the reader metric (80 contexts, four reverse passes through the reader each); its job record is no longer available}
+\cref{sec:supp:cost} describes the runtime.
