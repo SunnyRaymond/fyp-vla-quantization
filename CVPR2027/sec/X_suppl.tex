@@ -30,14 +30,8 @@ Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10
 Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk before replanning.
 Calibration runs on NVIDIA A100 GPUs.
 On LIBERO-Plus, we draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
-On LIBERO, we run 50 trials for each of the 40 tasks from the official initial states, with three seeds for Cosmos-Policy as in its original evaluation~\cite{kim2026cosmospolicy}.
+On LIBERO, we run every method for 50 trials on each of the 40 tasks from the official initial states, 2{,}000 episodes in total, with the same seeds across methods.
 \TODO{seed rules, runtime consistency checks, and how the confidence intervals of \cref{tab:main} are computed; fix the LIBERO seeds before the runs}
-
-\paragraph{Published LIBERO results.}
-Where no run of ours exists, \cref{tab:main} reports published LIBERO results on the same checkpoints.
-The BF16 result of Fast-WAM is the Fast-WAM-IDM variant of~\cite{yuan2026fastwam}, the variant we quantize, evaluated over 2{,}000 trials.
-The BF16 result of Cosmos-Policy is the unmodified model of~\cite{liu2026wamachine}, evaluated over 6{,}000 trials (50 initial states per task and three seeds).
-The QuaRot and SVDQuant results on Cosmos-Policy are taken from~\cite{wang2026steerquant}, which quantizes the same attention and feed-forward layers, keeps the caches in BF16 and evaluates 3{,}000 rollouts (25 per task and three seeds), and from~\cite{xu2026prede}, which quantizes the 280 linear layers of the transformer blocks with SVDQuant at W4A4 and reports the average over the four suites only.
 
 \paragraph{Baselines.}
 All baselines quantize the linear layers of the transformer blocks to W4A4 and keep the cached keys and values in BF16.
