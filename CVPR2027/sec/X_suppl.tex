@@ -65,14 +65,13 @@ For every layer shape, the codes and the integer products of the kernels equal a
 \paragraph{Agreement with the simulated arithmetic.}
 The closed-loop evaluation simulates 4-bit arithmetic with 16-bit operands.
 On the same query, the action of the runtime differs from BF16 by 0.0121 (root-mean-square error of the first 10 actions, normalized units) and that of the simulation by 0.0130, and the future errors are 0.0263 and 0.0262.
-The two do not agree with each other bit for bit (0.0147 between them over 7 queries): the 16-bit rounding of the simulated operands changes some rounding decisions, and 4-bit rounding amplifies such differences along the denoising steps.
+\TODO{the two differ from each other by 0.0147 over 7 queries, as much as either differs from BF16: the 16-bit rounding of the simulated operands changes rounding decisions and 4-bit rounding amplifies them along the denoising steps; the comparison with BF16 is one query}
 
 \paragraph{Memory and latency.}
 The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales, and the shared 8-bit buffer adds 0.04\,GB.
 The resident memory of the policy falls from 13.7\,GB to 5.0\,GB.
-Keeping the weights unpacked at 8 bits instead lowers the latency from 1151\,ms to 1080\,ms and raises the peak memory from 6.0\,GB to 12.6\,GB.
-Measurements use one NVIDIA A100 (40\,GB) and one process, and report the median over the calls after the first.
-\TODO{only 7 calls on one observation; no breakdown of the latency into rotation, quantization, product and attention yet; the observation tokens are still recomputed at every step}
+Measurements use one NVIDIA A100 (40\,GB) and one process, and report the median over the calls after the first; the BF16 model runs its released PyTorch implementation.
+\TODO{only 7 calls on one observation; BF16 with CUDA graphs and reused text keys and values takes 544\,ms; keeping the weights unpacked at 8 bits gives 1080\,ms at 12.6\,GB peak; no breakdown of the latency yet; the observation tokens are still recomputed at every step}
 
 \paragraph{Calibration.}
 Choosing the refined tokens runs 16 calibration contexts through the quantized model once for each class of tokens and takes 1.2 GPU-hours on one A100 with a peak memory of 27\,GB.

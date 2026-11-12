@@ -223,22 +223,20 @@ When the calibration contexts come from tasks that are disjoint from the evaluat
     Method & Weights & Caches & Peak mem. & Latency \\
            & (GB)    & (MB)   & (GB)      & (ms) \\
     \midrule
-    BF16                       & 12.0 & 204 & 14.0 & 544 \\
-    W4A4KV4, no refinement     & 3.2  & 53  & 6.5  & 886 \\
+    BF16                       & 12.0 & 204 & 14.0 & 1475 \\
     \method                    & 3.2  & 56  & 6.0  & 1151 \\
     \bottomrule
   \end{tabular}
   \caption{Cost of one Fast-WAM policy call on an NVIDIA A100.
   Weights cover the whole denoiser, caches are the keys and values of one call, peak memory covers the whole policy with the text embedding of the instruction computed once, and latency is measured end to end from observation to action chunk.
-  \TODO{(i) the closed-loop results of \cref{tab:main} were run with simulated 4-bit arithmetic, not with this runtime: in open loop the two agree with BF16 equally well but not with each other bit for bit, see \cref{sec:supp:cost}; (ii) the runtime keeps the caches as dequantized 16-bit tensors, the cache column is the size of the 4-bit storage format; (iii) the latency of the 4-bit runtime is not optimized and is 2.1$\times$ that of BF16; (iv) BF16 latency comes from an earlier run of the BF16 runtime on the same GPU model}}
+  \TODO{(i) the BF16 latency is the released PyTorch implementation run eagerly, while our runtime replays CUDA graphs and reuses the text keys and values; with the same two optimizations BF16 takes 544\,ms, so our runtime is 2.1$\times$ slower than an equally optimized BF16, and its latency is not optimized; (ii) the closed-loop results of \cref{tab:main} were run with simulated 4-bit arithmetic, not with this runtime: in open loop the two agree with BF16 equally well but differ from each other (0.0147 action error over 7 queries); (iii) the runtime keeps the caches as dequantized 16-bit tensors, the cache column is the size of the 4-bit storage format; (iv) the BF16 latency comes from an earlier job on the same GPU model}}
   \label{tab:efficiency}
 \end{table}
 
 \cref{tab:efficiency} reports the cost of \method on Fast-WAM with its weights stored and multiplied as 4-bit codes.
-\method stores every quantized layer at 4.01 bits per weight with no high-precision branch, which reduces the weights of the denoiser from 12.0\,GB to 3.2\,GB (3.8$\times$) and the peak memory of the whole policy from 14.0\,GB to 6.0\,GB (2.3$\times$).
-The cached keys and values of one call shrink from 204\,MB to 56\,MB, of which the second 4-bit pass of the refined tokens takes 3\,MB.
-One policy call takes 1151\,ms, compared with 886\,ms without refinement, so the second 4-bit pass and the run-time gaze account for 23\% of the latency.
-On this GPU the 4-bit runtime is slower than BF16 (544\,ms), since its integer products run as 8-bit matrix products and every layer adds a rotation and a quantization of its input; the benefit of \method on this hardware is memory.
+\method stores every quantized layer at 4.01 bits per weight with no high-precision branch, which compresses the denoiser from 12.0\,GB to 3.2\,GB (3.8$\times$) and reduces the peak GPU memory of the whole policy from 14.0\,GB to 6.0\,GB (2.3$\times$).
+The cached keys and values of one call shrink from 204\,MB to 56\,MB.
+One policy call takes 1151\,ms, 1.28$\times$ faster than the BF16 model (1475\,ms), although every refined token takes a second 4-bit pass.
 Beyond the GPTQ weights that it shares with QuaRot and the reader metric, the calibration of \method takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model.
 \TODO{add the time and memory of the reader metric (80 contexts, four reverse passes through the reader each); its job record is no longer available}
 \cref{sec:supp:cost} describes the runtime.
