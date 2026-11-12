@@ -43,9 +43,8 @@ All baselines quantize the linear layers of the transformer blocks to W4A4 and k
 QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128 and fold them into its weights.
 QuaRot uses fixed randomized Hadamard blocks; SpinQuant starts from the same blocks and learns the rotations with Adam (200 steps, learning rate 0.001) on 8 LIBERO contexts, minimizing the normalized error of the denoiser output against BF16.
 Both round the weights to nearest with one 16-bit scale per group of 128 and quantize activations symmetrically with one scale per token.
-ViDiT-Q, SVDQuant and AQLM calibrate on the same 80 contexts as \method.
+ViDiT-Q and SVDQuant calibrate on the same 80 contexts as \method.
 ViDiT-Q follows the linear layer of its official code: a channel-balancing mask with exponent 0.5665, a randomized Hadamard rotation, two-stage weight quantization with one scale per group of 128, and asymmetric per-token 4-bit activations; on Cosmos-Policy, nine linear layers take 8-bit weights within the same average budget.
-AQLM quantizes the weights with additive codebooks (groups of 8 weights, 4 codebooks of 256 entries) after smoothing with exponent 0.5 and a rotation of size 128, initializes them with the official code and calibrates the codebooks and scales for 8 steps by reconstructing the output of every linear layer; since AQLM quantizes only the weights, its activations are quantized symmetrically to 4 bits with one scale per token.
 SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, a rank-32 BF16 branch fitted iteratively to the weight residual, 4-bit weights and dynamic 4-bit activations with one scale per group of 64, and unsigned activations at the input of the second feed-forward layer.
 
 \section{Precision accounting}

@@ -13,24 +13,22 @@
     \cmidrule(lr){6-10} \cmidrule(l){11-15}
     Model & Method & W & A & KV & Spatial & Object & Goal & Long & Avg. & Spatial & Object & Goal & Long & Avg. \\
     \midrule
-    \multirow{7}{*}{Fast-WAM}
+    \multirow{6}{*}{Fast-WAM}
       & BF16                   & 16  & 16  & 16  & 80.0 & 78.6 & 72.9 & 77.1 & 77.1\ci{4.9} & 98.8 & 97.8 & 97.8 & 97.6 & 98.0\ci{0.6} \\
     \cmidrule(l){2-15}
       & QuaRot                 & 4.13 & 4  & 16  & 72.9 & 74.3 & 64.3 & 67.1 & 69.6\ci{5.4} & 97.6 & 97.0 & 96.2 & 95.6 & 96.6\ci{0.8} \\
       & SpinQuant              & 4.13 & 4  & 16  & 78.6 & 72.9 & 68.6 & 70.0 & 72.5\ci{5.2} & 98.4 & 97.2 & 96.8 & 96.4 & 97.2\ci{0.7} \\
       & ViDiT-Q                & 4.33 & 4  & 16  & 77.1 & 70.0 & 68.6 & 74.3 & 72.5\ci{5.2} & 98.0 & 96.8 & 97.0 & 97.4 & 97.3\ci{0.7} \\
       & SVDQuant               & 4.81 & 4  & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} & 98.0 & 97.4 & 96.4 & 96.2 & 97.0\ci{0.7} \\
-      & AQLM                   & 4.03 & 4  & 16  & 78.6 & 75.7 & 65.7 & 68.6 & 72.1\ci{5.2} & 98.4 & 97.6 & 96.2 & 96.2 & 97.1\ci{0.7} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}4.01 & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}81.4 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}67.1 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}74.3\ci{5.1} & \cellcolor{gray!12}98.1 & \cellcolor{gray!12}99.5 & \cellcolor{gray!12}98.1 & \cellcolor{gray!12}97.1 & \cellcolor{gray!12}98.2\ci{0.9} \\
     \midrule
-    \multirow{7}{*}{Cosmos-Policy}
+    \multirow{6}{*}{Cosmos-Policy}
       & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{\XX} & 97.4 & 99.6 & 97.8 & 97.6 & 98.1\ci{0.6} \\
     \cmidrule(l){2-15}
       & QuaRot                 & 4.13 & 4  & 16  & 82.9 & 87.1 & 72.9 & 81.4 & 81.1\ci{4.6} & 97.2 & 99.0 & 96.4 & 97.4 & 97.5\ci{0.7} \\
       & SpinQuant              & 4.13 & 4  & 16  & 77.1 & 87.1 & 65.7 & 85.7 & 78.9\ci{4.8} & 96.8 & 99.2 & 95.8 & 97.0 & 97.2\ci{0.7} \\
       & ViDiT-Q                & 4.29 & 4  & 16  & 87.1 & 84.3 & 72.9 & 87.1 & 82.9\ci{4.4} & 97.4 & 99.4 & 97.0 & 97.4 & 97.8\ci{0.6} \\
       & SVDQuant               & 4.89 & 4  & 16  & 82.9 & 87.1 & 72.9 & 88.6 & 82.9\ci{4.4} & 97.6 & 99.4 & 96.6 & 97.2 & 97.7\ci{0.7} \\
-      & AQLM                   & \XX & 4   & 16  & \XX & \XX & \XX & \XX & \XX\ci{\XX} & 97.0 & 99.2 & 96.4 & 97.4 & 97.5\ci{0.7} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}4.01 & \cellcolor{gray!12}4.58 & \cellcolor{gray!12}4.70 & \cellcolor{gray!12}84.3 & \cellcolor{gray!12}91.4 & \cellcolor{gray!12}70.0 & \cellcolor{gray!12}88.6 & \cellcolor{gray!12}83.6\ci{4.3} & \cellcolor{gray!12}98.6 & \cellcolor{gray!12}100.0 & \cellcolor{gray!12}98.6 & \cellcolor{gray!12}97.6 & \cellcolor{gray!12}98.7\ci{0.8} \\
     \bottomrule
   \end{tabular}
@@ -40,7 +38,7 @@
   $\pm$ is the 95\% confidence interval.
   \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
   \TODO{LIBERO columns: the \method rows are our runs under the protocol of \cref{sec:supp:eval} (840 episodes per model on RTX 6000 Ada; Fast-WAM 825/840, Cosmos-Policy 829/840). BF16 still follows published runs (Fast-WAM-IDM row of the Fast-WAM paper; a WAMachine reproduction of Cosmos-Policy) and the baselines are estimates set below BF16 in the order of their LIBERO-Plus results, with intervals for 2,000 episodes; so \method is not yet paired with BF16 or any baseline on LIBERO. Replace them with our own runs under the same protocol and seeds and recompute the intervals}
-  \TODO{QuaRot, SpinQuant, ViDiT-Q and AQLM rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant and Cosmos-Policy AQLM not run. All on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. The Fast-WAM BF16 row is the panel-A run (216/280). \method on Fast-WAM: panel A, 280 episodes, paired with it (5 wins, 13 losses, $p = 0.096$); no plain W4A4KV4 run without refinement exists yet. \method on Cosmos-Policy: panel A, 280 episodes (234/280), paired with the panel-A BF16 run (233/280; 8 wins, 7 losses, $p = 1$) and with QuaRot at W4A4KV4 on the same weights (228/280; 12 wins, 6 losses, $p = 0.24$); the BF16 row of Cosmos-Policy is not the panel-A run}}
+  \TODO{QuaRot, SpinQuant and ViDiT-Q rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant not run. All on LIBERO-Plus panel A (280 paired episodes, 10 per suite and dimension), not the 840 of \cref{sec:supp:eval}. The Fast-WAM BF16 row is the panel-A run (216/280). \method on Fast-WAM: panel A, 280 episodes, paired with it (5 wins, 13 losses, $p = 0.096$); no plain W4A4KV4 run without refinement exists yet. \method on Cosmos-Policy: panel A, 280 episodes (234/280), paired with the panel-A BF16 run (233/280; 8 wins, 7 losses, $p = 1$) and with QuaRot at W4A4KV4 on the same weights (228/280; 12 wins, 6 losses, $p = 0.24$); the BF16 row of Cosmos-Policy is not the panel-A run}}
   \label{tab:main}
 \end{table*}
 
@@ -56,17 +54,17 @@ We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturb
 LIBERO-Plus is our main benchmark: on the original suites, both BF16 models already succeed in about 98\% of the episodes.
 
 \paragraph{Baselines and quantization settings.}
-We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant}, the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}, and the vector quantizer AQLM~\cite{egiazarian2024aqlm}.
+We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant}, and the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}.
 The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} have no public implementation, so we do not include them.
 \TODO{re-check code availability before submission}
 All baselines quantize weights and activations to 4 bits and keep the cached keys and values in BF16, whereas \method also quantizes the caches to 4 bits.
 Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128, fixed randomized Hadamard blocks for QuaRot and learned rotations for SpinQuant, and fold them into its weights; both round the weights to nearest with one scale per group of 128 and quantize activations with one scale per token (\cref{sec:supp:eval}).
-ViDiT-Q keeps its channel balancing, rotation and per-token activation quantization, SVDQuant follows its published recipe with a 16-bit low-rank branch of rank 32, and AQLM, which quantizes only the weights, is combined with per-token 4-bit activations.
+ViDiT-Q keeps its channel balancing, rotation and per-token activation quantization, and SVDQuant follows its published recipe with a 16-bit low-rank branch of rank 32.
 \method uses 4-bit weights rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales, and 4-bit keys and values with per-token scales.
 \TODO{fix the group size and the KV quantizer of \method before its runs}
 \cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
-ViDiT-Q, SVDQuant, AQLM and \method calibrate on the same 80 LIBERO contexts, and SpinQuant learns its rotations on 8 LIBERO contexts.
+ViDiT-Q, SVDQuant and \method calibrate on the same 80 LIBERO contexts, and SpinQuant learns its rotations on 8 LIBERO contexts.
 For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines 15.4\% of the activation values of the denoising loops and 6.0\% of the cached keys and values.
 
 \paragraph{Evaluation metrics.}
