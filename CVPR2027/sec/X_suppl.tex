@@ -30,8 +30,13 @@ Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10
 Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk before replanning.
 Calibration runs on NVIDIA A100 GPUs.
 On LIBERO-Plus, we draw 840 episodes, 30 for each suite and perturbation dimension, and run every method on the same variants and seeds, so that episodes are paired across methods.
-On LIBERO, we run every method for 50 trials on each of the 40 tasks from the official initial states, 2{,}000 episodes in total, with the same seeds across methods.
-\TODO{seed rules, runtime consistency checks, and how the confidence intervals of \cref{tab:main} are computed; fix the LIBERO seeds before the runs}
+On LIBERO, we run every method on each of the 40 tasks from the official initial states 0--20, 840 episodes in total.
+With the suites numbered $s = 0, \dots, 3$ in the order Spatial, Object, Goal, Long, episode $i = 210\,s + 21\,t + k$ of task $t$ and initial state $k$ seeds its environment with $8 \cdot 10^{8} + 1000\,i$, and its policy query $r = 0, 1, \dots$ draws the sampling noise from seed $9 \cdot 10^{8} + 1000\,i + r$, so that every method faces the same episodes and the same noise.
+Each episode starts with 30 no-op steps that let the objects settle and ends on success or after 400 control steps (700 on the Long suite).
+The LIBERO episodes run on NVIDIA RTX 6000 Ada GPUs.
+Before its first episode, every evaluation process checks one fixed query: the BF16 output on the evaluation GPU must differ from the A100 BF16 output by less than half the error of \method on the A100, the error of \method on the evaluation GPU must lie within a factor of three of that on the A100, and the output of \method must match that of the first process on the same GPU model bit for bit.
+The intervals of \cref{tab:main} are normal-approximation intervals, $\pm 1.96 \sqrt{p(1-p)/n}$ for a success rate $p$ over the $n$ episodes of a method.
+\TODO{seed rules and runtime consistency checks of the LIBERO-Plus runs}
 
 \paragraph{Baselines.}
 All baselines quantize the linear layers of the transformer blocks to W4A4 and keep the cached keys and values in BF16.

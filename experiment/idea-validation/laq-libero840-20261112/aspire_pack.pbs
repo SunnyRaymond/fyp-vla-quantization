@@ -1,0 +1,44 @@
+#!/bin/bash
+# ASPIRE2A CPU job: pack what the two LAQ closed loops need and EEE does not have yet (code exactly as it ran in the
+# panel-A loop jobs, the calibration allocations, the QuaRot W4 banks, the A16 prep anchors and T5 caches), with a
+# sha256 manifest. relay.py streams the tar to EEE; unpack.sbatch checks it and extracts it under /projects/yguo017/scratch.
+#PBS -N laq840pk
+#PBS -P personal-yguo017
+#PBS -q normal
+#PBS -l select=1:ncpus=2:mem=16gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o /scratch/users/ntu/yguo017/eee-migration-laq840/pack.pbs.log
+set -euo pipefail
+U=/scratch/users/ntu/yguo017
+OUT=$U/eee-migration-laq840
+mkdir -p "$OUT"
+cd "$U"
+FW=laq-fastwam-20261111
+CO=laq-cosmos-20261111
+PB=published-baselines-20261110/results
+FWA=$FW/artifacts/26198651.pbs101
+COA=$CO/artifacts/26204098.pbs101
+LIST=$OUT/files.txt
+{
+  ls -d $FWA/*.py $FWA/*.sh $FWA/protocol.json
+  ls -d $COA/*.py $COA/*.sh $COA/protocol.json
+  ls -d $FW/results/fastwam/calib/{allocation.json,COMPLETE.json,summary.json,RESULTS.zh.md} $FW/results/fastwam/calib/startup_*.json
+  ls -d $FW/results/fastwam/loops/laq/anchor.pt $FW/results/fastwam/loops/laq/worker_0/startup.json
+  ls -d $CO/results/cosmos/calib/{allocation.json,COMPLETE.json,summary.json,RESULTS.zh.md} $CO/results/cosmos/calib/startup_*.json
+  ls -d $CO/results/cosmos/loops/laq/anchor.pt $CO/results/cosmos/loops/laq/worker_0/startup.json
+  ls -d $PB/fastwam/arch.json $PB/fastwam/banks/quarot $PB/cosmos/arch.json $PB/cosmos/banks/quarot
+  ls -d fastwam-a16-baselines-20261028/results/prep/{t5_cache.pt,t5_cache.json,bf16_anchor.pt,modules.json,COMPLETE.json}
+  ls -d cosmos-a16-baselines-20261101/results/prep/{base_extra_cache.pkl,bf16_anchor.pt,modules.json,COMPLETE.json,reuse_check.json}
+  ls -d fastwam-smooth-vq-phases12-20261006/*.py fastwam-a4-phases12-20261006/*.py
+} > "$LIST"
+wc -l "$LIST"
+tar -cf "$OUT/laq840.tar.part" -T "$LIST"
+mv "$OUT/laq840.tar.part" "$OUT/laq840.tar"
+tar -tf "$OUT/laq840.tar" | grep -v '/$' | sort > "$OUT/members.txt"
+# per-file hashes so the EEE side can check every extracted file, then the tar hash for the transfer
+tar -tf "$OUT/laq840.tar" | grep -v '/$' | sort | xargs -d '\n' sha256sum > "$OUT/FILES.sha256"
+sha256sum "$OUT/laq840.tar" | sed "s#$OUT/##" > "$OUT/SHA256SUMS.part"
+mv "$OUT/SHA256SUMS.part" "$OUT/SHA256SUMS"
+ls -la "$OUT"
+echo PACK_COMPLETE

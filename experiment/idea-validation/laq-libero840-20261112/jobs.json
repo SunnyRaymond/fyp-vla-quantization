@@ -1,0 +1,80 @@
+{
+  "unpack": {
+    "job": "1735414",
+    "args": [
+      "unpack.sbatch"
+    ]
+  },
+  "cputest": {
+    "job": "1735439",
+    "args": [
+      "--dependency=afterok:1735438",
+      "cputest.sbatch"
+    ]
+  },
+  "fw_loop": {
+    "job": "1735440",
+    "args": [
+      "--dependency=afterok:1735439",
+      "--job-name=laq840fw",
+      "--gres=gpu:6000ada:2",
+      "--time=1-12:00:00",
+      "--export=ALL,MODEL=fastwam,STAGE=loop",
+      "run840.sbatch"
+    ]
+  },
+  "co_loop": {
+    "job": "1735441",
+    "args": [
+      "--dependency=afterok:1735439",
+      "--job-name=laq840co",
+      "--gres=gpu:pro6000:1",
+      "--time=1-12:00:00",
+      "--export=ALL,MODEL=cosmos,STAGE=loop",
+      "run840.sbatch"
+    ]
+  },
+  "t5prep": {
+    "job": "1735438",
+    "args": [
+      "--job-name=laq840t5p",
+      "--gres=gpu:6000ada:1",
+      "--time=01:00:00",
+      "--export=ALL,MODEL=fastwam,STAGE=t5prep",
+      "run840.sbatch"
+    ]
+  },
+  "co_k1": {
+    "job": "1735479",
+    "args": [
+      "--qos=override-limits-but-killable",
+      "--job-name=laq840co",
+      "--gres=gpu:6000ada:1",
+      "--time=1-12:00:00",
+      "--export=ALL,MODEL=cosmos,STAGE=loop",
+      "run840.sbatch"
+    ]
+  },
+  "co_k2": {
+    "job": "1735476",
+    "args": [
+      "--qos=override-limits-but-killable",
+      "--job-name=laq840co",
+      "--gres=gpu:6000ada:1",
+      "--time=1-12:00:00",
+      "--export=ALL,MODEL=cosmos,STAGE=loop",
+      "run840.sbatch"
+    ]
+  },
+  "co_ug": {
+    "job": "1735477",
+    "args": [
+      "--dependency=afterany:1735440",
+      "--job-name=laq840co",
+      "--gres=gpu:6000ada:2",
+      "--time=1-12:00:00",
+      "--export=ALL,MODEL=cosmos,STAGE=loop",
+      "run840.sbatch"
+    ]
+  }
+}

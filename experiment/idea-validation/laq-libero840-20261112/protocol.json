@@ -1,0 +1,52 @@
+{
+  "protocol": "laq-libero840-20261112-v1",
+  "purpose": "Standard-LIBERO closed loop of the calibrated LAQ W4A4KV4 arms (laq-fastwam-20261111, laq-cosmos-20261111) on the four original suites: 40 tasks x 21 official initial states = 840 episodes per model, run on the NTU EEE cluster. Seeds are fixed per episode index so BF16 and baseline runs under this protocol pair episode by episode.",
+  "benchmark": {
+    "name": "LIBERO (original four suites)",
+    "suites": ["libero_spatial", "libero_object", "libero_goal", "libero_10"],
+    "tasks_per_suite": 10,
+    "trials_per_task": 21,
+    "episodes": 840,
+    "index": "i = 210 * suite + 21 * task + trial, suites in the order above",
+    "initial_state": "official original-LIBERO initial_states[trial] of the task",
+    "env_seed": "800000000 + 1000 * i",
+    "sampler_seed": "900000000 + 1000 * i + replan",
+    "settling_steps": 30,
+    "max_steps": {"libero_spatial": 400, "libero_object": 400, "libero_goal": 400, "libero_10": 700},
+    "replan_steps": {"fastwam": 10, "cosmos": 16},
+    "success": "environment done flag (task success) within max_steps policy steps after settling"
+  },
+  "eee": {
+    "project": "/projects/yguo017",
+    "root": "/projects/yguo017/laq840",
+    "image": "/projects/yguo017/libero-latest.sqsh",
+    "scratch_mount": "/projects/yguo017/scratch -> /scratch/users/ntu/yguo017"
+  },
+  "models": {
+    "fastwam": {
+      "arm": "laq",
+      "laq_protocol": "/scratch/users/ntu/yguo017/laq-fastwam-20261111/artifacts/26198651.pbs101/protocol.json",
+      "code": "/scratch/users/ntu/yguo017/laq-fastwam-20261111/artifacts/26198651.pbs101",
+      "a100_startup": "/scratch/users/ntu/yguo017/laq-fastwam-20261111/results/fastwam/loops/laq/worker_0/startup.json",
+      "a100_anchor": "/scratch/users/ntu/yguo017/laq-fastwam-20261111/results/fastwam/loops/laq/anchor.pt",
+      "worker": "fw840.py",
+      "gpu": "6000ada",
+      "workers_per_gpu": 2
+    },
+    "cosmos": {
+      "arm": "laq",
+      "laq_protocol": "/scratch/users/ntu/yguo017/laq-cosmos-20261111/artifacts/26204098.pbs101/protocol.json",
+      "code": "/scratch/users/ntu/yguo017/laq-cosmos-20261111/artifacts/26204098.pbs101",
+      "a100_startup": "/scratch/users/ntu/yguo017/laq-cosmos-20261111/results/cosmos/loops/laq/worker_0/startup.json",
+      "a100_anchor": "/scratch/users/ntu/yguo017/laq-cosmos-20261111/results/cosmos/loops/laq/anchor.pt",
+      "worker": "cos840.py",
+      "gpu": "pro6000",
+      "workers_per_gpu": 2
+    }
+  },
+  "gates": {
+    "bf16_drift_fraction": 0.5,
+    "damage_ratio": [0.333, 3.0],
+    "note": "The A100 anchors cannot be matched bitwise on another GPU model. BF16 drift (this GPU vs the A100 BF16 anchor) must be at most bf16_drift_fraction of the A100 LAQ damage; the LAQ damage on this GPU (vs this GPU's BF16 anchor) must be within damage_ratio of the A100 LAQ damage. Within one GPU model every worker must reproduce the first worker's arm anchor bitwise."
+  }
+}
