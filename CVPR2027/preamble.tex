@@ -57,12 +57,13 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 %% the ruled float style draws its rules in whatever colour is current when the float is shipped out,
-%% so red TODO text broken across a page turned the rules of Algorithm 1 red; draw them in the normal colour
+%% so red TODO text broken across a page turned the rules of Algorithm 1 red; draw each rule in the normal colour,
+%% inside its own group so that the colour is reset within the float box (an unscoped \normalcolor leaks red into the text)
 \makeatletter
 \renewcommand\fs@ruled{\def\@fs@cfont{\bfseries}\let\@fs@capt\floatc@ruled
-  \def\@fs@pre{\normalcolor\hrule height.8pt depth0pt \kern2pt}%
-  \def\@fs@post{\kern2pt\hrule\relax}%
-  \def\@fs@mid{\kern2pt\hrule\kern2pt}%
+  \def\@fs@pre{{\normalcolor\hrule height.8pt depth0pt}\kern2pt}%
+  \def\@fs@post{\kern2pt{\normalcolor\hrule}\relax}%
+  \def\@fs@mid{\kern2pt{\normalcolor\hrule}\kern2pt}%
   \let\@fs@iftopcapt\iftrue}
 \floatstyle{ruled}\restylefloat{algorithm}
 \makeatother
