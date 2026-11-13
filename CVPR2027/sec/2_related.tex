@@ -2,15 +2,14 @@
 \label{sec:related}
 
 % Method overview: placed here so that it floats to the top of page 3 as Fig. 2.
-% Placeholder: figures/figure2.pdf is the overview of the previous (2-bit VQ) draft and has to be redrawn.
+% Fig. 2: research/paper/figures/fig2_method.py writes figures/figure2_laq_editable.pptx; figures/figure2.pdf is its vector export from PowerPoint.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/figure2.pdf}
   \caption{Overview of \method.
-  A WAM writes its predicted future in a denoising loop, stores it in a key--value cache and reads it when it generates the action.
-  \method measures future error as the reader sees it~(i), weights each rounding error by the number of denoising steps that read it~(ii), allocates precision jointly over weights, activations and caches~(iii), and gives the tokens the reader attends to a second 4-bit pass in the loop and in the cache~(iv).
-  Every weight stays at 4 bits.
-  \TODO{redraw as one left-to-right pipeline: observation tokens (written once) $\rightarrow$ denoising loop that writes the future $\rightarrow$ future cache $\rightarrow$ action loop; read counts marked above each place; the selected tokens in one color through all three places; a dashed arrow carrying the gaze from the action loop to the next control step}}
+  Offline, \method estimates the reader metric $\bM$, which measures future error as the reader sees it~(a), measures the read count $n_u$, the damage of a rounding error that is frozen across the denoising steps relative to one that is redrawn at every step~(b), and solves one objective for the 4-bit weights and for a threshold $\mu$ shared by activations and caches~(c).
+  At every control step, gaze-guided refinement~(d) scores the tokens under the current gaze, quantizes the residual of the selected tokens with a second 4-bit code, and applies both codes in the linear layers and in the cache; the attention of the action tokens gives the gaze for the next step.
+  Every weight stays at 4 bits.}
   \label{fig:method}
 \end{figure*}
 
