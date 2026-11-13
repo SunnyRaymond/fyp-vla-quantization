@@ -1,0 +1,73 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# Per-phase quantization on Fast-WAM W4A4KV4 (perstep.py) with the LAQ calibration's own code copy; one GPU, under 2 h.
+# GPU utilization and memory are sampled into the job log every 60 s.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/fastwam-perstep-20261113
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+
+SRC=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["source"]["artifacts"])' "$NEW_ROOT/protocol.json")
+test -s "$SRC/laq.py" -a -s "$SRC/protocol.json" -a -s "$SRC/env_fastwam.sh" -a -s "$SRC/slots.sh" || die "LAQ code copy missing in $SRC"
+mapfile -t CFG < <(python3 - "$SRC/protocol.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))["models"]["fastwam"]["roots"]
+for key in ("pilot", "base", "old_banks", "old_inputs", "sif"):
+    print(r[key])
+PY
+)
+test "${#CFG[@]}" -eq 5 || die 'Malformed LAQ protocol'
+ROOT=${CFG[0]}; BASE=${CFG[1]}; SMOOTH_ROOT=${CFG[2]}; SOURCE_ROOT=${CFG[3]}; SIF=${CFG[4]}
+DIAG_ROOT=$NEW_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+RESULTS=$NEW_ROOT/results
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS RESULTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+QSTAT=$(qstat -f "$PBS_JOBID") || die 'Cannot read the PBS allocation'
+QUEUE=$(awk -F= '/^[[:space:]]*queue[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+NCPUS=$(awk -F= '/^[[:space:]]*Resource_List.ncpus[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' <<< "$QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die "Cannot read Resource_List.ncpus ('$NCPUS')"
+echo "JOB=$PBS_JOBID QUEUE=$QUEUE HOST=$(hostname -s) NCPUS=$NCPUS SRC=$SRC START=$(date -u +%FT%TZ)"
+
+MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  (( rc == 0 )) || [[ -e "$ARTIFACTS/FAILED" ]] || printf '%s run.pbs exited %s\n' "$(date -u +%FT%TZ)" "$rc" >> "$ARTIFACTS/FAILED"
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  echo "EXIT rc=$rc $(date -u +%FT%TZ)"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+cp "$SRC"/*.py "$SRC"/*.sh "$ARTIFACTS/"
+cp "$SRC/protocol.json" "$ARTIFACTS/laq_protocol.json"
+cp "$NEW_ROOT/perstep.py" "$NEW_ROOT/protocol.json" "$NEW_ROOT/run.pbs" "$ARTIFACTS/"
+source "$ARTIFACTS/env_fastwam.sh"
+source "$ARTIFACTS/slots.sh"
+
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  GPU_UUID=$(nvidia-smi -i "${CUDA_VISIBLE_DEVICES%%,*}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+else
+  GPU_UUID=$(nvidia-smi --query-gpu=uuid --format=csv,noheader | head -n 1 | tr -d '[:space:]')
+fi
+[[ "$GPU_UUID" == GPU-* ]] || die "Bad GPU UUID '$GPU_UUID'"
+monitor "$NCPUS" "$GPU_UUID" & MONITOR_PID=$!
+
+export FW_CPU_THREADS=$NCPUS
+CUDA_VISIBLE_DEVICES=$GPU_UUID run_python "$ARTIFACTS/perstep.py" --protocol "$ARTIFACTS/protocol.json" --laq "$ARTIFACTS/laq_protocol.json" \
+  > "$ARTIFACTS/perstep_worker.log" 2>&1 || { tail -c 6000 "$ARTIFACTS/perstep_worker.log"; die 'perstep.py failed'; }
+grep -h '^PERSTEP\|^UNIT' "$ARTIFACTS/perstep_worker.log" | tail -n 80 || true
+CUDA_VISIBLE_DEVICES=$GPU_UUID run_python "$ARTIFACTS/perstep.py" --protocol "$ARTIFACTS/protocol.json" --laq "$ARTIFACTS/laq_protocol.json" --finalize
+cat "$RESULTS/RESULTS.zh.md"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE
