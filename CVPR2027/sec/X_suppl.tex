@@ -6,12 +6,106 @@
 
 \section{Preliminary analysis}
 \label{sec:supp:prelim}
-\TODO{protocol of \cref{sec:observations}: held-out contexts and seeds; how the action pathway is protected; the future swap behind \cref{eq:share}; the error-injection protocol (energy, frozen vs.\ redrawn, sources); soft-histogram parameters of $K$; definitions of the effective rank and of the overlap between eigenspaces; full results; the same measurements on Cosmos-Policy}
+This section gives the protocol and the full results of the measurements of \cref{sec:observations}.
 
-\TODO{measured so far for \cref{fig:observations}.
-Read counts, from the \method calibration (16 contexts, BF16 weights, the 4-bit rounding error of one source with random signs, the signs kept over the denoising steps or redrawn at every read), $Z_{\bM}$ frozen over redrawn: observation tokens $3.1\times$, observation cache $2.2\times$, text cache $2.1\times$; an error in the future cache gives 0 on the future and $1.1\times$ on the action; the weights are not measured.
-Reader metric: the map of a single context (4 probes) correlates with the average map at 0.51 on average (0.01--0.81 over the 80 contexts), so the stability of Observation~3 is one of averages over contexts; on the first predicted frame the token maps of the two halves correlate at 0.84; the 10\% of tokens with the largest share carry 37\% of the trace.
-The frame of \cref{fig:obs:gaze} is the fourth decoded frame of the BF16 prediction for one calibration context of the Goal suite}
+\paragraph{Setup.}
+All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action.
+The W4A4KV4 model has per-row 4-bit weights fitted by second-order rounding in randomized Hadamard coordinates, per-token symmetric 4-bit activations, and per-head 4-bit cached keys and values.
+Every error is measured against the BF16 model on the same observation, instruction and sampling noise.
+The action error $A$ is the mean squared error over the first 10 actions of the chunk and the six motor dimensions, and the future error $Z$ is taken over the predicted frames.
+The action pathway is protected by giving the activations of the action tokens a second 4-bit pass on the residual of the first, which lowers their rounding error by more than an order of magnitude.
+
+\paragraph{Future swap.}
+The future share $\rho$ of \cref{eq:share} is measured by a swap.
+After the last denoising step of the video, the future predicted by the quantized model is replaced by the future that the BF16 model predicts for the same context and sampling noise.
+The quantized reader, \ie the pass that writes the video cache and the 10 denoising steps of the action, then runs unchanged.
+\cref{tab:supp:swap} lists the three models.
+Protecting the action pathway removes 16\% of the action error and leaves the future error unchanged.
+Restoring the future removes 71.2\% of the remaining action error (95\% bootstrap interval over contexts: 62.1--78.8\%), and the action error falls on every context.
+Without the protection of the action pathway, the same swap removes 58.8\% of the action error.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Model & $A$ ($\times 10^{-4}$) $\downarrow$ & $Z$ $\downarrow$ \\
+    \midrule
+    W4A4KV4                           & 3.53 & 0.0188 \\
+    \quad + protected action pathway  & 2.96 & 0.0188 \\
+    \quad + full-precision future     & 0.85 & 0 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Future swap on Fast-WAM. In the last row the quantized reader reads the future predicted by the BF16 model.}
+  \label{tab:supp:swap}
+\end{table}
+
+\paragraph{Error injection.}
+To isolate the effect of the number of reads, the weights are kept in BF16 and an error is injected into one source at a time.
+The injected error is the 4-bit rounding error of that source multiplied by random signs, so that it has the energy of the rounding error.
+The signs are either drawn once and kept over the denoising steps (frozen) or drawn again at every read (redrawn).
+The damage is the future error weighted by the reader metric, $Z_{\bM}$ (\cref{eq:metric-form}).
+\cref{tab:supp:reads} reports the ratio between the two cases for the three sources drawn in \cref{fig:obs:reads}.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Source & Frozen & Redrawn & Ratio \\
+    \midrule
+    Observation tokens          & 11.56 & 3.68 & 3.1$\times$ \\
+    Cache of the observed frame & 3.29  & 1.49 & 2.2$\times$ \\
+    Cache of the text           & 0.48  & 0.23 & 2.1$\times$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Reader-weighted future error $Z_{\bM}$ ($\times 10^{-3}$) caused by an injected error of fixed energy whose realization is kept over the denoising steps (frozen) or redrawn at every read.}
+  \label{tab:supp:reads}
+\end{table}
+
+\paragraph{Accumulation over the denoising steps.}
+A policy call has 21 phases: the 10 denoising steps of the video, the pass that writes the video cache, and the 10 denoising steps of the action.
+We run one phase at W4A4KV4 and all others in BF16, and compare the sum of the errors of the 10 video steps taken one at a time with the error when the 10 steps are quantized together (\cref{tab:supp:steps}).
+Together, the 10 steps cause 2.50$\times$ the reader-weighted future error of the sum, and 1.54$\times$ its action error.
+The first three denoising steps carry 70\% of the sum.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Quantized video steps & $Z_{\bM}$ ($\times 10^{-3}$) & $A$ ($\times 10^{-4}$) \\
+    \midrule
+    Step 1 alone  & 4.79 & 0.38 \\
+    Step 2 alone  & 3.59 & 0.52 \\
+    Step 3 alone  & 1.46 & 0.11 \\
+    Step 4 alone  & 0.75 & 0.06 \\
+    Step 5 alone  & 0.66 & 0.05 \\
+    Step 6 alone  & 0.23 & 0.03 \\
+    Step 7 alone  & 0.31 & 0.03 \\
+    Step 8 alone  & 0.36 & 0.03 \\
+    Step 9 alone  & 0.49 & 0.03 \\
+    Step 10 alone & 1.37 & 0.03 \\
+    \midrule
+    Sum of the 10 steps & 14.0 & 1.27 \\
+    All 10 steps        & 35.0 & 1.95 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Errors on Fast-WAM when only some of the video denoising steps run at W4A4KV4 and every other phase runs in BF16.}
+  \label{tab:supp:steps}
+\end{table}
+
+\paragraph{Reader metric.}
+The effective rank of $\bM$ is $\tr(\bM)^2 / \tr(\bM^2)$.
+The stability of the locations is the correlation between the diagonals of $\bM$ estimated on two disjoint halves of the calibration contexts (0.86); on the tokens of the first predicted frame, the maps of the two halves correlate at 0.84.
+The overlap between two eigenspaces is $\|\mathbf{E}_1^\top \mathbf{E}_2\|_F^2 / r$, where $\mathbf{E}_1$ and $\mathbf{E}_2$ hold the $r = 32$ leading eigenvectors estimated on the two halves; it is 1 for identical subspaces.
+The frame shown in \cref{fig:obs:gaze} is the fourth decoded frame of the BF16 prediction for one context of the Goal suite.
+
+\TODO{still to write: soft-histogram parameters of $K$; the same measurements on Cosmos-Policy.
+Not in the text above: every measurement of this section uses the 16 calibration contexts of \method, not held-out ones; an injected error in the future cache gives 0 on the future and $1.1\times$ on the action, and the weights are not measured; the metric map of a single context (4 probes) correlates with the average map at 0.51 on average (0.01--0.81 over the 80 contexts), so the stability of Observation~3 is one of averages over contexts; the 10\% of tokens with the largest share carry 37\% of the trace; adding the per-phase action errors gives the future pathway 58.2\% against the measured 71.2\% (cache-writing pass alone $0.82\times10^{-4}$, the ten action steps $0.09\times10^{-4}$); on the unweighted future error the ten steps together give $1.24\times$ the sum}
 
 \section{Derivations}
 \label{sec:supp:theory}
