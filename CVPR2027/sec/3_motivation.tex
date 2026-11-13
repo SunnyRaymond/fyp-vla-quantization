@@ -66,50 +66,45 @@ We next ask what this omission costs.
 We examine what a W4A4KV4 WAM loses once its action pathway is protected.
 We quantize Fast-WAM~\cite{yuan2026fastwam} to W4A4KV4 with rotation and second-order rounding~\cite{ashkboos2024quarot,frantar2023gptq}, protect the action pathway by keeping the activations of the action tokens at 8 bits, and measure $A$, $Z$ and $\rho$ on held-out LIBERO contexts.
 To test how the number of reads changes the damage of an error, we additionally inject errors of equal energy that are either frozen across the denoising steps or redrawn at every step.
-\cref{fig:observations} summarizes the three observations that follow, and \cref{sec:supp:prelim} provides the full protocol and results.
+\cref{fig:teaser} illustrates the first of the three observations that follow and \cref{fig:observations} the other two, and \cref{sec:supp:prelim} provides the full protocol and results.
 
+% Fig. 3: research/paper/figures/fig3_observations.py writes figures/figure3_a.pdf and figures/figure3_b.pdf.
 \begin{figure*}[t]
   \centering
-  \begin{subfigure}[t]{0.32\linewidth}
-    \figbox{Placeholder: action error of W4A4KV4, of W4A4KV4 with the action pathway protected, and of the 8-bit model; the middle bar split into the part that enters through the future and the direct part.}{3.6cm}
-    \caption{Protecting the action is not enough.}
-    \label{fig:obs:share}
-  \end{subfigure}\hfill
-  \begin{subfigure}[t]{0.32\linewidth}
-    \figbox{Placeholder: future error caused by an error of equal energy, frozen vs.\ redrawn at every step, injected into the observation cache, the future cache and the future tokens.}{3.6cm}
+  \begin{subfigure}[t]{0.36\linewidth}
+    \includegraphics[width=\linewidth]{figures/figure3_a.pdf}
     \caption{Errors that are read many times add up.}
     \label{fig:obs:reads}
   \end{subfigure}\hfill
-  \begin{subfigure}[t]{0.32\linewidth}
-    \figbox{Placeholder: diagonal of the reader metric $\bM$ on the first predicted frame, overlaid on both camera views; inset: stability of locations (0.86) vs.\ directions (0.19).}{3.6cm}
+  \begin{subfigure}[t]{0.62\linewidth}
+    \includegraphics[width=\linewidth]{figures/figure3_b.pdf}
     \caption{The reader depends on a narrow, location-stable part of the future.}
     \label{fig:obs:gaze}
   \end{subfigure}
-  \caption{What a 4-bit WAM loses (Fast-WAM, W4A4KV4).
-  (a)~With the action pathway protected, the action error stays far above that of the 8-bit model, and almost all of it enters through the degraded future.
-  (b)~An error that is frozen across the denoising steps damages the future more than an error of the same energy that is redrawn at each step.
-  (c)~The reader is sensitive to a small region of the predicted future, which is stable across contexts.}
+  \caption{How the predicted future is damaged and how it is read (Fast-WAM).
+  (a)~A 4-bit rounding error damages the future two to three times more when one realization is kept over the 10 denoising steps (frozen) than when it is redrawn at each step with the same energy.
+  (b)~Share of the reader metric $\bM$ carried by each token of the first predicted frame, averaged over 80 contexts and shown over the frame predicted for one of them. Estimated on two disjoint halves of the contexts, the metric agrees in its locations but not in its directions.}
   \label{fig:observations}
 \end{figure*}
 
-\paragraph{(a) Protecting the action is not enough.}
+\paragraph{Observation 1: Protecting the action is not enough.}
 With every activation at 4 bits, the action error comes mostly from the rounding of the action tokens themselves, which is why sensitivities measured on the final action concentrate on the action pathway~\cite{akbari2026qwam}.
 Protecting this pathway removes that part.
-The action error nevertheless remains \XX$\times$ that of the 8-bit model, while the future error does not change at all (\cref{fig:obs:share}).
-Restoring the predicted future to full precision removes \XX\% of the remaining action error.
+The action error nevertheless remains \XX$\times$ that of the 8-bit model, while the future error does not change at all.
+Restoring the predicted future to full precision removes \XX\% of the remaining action error (\cref{fig:teaser}).
 \TODO{re-measure under W4A4KV4. With BF16 weights and per-token A4: action error 0.0426 with all activations at 4 bits, 0.0176 with the action loop at 8 bits (future error unchanged at 0.0384), 0.0028 at 8 bits, i.e.\ 6.3$\times$ and 97\%}
 This implies that the quantization target must include the predicted future itself, not only the action.
 
-\paragraph{(b) The future is damaged where it is written, and most by errors that are read many times.}
+\paragraph{Observation 2: The future is damaged where it is written, and most by errors that are read many times.}
 Raising the precision of the reader leaves the future error exactly unchanged, so the future can only be preserved in the computation that writes it.
 Within this computation, rounding errors differ in how often they are read.
 The tokens of the observed frame do not change across denoising steps, so their rounding error is identical at every step; cached keys and values are written once and read at every step; and a weight is read by every token at every step.
 Injected into the cached tokens, an error of fixed energy damages the future \XX$\times$ more when it is frozen across the denoising steps than when it is redrawn at each step (\cref{fig:obs:reads}), because its effects on successive steps add up coherently.
 A sensitivity estimated one step at a time cannot tell the two cases apart: it attributes \XX\% of the action sensitivity to the pathway through the future, whereas restoring the future shows that this pathway carries \XX\% of the action error.
-\TODO{run the frozen-vs-redrawn injection. Earlier measurements under 2-bit weights: the velocity error summed over the 10 steps has 7.1$\times$ the energy of the per-step errors; a first-order per-step estimate gives 6.9\% against a measured 35--60\%}
+\TODO{the injection behind \cref{fig:obs:reads} is run, numbers and limits in \cref{sec:supp:prelim}; the per-step estimate is still missing. Earlier measurements under 2-bit weights: the velocity error summed over the 10 steps has 7.1$\times$ the energy of the per-step errors; a first-order per-step estimate gives 6.9\% against a measured 35--60\%}
 This implies that an error should be weighted by how many times it is read, not only by where it occurs.
 
-\paragraph{(c) The reader depends on a narrow part of the future, stable in location but not in direction.}
+\paragraph{Observation 3: The reader depends on a narrow part of the future, stable in location but not in direction.}
 We linearize the reader at the full-precision future and compute its Gauss--Newton metric $\bM$ (\cref{sec:method:metric}).
 In a 37{,}632-dimensional latent, $\bM$ has an effective rank of 41.5; the first predicted frame carries 98\% of its trace, and the largest 10\% of its diagonal entries carry 62\%.
 Which locations of the latent the reader depends on is stable: the diagonal of $\bM$ correlates at 0.86 across disjoint halves of the calibration contexts, and it concentrates on a small region of the scene (\cref{fig:obs:gaze}; further examples in \cref{sec:supp:vis}).

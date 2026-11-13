@@ -1,0 +1,74 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# Decoded BF16 futures for Fig. 3(b): one GPU, the BF16 runtime of the LAQ experiment, a few C80 contexts.
+# GPU utilization and memory are sampled into the job log every 30 s.
+set -euo pipefail
+
+NEW_ROOT=/scratch/users/ntu/yguo017/paper-fig3-export-20261112
+LAQ_ROOT=/scratch/users/ntu/yguo017/laq-fastwam-20261111
+COUNT=16
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+awk -F. -v host="$(hostname -s)" '$1 == host {found=1} END {exit !found}' "$PBS_NODEFILE" || die 'Host outside the PBS allocation'
+mapfile -t CFG < <(python3 - "$LAQ_ROOT/protocol.json" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))["models"]["fastwam"]
+r = m["roots"]
+for key in ("pilot", "base", "old_banks", "old_inputs", "sif", "engine_source"):
+    print(r[key])
+print(" ".join(m["engine_files"]))
+PY
+)
+test "${#CFG[@]}" -eq 7 || die 'Malformed protocol'
+ROOT=${CFG[0]}; BASE=${CFG[1]}; SMOOTH_ROOT=${CFG[2]}; SOURCE_ROOT=${CFG[3]}; SIF=${CFG[4]}
+ENGINE_SOURCE=${CFG[5]}; read -r -a ENGINE_FILES <<< "${CFG[6]}"
+DIAG_ROOT=$LAQ_ROOT
+ARTIFACTS=$NEW_ROOT/artifacts/$PBS_JOBID
+FW_JOB_START_EPOCH=$(date +%s)
+export NEW_ROOT ROOT BASE SMOOTH_ROOT SOURCE_ROOT DIAG_ROOT SIF ARTIFACTS FW_JOB_START_EPOCH
+mkdir -p "$ARTIFACTS" "$NEW_ROOT/results"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+echo "JOB=$PBS_JOBID KEY=frames HOST=$(hostname -s) START=$(date -u +%FT%TZ)"
+
+MONITOR_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  echo "EXIT rc=$rc $(date -u +%FT%TZ)"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.pbs "$LAQ_ROOT/env_fastwam.sh" "$LAQ_ROOT/fw_common.py" "$ARTIFACTS/"
+for name in "${ENGINE_FILES[@]}"; do
+  test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
+  cp "$ENGINE_SOURCE/$name" "$ARTIFACTS/"
+done
+source "$ARTIFACTS/env_fastwam.sh"
+
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  GPU=$(nvidia-smi -i "${CUDA_VISIBLE_DEVICES%%,*}" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+else
+  GPU=$(nvidia-smi --query-gpu=uuid --format=csv,noheader | head -n 1 | tr -d '[:space:]')
+fi
+[[ "$GPU" == GPU-* ]] || die "Bad GPU UUID '$GPU'"
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi -i "$GPU" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader \
+      || echo GPU_SAMPLE_ERROR
+    sleep 30
+  done
+) & MONITOR_PID=$!
+
+export FW_CPU_THREADS=8
+cd "$ARTIFACTS"
+CUDA_VISIBLE_DEVICES=$GPU run_python -B "$ARTIFACTS/fig3_frames.py" "$LAQ_ROOT/protocol.json" "$NEW_ROOT/results/frames" "$COUNT"
+touch "$ARTIFACTS/PIPELINE_COMPLETE"
+echo PIPELINE_COMPLETE

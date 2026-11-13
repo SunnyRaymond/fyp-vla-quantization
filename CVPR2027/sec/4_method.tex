@@ -11,15 +11,13 @@ Gaze-guided refinement then gives the tokens above the threshold a second 4-bit 
 \label{sec:method:metric}
 
 The reader metric measures an error in the predicted future by how much it changes the action.
-As shown in \cref{sec:observations}(c), the reader depends on a narrow part of the predicted future, whereas the uniform future error $Z$ weighs every latent dimension equally.
+As Observation~3 shows (\cref{sec:observations}), the reader depends on a narrow part of the predicted future, whereas the uniform future error $Z$ weighs every latent dimension equally.
 For a calibration context $c$, let $\bJ_c = \partial R(\bo_c, \ell_c, \bz)/\partial \bz$ at $\bz = \bz^\star_c$, and let $\bD_c$ be the diagonal curvature of the reader error $K$ (\cref{eq:reader-kl}) with respect to the reader output at $\ba^\star_c$.
 We define the reader metric as the Gauss--Newton matrix of $K$ averaged over contexts, and the corresponding future error:
 \begin{equation}
-  \boxed{\;
   \bM = \mathbb{E}_c\big[\bJ_c^\top \bD_c \bJ_c\big],
   \qquad
   Z_{\bM} = \frac{(\hat\bz - \bz^\star)^\top \bM\, (\hat\bz - \bz^\star)}{\|\bz^\star\|^2}
-  \;}
   \label{eq:metric}
 \end{equation}
 Here, $Z_{\bM}$ is the second-order change of the reader error caused by the future error $\hat\bz - \bz^\star$.
@@ -36,7 +34,7 @@ We keep the leading $r$ eigendirections of the estimate together with its residu
   \label{eq:metric-form}
 \end{equation}
 where $d$ is the latent dimension and $\alpha \in (0, 1)$.
-The diagonal part is stable across contexts (\cref{sec:observations}(c)), and the identity keeps every part of the future constrained.
+The diagonal part is stable across contexts (Observation~3), and the identity keeps every part of the future constrained.
 Since $\bM$ depends only on the full-precision model, we estimate it once.
 \cref{sec:supp:method} details the estimator and its stability.
 
@@ -44,7 +42,7 @@ Since $\bM$ depends only on the full-precision model, we estimate it once.
 \label{sec:method:count}
 
 The read count of an error source is the number of denoising steps over which one realization of its rounding error is read.
-\cref{sec:observations}(b) shows that this number changes the damage of an error, and that a sensitivity estimated one step at a time misses it.
+Observation~2 shows that this number changes the damage of an error, and that a sensitivity estimated one step at a time misses it.
 Let $u$ index a source of rounding error: the activation of a token, a cached key or value, or a weight.
 Let $\be_{u,s}$ be the error that enters at denoising step $s$, and $\bJ_{u,s} = \partial\bz/\partial\be_{u,s}$ its effect on the predicted future.
 To first order, $\hat\bz - \bz^\star = \sum_s \bJ_{u,s}\,\be_{u,s}$, so the future error in the reader metric is governed by the $T \times T$ matrix
@@ -56,9 +54,7 @@ For a fresh error with variance $\sigma_u^2$, the cross terms between steps vani
 For a frozen error, $\be_{u,s} = \be_u$ at every step, every pair of steps contributes, and the damage is $\sigma_u^2\, \bone^\top \bOmega_u \bone$.
 We define the read count as their ratio:
 \begin{equation}
-  \boxed{\;
   n_u = \frac{\bone^\top \bOmega_u\, \bone}{\tr \bOmega_u} \in [0, T]
-  \;}
   \label{eq:count}
 \end{equation}
 A frozen error does the damage of a fresh error read $n_u$ times, and we set $n_u = 1$ for fresh sources.
@@ -73,7 +69,7 @@ The measurement holds at the error level of the 4-bit quantizer, not only to fir
 \label{sec:method:alloc}
 
 Joint allocation decides, under one budget, how the weights are rounded and which tokens receive more precision in the denoising loop and in the cache.
-\cref{sec:observations}(a) shows that the target must include the predicted future, so \method keeps the quantized model close to the full-precision one in
+Observation~1 shows that the target must include the predicted future, so \method keeps the quantized model close to the full-precision one in
 \begin{equation}
   \mathcal{L} = \mathbb{E}_c\big[\,A + \lambda_{\bM} Z_{\bM} + \beta K\,\big],
   \label{eq:objective}
@@ -93,9 +89,7 @@ Its minimizer is the second-order rounding of~\cite{frantar2023gptq}, which we u
 For activations and caches, refining unit $u$ divides $\sigma_u^2$ by at least 196 (\cref{eq:refine}) at a cost $c_u$: one more row of a 4-bit matrix product for an activation, one more 4-bit code for a cached entry.
 Minimizing \cref{eq:separable} under a budget $\sum_u c_u r_u \le B$ is solved by a threshold on the damage removed per unit cost:
 \begin{equation}
-  \boxed{\;
   r_u = 1 \iff \frac{n_u\, \omega_u\, \sigma_u^2}{c_u} \ge \mu
-  \;}
   \label{eq:threshold}
 \end{equation}
 where $\mu$ is set by $B$.
@@ -106,21 +100,20 @@ For the token at position $j$ and denoising step $s$, we factor the sensitivity 
 The step profile $\phi_s$ is measured by refining all tokens at step $s$ alone, and $g_j$ is the gaze of \cref{sec:method:refine}.
 The threshold thus orders the sources by how often they are read and how rarely they are written.
 Cached tokens and tokens that do not change across steps have large read counts and are written once, so they are refined first; the tokens that are being denoised follow, at the steps and positions where $\phi_s\, g_j$ is largest.
-\TODO{confirm this ordering and the step profile once the injections are run}
 A selected token is refined wherever it is rounded on its way to the reader, in the activations that write it and in the cache that stores it, so that the precision gained in one place is not lost in the other.
 
 \subsection{Gaze-guided refinement}
 \label{sec:method:refine}
 
 Gaze-guided refinement gives the selected tokens a second 4-bit pass and follows the attention of the reader to decide which tokens these are.
-\cref{sec:observations}(c) shows that the locations the reader depends on are stable while the directions are not, so we protect tokens rather than directions, and we do so without leaving 4-bit arithmetic.
+Observation~3 shows that the locations the reader depends on are stable while the directions are not, so we protect tokens rather than directions, and we do so without leaving 4-bit arithmetic.
 
 For the activation $\bx$ of a selected token, we quantize the residual of the first pass a second time:
 \begin{equation}
   \begin{gathered}
     \mathbf{q}_1 = \operatorname{round}\!\Big(\frac{\bx}{\varsigma_1}\Big), \qquad
     \mathbf{q}_2 = \operatorname{round}\!\Big(\frac{\bx - \varsigma_1 \mathbf{q}_1}{\varsigma_2}\Big), \\[4pt]
-    \boxed{\;\hat\bx = \varsigma_1 \mathbf{q}_1 + \varsigma_2 \mathbf{q}_2\;}
+    \hat\bx = \varsigma_1 \mathbf{q}_1 + \varsigma_2 \mathbf{q}_2
   \end{gathered}
   \label{eq:refine}
 \end{equation}

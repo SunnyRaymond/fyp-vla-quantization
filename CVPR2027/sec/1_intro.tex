@@ -25,7 +25,6 @@ Recent WAM quantizers account for the task instead.
 QuantWAMs~\cite{zhou2026quantwams} calibrates which channels, layers and denoising steps to protect, Q-WAM~\cite{akbari2026qwam} keeps the activation directions that most affect the final action in a 16-bit low-rank branch, and SteerQuant~\cite{wang2026steerquant} rescales channels and token streams by their impact on the action.
 These methods estimate sensitivity one denoising step at a time, with respect to the final action or the training loss.
 None of them deliberately protects the predicted future on which the action depends, and none addresses the caches through which it is read.
-\TODO{check in the appendices and code of QuantWAMs and Q-WAM that cached keys and values stay at 16 bits; SteerQuant states it}
 
 We find that this omission is costly: existing quantizers fail to preserve the fidelity of the predicted future, and the loss reaches the action.
 We call \emph{reader} the part of a WAM that maps the predicted future to the action.
