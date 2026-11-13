@@ -58,7 +58,157 @@ SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, 
 
 \section{Additional results}
 \label{sec:supp:results}
-\TODO{success rates per suite and perturbation dimension for all methods; results with calibration tasks disjoint from the evaluated tasks; ablations on Cosmos-Policy}
+\TODO{success rates per suite and perturbation dimension for all methods}
+
+\section{Additional ablations}
+\label{sec:supp:ablation}
+\TODO{Nothing in this section is run. (a) One open-loop job on held-out contexts (single GPU, a few hours) fills \cref{tab:supp:criteria,tab:supp:budget,tab:supp:metric}, the 8-bit comparison and the error columns of \cref{tab:ablation,tab:supp:cosmos}; the rows of \cref{tab:supp:metric} each need a new metric file and allocation. (b) Closed loop: calibration on disjoint suites (\cref{tab:supp:disjoint}; re-estimate the metric on the Spatial and Object contexts, 1.2 GPU-hours of calibration, then the 420 Goal and Long episodes for both rows, about 15 GPU-hours each); Cosmos-Policy with random tokens (840 episodes, about 16 GPU-hours) and without refinement on panels B and C. The 81.4 and 83.6 of \cref{tab:supp:cosmos} are panel-A results (228 and 234 of 280); update them with \cref{tab:main}}
+
+\paragraph{Protocol.}
+All variants of \cref{tab:ablation} share the 4-bit weights, the quantizers and the calibration records of \method and differ only in the tokens that receive the second pass.
+A variant with the same budget spends the same number of additional 4-bit operands per policy call as \method.
+A selection criterion assigns a score to every unit, that is, an observation token, a future token at one denoising step or a cached token, and the units are refined in decreasing order of score per unit cost until the budget is spent.
+\emph{Random} draws the refined units uniformly, anew at every policy call.
+\emph{Per-step sensitivity} scores a unit by the change of the action error $A$ when its rounding error is removed at one denoising step alone, which corresponds to the objective $A$ with $n_u = 1$ for every source.
+\emph{Offline gaze} ranks the tokens by their share of $\bM$ and keeps this ranking at run time.
+\emph{Reader metric} sets $\bM = \mathbf{I}$ in \cref{eq:objective} and in the offline gaze, and \emph{Read count} sets $n_u = 1$ in \cref{eq:threshold}.
+The action error and the reader error are measured on \XX held-out LIBERO contexts that are not used for calibration, against the BF16 model under the same sampling noise.
+The closed-loop rows run on the LIBERO-Plus episodes of \cref{tab:main}, so that every variant is paired with \method.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Criterion & Action $\downarrow$ & Reader $\downarrow$ \\
+    \midrule
+    Random                               & \XX & \XX \\
+    Activation energy                    & \XX & \XX \\
+    Video self-attention                 & \XX & \XX \\
+    All tokens, last steps               & \XX & \XX \\
+    Per-step sensitivity                 & \XX & \XX \\
+    Offline gaze                         & \XX & \XX \\
+    \cellcolor{gray!12}Gaze, tracked at run time (\method) & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Selection criteria under the budget of \method on Fast-WAM (action error and reader error on held-out contexts).}
+  \label{tab:supp:criteria}
+\end{table}
+
+\paragraph{Selection criteria.}
+\cref{tab:supp:criteria} compares all selection criteria under the budget of \method.
+Activation energy~\cite{federici2026stamp} and the self-attention of the video model~\cite{shen2024squat,jang2026semanticdialect} rank the tokens by how salient they are for generating the video, and \emph{All tokens, last steps} refines every future token at the last denoising steps that the budget covers.
+The three remove at most \XX\% of the reader error that the gaze removes: the tokens that matter for generating the video are not the ones the reader depends on.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}ccccc@{}}
+    \toprule
+    & \multicolumn{2}{c}{Random} & \multicolumn{2}{c}{\method} \\
+    \cmidrule(lr){2-3} \cmidrule(l){4-5}
+    Budget (\%) & Action $\downarrow$ & Reader $\downarrow$ & Action $\downarrow$ & Reader $\downarrow$ \\
+    \midrule
+    5   & \XX & \XX & \XX & \XX \\
+    10  & \XX & \XX & \XX & \XX \\
+    \cellcolor{gray!12}15 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    25  & \XX & \XX & \XX & \XX \\
+    50  & \XX & \XX & \XX & \XX \\
+    100 & \XX & \XX & \XX & \XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Effect of the budget on Fast-WAM, as the share of the 4-bit operands of a policy call that receive a second pass.
+  The shaded row is the budget of \cref{tab:main}.}
+  \label{tab:supp:budget}
+\end{table}
+
+\paragraph{Budget.}
+\cref{tab:supp:budget} varies the budget from 5\% to 100\% of the 4-bit operands of a policy call.
+At every budget, \method has lower errors than random selection, and \method at \XX\% matches random selection at \XX\%.
+Beyond 15\%, the budget of \cref{tab:main}, the errors of \method fall by less than \XX\%.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}llcc@{}}
+    \toprule
+    & Value & Action $\downarrow$ & Reader $\downarrow$ \\
+    \midrule
+    \multirow{4}{*}{Rank $r$}
+      & 0   & \XX & \XX \\
+      & 8   & \XX & \XX \\
+      & \cellcolor{gray!12}32 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+      & 128 & \XX & \XX \\
+    \midrule
+    \multirow{3}{*}{Identity weight $\alpha$}
+      & 0.01 & \XX & \XX \\
+      & \cellcolor{gray!12}0.1 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+      & 0.5  & \XX & \XX \\
+    \midrule
+    \multirow{3}{*}{Probes per context}
+      & 1  & \XX & \XX \\
+      & \cellcolor{gray!12}4 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+      & 16 & \XX & \XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Sensitivity of \method to the hyperparameters of the reader metric on Fast-WAM.
+  Each block varies one of them and keeps the others at their default, which is shaded; $r = 0$ keeps only the diagonal.}
+  \label{tab:supp:metric}
+\end{table}
+
+\paragraph{Hyperparameters of the reader metric.}
+\cref{tab:supp:metric} varies the rank $r$, the identity weight $\alpha$ and the number of probes per context.
+The errors change by at most \XX\% over $r$ from 8 to 128, $\alpha$ from 0.01 to 0.5 and 1 to 16 probes, so \method is not sensitive to these choices.
+
+\paragraph{Second pass.}
+Quantizing the selected tokens once at 8 bits instead of twice at 4 bits gives an action error of \XX and a reader error of \XX, compared with \XX and \XX for \method: the second 4-bit pass matches an 8-bit activation while every matrix product stays at 4 bits.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Calibration contexts & Goal & Long & Avg. \\
+    \midrule
+    All four suites         & \XX & \XX & \XX \\
+    Spatial and Object only & \XX & \XX & \XX \\
+    \bottomrule
+  \end{tabular}
+  \caption{Closed-loop success rates (\%) of \method on the Goal and Long suites of LIBERO-Plus (Fast-WAM) when the reader metric and the allocation are calibrated on all suites or on the two other suites alone.}
+  \label{tab:supp:disjoint}
+\end{table}
+
+\paragraph{Calibration on disjoint suites.}
+We re-estimate the reader metric and the allocation from the contexts of the Spatial and Object suites alone and evaluate on the Goal and Long suites.
+\method reaches \XX\% on these two suites, compared with \XX\% when calibrated on all four (\cref{tab:supp:disjoint}): the quantities fixed offline describe the model, not the task, and the gaze follows the scene at run time.
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    & \multicolumn{2}{c}{Bits} & \multicolumn{2}{c}{Error $\downarrow$} & Succ. \\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+    Variant & A & KV & Action & Reader & (\%) $\uparrow$ \\
+    \midrule
+    No refinement              & 4    & 4    & \XX & \XX & 81.4 \\
+    Random tokens              & \XX  & \XX  & \XX & \XX & \XX \\
+    \cellcolor{gray!12}\method & \cellcolor{gray!12}4.58 & \cellcolor{gray!12}4.70 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}83.6 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Ablations on Cosmos-Policy, with the columns of \cref{tab:ablation}.
+  \emph{Random tokens} spends the budget of \method.}
+  \label{tab:supp:cosmos}
+\end{table}
+
+\paragraph{Cosmos-Policy.}
+\cref{tab:supp:cosmos} repeats the core ablation on Cosmos-Policy, where the future and the action are denoised jointly and the gaze of one denoising step selects the tokens of the next.
+Refinement raises plain W4A4KV4 from 81.4\% to 83.6\%, and random tokens under the same budget recover only \XX of these 2.2 points.
 
 \section{Computational cost}
 \label{sec:supp:cost}

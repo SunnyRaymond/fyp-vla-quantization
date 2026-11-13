@@ -149,66 +149,64 @@ The quantized model stores 3.2\,GB of weights instead of 12.0\,GB.
 \begin{table}[t]
   \centering
   \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}llccc@{}}
+  \setlength{\tabcolsep}{2.6pt}
+  \begin{tabular}{@{}lccccc@{}}
     \toprule
-    & Variant & A & KV & Avg. (\%) \\
+    & \multicolumn{2}{c}{Bits} & \multicolumn{2}{c}{Error $\downarrow$} & Succ. \\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+    Variant & A & KV & Action & Reader & (\%) $\uparrow$ \\
     \midrule
-    \multirow{8}{*}{Selection}
-      & No refinement                   & 4   & 4   & \XX \\
-      & Random tokens                   & \XX & \XX & \XX \\
-      & Activation energy               & \XX & \XX & \XX \\
-      & Video self-attention            & \XX & \XX & \XX \\
-      & Per-step action sensitivity     & \XX & \XX & \XX \\
-      & All tokens, last steps          & \XX & \XX & \XX \\
-      & Offline gaze                    & \XX & \XX & \XX \\
-      & Gaze, tracked at run time       & \XX & \XX & \XX \\
+    \multicolumn{6}{@{}l}{\emph{Refined tokens}} \\
+    \hspace{0.5em}None                               & 4    & 4    & \XX & \XX & \XX \\
+    \hspace{0.5em}Action tokens (BF16)               & \XX  & 4    & \XX & \XX & \XX \\
+    \hspace{0.5em}Observation tokens                 & \XX  & \XX  & \XX & \XX & \XX \\
     \midrule
-    \multirow{4}{*}{Places}
-      & Observation tokens              & \XX & \XX & \XX \\
-      & + caches                        & \XX & \XX & \XX \\
-      & + denoising loop                & \XX & \XX & \XX \\
-      & Random tokens, same budget      & \XX & \XX & \XX \\
+    \multicolumn{6}{@{}l}{\emph{Selection criterion, same budget}} \\
+    \hspace{0.5em}Random                             & \XX  & \XX  & \XX & \XX & \XX \\
+    \hspace{0.5em}Per-step sensitivity               & \XX  & \XX  & \XX & \XX & \XX \\
+    \hspace{0.5em}Offline gaze                       & 4.62 & 4.24 & \XX & \XX & \XX \\
     \midrule
-    \multirow{2}{*}{Read count}
-      & $n_u = 1$ for every source      & \XX & \XX & \XX \\
-      & Measured $n_u$                  & \XX & \XX & \XX \\
+    \multicolumn{6}{@{}l}{\emph{Component removed, same budget}} \\
+    \hspace{0.5em}Reader metric ($\bM = \mathbf{I}$) & \XX  & \XX  & \XX & \XX & \XX \\
+    \hspace{0.5em}Read count ($n_u = 1$)             & \XX  & \XX  & \XX & \XX & \XX \\
     \midrule
-    \multirow{2}{*}{Precision}
-      & Action BF16                     & \XX & 4   & \XX \\
-      & \method, BF16 caches            & \XX & 16  & \XX \\
+    \multicolumn{6}{@{}l}{\emph{Cache precision}} \\
+    \hspace{0.5em}BF16 caches                        & 4.62 & 16   & \XX & \XX & \XX \\
+    \midrule
+    \cellcolor{gray!12}\method & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}74.3 \\
     \bottomrule
   \end{tabular}
-  \caption{Ablations on Fast-WAM (LIBERO-Plus, closed-loop success), under W4A4KV4 unless the A and KV columns say otherwise.
-  A and KV give the average bits of activations and of cached keys and values.
-  In the first block, the pipeline, the budget and the refinement are fixed and only the criterion that selects the tokens changes.
-  The last row of the first and third blocks and the third row of the second block are the full \method.
-  \emph{Action BF16} keeps the action tokens in BF16 and quantizes everything else without refinement.}
+  \caption{Ablations on Fast-WAM.
+  A and KV give the average bits of the activations and of the cached keys and values.
+  \emph{Action} and \emph{Reader} are the action error $A$ and the reader error $K$ of \cref{sec:prelim} on held-out LIBERO contexts, and \emph{Succ.} is the closed-loop success rate on LIBERO-Plus.
+  \emph{None} is plain W4A4KV4; \emph{Action tokens (BF16)} keeps the action tokens in BF16 and quantizes everything else without refinement; \emph{Observation tokens} refines only the tokens of the observed frame.
+  In the second and third blocks, the pipeline, the budget and the refinement are those of \method, and only the score that ranks the tokens changes.}
   \label{tab:ablation}
 \end{table}
 
-\cref{tab:ablation} isolates each component on Fast-WAM in closed loop.
-
-\paragraph{The reader decides which tokens matter.}
-With the pipeline, the budget and the refinement fixed, only the criterion that selects the tokens changes.
-Selecting by gaze reaches \XX\%, compared with \XX\% for random tokens and \XX\% for refining all tokens in the last denoising steps.
-Criteria computed from the video model itself, its activation energy~\cite{federici2026stamp} and its self-attention~\cite{shen2024squat,jang2026semanticdialect}, reach \XX\% and \XX\%, and a per-step sensitivity of the final action~\cite{akbari2026qwam,wang2026steerquant} reaches \XX\%.
-Tracking the gaze at run time adds \XX points over the offline gaze, and its gain concentrates on the \XX perturbations.
-
-\paragraph{Each place contributes.}
-Refining the observation tokens, which are written once, raises plain W4A4KV4 from \XX\% to \XX\%.
-Refining the selected tokens in the caches adds \XX points, and refining them in the denoising loop adds \XX points.
-Spending the same budget on random tokens reaches \XX\%.
-
-\paragraph{Counting reads matters.}
-Setting $n_u = 1$ for every source moves the budget from the caches to the denoising loop and lowers the success rate from \XX\% to \XX\%.
+\cref{tab:ablation} isolates each component on Fast-WAM, with the action error and the reader error measured in open loop on held-out contexts and the success rate in closed loop.
+\TODO{Only the \method row exists; it repeats \cref{tab:main}, update both together. Closed loop: nine rows on the episodes of \cref{tab:main}, paired with the \method and BF16 rows, panel A first and then B and C; about 30 A100-hours per row over 840 episodes (259\,s per episode, two workers per GPU), 270 in total. Order: (1) none, action tokens in BF16, random; (2) per-step sensitivity, read count, offline gaze; (3) observation tokens, reader metric, BF16 caches. All rows but the action-in-BF16 one reuse the existing weights and calibration records and only change the allocation. Open loop: one single-GPU job of a few hours for all rows on held-out contexts; $K$ is not computed by the current code (one BF16 reader pass per context); fix the units of the two error columns. Every criterion must rank all units (observation, future and cached tokens at every step) under the budget of \method: the observation tokens take 1{,}078 of its 1{,}209 refined token-steps, so a criterion that only moves the future tokens changes little. On the 16 calibration contexts the action error is 0.0188 without refinement, 0.0172 with the action rows refined, 0.0138 with the observation tokens added and 0.0131 for \method, and the objective of the observation-only variant ($4.27 \times 10^{-4}$) equals that of \method ($4.30 \times 10^{-4}$), so the last step of the first block may not show. \method always refines the action rows: decide whether the observation-only row keeps them}
 
 \paragraph{Exact actions are not enough.}
-Action BF16, which keeps the action tokens in BF16 and quantizes everything else without refinement, recovers only \XX points over plain W4A4KV4 although its action tokens are exact, which confirms Observation~1 in closed loop.
-Keeping the caches of \method in BF16 adds \XX points, so its 4-bit caches cost little.
+Plain W4A4KV4 loses \XX points to BF16.
+Keeping the action tokens in BF16 recovers only \XX of them although its action tokens are exact: the action error falls, but the reader error stays at \XX, which confirms Observation~1 in closed loop.
+Refining only the observation tokens, which are written once and read at every denoising step, recovers \XX points, and the future tokens and cached entries selected by the gaze bring \method to 74.3\%.
 
-\paragraph{No recalibration is needed.}
-When the calibration contexts come from tasks that are disjoint from the evaluated ones, \method reaches \XX\% (\cref{sec:supp:results}).
+\paragraph{The reader decides which tokens matter.}
+With the pipeline, the budget and the refinement fixed, only the criterion that ranks the tokens changes.
+Random tokens reach \XX\%.
+A per-step sensitivity of the final action~\cite{akbari2026qwam,wang2026steerquant} reaches \XX\%: it spends the budget on the action pathway and lowers the reader error by only \XX\%.
+The offline gaze reaches \XX\%, and tracking the gaze at run time adds \XX points, mostly on the \XX perturbations.
+Criteria computed from the video model itself, its activation energy~\cite{federici2026stamp} and its self-attention~\cite{shen2024squat,jang2026semanticdialect}, fall behind the gaze as well (\cref{sec:supp:ablation}).
+
+\paragraph{The reader metric and the read count both matter.}
+Replacing the reader metric by the identity, so that every part of the predicted future counts equally, lowers the success rate from 74.3\% to \XX\%.
+Setting $n_u = 1$ for every source moves the budget from the tokens that are read at every denoising step to the tokens that are being denoised, and lowers it to \XX\%.
+
+\paragraph{Caches and calibration.}
+Keeping the caches of \method in BF16 adds only \XX points, so its 4-bit caches cost little.
+When the reader metric and the allocation are calibrated on suites that are disjoint from the evaluated ones, \method reaches \XX\% on the evaluated suites, compared with \XX\% when calibrated on all suites, so a new task needs no recalibration.
+\cref{sec:supp:ablation} gives the protocol of every variant, the ablations on Cosmos-Policy, the effect of the budget and the sensitivity to $r$, $\alpha$ and the number of probes.
 
 \subsection{Efficiency}
 \label{sec:exp:efficiency}
