@@ -64,7 +64,7 @@ HEAT = ["#FFF6D6", "#FDCB6E", "#F28C38", "#D8432B", "#8C1020"]  # (b): share of 
 INK, MUTED, RULE = "#222222", "#6E6E73", "#C9C9CE"
 TEXTWIDTH, HEIGHT = 6.875, 1.55
 FS = 7.4
-FONT = "Arial"
+FONT = "Cambria"
 
 plt.rcParams.update({"font.family": [FONT, "DejaVu Sans"], "font.size": FS, "pdf.fonttype": 42, "ps.fonttype": 42})
 

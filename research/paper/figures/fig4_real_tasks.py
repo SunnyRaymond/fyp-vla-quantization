@@ -74,7 +74,7 @@ TRACK, TRACK_DONE = "#E2E5E9", "#A9B1BB"
 GRIP, GRIP_FUTURE = "#EE7D1F", "#F7C392"
 FS_TITLE, FS_TEXT, FS_CHIP = 8.5, 7.5, 6.4
 
-plt.rcParams.update({"font.family": "Arial", "pdf.fonttype": 42, "ps.fonttype": 42})
+plt.rcParams.update({"font.family": "Cambria", "pdf.fonttype": 42, "ps.fonttype": 42})
 
 
 def grasp_segments(g):
