@@ -71,19 +71,19 @@ To test how the number of reads changes the damage of an error, we additionally 
 % Fig. 3: research/paper/figures/fig3_observations.py writes figures/figure3_a.pdf and figures/figure3_b.pdf.
 \begin{figure*}[t]
   \centering
-  \begin{subfigure}[t]{0.36\linewidth}
+  \begin{subfigure}[t]{0.40\linewidth}
     \includegraphics[width=\linewidth]{figures/figure3_a.pdf}
     \caption{Errors that are read many times add up.}
     \label{fig:obs:reads}
-  \end{subfigure}\hfill
-  \begin{subfigure}[t]{0.62\linewidth}
+  \end{subfigure}\hspace{0.05\linewidth}
+  \begin{subfigure}[t]{0.475\linewidth}
     \includegraphics[width=\linewidth]{figures/figure3_b.pdf}
-    \caption{The reader depends on a narrow, location-stable part of the future.}
+    \caption{The reader depends on a narrow part of the future.}
     \label{fig:obs:gaze}
   \end{subfigure}
   \caption{How the predicted future is damaged and how it is read (Fast-WAM).
   (a)~A 4-bit rounding error damages the future two to three times more when one realization is kept over the 10 denoising steps (frozen) than when it is redrawn at each step with the same energy.
-  (b)~Share of the reader metric $\bM$ carried by each token of the first predicted frame, averaged over 80 contexts and shown over the frame predicted for one of them. Estimated on two disjoint halves of the contexts, the metric agrees in its locations but not in its directions.}
+  (b)~Share of the reader metric $\bM$ carried by each token of the first predicted frame, averaged over 80 contexts and shown over the frame predicted for one of them.}
   \label{fig:observations}
 \end{figure*}
 
@@ -107,7 +107,7 @@ This implies that an error should be weighted by how many times it is read, not 
 \paragraph{Observation 3: The reader depends on a narrow part of the future, stable in location but not in direction.}
 We linearize the reader at the full-precision future and compute its Gauss--Newton metric $\bM$ (\cref{sec:method:metric}).
 In a 37{,}632-dimensional latent, $\bM$ has an effective rank of 41.5; the first predicted frame carries 98\% of its trace, and the largest 10\% of its diagonal entries carry 62\%.
-Which locations of the latent the reader depends on is stable: the diagonal of $\bM$ correlates at 0.86 across disjoint halves of the calibration contexts, and it concentrates on a small region of the scene (\cref{fig:obs:gaze}; further examples in \cref{sec:supp:vis}).
+Which locations of the latent the reader depends on is stable: the diagonal of $\bM$ correlates at 0.86 across disjoint halves of the calibration contexts, and it concentrates on a small region of the scene, the arm and the gripper (\cref{fig:obs:gaze}; further examples in \cref{sec:supp:vis}).
 The directions are not: the leading 32 eigenvectors estimated on the two halves overlap by only 0.19.
 This implies that protection should follow the tokens the reader depends on, rather than a fixed set of directions.
 
