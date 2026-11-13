@@ -1,6 +1,10 @@
 """Fig. 3 (Section 3.2): how the predicted future is damaged (a) and how it is read (b).
 
-python research/paper/figures/fig3_observations.py
+python research/paper/figures/fig3_observations.py [--overwrite]
+
+Since 2026-11-13 the slides in CVPR2027/figures are edited by hand and the PDFs of the paper are exported from them
+(PowerPoint, save as PDF), so this script writes to figure3_generated/ next to it and replaces the files of the paper
+only with --overwrite, which discards the hand edits. fig3_gap_arrows.py is a later edit made directly on the slide.
   -> CVPR2027/figures/figure3_a.pdf, figure3_b.pdf      the figures of the paper
   -> CVPR2027/figures/figure3_a.pptx, figure3_b.pptx    the same panels as editable PowerPoint slides
   -> figure3_assets/*.png, figure3_*_preview.png            the pictures placed on the slides, and previews
@@ -19,6 +23,7 @@ native shape. A slide exported from PowerPoint as PDF replaces the PDF of the sa
     contexts of even and of odd case id, the split behind the two agreement numbers.
 """
 import json
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -116,11 +121,13 @@ class Panel:
     def save(self):
         self.ax.set_xlim(0, self.width)
         self.ax.set_ylim(0, HEIGHT)
-        self.fig.savefig(OUT / f"{self.name}.pdf")
+        out = OUT if "--overwrite" in sys.argv else HERE / "figure3_generated"
+        out.mkdir(exist_ok=True)
+        self.fig.savefig(out / f"{self.name}.pdf")
         self.fig.savefig(HERE / f"{self.name}_preview.png", dpi=400)
-        self._slide().save(OUT / f"{self.name}.pptx")
+        self._slide().save(out / f"{self.name}.pptx")
         plt.close(self.fig)
-        print("wrote", OUT / f"{self.name}.pdf", "and", OUT / f"{self.name}.pptx")
+        print("wrote", out / f"{self.name}.pdf", "and", out / f"{self.name}.pptx")
 
     # ---- the same primitives as PowerPoint shapes --------------------------------
     def _slide(self):
