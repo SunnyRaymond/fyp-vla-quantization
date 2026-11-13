@@ -56,6 +56,16 @@
 \usepackage{colortbl}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+%% the ruled float style draws its rules in whatever colour is current when the float is shipped out,
+%% so red TODO text broken across a page turned the rules of Algorithm 1 red; draw them in the normal colour
+\makeatletter
+\renewcommand\fs@ruled{\def\@fs@cfont{\bfseries}\let\@fs@capt\floatc@ruled
+  \def\@fs@pre{\normalcolor\hrule height.8pt depth0pt \kern2pt}%
+  \def\@fs@post{\kern2pt\hrule\relax}%
+  \def\@fs@mid{\kern2pt\hrule\kern2pt}%
+  \let\@fs@iftopcapt\iftrue}
+\floatstyle{ruled}\restylefloat{algorithm}
+\makeatother
 \DeclareMathOperator{\tr}{tr}
 \newcommand{\method}{LAQ\xspace}
 \newcommand{\XX}{\textcolor{red}{XX}\xspace}
