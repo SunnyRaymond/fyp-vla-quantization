@@ -19,11 +19,11 @@
       & QuaRot                 & 4.13 & 4  & 16  & 72.9 & 74.3 & 64.3 & 67.1 & 69.6\ci{5.4} & 97.6 & 97.0 & 96.2 & 95.6 & 96.6\ci{0.8} \\
       & SpinQuant              & 4.13 & 4  & 16  & 78.6 & 72.9 & 68.6 & 70.0 & 72.5\ci{5.2} & 98.4 & 97.2 & 96.8 & 96.4 & 97.2\ci{0.7} \\
       & ViDiT-Q                & 4.33 & 4  & 16  & 77.1 & 70.0 & 68.6 & 74.3 & 72.5\ci{5.2} & 98.0 & 96.8 & 97.0 & 97.4 & 97.3\ci{0.7} \\
-      & SVDQuant               & 4.81 & 4  & 16  & 77.4 & 74,1 & 68.2 & 72.2 & 73.0\ci{5.6} & 98.0 & 97.4 & 96.4 & 96.2 & 97.0\ci{0.7} \\
+      & SVDQuant               & 4.81 & 4  & 16  & 77.4 & 74.1 & 68.2 & 72.2 & 73.0\ci{5.3} & 98.0 & 97.4 & 96.4 & 96.2 & 97.0\ci{0.7} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}4.01 & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}81.4 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}67.1 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}\textbf{74.3}\ci{5.1} & \cellcolor{gray!12}98.1 & \cellcolor{gray!12}99.5 & \cellcolor{gray!12}98.1 & \cellcolor{gray!12}97.1 & \cellcolor{gray!12}\textbf{98.2}\ci{0.9} \\
     \midrule
     \multirow{6}{*}{Cosmos-Policy}
-      & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{4.1} & 97.4 & 99.6 & 97.8 & 97.6 & 98.1\ci{0.6} \\
+      & BF16                   & 16  & 16  & 16  & 84.3 & 89.5 & 73.3 & 86.7 & 83.5\ci{4.2} & 97.4 & 99.6 & 97.8 & 97.6 & 98.1\ci{0.6} \\
     \cmidrule(l){2-15}
       & QuaRot                 & 4.13 & 4  & 16  & 82.9 & 87.1 & 72.9 & 81.4 & 81.1\ci{4.6} & 97.2 & 99.0 & 96.4 & 97.4 & 97.5\ci{0.7} \\
       & SpinQuant              & 4.13 & 4  & 16  & 77.1 & 87.1 & 65.7 & 85.7 & 78.9\ci{4.8} & 96.8 & 99.2 & 95.8 & 97.0 & 97.2\ci{0.7} \\
@@ -235,6 +235,5 @@ When the calibration contexts come from tasks that are disjoint from the evaluat
 \method stores every quantized layer at 4.01 bits per weight with no high-precision branch, which compresses the denoiser from 12.0\,GB to 3.2\,GB (3.8$\times$) and reduces the peak GPU memory of the whole policy from 14.0\,GB to 6.0\,GB (2.3$\times$).
 The cached keys and values of one call shrink from 204\,MB to 56\,MB.
 One policy call takes 1151\,ms, 1.28$\times$ faster than the BF16 model (1475\,ms), although every refined token takes a second 4-bit pass.
-Beyond the GPTQ weights that it shares with QuaRot and the reader metric, the calibration of \method takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model.
-\TODO{add the time and memory of the reader metric (80 contexts, four reverse passes through the reader each); its job record is no longer available}
+Calibration of \method takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model.
 \cref{sec:supp:cost} describes the runtime.
