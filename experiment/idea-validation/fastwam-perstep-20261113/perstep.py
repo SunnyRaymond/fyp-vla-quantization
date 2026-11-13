@@ -14,7 +14,7 @@ A = MSE of the first 10 actions, motor dims; Z = future NMSE (laq.errors).
   per-step share of the future pathway = sum_s A(v.s) / (sum_s A(v.s) + A(prefill) + sum_t A(a.t))
   accumulation over the video steps    = A(video) / sum_s A(v.s), and the same for Z
 
-The code under test is the LAQ calibration's own copy (artifacts of job 26196738); this file adds the phase gate: the
+The code under test is the LAQ calibration's own copy (artifacts of job 26198565, the first copy whose phases go through State.call); this file adds the phase gate: the
 BF16 and the decoded 4-bit weights are both kept, and State.call copies the set of the phase into the Linears.
 """
 from __future__ import annotations
@@ -166,6 +166,8 @@ def work(p, s):
             action, _, future, calls = _capture_anchor(runtime, runtime.datum(observation), rows[case]["sampler_seeds"][0], torch)
             if calls != 1:
                 raise RuntimeError("A query called infer_action more than once")
+            if (arm != "full") != (gate.switches > 0):
+                raise RuntimeError(f"Arm {arm} switched the weights {gate.switches} times")
             record = dict(laq.errors(metric, action.detach().float().cpu(), future.float().cpu(), teacher[case]), arm=arm,
                           case=case, switches=gate.switches, seconds=time.monotonic() - begin, pbs_jobid=os.environ["PBS_JOBID"])
             save(path, record)

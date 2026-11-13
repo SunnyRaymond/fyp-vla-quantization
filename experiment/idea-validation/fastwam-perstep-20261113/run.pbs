@@ -49,6 +49,10 @@ finish() {
 trap finish EXIT
 trap 'exit 143' TERM INT
 
+# Engine files from the calibration job's copy, then the LAQ code of $SRC over them.
+ENGINE=/scratch/users/ntu/yguo017/laq-fastwam-20261111/artifacts/26196738.pbs101
+test -s "$ENGINE/calibration_source.py" || die "Engine files missing in $ENGINE"
+cp "$ENGINE"/*.py "$ENGINE"/*.sh "$ARTIFACTS/"
 cp "$SRC"/*.py "$SRC"/*.sh "$ARTIFACTS/"
 cp "$SRC/protocol.json" "$ARTIFACTS/laq_protocol.json"
 cp "$NEW_ROOT/perstep.py" "$NEW_ROOT/protocol.json" "$NEW_ROOT/run.pbs" "$ARTIFACTS/"
