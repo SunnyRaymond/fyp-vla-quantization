@@ -51,7 +51,7 @@ def ramp(colors, t):
 
 
 def runs(markup):
-    """`$` toggles italic, `*` bold, `%` underline, `@` the math font, `~` blue, `|` orange; `_{}` and `^{}` set an index."""
+    """`$` toggles italic, `*` bold, `%` underline, `@` the math font, `~` blue, `|` orange, `!` red, `?` grey; `_{}` and `^{}` set an index."""
     out, state, buf, i = [], dict(italic=False, bold=False, math=False, under=False, tint=None), "", 0
 
     def flush(base=0, slant=None):
@@ -62,10 +62,10 @@ def runs(markup):
 
     while i < len(markup):
         c = markup[i]
-        if c in "$*%@~|":
+        if c in "$*%@~|!?":
             flush()
-            if c in "~|":
-                tint = BLUE if c == "~" else RES_EDGE
+            if c in "~|!?":
+                tint = {"~": BLUE, "|": RES_EDGE, "!": FROZEN, "?": MUTED}[c]
                 state["tint"] = None if state["tint"] == tint else tint
             else:
                 key = {"$": "italic", "*": "bold", "%": "under", "@": "math"}[c]
@@ -262,7 +262,6 @@ grid(X + 10, 62, 34, 34, [[BLUES[3] if r == c else BLUES[(r * 3 + c * 5) % 3] fo
 stub(X + 27, 96.6)
 line(X + 47, CH, X + 77, CH, arrow=True, size="sm")
 text(X + 62, 73.6, "tr($M$_{$jj$})", 6.8)
-text(X + 62, 84.6, "per token", 6.3, MUTED, italic=True)
 text(X + 97, 56.3, "*token sensitivity*", 6.6)
 picture(X + 79, 61, 36, 36, "b_frame_1.png")     # third-person view of a predicted LIBERO frame, in grey
 picture(X + 79, 61, 36, 36, "b_overlay_1.png")   # share of tr(M) per token, as in Fig. 3(b)
@@ -274,12 +273,12 @@ text(X + 130, CH, "~*$Z$_{$M$}*~", 9.5)
 X = 171.0
 line(149, CH, X + 35, CH, arrow=True)           # Z_M enters the measurement
 panel_title(X, 10.5, "b", "Read count")
+rect(X + 120, 16.2, 30, 51.3, "E6EBF3", None, radius=1.5)
 STEP, DOTS, SUM = [X + 69, X + 84, X + 110], X + 97, X + 125
 text(X + 62, 20.5, "denoising step", 6.3, MUTED, ha="right", italic=True)
 for x, label in zip(STEP + [DOTS], ["1", "2", "$T$", "···"]):
     text(x, 20.5, label, 6.8)
 text(SUM + 12.5, 20.5, "sum", 6.3, MUTED, italic=True)
-line(X + 119.5, 16.5, X + 119.5, 67.5, "E3E6EB", 0.5)
 for y, colour in ((25.5, HAIR), (46.5, "E3E6EB"), (67.5, HAIR)):
     line(X, y, X + 150, y, colour, 0.5)
 text(X, 33, "*Frozen*", 7.6, FROZEN, ha="left")
@@ -293,14 +292,13 @@ for x, (dx, dy) in zip(STEP, [(5.5, 0), (3.9, -3.9), (-3.9, -3.9)]):
     line(x - dx, 54 - dy, x + dx, 54 + dy, FRESH, 1.0, arrow=True, size="sm")
 text(DOTS, 53.5, "···", 6.8, FRESH)
 line(SUM, 54, SUM + 8, 54, FRESH, 1.7, arrow=True, size="sm")
-text(X, 62, "activations of tokens being denoised", 6.3, MUTED, ha="left", italic=True)
+text(X, 62, "tokens being denoised", 6.3, MUTED, ha="left", italic=True)
 
 text(X + 41, CH, "$n$_{$u$} =", 8.2, ha="left")
-text(X + 85.5, CH - 5.0, "~$Z$_{$M$}~(frozen)", 7.4)
+text(X + 85.5, CH - 5.0, "~$Z$_{$M$}~(!frozen!)", 7.4)
 line(X + 61, CH, X + 110, CH, lw=0.7)
-text(X + 85.5, CH + 5.4, "~$Z$_{$M$}~(fresh)", 7.4)
+text(X + 85.5, CH + 5.4, "~$Z$_{$M$}~(?fresh?)", 7.4)
 stub(X + 86, CH + 10.4)
-text(X + 150, 93.5, "fresh sources:  n_{u} = 1", 6.3, MUTED, ha="right", italic=True)
 
 # ---- (c) joint allocation --------------------------------------------------------------------------------
 X = 331.0
@@ -312,41 +310,42 @@ text(X + 78, 27.2, f"@ℒ@ = E_{{$c$}}[$A$ + $λ$_{{$M$}}{THIN}~$Z$_{{$M$}}~ + $
 for x0, x1, name in [(X + 63.2, X + 68.2, "action"), (X + 76.7, X + 95.7, "future"), (X + 104.2, X + 113.9, "reader")]:
     path([(x0, 22.9), (x0, 21.9), (x1, 21.9), (x1, 22.9)], MUTED, 0.4, arrow=False)
     text((x0 + x1) / 2, 18.2, name, 6.0, MUTED, italic=True)
-path([(X + 78, 32.8), (X + 78, 36.4), (X + 42, 36.4), (X + 42, 41.6)], INK, 0.75, size="sm")
+path([(X + 78, 32.8), (X + 78, 36.4), (X + 40, 36.4), (X + 40, 41.6)], INK, 0.75, size="sm")
 path([(X + 78, 32.8), (X + 78, 36.4), (X + 124, 36.4), (X + 124, 41.6)], INK, 0.75, size="sm")
-text(X + 42, 46.4, "*Activations and K/V*", 7.2)
+text(X + 40, 46.4, "*Activations and K/V*", 7.2)
 text(X + 124, 46.4, "*Weights*", 7.2)
 line(X + 6, 51, X + 6, 90, lw=0.75)
-line(X + 6, 90, X + 80, 90, lw=0.75)
+line(X + 6, 90, X + 73, 90, lw=0.75)
 for k, top in enumerate([54, 61, 67, 75, 80, 85]):
-    bar = rect(X + 10 + 11.6 * k, top, 8.6, 90 - top, ["7E828C", "8E929C", "A2A6AF"][min(k, 2)], "6B7280", 0.4)
+    refined = top < 71  # above the threshold: these units get the second pass
+    fill, edge = (RES, RES_EDGE) if refined else ("A2A6AF", "6B7280")
+    bar = rect(X + 9.5 + 10.2 * k, top, 7.6, 90 - top, fill, edge, 0.4)
     if k % 2:  # cached keys and values
         bar.fill.patterned()
         bar.fill.pattern = MSO_PATTERN.WIDE_UPWARD_DIAGONAL
-        bar.fill.fore_color.rgb, bar.fill.back_color.rgb = rgb("7E828C"), rgb("FFFFFF")
-line(X + 6.5, 71, X + 81, 71, lw=0.7, dash=True)
-text(X + 86, 70.6, "$μ$", 8.5)
-rect(X + 50, 52.5, 5, 5, "8E929C", "6B7280", 0.4)
-text(X + 57.5, 55, "activation", 6.2, MUTED, ha="left")
-key = rect(X + 50, 60.5, 5, 5, None, "6B7280", 0.4)
+        bar.fill.fore_color.rgb, bar.fill.back_color.rgb = rgb(RES_EDGE if refined else "8E929C"), rgb("FFFFFF")
+line(X + 6.5, 71, X + 74, 71, lw=0.7, dash=True)
+text(X + 79, 70.6, "$μ$", 8.5)
+rect(X + 45, 52.5, 5, 5, "A2A6AF", "6B7280", 0.4)
+text(X + 52.5, 55, "activation", 6.2, MUTED, ha="left")
+key = rect(X + 45, 60.5, 5, 5, None, "6B7280", 0.4)
 key.fill.patterned()
 key.fill.pattern = MSO_PATTERN.WIDE_UPWARD_DIAGONAL
-key.fill.fore_color.rgb, key.fill.back_color.rgb = rgb("7E828C"), rgb("FFFFFF")
-text(X + 57.5, 63, "K/V", 6.2, MUTED, ha="left")
-text(X + 43, 95, "budget B → one threshold μ", 6.3, MUTED, italic=True)
-stub(X + 91, 74.5)
+key.fill.fore_color.rgb, key.fill.back_color.rgb = rgb("8E929C"), rgb("FFFFFF")
+text(X + 52.5, 63, "K/V", 6.2, MUTED, ha="left")
+text(X + 40, 95.2, "budget B sets μ", 6.3, MUTED, italic=True)
+stub(X + 40, 99.0)
 weights = [[BLUES[3] if r == c else BLUES[(r * 2 + c * 3) % 3] for c in range(4)] for r in range(4)]
-grid(X + 101, 53, 17, 17, weights, frame=BLUE)
-grid(X + 133, 53, 17, 17, weights, frame=BLUE)
-line(X + 120, 61.5, X + 131, 61.5, arrow=True, size="sm")
-text(X + 109.5, 75.4, "$W$", 7.2)
-text(X + 141.5, 75.6, "$Q$_{4}($W$)", 7.2)
-text(X + 121.5, 88.5, "second-order\nrounding", 6.3, MUTED, italic=True)
-stub(X + 141.5, 80.4)
+grid(X + 100, 51.5, 15, 15, weights, frame=BLUE)
+line(X + 107.5, 67.6, X + 107.5, 77.0, arrow=True, size="sm")
+grid(X + 100, 78, 15, 15, weights, frame=BLUE)
+text(X + 119.5, 59, "$W$", 7.2, ha="left")
+text(X + 119.5, 72.4, "second-order\nrounding", 6.0, MUTED, ha="left", italic=True)
+text(X + 119.5, 85.5, "$Q$_{4}($W$)", 7.2, ha="left")
+stub(X + 107.5, 94.0)
 
 # ---- what the offline stage hands to run time ------------------------------------------------------------
-for x, w, label in [(39, 66, "first gaze  tr($M$_{$jj$})"), (257, 54, "read count  $n$_{$u$}"),
-                    (422, 46, "threshold  $μ$"), (472.5, 32, "$Q$_{4}($W$)")]:
+for x, w, label in [(39, 66, "first gaze  tr($M$_{$jj$})"), (257, 19, "$n$_{$u$}"), (371, 16, "$μ$"), (438.5, 31, "$Q$_{4}($W$)")]:
     rect(x - w / 2, 110.6, w, 9.2, "FFFFFF", None, radius=4.6)
     text(x, 115.1, label, 6.6)
     path([(x - 3.4, 122.2), (x + 3.4, 122.2), (x, 125.6)], None, fill="7C8AA0", close=True)
@@ -382,7 +381,7 @@ line(X + 123.5, MID, X + 130.6, MID, INK, 1.2, arrow=True)
 X = 138.0
 C, CELL = X + 68, 15.5  # the coarse level nearest to x, and the coarse step
 step_title(X, TOP, 2, "Quantize the residual")
-text(X + 1, 158.4, "~*1st pass:* 4-bit $q$_{1}~", 6.9, ha="left")
+text(X + 1, 158.4, "~*1st 4-bit pass*  $q$_{1}~", 6.9, ha="left")
 text(X + 135, 158.4, "$x̂$ = $ς$_{1}$q$_{1} + $ς$_{2}$q$_{2}", 7.3, ha="right")
 path([(C - CELL / 2, 171.5), (C + CELL / 2, 171.5), (X + 126, 186.5), (X + 10, 186.5)], None, fill="FBDDB0", alpha=55, close=True)
 rect(X + 10, 186.5, 116, 19, "FCEBC8", None, radius=2)
@@ -393,16 +392,15 @@ line(C, 166.6, C, 176.4, BLUE, 2.0)
 dot(C + 5.3, 171.5, 1.9)
 text(C - 8.5, 165.4, "$ς$_{1}$q$_{1}", 6.8, BLUE)
 text(C + 8.2, 165.4, "$x$", 7.4)
-text(C, 180.4, "$r$ = $x$ − $ς$_{1}$q$_{1}", 6.6)
+text(C, 180.6, "residual", 6.4, MUTED, italic=True)
 line(X + 13, 197, X + 123, 197, RES_EDGE, 0.8)
 for k in range(15):
     line(X + 17.25 + 7.25 * k, 194.2, X + 17.25 + 7.25 * k, 199.8, RES_EDGE, 0.8)
 line(C, 193.0, C, 201.0, BLUE, 1.3)
 line(X + 104.25, 192.4, X + 104.25, 201.6, RES_EDGE, 2.0)
 dot(X + 103.1, 197, 1.9)
-line(C + 1.0, 190.2, X + 102.8, 190.2, INK, 0.5, both=True, size="sm")
 text(X + 113.5, 202.6, "$ς$_{2}$q$_{2}", 6.6, RES_EDGE)
-text(X + 1, 211.6, "|*2nd pass:* 4-bit $q$_{2}|", 6.9, ha="left")
+text(X + 1, 211.6, "|*2nd 4-bit pass*  $q$_{2}|", 6.9, ha="left")
 text(X + 135, 211.6, "$error:  ς$_{1}/2 → |*$ς$_{1}/28*|", 6.9, ha="right")
 line(X + 137.4, MID, X + 144.4, MID, INK, 1.2, arrow=True)
 
@@ -410,41 +408,40 @@ line(X + 137.4, MID, X + 144.4, MID, INK, 1.2, arrow=True)
 X = 283.0
 step_title(X, TOP, 3, "Apply both codes")
 small = [[BLUES[3] if r == c else BLUES[(r + c * 2) % 3] for c in range(4)] for r in range(3)]
-text(X, 162.5, "*Linear*", 7.0, ha="left")
+text(X, 165.5, "*Linear*", 7.0, ha="left")
 for x, label, fill, edge, note in [(X + 27, "$q$_{1}", BASE, BASE_EDGE, "all rows"), (X + 72, "$q$_{2}", RES, RES_EDGE, "selected rows")]:
-    grid(x, 157, 15, 11, small, frame=BLUE)
-    text(x + 19.2, 162.3, "×", 7.2)
-    chip(x + 23, 157.3, 13, 10.4, label, fill, edge, 7.0)
-    text(x + 18, 173.4, note, 6.3, MUTED, italic=True)
-text(X + 67.3, 162.3, "+", 7.6)
-text(X, 190, "*K/V*", 7.0, ha="left")
+    grid(x, 160, 15, 11, small, frame=BLUE)
+    text(x + 19.2, 165.3, "×", 7.2)
+    chip(x + 23, 160.3, 13, 10.4, label, fill, edge, 7.0)
+    text(x + 18, 176.6, note, 6.3, MUTED, italic=True)
+text(X + 67.3, 165.3, "+", 7.6)
+text(X, 196.5, "*K/V*", 7.0, ha="left")
 for k in range(5):
-    rect(X + 27 + 10 * k, 181, 9, 8, BASE, BASE_EDGE, 0.5, radius=1)
+    rect(X + 27 + 10 * k, 187.5, 9, 8, BASE, BASE_EDGE, 0.5, radius=1)
     if k in (2, 3):
-        rect(X + 27 + 10 * k, 190.6, 9, 8, RES, RES_EDGE, 0.5, radius=1)
+        rect(X + 27 + 10 * k, 197.1, 9, 8, RES, RES_EDGE, 0.5, radius=1)
     else:
-        rect(X + 27 + 10 * k, 190.6, 9, 8, None, "DCCFB6", 0.4, radius=1)
-text(X + 81, 185, "$q$_{1}", 7.0, ha="left")
-text(X + 81, 194.6, "$q$_{2}", 7.0, ha="left")
-text(X + 55, 206.6, "second code stored next to the first", 6.3, MUTED, italic=True)
+        rect(X + 27 + 10 * k, 197.1, 9, 8, None, "DCCFB6", 0.4, radius=1)
+text(X + 81, 191.5, "$q$_{1}", 7.0, ha="left")
+text(X + 81, 201.1, "$q$_{2}", 7.0, ha="left")
 line(X + 111.4, MID, X + 118.4, MID, INK, 1.2, arrow=True)
 
 # 4: update the gaze
 X = 402.0
 step_title(X, TOP, 4, "Update the gaze")
-text(X + 43, 158.4, "action-token attention", 6.3, MUTED, italic=True)
+text(X + 57, 158.6, "attention", 6.3, MUTED, italic=True)
 new_gaze = [0.04, 0.08, 0.22, 0.30, 0.66, 0.48]
 attention = [[min(1.0, g * (0.75 + 0.5 * ((r * 2 + c) % 3) / 2)) for c, g in enumerate(new_gaze)] for r in range(3)]
 grid(X + 30, 164, 54, 21, [[ramp(HEAT, v) for v in row] for row in attention], edge="FFFFFF", frame=INK)
 text(X + 27.5, 174.5, "action\ntokens", 6.3, MUTED, ha="right", italic=True)
 line(X + 57, 186.2, X + 57, 198.6, INK, 0.75, arrow=True, size="sm")
-text(X + 53.5, 192.2, "@Σ@ layers, heads, steps", 6.3, MUTED, ha="right")
+text(X + 50.5, 192.0, "@Σ@", 8.0, ha="right")
 grid(X + 30, STRIP, 54, 8, [[ramp(HEAT, g) for g in new_gaze]], edge="FFFFFF", frame=INK)
 text(X + 27.5, STRIP + 4, "gaze $g$_{$j$}", 6.8, ha="right")
 
 # the gaze of this control step selects the tokens of the next
 path([(X + 57, STRIP + 8.6), (X + 57, 226.5), (66, 226.5), (66, STRIP + 9.0)], RES_EDGE, 1.0, dash=True, size="sm")
-text(262, 220.6, "gaze for the next control step", 6.8, RES_EDGE, italic=True)
+text(338, 220.4, "next control step", 6.8, RES_EDGE, italic=True)
 
 deck.save(OUT)
 print("wrote", OUT)
