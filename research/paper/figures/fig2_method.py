@@ -51,24 +51,24 @@ def ramp(colors, t):
 
 
 def runs(markup):
-    """`$` toggles italic, `*` bold, `@` the math font, `~` blue, `|` orange; `_{}` and `^{}` set an index."""
-    out, state, buf, i = [], dict(italic=False, bold=False, math=False, tint=None), "", 0
+    """`$` toggles italic, `*` bold, `%` underline, `@` the math font, `~` blue, `|` orange; `_{}` and `^{}` set an index."""
+    out, state, buf, i = [], dict(italic=False, bold=False, math=False, under=False, tint=None), "", 0
 
     def flush(base=0, slant=None):
         nonlocal buf
         if buf:
-            out.append((buf, state["italic"] if slant is None else slant, state["bold"], state["math"], base, state["tint"]))
+            out.append((buf, state["italic"] if slant is None else slant, state["bold"], state["math"], base, state["tint"], state["under"]))
         buf = ""
 
     while i < len(markup):
         c = markup[i]
-        if c in "$*@~|":
+        if c in "$*%@~|":
             flush()
             if c in "~|":
                 tint = BLUE if c == "~" else RES_EDGE
                 state["tint"] = None if state["tint"] == tint else tint
             else:
-                key = {"$": "italic", "*": "bold", "@": "math"}[c]
+                key = {"$": "italic", "*": "bold", "%": "under", "@": "math"}[c]
                 state[key] = not state[key]
         elif c in "_^" and markup[i + 1:i + 2] == "{":
             flush()
@@ -98,13 +98,15 @@ def text(x, y, markup, size=7.0, color=INK, ha="center", bold=False, italic=Fals
         paragraph = frame.paragraphs[0] if k == 0 else frame.add_paragraph()
         paragraph.alignment = {"center": PP_ALIGN.CENTER, "left": PP_ALIGN.LEFT, "right": PP_ALIGN.RIGHT}[ha]
         paragraph.line_spacing = 0.92
-        for s, it, bd, math, base, tint in runs(row):
+        for s, it, bd, math, base, tint, under in runs(row):
             run = paragraph.add_run()
             run.text = s
             font = run.font
             font.name, font.size = (MATH if math else FONT), Pt(size * K)
             font.italic, font.bold = it ^ italic, bd ^ bold
             font.color.rgb = rgb(tint or color)
+            if under:
+                font.underline = True
             if base:
                 run._r.get_or_add_rPr().set("baseline", str(base))
     return shape
@@ -252,7 +254,7 @@ for k in range(3):
     shadow(rect(X + 108.5 + 8.6 * k, 26, 7, 8, "CFC8EA", "6B6799", 0.5, radius=1), 1.0, 0.4, 16)
 text(X + 141.5, 30, "$a$^{∗}", 8.5)
 path(curve((X + 74, 38), (X + 68, 50.5), (X + 31, 44.5)), BLUE, 0.8, size="sm")
-text(X + 80, 46.5, "reader probes", 6.6, BLUE, ha="left", italic=True)
+text(X + 74.5, 44.05, "%*reader probes*%", 6.0, BLUE, ha="left", italic=True)
 
 THIN = " "
 text(X + 3, 56, f"$M$ = E_{{$c$}}[$J$_{{$c$}}^{{$T$}}{THIN}$D$_{{$c$}}{THIN}$J$_{{$c$}}]", 7.2, ha="left")
@@ -306,11 +308,14 @@ line(X - 47, CH, X + 4.5, CH, arrow=True)       # n_u enters the score
 text(X - 21, CH - 5.4, "$n$_{$u$}", 7.4)
 panel_title(X, 10.5, "c", "Joint allocation")
 pill(488, 10.5, 49, "Offline, once")
-text(X + 78, 25, f"@ℒ@ = E_{{$c$}}[$A$ + $λ$_{{$M$}}{THIN}~$Z$_{{$M$}}~ + $βK$]", 8.6)
-path([(X + 78, 31), (X + 78, 35), (X + 42, 35), (X + 42, 40.4)], INK, 0.75, size="sm")
-path([(X + 78, 31), (X + 78, 35), (X + 124, 35), (X + 124, 40.4)], INK, 0.75, size="sm")
-text(X + 42, 45.4, "*Activations and K/V*", 7.2)
-text(X + 124, 45.4, "*Weights*", 7.2)
+text(X + 78, 27.2, f"@ℒ@ = E_{{$c$}}[$A$ + $λ$_{{$M$}}{THIN}~$Z$_{{$M$}}~ + $βK$]", 8.6)
+for x0, x1, name in [(X + 63.2, X + 68.2, "action"), (X + 76.7, X + 95.7, "future"), (X + 104.2, X + 113.9, "reader")]:
+    path([(x0, 22.9), (x0, 21.9), (x1, 21.9), (x1, 22.9)], MUTED, 0.4, arrow=False)
+    text((x0 + x1) / 2, 18.2, name, 6.0, MUTED, italic=True)
+path([(X + 78, 32.8), (X + 78, 36.4), (X + 42, 36.4), (X + 42, 41.6)], INK, 0.75, size="sm")
+path([(X + 78, 32.8), (X + 78, 36.4), (X + 124, 36.4), (X + 124, 41.6)], INK, 0.75, size="sm")
+text(X + 42, 46.4, "*Activations and K/V*", 7.2)
+text(X + 124, 46.4, "*Weights*", 7.2)
 line(X + 6, 51, X + 6, 90, lw=0.75)
 line(X + 6, 90, X + 80, 90, lw=0.75)
 for k, top in enumerate([54, 61, 67, 75, 80, 85]):
