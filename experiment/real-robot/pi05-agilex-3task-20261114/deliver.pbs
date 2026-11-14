@@ -1,0 +1,121 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# One-GPU job: builds the robot bundle release/agilex3_pi05 from checkpoint 5999 and self-tests it the way the robot
+# side runs it.
+#   bundle    checkpoint/{params,assets} (copied from bs32_6k/5999), openpi_cache/ (PaliGemma tokenizer),
+#             agilex3_pi05.py, training_code/ (agilex_openpi.py, convert_openpi.py), samples/ (raw episode 0 per task)
+#   env       installed distributions and versions of the cluster environment -> env/
+#   stats     joint ranges and 10 Hz per-step changes of all recordings -> results/deliver/robot_stats.json
+#   selftest  agilex3_pi05.py selftest in a clean container (only the bundle and the openpi venv, no OPENPI_DATA_HOME,
+#             working dir = bundle): writes selftest_reference.json, then reruns with --reference as in the README
+#   sums      SHA256SUMS (README.md left out; it is uploaded afterwards by control.py readme)
+# GPU utilisation and memory are sampled every 30 s into job.log.
+set -euo pipefail
+
+RUN=/scratch/users/ntu/yguo017/pi05-agilex-3task-20261114
+ENV_ROOT=/scratch/users/ntu/yguo017/openpi-pi05
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+CKPT=$RUN/checkpoints/pi05_agilex3/bs32_6k/5999
+B=$RUN/release/agilex3_pi05
+TASKS=(cluster_grasp cabinet_lemon circle)
+RAW_ROOTS=(/scratch/users/ntu/yguo017/fastwam-agilex-3task-20261110/raw "$RUN/raw")
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+ARTIFACTS=$RUN/artifacts/$PBS_JOBID
+RESULTS=$RUN/results/deliver
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+echo "PBS_JOBID=$PBS_JOBID host=$HOST ncpus=$NCPUS start=$(date -u +%FT%TZ) bundle=$B"
+grep -Ei '^[[:space:]]*queue[[:space:]]*=' <<< "$ALLOCATION_QSTAT" || true
+test -s "$RUN/artifacts/26247498.pbs101/TRAIN_COMPLETE" || die 'training has not completed'
+test -d "$CKPT/params" -a -s "$CKPT/assets/local/agilex3_10hz/norm_stats.json" || die "checkpoint incomplete: $CKPT"
+NV=1
+source "$RUN/container.sh"
+for name in release_tools.py release/agilex3_pi05.py; do
+  test -s "$RUN/$name" || die "Uploaded source missing: $name"
+  cp "$RUN/$name" "$ARTIFACTS/"
+done
+
+MON_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  [[ -n "$MON_PID" ]] && { kill "$MON_PID" 2>/dev/null; wait "$MON_PID" 2>/dev/null; }
+  rm -rf "$RUN/tmp/$PBS_JOBID"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  (( rc == 0 )) || printf 'deliver failed rc=%s at %s\n' "$rc" "$(date -u +%FT%TZ)" > "$ARTIFACTS/FAILED"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+(
+  while :; do
+    printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    nvidia-smi --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    sleep 30
+  done
+) & MON_PID=$!
+
+# The robot side: the bundle and the openpi venv only. No OPENPI_DATA_HOME (agilex3_pi05.py then points it at the
+# bundle's openpi_cache), JAX's default memory preallocation, no bytecode written into the bundle.
+robot_python() {
+  apptainer exec --cleanenv --nv --home "$ENV_ROOT/home" --bind /scratch \
+    --env "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}" \
+    --env "HF_HUB_OFFLINE=1,WANDB_MODE=disabled,TMPDIR=$RUN/tmp/$PBS_JOBID,OMP_NUM_THREADS=4" \
+    --env "PYTHONUNBUFFERED=1,PYTHONIOENCODING=utf-8,PYTHONDONTWRITEBYTECODE=1,TOKENIZERS_PARALLELISM=false" \
+    --pwd "$B" "$SIF" "$ENV_ROOT/openpi/.venv/bin/python" "$@"
+}
+
+echo "STAGE bundle $(date -u +%T)"
+mkdir -p "$B/checkpoint" "$B/openpi_cache/big_vision" "$B/samples" "$B/training_code" "$RESULTS/markers"
+if [[ ! -e "$RESULTS/markers/params_copied" ]]; then
+  rm -rf "$B/checkpoint/params" "$B/checkpoint/params.tmp"
+  cp -a "$CKPT/params" "$B/checkpoint/params.tmp"
+  mv "$B/checkpoint/params.tmp" "$B/checkpoint/params"
+  touch "$RESULTS/markers/params_copied"
+fi
+rm -rf "$B/checkpoint/assets"
+cp -a "$CKPT/assets" "$B/checkpoint/assets"
+cp "$ENV_ROOT/cache/openpi/big_vision/paligemma_tokenizer.model" "$B/openpi_cache/big_vision/"
+cp "$ARTIFACTS/agilex3_pi05.py" "$B/"
+cp "$RUN/agilex_openpi.py" "$RUN/convert_openpi.py" "$B/training_code/"
+for task in "${TASKS[@]}"; do
+  src=
+  for root in "${RAW_ROOTS[@]}"; do
+    [[ -s "$root/$task/data/chunk-000/episode_000000.hdf5" ]] && src=$root/$task/data/chunk-000/episode_000000.hdf5
+  done
+  test -n "$src" || die "no episode_000000.hdf5 for $task"
+  cmp -s "$src" "$B/samples/${task}_episode_000000.hdf5" || cp "$src" "$B/samples/${task}_episode_000000.hdf5"
+done
+du -sh "$B/checkpoint/params" "$B/samples"
+
+echo "STAGE env $(date -u +%T)"
+openpi_python -B "$ARTIFACTS/release_tools.py" env --openpi "$ENV_ROOT/openpi" --out-dir "$B/env"
+
+echo "STAGE stats $(date -u +%T)"
+JAX_PLATFORMS=cpu openpi_python -B "$ARTIFACTS/release_tools.py" stats --raw-root "${RAW_ROOTS[0]}" \
+  --raw-root "${RAW_ROOTS[1]}" --tasks "${TASKS[@]}" --out "$RESULTS/robot_stats.json"
+
+echo "STAGE selftest $(date -u +%T)"
+robot_python agilex3_pi05.py selftest --write-reference selftest_reference.json --out "$RESULTS/selftest.json" \
+  > "$ARTIFACTS/selftest.log" 2>&1 || { tail -c 6000 "$ARTIFACTS/selftest.log"; die 'selftest failed'; }
+grep -E '^loaded|^episode_|\.hdf5:|^\[|^pooled|^SELFTEST' "$ARTIFACTS/selftest.log"
+robot_python agilex3_pi05.py selftest --reference selftest_reference.json --out "$RESULTS/selftest_check.json" \
+  > "$ARTIFACTS/selftest_check.log" 2>&1 || { tail -c 6000 "$ARTIFACTS/selftest_check.log"; die 'selftest --reference failed'; }
+grep -E '^loaded|^reference|^pooled|^SELFTEST' "$ARTIFACTS/selftest_check.log"
+find "$B" -name __pycache__ -type d -prune -exec rm -rf {} +
+rm -f "$B/selftest_local.json"
+
+echo "STAGE sums $(date -u +%T)"
+openpi_python -B "$ARTIFACTS/release_tools.py" sums --bundle "$B"
+du -sh "$B"
+touch "$ARTIFACTS/DELIVER_COMPLETE"
+echo "DELIVER_COMPLETE $(date -u +%T)"

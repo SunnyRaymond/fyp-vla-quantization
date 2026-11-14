@@ -1,0 +1,115 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# GPU job (g3, 4x A100-40GB): full fine-tuning of pi0.5 from pi05_base on the three AgileX tasks with openpi's JAX
+# trainer (config pi05_agilex3 in agilex_openpi.py): fp32 weights / AdamW moments / EMA, bf16 compute, FSDP over the 4
+# GPUs, global batch 32, 6k steps, checkpoints at steps 2000, 4000 and 5999 (openpi saves the last step as
+# num_train_steps - 1). Runs after prep (afterok). A resubmission resumes from the newest checkpoint (--resume).
+# GPU utilisation and memory are sampled every 30 s into job.log; JAX preallocates 90% of each GPU, so memory.used
+# shows the reservation, not the live footprint.
+set -euo pipefail
+
+RUN=/scratch/users/ntu/yguo017/pi05-agilex-3task-20261114
+ENV_ROOT=/scratch/users/ntu/yguo017/openpi-pi05
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+CONFIG=pi05_agilex3
+EXP=bs32_6k
+STEPS=6000
+NG=4
+QUEUE=g3
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+HOST=$(hostname -s)
+case "$HOST" in *login*) die 'Refusing login-node execution';; esac
+ALLOCATION_QSTAT=$(qstat -xf "$PBS_JOBID") || die 'Cannot verify the live PBS allocation'
+grep -Eiq "^[[:space:]]*queue[[:space:]]*=[[:space:]]*${QUEUE}([[:space:]]|$)" <<< "$ALLOCATION_QSTAT" || die "PBS did not route the job to $QUEUE"
+NCPUS=$(sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' <<< "$ALLOCATION_QSTAT")
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+ARTIFACTS=$RUN/artifacts/$PBS_JOBID
+CKPT=$RUN/checkpoints/$CONFIG/$EXP
+mkdir -p "$ARTIFACTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+printf '%s\n' "$ALLOCATION_QSTAT" > "$ARTIFACTS/allocation.txt"
+echo "PBS_JOBID=$PBS_JOBID host=$HOST ncpus=$NCPUS gpus=$NG start=$(date -u +%FT%TZ)"
+test -s "$RUN/results/prep/PREP_COMPLETE" || die 'prep has not completed'
+NV=1
+source "$RUN/container.sh"
+stage_sources
+
+IFS=, read -r -a GPU_IDS <<< "${CUDA_VISIBLE_DEVICES:-}"
+test "${#GPU_IDS[@]}" -eq "$NG" || die "Expected $NG allocated GPUs, got ${#GPU_IDS[@]}"
+GPU_UUIDS=()
+for gpu in "${GPU_IDS[@]}"; do
+  uuid=$(nvidia-smi -i "$gpu" --query-gpu=uuid --format=csv,noheader | tr -d '[:space:]')
+  test -n "$uuid" || die "Cannot read the UUID of GPU $gpu"
+  GPU_UUIDS+=("$uuid")
+done
+MON_PID=
+finish() {
+  local rc=$?
+  trap - EXIT TERM INT
+  set +e
+  [[ -n "$MON_PID" ]] && { kill "$MON_PID" 2>/dev/null; wait "$MON_PID" 2>/dev/null; }
+  rm -rf "$RUN/tmp/$PBS_JOBID"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  (( rc == 0 )) || printf 'train failed rc=%s at %s\n' "$rc" "$(date -u +%FT%TZ)" > "$ARTIFACTS/FAILED"
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 143' TERM INT
+ME=$(id -un)
+(
+  n=0
+  while :; do
+    for uuid in "${GPU_UUIDS[@]}"; do
+      printf 'GPU_SAMPLE timestamp=%s ' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      nvidia-smi -i "$uuid" --query-gpu=uuid,name,utilization.gpu,memory.used,memory.total --format=csv,noheader || echo GPU_SAMPLE_ERROR
+    done
+    if (( n % 4 == 0 )); then
+      top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+        '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+        || echo CPU_SAMPLE_ERROR
+    fi
+    n=$(( n + 1 ))
+    sleep 30
+  done
+) & MON_PID=$!
+cd "$ARTIFACTS"
+
+echo "PREFLIGHT $(date -u +%T)"
+openpi_python -B -c "
+import jax
+d = jax.devices()
+print('jax', jax.__version__, 'devices', d)
+assert len(d) == $NG and all(x.platform == 'gpu' for x in d), d
+" || die 'JAX does not see the 4 GPUs'
+
+ARGS=(--exp-name "$EXP")
+if [[ -d "$CKPT" ]]; then ARGS+=(--resume); fi
+echo "TRAIN ${ARGS[*]} $(date -u +%T)"
+set +e
+openpi_python -B agilex_openpi.py train "${ARGS[@]}" > "$ARTIFACTS/train.log" 2>&1
+rc=$?
+set -e
+grep -ao 'Step [0-9]*:.*' "$ARTIFACTS/train.log" | tail -n 3 || true
+tail -n 5 "$ARTIFACTS/train.log"
+(( rc == 0 )) || die "training failed rc=$rc (see $ARTIFACTS/train.log)"
+
+FINAL=$(( STEPS - 1 ))
+test -d "$CKPT/$FINAL/params" || die "final checkpoint missing: $CKPT/$FINAL/params"
+cat > "$ARTIFACTS/summary.py" <<'PY'
+import json, re, sys
+from pathlib import Path
+art, ckpt = Path(sys.argv[1]), Path(sys.argv[2])
+rows = [(int(m.group(1)), float(m.group(2))) for l in (art / "train.log").read_text(errors="replace").splitlines()
+        if (m := re.search(r"Step (\d+): .*?\bloss=([0-9.eE+-]+)", l))]  # lines start with tqdm's \r
+def mean(a, b):
+    v = [x for s, x in rows if a <= s < b]
+    return round(sum(v) / len(v), 4) if v else None
+summary = dict(checkpoints=sorted(p.name for p in ckpt.iterdir() if p.name.isdigit()),
+               last=rows[-1] if rows else None,
+               loss_means={f"{a}-{b}": mean(a, b) for a, b in ((0, 500), (1500, 2000), (3500, 4000), (5500, 6000))})
+(art / "TRAIN_COMPLETE").write_text(json.dumps(summary, indent=2) + "\n")
+print("TRAIN_COMPLETE " + json.dumps(summary))
+PY
+openpi_python -B "$ARTIFACTS/summary.py" "$ARTIFACTS" "$CKPT"

@@ -1,0 +1,68 @@
+#!/bin/bash
+#PBS -P personal-yguo017
+#PBS -j oe
+# CPU job: sha256 check of the raw HDF5 (cluster_grasp from the Fast-WAM upload, cabinet_lemon + circle from this run),
+# conversion to the 10 Hz LeRobot dataset openpi reads (convert_openpi.py), then openpi's normalisation statistics for
+# pi05_agilex3 (quantile stats of state and delta actions). Stages skip finished outputs, so a resubmission resumes.
+# Writes results/prep/PREP_COMPLETE at the end. No GPU is used.
+set -euo pipefail
+
+RUN=/scratch/users/ntu/yguo017/pi05-agilex-3task-20261114
+ENV_ROOT=/scratch/users/ntu/yguo017/openpi-pi05
+SIF=/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif
+FW_RAW=/scratch/users/ntu/yguo017/fastwam-agilex-3task-20261110/raw
+REPO_ID=local/agilex3_10hz
+CONFIG=pi05_agilex3
+die() { echo "ERROR: $*" >&2; exit 64; }
+test -n "${PBS_JOBID:-}" -a -s "${PBS_NODEFILE:-}" || die 'PBS allocation required'
+case "$(hostname -s)" in *login*) die 'Refusing login-node execution';; esac
+ARTIFACTS=$RUN/artifacts/$PBS_JOBID
+RESULTS=$RUN/results/prep
+mkdir -p "$ARTIFACTS" "$RESULTS"
+exec > >(tee -a "$ARTIFACTS/job.log") 2>&1
+NCPUS=$(qstat -xf "$PBS_JOBID" | sed -nE 's/^[[:space:]]*Resource_List\.ncpus[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+[[ "$NCPUS" =~ ^[0-9]+$ ]] || die 'Cannot read the allocated ncpus'
+echo "PBS_JOBID=$PBS_JOBID host=$(hostname -s) ncpus=$NCPUS start=$(date -u +%FT%TZ)"
+source "$RUN/container.sh"
+stage_sources
+
+finish() {
+  local rc=$?
+  trap - EXIT
+  set +e
+  [[ -n "${MON_PID:-}" ]] && kill "$MON_PID" 2>/dev/null
+  rm -rf "$RUN/tmp/$PBS_JOBID"
+  printf '%s\n' "$rc" > "$ARTIFACTS/exit_code.txt"
+  (( rc == 0 )) || printf 'prep failed rc=%s at %s\n' "$rc" "$(date -u +%FT%TZ)" > "$ARTIFACTS/FAILED"
+  exit "$rc"
+}
+trap finish EXIT
+ME=$(id -un)
+(
+  while :; do
+    top -b -n 2 -d 2 -u "$ME" 2>/dev/null | awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v req="$NCPUS" \
+      '/^top -/ {frame++} frame == 2 && $1 ~ /^[0-9]+$/ {s += $9} END {printf "CPU_SAMPLE timestamp=%s busy_cores=%.1f requested=%s\n", ts, s / 100, req}' \
+      || echo CPU_SAMPLE_ERROR
+    free -g | awk '/^Mem:/ {printf "MEM_SAMPLE used_gb=%s total_gb=%s\n", $3, $2}'
+    sleep 60
+  done
+) & MON_PID=$!
+cd "$ARTIFACTS"
+
+echo "STAGE convert $(date -u +%T)"
+if [[ ! -s "$RUN/data/CONVERT_COMPLETE" ]]; then
+  OMP_THREADS=1 openpi_python -B convert_openpi.py --raw-root "$FW_RAW" --raw-root "$RUN/raw" \
+    --tasks cluster_grasp cabinet_lemon circle --repo-id "$REPO_ID" \
+    --report "$RESULTS/convert.json" --marker "$RUN/data/CONVERT_COMPLETE"
+fi
+
+echo "STAGE norm-stats $(date -u +%T)"
+NORM=$RUN/assets/$CONFIG/$REPO_ID/norm_stats.json
+if [[ ! -s "$NORM" ]]; then
+  JAX_PLATFORMS=cpu openpi_python -B agilex_openpi.py norm-stats
+fi
+test -s "$NORM" || die "norm stats missing: $NORM"
+cp "$NORM" "$RESULTS/norm_stats.json"
+
+date -u +%FT%TZ > "$RESULTS/PREP_COMPLETE"
+echo "PREP_COMPLETE $(date -u +%T)"

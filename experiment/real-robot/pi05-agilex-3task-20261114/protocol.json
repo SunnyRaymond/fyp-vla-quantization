@@ -1,0 +1,65 @@
+{
+  "protocol": "pi05-agilex-3task-v1",
+  "remote_root": "/scratch/users/ntu/yguo017/pi05-agilex-3task-20261114",
+  "env_root": "/scratch/users/ntu/yguo017/openpi-pi05",
+  "sif": "/scratch/users/ntu/yguo017/openvla-oft-vla-eval-libero/containers/libero-latest.sif",
+  "init": "pi05_base: <env_root>/cache/openpi/openpi-assets/checkpoints/pi05_base/params",
+  "data": {
+    "local_root": "agilex pepper training data",
+    "upload": [
+      "cabinet_lemon",
+      "circle"
+    ],
+    "remote_raw_roots": [
+      "/scratch/users/ntu/yguo017/fastwam-agilex-3task-20261110/raw",
+      "/scratch/users/ntu/yguo017/pi05-agilex-3task-20261114/raw"
+    ],
+    "tasks": [
+      "cluster_grasp",
+      "cabinet_lemon",
+      "circle"
+    ],
+    "cameras": {
+      "image": "realsense_fixed",
+      "wrist_image": "realsense_wrist"
+    },
+    "raw_fps": 30,
+    "fps": 10,
+    "phases": 3,
+    "repo_id": "local/agilex3_10hz"
+  },
+  "train": {
+    "config": "pi05_agilex3",
+    "exp_name": "bs32_6k",
+    "action_horizon": 10,
+    "batch_size": 32,
+    "num_train_steps": 6000,
+    "lr": "warmup 1000 to 2.5e-5, cosine to 2.5e-6 at step 6000",
+    "optimizer": "AdamW b1 0.9 b2 0.95 wd 1e-10, clip 1.0",
+    "ema_decay": 0.99,
+    "fsdp_devices": 4,
+    "save_interval": 2000
+  },
+  "jobs": {
+    "prep": {
+      "name": "pi05a3prep",
+      "select": "1:ncpus=16:mem=96gb",
+      "walltime": "03:00:00"
+    },
+    "train": {
+      "name": "pi05a3train",
+      "select": "1:ncpus=64:mem=440gb:ngpus=4",
+      "walltime": "08:00:00"
+    },
+    "deliver": {
+      "name": "pi05a3dlv",
+      "select": "1:ncpus=16:mem=110gb:ngpus=1",
+      "walltime": "01:00:00"
+    }
+  },
+  "release": {
+    "bundle": "/scratch/users/ntu/yguo017/pi05-agilex-3task-20261114/release/agilex3_pi05",
+    "checkpoint_step": 5999,
+    "local": "deliver/agilex3_pi05"
+  }
+}
