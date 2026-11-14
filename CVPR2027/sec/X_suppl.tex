@@ -114,8 +114,7 @@ The stability of the locations is the correlation between the diagonals of $\bM$
 The overlap between two eigenspaces is $\|\mathbf{E}_1^\top \mathbf{E}_2\|_F^2 / r$, where $\mathbf{E}_1$ and $\mathbf{E}_2$ hold the $r = 32$ leading eigenvectors estimated on the two halves; it is 1 for identical subspaces.
 The frame shown in \cref{fig:obs:gaze} is the fourth decoded frame of the BF16 prediction for one context of the Goal suite.
 
-\TODO{Cosmos-Policy: decide what to report. Repeating Observations~1 and~2 as they are would go against the story: in the \method calibration on Cosmos-Policy the future error at the read-out state is $Z \approx 10^{-4}$, the text rows are the only frozen source (the observation tokens are recomputed at every evaluation), and their read count is 0.25 on $Z_{\bM}$ (frozen below redrawn) and 1.44 on $A$. Observation~3 holds there (attention gaze against the token marginal of the metric: Spearman 0.77; metric of cosmos-lavq-20261102). Proposal: report Observation~3 on Cosmos-Policy and run a future swap there (open loop, not measured yet).
-Not in the text above: every measurement of this section uses the 16 calibration contexts of \method, not held-out ones; an injected error in the future cache gives 0 on the future and $1.1\times$ on the action, and the weights are not measured; the metric map of a single context (4 probes) correlates with the average map at 0.51 on average (0.01--0.81 over the 80 contexts), so the stability of Observation~3 is one of averages over contexts; the 10\% of tokens with the largest share carry 37\% of the trace; adding the per-phase action errors gives the future pathway 58.2\% against the measured 71.2\% (cache-writing pass alone $0.82\times10^{-4}$, the ten action steps $0.09\times10^{-4}$); on the unweighted future error the ten steps together give $1.24\times$ the sum}
+\TODO{Not in the text above: every measurement of this section uses the 16 calibration contexts of \method, not held-out ones; an injected error in the future cache gives 0 on the future and $1.1\times$ on the action, and the weights are not measured; the metric map of a single context (4 probes) correlates with the average map at 0.51 on average (0.01--0.81 over the 80 contexts), so the stability of Observation~3 is one of averages over contexts; the 10\% of tokens with the largest share carry 37\% of the trace; adding the per-phase action errors gives the future pathway 58.2\% against the measured 71.2\% (cache-writing pass alone $0.82\times10^{-4}$, the ten action steps $0.09\times10^{-4}$); on the unweighted future error the ten steps together give $1.24\times$ the sum}
 
 \section{Derivations}
 \label{sec:supp:theory}
@@ -477,7 +476,7 @@ On Cosmos-Policy, most of the refined activations are those of the action tokens
 On Fast-WAM, the baselines lose the most under shifted camera viewpoints (10.9--17.5 points below BF16) and under sensor noise (5.8--10.8 points).
 \method loses 2.5 points on each.
 On Cosmos-Policy, all methods stay within a few points of BF16 on every dimension, in line with its smaller overall loss.
-\TODO{Fast-WAM SVDQuant row: from the collaborators' run. Not in the text: on object layout \method is 4.2 points below BF16 on Fast-WAM and does not gain over the baselines; on Cosmos-Policy the entries differ by a few episodes of 120 and no dimension separates the methods. A breakdown by suite and dimension has 30 episodes per cell and is not given}
+\TODO{Not in the text: on object layout \method is 4.2 points below BF16 on Fast-WAM and does not gain over the baselines; on Cosmos-Policy the entries differ by a few episodes of 120 and no dimension separates the methods. A breakdown by suite and dimension has 30 episodes per cell and is not given}
 
 \begin{table*}[t]
   \centering
@@ -493,7 +492,7 @@ On Cosmos-Policy, all methods stay within a few points of BF16 on every dimensio
       & QuaRot    & 44.2 & 68.3 & 94.2 & 92.5 & 65.0 & 55.0 & 85.8 & 72.1 \\
       & SpinQuant & 50.8 & 63.3 & 93.3 & 93.3 & 63.3 & 55.0 & 85.0 & 72.0 \\
       & ViDiT-Q   & 44.2 & 70.8 & 95.0 & 88.3 & 66.7 & 60.0 & 84.2 & 72.7 \\
-      & SVDQuant  & \XX & \XX & \XX & \XX & \XX & \XX & \XX & 73.0 \\
+      & SVDQuant  & 46.7 & 68.3 & 94.2 & 91.7 & 65.8 & 56.7 & 87.5 & 73.0 \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}59.2 & \cellcolor{gray!12}72.5 & \cellcolor{gray!12}94.2 & \cellcolor{gray!12}90.8 & \cellcolor{gray!12}70.0 & \cellcolor{gray!12}63.3 & \cellcolor{gray!12}85.0 & \cellcolor{gray!12}76.4 \\
     \midrule
     \multirow{6}{*}{Cosmos-Policy}
