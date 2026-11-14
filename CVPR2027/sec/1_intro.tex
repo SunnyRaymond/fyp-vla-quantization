@@ -33,7 +33,7 @@ Three observations on Fast-WAM answer it (\cref{sec:motivation}).
 First, protecting the action is not enough: with the action pathway kept at higher precision, the action error falls by only 16\%, and restoring the predicted future to full precision removes 71.2\% of what remains (\cref{fig:teaser}).
 Second, the future is damaged where it is written, and most by errors that are read many times: an error frozen in a weight, a cache or an unchanging token is read at every denoising step, and it damages the future two to three times more than an error of the same energy that is redrawn at each step.
 Third, the reader depends on a narrow part of the future, stable in location but not in direction: its sensitivity concentrates on about 42 effective directions of a 37{,}632-dimensional latent, and the tokens it depends on agree across contexts (correlation 0.86) while the directions do not (overlap 0.19).
-In closed loop, existing 4-bit quantizers lose 0.6--7.5 percentage points of success relative to BF16 on LIBERO-Plus~\cite{fei2026liberoplus}.
+In closed loop, existing 4-bit quantizers lose 0.6--5.6 percentage points of success relative to BF16 on LIBERO-Plus~\cite{fei2026liberoplus}.
 Preserving a 4-bit WAM therefore requires treating the predicted future, as the reader sees it, as a quantization target in its own right.
 
 Building on this diagnosis, we propose \method, a latent-aware quantization framework for W4A4KV4 world action models (\cref{fig:method}).
