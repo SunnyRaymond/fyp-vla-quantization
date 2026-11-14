@@ -18,8 +18,8 @@
     \cmidrule(l){2-15}
       & QuaRot                 & 4.13 & 4  & 16  & 72.9 & 74.3 & 64.3 & 67.1 & 69.6\ci{0.2} & 97.6 & 97.0 & 96.2 & 95.6 & 96.6\ci{0.1} \\
       & SpinQuant              & 4.13 & 4  & 16  & 78.6 & 72.9 & 68.6 & 70.0 & 72.5\ci{0.4} & 98.4 & 97.2 & 96.8 & 96.4 & 97.2\ci{0.3} \\
-      & ViDiT-Q                & 4.33 & 4  & 16  & 77.1 & 70.0 & 68.6 & 74.3 & 72.5\ci{0.2} & 98.0 & 96.8 & 97.0 & 97.4 & 97.3\ci{0.2} \\
-      & SVDQuant               & 4.81 & 4  & 16  & 77.4 & 74.1 & 68.2 & 72.2 & 73.0\ci{0.3} & 98.0 & 97.4 & 96.4 & 96.2 & 97.0\ci{0.2} \\
+      & ViDiT-Q                & 4.33 & 4  & 16  & 77.1 & 70.0 & 68.6 & 74.3 & 72.5\ci{0.2} & 98.0 & 96.8 & 97.0 & 97.4 & \underline{97.3}\ci{0.2} \\
+      & SVDQuant               & 4.81 & 4  & 16  & 77.4 & 74.1 & 68.2 & 72.2 & \underline{73.0}\ci{0.3} & 98.0 & 97.4 & 96.4 & 96.2 & 97.0\ci{0.2} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}4.01 & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}81.4 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}67.1 & \cellcolor{gray!12}74.3 & \cellcolor{gray!12}\textbf{74.3}\ci{0.3} & \cellcolor{gray!12}98.1 & \cellcolor{gray!12}99.5 & \cellcolor{gray!12}98.1 & \cellcolor{gray!12}97.1 & \cellcolor{gray!12}\textbf{98.2}\ci{0.2} \\
     \midrule
     \multirow{6}{*}{Cosmos-Policy}
@@ -27,8 +27,8 @@
     \cmidrule(l){2-15}
       & QuaRot                 & 4.13 & 4  & 16  & 86.7 & 86.7 & 69.5 & 84.8 & 81.9\ci{0.1} & 97.2 & 99.0 & 96.4 & 97.4 & 97.5\ci{0.2} \\
       & SpinQuant              & 4.13 & 4  & 16  & 81.0 & 86.2 & 66.7 & 87.1 & 80.2\ci{0.2} & 96.8 & 99.2 & 95.8 & 97.0 & 97.2\ci{0.1} \\
-      & ViDiT-Q                & 4.29 & 4  & 16  & 86.7 & 87.1 & 70.0 & 87.6 & 82.9\ci{0.3} & 97.4 & 99.4 & 97.0 & 97.4 & 97.8\ci{0.3} \\
-      & SVDQuant               & 4.89 & 4  & 16  & 84.3 & 88.1 & 72.9 & 86.2 & 82.9\ci{0.2} & 97.6 & 99.4 & 96.6 & 97.2 & 97.7\ci{0.2} \\
+      & ViDiT-Q                & 4.29 & 4  & 16  & 86.7 & 87.1 & 70.0 & 87.6 & \underline{82.9}\ci{0.3} & 97.4 & 99.4 & 97.0 & 97.4 & \underline{97.8}\ci{0.3} \\
+      & SVDQuant               & 4.89 & 4  & 16  & 84.3 & 88.1 & 72.9 & 86.2 & \underline{82.9}\ci{0.2} & 97.6 & 99.4 & 96.6 & 97.2 & 97.7\ci{0.2} \\
       & \cellcolor{gray!12}\method & \cellcolor{gray!12}4.01 & \cellcolor{gray!12}4.58 & \cellcolor{gray!12}4.70 & \cellcolor{gray!12}86.7 & \cellcolor{gray!12}89.5 & \cellcolor{gray!12}68.6 & \cellcolor{gray!12}88.6 & \cellcolor{gray!12}\textbf{83.3}\ci{0.4} & \cellcolor{gray!12}98.6 & \cellcolor{gray!12}100.0 & \cellcolor{gray!12}98.6 & \cellcolor{gray!12}97.6 & \cellcolor{gray!12}\textbf{98.7}\ci{0.2} \\
     \bottomrule
   \end{tabular}
@@ -57,7 +57,6 @@ LIBERO-Plus is our main benchmark: on the original suites, both BF16 models alre
 \paragraph{Baselines and quantization settings.}
 We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant}, and the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}.
 The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} have no public implementation, so we do not include them.
-\TODO{re-check code availability before submission}
 All baselines quantize weights and activations to 4 bits and keep the cached keys and values in BF16, whereas \method also quantizes the caches to 4 bits.
 Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128, fixed randomized Hadamard blocks for QuaRot and learned rotations for SpinQuant, and fold them into its weights; both round the weights to nearest with one scale per group of 128 and quantize activations with one scale per token (\cref{sec:supp:eval}).
 ViDiT-Q keeps its channel balancing, rotation and per-token activation quantization, and SVDQuant follows its published recipe with a 16-bit low-rank branch of rank 32.
@@ -78,8 +77,8 @@ Further implementation and evaluation details are provided in \cref{sec:supp:eva
 \cref{tab:main} reports closed-loop success on both models.
 
 \paragraph{Results on Fast-WAM.}
-On LIBERO-Plus, \method reaches 74.3\% average success, within 2.9 points of BF16 (77.1\%) and 1.8 points above SpinQuant and ViDiT-Q, the strongest baselines, although the baselines keep their caches in BF16.
-The baselines lose 4.6--7.5 points relative to BF16.
+On LIBERO-Plus, \method reaches 74.3\% average success, within 2.9 points of BF16 (77.1\%) and 1.3 points above SVDQuant, the strongest baseline, although the baselines keep their caches in BF16.
+The baselines lose 4.1--7.5 points relative to BF16.
 The gains of \method concentrate on the \XX and \XX perturbations, where the baselines lose the most (\cref{sec:supp:results}).
 On LIBERO, where BF16 reaches 98.0\%, the baselines lose 0.7--1.4 points, QuaRot again the most, and \method reaches 98.2\%, above every baseline and level with BF16.
 
