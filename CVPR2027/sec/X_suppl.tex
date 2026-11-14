@@ -104,7 +104,7 @@ The stability of the locations is the correlation between the diagonals of $\bM$
 The overlap between two eigenspaces is $\|\mathbf{E}_1^\top \mathbf{E}_2\|_F^2 / r$, where $\mathbf{E}_1$ and $\mathbf{E}_2$ hold the $r = 32$ leading eigenvectors estimated on the two halves; it is 1 for identical subspaces.
 The frame shown in \cref{fig:obs:gaze} is the fourth decoded frame of the BF16 prediction for one context of the Goal suite.
 
-\TODO{still to write: soft-histogram parameters of $K$; the same measurements on Cosmos-Policy.
+\TODO{still to write: the same measurements on Cosmos-Policy.
 Not in the text above: every measurement of this section uses the 16 calibration contexts of \method, not held-out ones; an injected error in the future cache gives 0 on the future and $1.1\times$ on the action, and the weights are not measured; the metric map of a single context (4 probes) correlates with the average map at 0.51 on average (0.01--0.81 over the 80 contexts), so the stability of Observation~3 is one of averages over contexts; the 10\% of tokens with the largest share carry 37\% of the trace; adding the per-phase action errors gives the future pathway 58.2\% against the measured 71.2\% (cache-writing pass alone $0.82\times10^{-4}$, the ten action steps $0.09\times10^{-4}$); on the unweighted future error the ten steps together give $1.24\times$ the sum}
 
 \section{Derivations}
@@ -121,7 +121,12 @@ Not in the text above: every measurement of this section uses the 16 calibration
 
 \section{Method details}
 \label{sec:supp:method}
-\TODO{definition of the reader error $K$; choice of $\lambda_{\bM}$ and $\beta$; estimation of the reader metric (probes, normalization, truncation) and its spectrum; convergence of the estimate with the number of probes and contexts, and its split-half stability; measured read counts and step profile; agreement between the run-time gaze and the offline gaze}
+\paragraph{Reader error.}
+The soft histogram $\pi$ of \cref{eq:reader-kl} standardizes each of the six motor coordinates of the first 10 actions by its mean and standard deviation over the BF16 actions on the 80 calibration contexts, with the standard deviation floored at 0.02.
+It then assigns the coordinate to 16 bins, whose 15 interior edges are evenly spaced in $[-3.5, 3.5]$, under Gaussian noise of standard deviation 0.375.
+$K$ is the mean over these 60 coordinates of the KL divergence between the bin probabilities of the BF16 action and those of the action read from the quantized future.
+
+\TODO{choice of $\lambda_{\bM}$ and $\beta$; estimation of the reader metric (probes, normalization, truncation) and its spectrum; convergence of the estimate with the number of probes and contexts, and its split-half stability; measured read counts and step profile; agreement between the run-time gaze and the offline gaze}
 
 \section{Evaluation details}
 \label{sec:supp:eval}
@@ -156,7 +161,7 @@ SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, 
 
 \section{Additional ablations}
 \label{sec:supp:ablation}
-\TODO{Nothing in this section is run. (a) One open-loop job on held-out contexts (single GPU, a few hours) fills \cref{tab:supp:criteria,tab:supp:budget,tab:supp:metric}, the 8-bit comparison and the error columns of \cref{tab:ablation,tab:supp:cosmos}; the rows of \cref{tab:supp:metric} each need a new metric file and allocation. (b) Closed loop: calibration on disjoint suites (\cref{tab:supp:disjoint}; re-estimate the metric on the Spatial and Object contexts, 1.2 GPU-hours of calibration, then the 420 Goal and Long episodes for both rows, about 15 GPU-hours each); Cosmos-Policy with random tokens (840 episodes, about 16 GPU-hours) and without refinement on panels B and C. The 81.4 and 83.6 of \cref{tab:supp:cosmos} are panel-A results (228 and 234 of 280); update them with \cref{tab:main}}
+\TODO{Measured so far: the random, offline-gaze and \method rows of \cref{tab:supp:criteria} and the 15\% row of \cref{tab:supp:budget} (open loop, laq-ablation-ol-20261114). (a) Still open loop on the same 80 queries: the other rows of \cref{tab:supp:criteria,tab:supp:budget}, \cref{tab:supp:metric} (each row needs a new metric file and allocation), the 8-bit comparison and the error columns of \cref{tab:supp:cosmos}. (b) Closed loop: calibration on disjoint suites (\cref{tab:supp:disjoint}; re-estimate the metric on the Spatial and Object contexts, 1.2 GPU-hours of calibration, then the 420 Goal and Long episodes for both rows, about 15 GPU-hours each); Cosmos-Policy with random tokens (840 episodes, about 16 GPU-hours) and without refinement on panels B and C. The 81.4 and 83.6 of \cref{tab:supp:cosmos} are panel-A results (228 and 234 of 280); update them with \cref{tab:main}}
 
 \paragraph{Protocol.}
 All variants of \cref{tab:ablation} share the 4-bit weights, the quantizers and the calibration records of \method and differ only in the tokens that receive the second pass.
@@ -166,7 +171,9 @@ A selection criterion assigns a score to every unit, that is, an observation tok
 \emph{Per-step sensitivity} scores a unit by the change of the action error $A$ when its rounding error is removed at one denoising step alone, which corresponds to the objective $A$ with $n_u = 1$ for every source.
 \emph{Offline gaze} ranks the tokens by their share of $\bM$ and keeps this ranking at run time.
 \emph{Reader metric} sets $\bM = \mathbf{I}$ in \cref{eq:objective} and in the offline gaze, and \emph{Read count} sets $n_u = 1$ in \cref{eq:threshold}.
-The action error and the reader error are measured on \XX held-out LIBERO contexts that are not used for calibration, against the BF16 model under the same sampling noise.
+The action error and the reader error are measured on 40 held-out LIBERO contexts, 10 per suite and none of them used for calibration, each with two sampling seeds, against the BF16 model under the same sampling noise; every variant runs on the same 80 queries.
+For the reader error, the BF16 reader reads the future that the variant predicts, with the observed frame and the sampling noise of the query.
+\emph{Action tokens (BF16)} leaves the activations of the action tokens unquantized and keeps the 4-bit weights.
 The closed-loop rows run on the LIBERO-Plus episodes of \cref{tab:main}, so that every variant is paired with \method.
 
 \begin{table}[t]
@@ -177,16 +184,16 @@ The closed-loop rows run on the LIBERO-Plus episodes of \cref{tab:main}, so that
     \toprule
     Criterion & Action $\downarrow$ & Reader $\downarrow$ \\
     \midrule
-    Random                               & \XX & \XX \\
+    Random                               & 3.19 & 1.23 \\
     Activation energy                    & \XX & \XX \\
     Video self-attention                 & \XX & \XX \\
     All tokens, last steps               & \XX & \XX \\
     Per-step sensitivity                 & \XX & \XX \\
-    Offline gaze                         & \XX & \XX \\
-    \cellcolor{gray!12}Gaze, tracked at run time (\method) & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    Offline gaze                         & 2.28 & 0.96 \\
+    \cellcolor{gray!12}Gaze, tracked at run time (\method) & \cellcolor{gray!12}2.10 & \cellcolor{gray!12}0.82 \\
     \bottomrule
   \end{tabular}
-  \caption{Selection criteria under the budget of \method on Fast-WAM (action error and reader error on held-out contexts).}
+  \caption{Selection criteria under the budget of \method on Fast-WAM: action error ($\times 10^{-4}$) and reader error ($\times 10^{-2}$) on held-out contexts.}
   \label{tab:supp:criteria}
 \end{table}
 
@@ -207,13 +214,13 @@ The three remove at most \XX\% of the reader error that the gaze removes: the to
     \midrule
     5   & \XX & \XX & \XX & \XX \\
     10  & \XX & \XX & \XX & \XX \\
-    \cellcolor{gray!12}15 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX \\
+    \cellcolor{gray!12}15 & \cellcolor{gray!12}3.19 & \cellcolor{gray!12}1.23 & \cellcolor{gray!12}2.10 & \cellcolor{gray!12}0.82 \\
     25  & \XX & \XX & \XX & \XX \\
     50  & \XX & \XX & \XX & \XX \\
     100 & \XX & \XX & \XX & \XX \\
     \bottomrule
   \end{tabular}
-  \caption{Effect of the budget on Fast-WAM, as the share of the 4-bit operands of a policy call that receive a second pass.
+  \caption{Effect of the budget on Fast-WAM, as the share of the 4-bit operands of a policy call that receive a second pass: action error ($\times 10^{-4}$) and reader error ($\times 10^{-2}$) on held-out contexts.
   The shaded row is the budget of \cref{tab:main}.}
   \label{tab:supp:budget}
 \end{table}

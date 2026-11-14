@@ -49,7 +49,7 @@
 \paragraph{Models and benchmarks.}
 We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and Cosmos-Policy~\cite{kim2026cosmospolicy} (2B parameters), and compare each with its own BF16 reference.
 Fast-WAM first denoises the future latent and then denoises an action chunk that attends to it through a key--value cache; the tokens of its observed frame do not depend on the denoising step and are computed once.
-\TODO{confirm in the code that the observed-frame tokens are a pure prefix and implement the prefix cache}
+\TODO{the observed-frame tokens are bit-identical across the 10 video steps (job 26039756), but the 4-bit runtime still recomputes them; implement the prefix cache}
 Cosmos-Policy denoises the future and the action jointly, so its reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action, and its keys and values are quantized at every step.
 We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, on the original LIBERO suites, and on a real robot arm (\cref{sec:exp:real}).
 LIBERO-Plus is our main benchmark: on the original suites, both BF16 models already succeed in about 98\% of the episodes.
@@ -61,8 +61,7 @@ The WAM quantizers~\cite{zhou2026quantwams,akbari2026qwam,wang2026steerquant} ha
 All baselines quantize weights and activations to 4 bits and keep the cached keys and values in BF16, whereas \method also quantizes the caches to 4 bits.
 Since adaptive layer normalization prevents a rotation of the residual stream, QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128, fixed randomized Hadamard blocks for QuaRot and learned rotations for SpinQuant, and fold them into its weights; both round the weights to nearest with one scale per group of 128 and quantize activations with one scale per token (\cref{sec:supp:eval}).
 ViDiT-Q keeps its channel balancing, rotation and per-token activation quantization, and SVDQuant follows its published recipe with a 16-bit low-rank branch of rank 32.
-\method uses 4-bit weights rounded by GPTQ~\cite{frantar2023gptq}, 4-bit activations with per-token scales, and 4-bit keys and values with per-token scales.
-\TODO{fix the group size and the KV quantizer of \method before its runs}
+\method uses 4-bit weights rounded by GPTQ~\cite{frantar2023gptq} with one scale per output row in randomized Hadamard coordinates, 4-bit activations with per-token scales, and 4-bit keys and values with one scale per token and head.
 \cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
 ViDiT-Q, SVDQuant and \method calibrate on the same 80 LIBERO contexts, and SpinQuant learns its rotations on 8 LIBERO contexts.
@@ -157,14 +156,14 @@ The quantized model stores 3.2\,GB of weights instead of 12.0\,GB.
     Variant & A & KV & Action & Reader & (\%) $\uparrow$ \\
     \midrule
     \multicolumn{6}{@{}l}{\emph{Refined tokens}} \\
-    \hspace{0.5em}None                               & 4    & 4    & \XX & \XX & \XX \\
-    \hspace{0.5em}Action tokens (BF16)               & \XX  & 4    & \XX & \XX & \XX \\
+    \hspace{0.5em}None                               & 4    & 4    & 4.70 & 1.75 & \XX \\
+    \hspace{0.5em}Action tokens (BF16)               & 4.71 & 4    & 4.18 & 1.75 & \XX \\
     \hspace{0.5em}Observation tokens                 & \XX  & \XX  & \XX & \XX & \XX \\
     \midrule
     \multicolumn{6}{@{}l}{\emph{Selection criterion, same budget}} \\
-    \hspace{0.5em}Random                             & \XX  & \XX  & \XX & \XX & \XX \\
+    \hspace{0.5em}Random                             & 4.61 & 4.33 & 3.19 & 1.23 & \XX \\
     \hspace{0.5em}Per-step sensitivity               & \XX  & \XX  & \XX & \XX & \XX \\
-    \hspace{0.5em}Offline gaze                       & 4.62 & 4.24 & \XX & \XX & \XX \\
+    \hspace{0.5em}Offline gaze                       & 4.62 & 4.24 & 2.28 & 0.96 & \XX \\
     \midrule
     \multicolumn{6}{@{}l}{\emph{Component removed, same budget}} \\
     \hspace{0.5em}Reader metric ($\bM = \mathbf{I}$) & \XX  & \XX  & \XX & \XX & \XX \\
@@ -173,30 +172,32 @@ The quantized model stores 3.2\,GB of weights instead of 12.0\,GB.
     \multicolumn{6}{@{}l}{\emph{Cache precision}} \\
     \hspace{0.5em}BF16 caches                        & 4.62 & 16   & \XX & \XX & \XX \\
     \midrule
-    \cellcolor{gray!12}\method & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}\XX & \cellcolor{gray!12}\XX & \cellcolor{gray!12}74.3 \\
+    \cellcolor{gray!12}\method & \cellcolor{gray!12}4.62 & \cellcolor{gray!12}4.24 & \cellcolor{gray!12}2.10 & \cellcolor{gray!12}0.82 & \cellcolor{gray!12}74.3 \\
     \bottomrule
   \end{tabular}
   \caption{Ablations on Fast-WAM.
   A and KV give the average bits of the activations and of the cached keys and values.
-  \emph{Action} and \emph{Reader} are the action error $A$ and the reader error $K$ of \cref{sec:prelim} on held-out LIBERO contexts, and \emph{Succ.} is the closed-loop success rate on LIBERO-Plus.
+  \emph{Action} and \emph{Reader} are the action error $A$ ($\times 10^{-4}$) and the reader error $K$ ($\times 10^{-2}$) of \cref{sec:prelim} on held-out LIBERO contexts, and \emph{Succ.} is the closed-loop success rate on LIBERO-Plus.
   \emph{None} is plain W4A4KV4; \emph{Action tokens (BF16)} keeps the action tokens in BF16 and quantizes everything else without refinement; \emph{Observation tokens} refines only the tokens of the observed frame.
   In the second and third blocks, the pipeline, the budget and the refinement are those of \method, and only the score that ranks the tokens changes.}
   \label{tab:ablation}
 \end{table}
 
 \cref{tab:ablation} isolates each component on Fast-WAM, with the action error and the reader error measured in open loop on held-out contexts and the success rate in closed loop.
-\TODO{Only the \method row exists; it repeats \cref{tab:main}, update both together. Closed loop: nine rows on the episodes of \cref{tab:main}, paired with the \method and BF16 rows, panel A first and then B and C; about 30 A100-hours per row over 840 episodes (259\,s per episode, two workers per GPU), 270 in total. Order: (1) none, action tokens in BF16, random; (2) per-step sensitivity, read count, offline gaze; (3) observation tokens, reader metric, BF16 caches. All rows but the action-in-BF16 one reuse the existing weights and calibration records and only change the allocation. Open loop: one single-GPU job of a few hours for all rows on held-out contexts; $K$ is not computed by the current code (one BF16 reader pass per context); fix the units of the two error columns. Every criterion must rank all units (observation, future and cached tokens at every step) under the budget of \method: the observation tokens take 1{,}078 of its 1{,}209 refined token-steps, so a criterion that only moves the future tokens changes little. On the 16 calibration contexts the action error is 0.0188 without refinement, 0.0172 with the action rows refined, 0.0138 with the observation tokens added and 0.0131 for \method, and the objective of the observation-only variant ($4.27 \times 10^{-4}$) equals that of \method ($4.30 \times 10^{-4}$), so the last step of the first block may not show. \method always refines the action rows: decide whether the observation-only row keeps them}
+\TODO{Open-loop columns of None, Action tokens (BF16), Random, Offline gaze and \method are measured (80 held-out queries, \cref{sec:supp:ablation}); still to run: open loop of per-step sensitivity and read count (batch 2), of observation tokens, reader metric and BF16 caches (batch 3), and the closed-loop column of all nine rows (about 30 A100-hours per row over the 840 episodes of \cref{tab:main}); the \method row repeats \cref{tab:main}. The observation tokens take 1{,}078 of the 1{,}209 refined token-steps of \method, and on the 16 calibration contexts the objective of the observation-only variant ($4.27 \times 10^{-4}$) equals that of \method ($4.30 \times 10^{-4}$), so the last step of the first block may not show; decide whether the observation-only row keeps the refined action rows}
 
 \paragraph{Exact actions are not enough.}
 Plain W4A4KV4 loses \XX points to BF16.
-Keeping the action tokens in BF16 recovers only \XX of them although its action tokens are exact: the action error falls, but the reader error stays at \XX, which confirms Observation~1 in closed loop.
-Refining only the observation tokens, which are written once and read at every denoising step, recovers \XX points, and the future tokens and cached entries selected by the gaze bring \method to 74.3\%.
+Keeping the action tokens in BF16 recovers only \XX of them although its action tokens are exact: the action error falls by only 11\%, and the reader error does not change at all, since the exact action tokens read the same degraded future.
+This confirms Observation~1 in closed loop.
+Refining only the observation tokens, which are written once and read at every denoising step, recovers \XX points, and the future tokens and cached entries selected by the gaze bring \method to 74.3\%, with both errors below half of those of plain W4A4KV4.
 
 \paragraph{The reader decides which tokens matter.}
 With the pipeline, the budget and the refinement fixed, only the criterion that ranks the tokens changes.
-Random tokens reach \XX\%.
+Random tokens leave 1.5$\times$ the action error and the reader error of \method and reach \XX\%.
 A per-step sensitivity of the final action~\cite{akbari2026qwam,wang2026steerquant} reaches \XX\%: it spends the budget on the action pathway and lowers the reader error by only \XX\%.
-The offline gaze reaches \XX\%, and tracking the gaze at run time adds \XX points, mostly on the \XX perturbations.
+The offline gaze reaches \XX\%, and tracking the gaze at run time lowers the reader error by a further 15\% and adds \XX points, mostly on the \XX perturbations.
+\TODO{Rethink the offline-gaze row. Open loop: tracking lowers the mean errors (action 2.10 vs.\ 2.28, reader 0.82 vs.\ 0.96), but the context-bootstrap intervals of offline over tracked include 1 (action 0.90--1.34, reader 0.94--1.51), and the tracked gaze has the lower action error in only 34 of the 80 queries (43 for the reader error). In open loop the tracked gaze comes from a first query on the same observation, while in closed loop it comes from the previous control step, so open loop favours it. Closed loop (280 episodes): the future cache tokens selected at consecutive control steps overlap by 0.70 (Jaccard) and those of the offline gaze by 0.21; on the calibration contexts the attention gaze and the offline gaze have Spearman 0.24}
 Criteria computed from the video model itself, its activation energy~\cite{federici2026stamp} and its self-attention~\cite{shen2024squat,jang2026semanticdialect}, fall behind the gaze as well (\cref{sec:supp:ablation}).
 
 \paragraph{The reader metric and the read count both matter.}
