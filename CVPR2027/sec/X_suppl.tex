@@ -700,35 +700,13 @@ The metric is as concentrated as in simulation: its effective rank is 27.4, the 
 The allocation differs from that of the LIBERO model.
 It refines 66 of the 98 observation tokens and all 98 entries of the observation cache, and places most of the refined future tokens at the first denoising step (84 of 196), which gives 4.58 bits for the activations and 4.94 bits for the caches.
 The allocation thus adapts to the model at hand, with no setting changed by hand.
-For the check below, we also run the same 4-bit weights without refinement, which differs from \method only in the refined tokens.
 
-\paragraph{Open-loop check.}
-Before deployment, we replay 6 demonstrations per task and query each model every 10 steps, 184 queries in total, and compare the first 10 actions of every chunk (\cref{tab:supp:real-ol}).
-Since all demonstrations were used for training, this check measures how far a quantized model departs from the BF16 model, not how well it generalizes.
-\method departs from the BF16 actions by 0.0039\,rad on average over the joints, 0.42 times as much as the model without refinement, and the ratio lies between 0.40 and 0.50 on each of the three tasks.
-Against the recorded trajectories, the model without refinement is 0.0026\,rad worse than BF16 and \method 0.0004\,rad.
-
-\begin{table}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}lcccc@{}}
-    \toprule
-    & \multicolumn{2}{c}{vs.\ recording} & \multicolumn{2}{c}{vs.\ BF16} \\
-    \cmidrule(lr){2-3} \cmidrule(l){4-5}
-    Model & Joints & Gripper & Joints & Gripper \\
-    \midrule
-    BF16              & 0.0208 & 2.65 & --     & --   \\
-    No refinement     & 0.0234 & 2.81 & 0.0092 & 0.58 \\
-    \cellcolor{gray!12}\method & \cellcolor{gray!12}0.0212 & \cellcolor{gray!12}2.64 & \cellcolor{gray!12}0.0039 & \cellcolor{gray!12}0.27 \\
-    \bottomrule
-  \end{tabular}
-  \caption{Open-loop errors of the real-world models on recorded demonstrations: mean absolute error of the joints (rad) and of the gripper opening (mm) over the first 10 actions, against the recorded trajectory and against the actions of the BF16 model.
-  Both quantized models are W4A4KV4 with the same weights.}
-  \label{tab:supp:real-ol}
-\end{table}
-
-\TODO{success criteria and time limits per task, initial placements, and per-trial records: from the robot team. The open-loop check runs the quantized models with simulated 4-bit arithmetic (4.8--6.4\,s per query against 0.96\,s for BF16), so it says nothing about speed}
+\paragraph{Trial protocol.}
+Every method runs 20 trials per task, two from each of 10 initial placements marked on the table, and the order of the methods is randomized at every placement.
+A pick-and-place trial succeeds when both named objects rest inside the box within 60\,s, and its first stage when the apple does.
+A shelf trial succeeds when the bowl stands on the second floor of the shelf after the gripper has released it, within 45\,s.
+A stacking trial succeeds when both boxes stay stacked for 3\,s after the last release, within 60\,s.
+A trial also ends when an object leaves the workspace.
 
 \section{Visualizations}
 \label{sec:supp:vis}
