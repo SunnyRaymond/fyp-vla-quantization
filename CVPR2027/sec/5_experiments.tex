@@ -60,7 +60,7 @@ ViDiT-Q keeps its channel balancing, rotation and per-token activation quantizat
 \cref{tab:main} lists the resulting average bits of every method (accounting in \cref{sec:supp:bits}).
 As is common, all methods keep the input and output interface layers (0.01\% of the weights) in BF16 and store the timestep-conditioning layers, whose inputs depend only on the denoising step, as exact per-step tables.
 ViDiT-Q, SVDQuant and \method calibrate on the same 80 LIBERO contexts, and SpinQuant learns its rotations on 8 LIBERO contexts.
-For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines 15.4\% of the activation values of the denoising loops and 6.0\% of the cached keys and values.
+For \method, the reader metric uses $r = 32$, $\alpha = 0.1$ and four probes per context, and the budget refines 15.4\% of the activation values of the denoising loops and 6.0\% of the cached keys and values (all settings in \cref{tab:supp:hparams}).
 
 \paragraph{Evaluation metrics.}
 We report closed-loop success rates per suite and on average.
@@ -189,7 +189,7 @@ Refining only the observation tokens, which are written once and read at every d
 \paragraph{The reader decides which tokens matter.}
 With the pipeline, the budget and the refinement fixed, only the criterion that ranks the tokens changes.
 Random tokens leave 1.5$\times$ the action error and the reader error of \method and reach 72.5\%.
-A per-step sensitivity of the final action~\cite{akbari2026qwam,wang2026steerquant} reaches 72.9\%: it spends the budget on the action pathway and lowers the reader error by only 13\%.
+A per-step sensitivity of the final action, the kind of criterion that existing WAM quantizers use~\cite{akbari2026qwam,wang2026steerquant}, depends on the action alone and reaches 72.9\%: it spends the budget on the action pathway and lowers the reader error by only 13\%.
 The offline gaze reaches 75.2\%, and tracking the gaze at run time lowers the reader error by a further 15\% and adds 1.2 points, mostly on the camera-viewpoint perturbations.
 Criteria computed from the video model itself, its activation energy~\cite{federici2026stamp} and its self-attention~\cite{shen2024squat,jang2026semanticdialect}, fall behind the gaze as well (\cref{sec:supp:ablation}).
 
