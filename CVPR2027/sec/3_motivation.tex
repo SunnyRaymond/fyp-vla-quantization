@@ -47,7 +47,7 @@ We quantize Fast-WAM~\cite{yuan2026fastwam} to W4A4KV4 with rotation and second-
 We also inject errors of equal energy that are either frozen across the denoising steps or redrawn at every step (protocol and full results in \cref{sec:supp:prelim}).
 
 % Fig. 3: research/paper/figures/fig3_observations.py writes figures/figure3_a.pdf and figures/figure3_b.pdf.
-% Panel (a), the frozen-to-redrawn ratios of Observation 2, is shown in the supplementary material (fig:obs:reads).
+% Panel (a), the frozen-to-redrawn ratios of Observation 2, is not used: its numbers are in tab:supp:reads.
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.92\linewidth]{figures/figure3_b.pdf}
@@ -64,7 +64,7 @@ This implies that the quantization target must include the predicted future itse
 \paragraph{Observation 2: The future is damaged where it is written, and most by errors that are read many times.}
 Raising the precision of the reader leaves the future error exactly unchanged, so the future can only be preserved in the computation that writes it.
 Within this computation, rounding errors differ in how often they are read: the tokens of the observed frame keep the same rounding error at every denoising step, cached keys and values are written once and read at every step, and a weight is read by every token at every step.
-An injected error of fixed energy damages the future 3.1$\times$, 2.2$\times$ and 2.1$\times$ more in the observation tokens, the observation cache and the text cache when it is frozen across the denoising steps than when it is redrawn at each step (\cref{fig:obs:reads}), because its effects on successive steps add up.
+An injected error of fixed energy damages the future 3.1$\times$, 2.2$\times$ and 2.1$\times$ more in the observation tokens, the observation cache and the text cache when it is frozen across the denoising steps than when it is redrawn at each step (\cref{tab:supp:reads}), because its effects on successive steps add up.
 A sensitivity estimated one step at a time misses this accumulation: quantizing the ten video denoising steps together damages the part of the future that the reader depends on 2.50$\times$ more than the sum of the ten steps quantized one at a time.
 This implies that an error should be weighted by how many times it is read, not only by where it occurs.
 

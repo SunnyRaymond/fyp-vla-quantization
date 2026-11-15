@@ -56,16 +56,7 @@ To isolate the effect of the number of reads, the weights are kept in BF16 and a
 The injected error is the 4-bit rounding error of that source multiplied by random signs, so that it has the energy of the rounding error.
 The signs are either drawn once and kept over the denoising steps (frozen) or drawn again at every read (redrawn).
 The damage is the future error weighted by the reader metric, $Z_{\bM}$ (\cref{eq:metric-form}).
-\cref{tab:supp:reads} reports the two cases and their ratio for three sources, and \cref{fig:obs:reads} draws the ratios.
-
-% Panel (a) of the former Fig. 3 (research/paper/figures/fig3_observations.py).
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.75\linewidth]{figures/figure3_a.pdf}
-  \caption{Errors that are read many times add up (Fast-WAM).
-  A 4-bit rounding error damages the future two to three times more when one realization is kept over the 10 denoising steps (frozen) than when it is redrawn at each step with the same energy.}
-  \label{fig:obs:reads}
-\end{figure}
+\cref{tab:supp:reads} reports the two cases and their ratio for three sources.
 
 \begin{table}[t]
   \centering
@@ -281,7 +272,7 @@ Because the layer is linear, $\bW \hat\bx = \varsigma_1\, \bW \mathbf{q}_1 + \va
 \cref{alg:laq} summarizes \method.
 This section gives the settings behind each of its steps; \cref{tab:supp:hparams} collects the hyperparameters.
 
-\begin{algorithm}[t]
+\begin{algorithm}[H]
   \caption{\method}
   \label{alg:laq}
   \small
@@ -708,21 +699,21 @@ Measurements use one NVIDIA A100 (40\,GB) and one process, with the text embeddi
 \paragraph{Calibration.}
 Choosing the refined tokens runs 16 calibration contexts through the quantized model once for each class of tokens and takes 1.2 GPU-hours on one A100 with a peak memory of 27\,GB.
 
+% Gaze maps of Sec. J: declared here, one page earlier, so that the figure tops the page on which Sec. J starts
+% instead of standing alone on a last page.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/supp_gaze_maps.pdf}
+  \caption{Reader metric of single contexts on Fast-WAM, two from each LIBERO suite.
+  Each panel shows the third-person view (left) and the wrist view (right) of the first predicted frame; the color of a token is its share of the trace of the metric estimated on that context alone, normalized within the panel, with the color scale of \cref{fig:obs:gaze}.}
+  \label{fig:supp:gaze}
+\end{figure*}
+
 \section{Real-world experiments}
 \label{sec:supp:real}
 
-% Six-frame layout of Fig. 4 (research/paper/figures/fig4_real_tasks.py, layout "supp").
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/supp_real_tasks.pdf}
-  \caption{Every stage of the three real-world tasks on the AgileX PiPER arm, for the demonstrations of \cref{fig:real}.
-  Each row shows one demonstration in time sequence from left to right, with the wrist view inset at the same step.
-  The bar under each frame spans the whole demonstration: orange where the gripper is closed, and the dot marks the time of the frame.}
-  \label{fig:supp:real}
-\end{figure*}
-
 \paragraph{Tasks.}
-\cref{fig:supp:real} shows one demonstration of each task.
+\cref{fig:real} shows one demonstration of each task.
 Two-object pick-and-place has three other objects on the table as distractors; this long-horizon task tests whether the quantized model completes a multi-step sequence and picks the named objects.
 Shelf placement is a precise insertion under the top board of the shelf that the third-person camera only partly sees, so the final placement relies on the wrist view.
 In box stacking, each box must land on the small top face of the one below, which tests placement precision.
@@ -761,10 +752,3 @@ In the third-person view, the metric follows the arm and the gripper as they mov
 The background, the distractor objects and most of the table carry almost none of it.
 This is the pattern behind Observation~3: the locations that the reader depends on are few and tied to the robot, so a selection that follows them at run time protects them in every scene.
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/supp_gaze_maps.pdf}
-  \caption{Reader metric of single contexts on Fast-WAM, two from each LIBERO suite.
-  Each panel shows the third-person view (left) and the wrist view (right) of the first predicted frame; the color of a token is its share of the trace of the metric estimated on that context alone, normalized within the panel, with the color scale of \cref{fig:obs:gaze}.}
-  \label{fig:supp:gaze}
-\end{figure*}

@@ -2,7 +2,7 @@
 
 python research/paper/figures/fig4_real_tasks.py  ->  two layouts of the same episodes:
   main: CVPR2027/figures/figure4.pdf, one column wide (3.281 in = \\linewidth), three key frames per task, for the main text;
-  supp: CVPR2027/figures/supp_real_tasks.pdf, 6.875 in wide (= \\textwidth), all six key frames, for the supplementary material.
+  supp (--layout supp): CVPR2027/figures/supp_real_tasks.pdf, 6.875 in wide (= \\textwidth), all six key frames; not used in the paper.
 Previews go to research/paper/figures/figure4_preview.png and supp_real_tasks_preview.png.
 Needs h5py and PyMuPDF; the raw episodes live in `agilex pepper training data/<task>/data/chunk-000/episode_XXXXXX.hdf5` (30 Hz).
 Key frames are placed at the gripper close/open events of the episode, so every frame marks a stage of the task.
@@ -247,7 +247,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--eps", type=int, nargs=3, help="episode ids in TASKS order")
     ap.add_argument("--no-wrist", action="store_true")
-    ap.add_argument("--layout", choices=["main", "supp", "both"], default="both")
+    # the paper uses only "main"; "supp" (six frames, full width) is kept for slides and is not in the repository
+    ap.add_argument("--layout", choices=["main", "supp", "both"], default="main")
     args = ap.parse_args()
     eps = args.eps or [t["ep"] for t in TASKS]
     data = [load(t, e) for t, e in zip(TASKS, eps)]
