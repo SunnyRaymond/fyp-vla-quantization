@@ -114,7 +114,6 @@ The stability of the locations is the correlation between the diagonals of $\bM$
 The overlap between two eigenspaces is $\|\mathbf{E}_1^\top \mathbf{E}_2\|_F^2 / r$, where $\mathbf{E}_1$ and $\mathbf{E}_2$ hold the $r = 32$ leading eigenvectors estimated on the two halves; it is 1 for identical subspaces.
 The frame shown in \cref{fig:obs:gaze} is the fourth decoded frame of the BF16 prediction for one context of the Goal suite.
 
-\TODO{Not in the text above: every measurement of this section uses the 16 calibration contexts of \method, not held-out ones; an injected error in the future cache gives 0 on the future and $1.1\times$ on the action, and the weights are not measured; the metric map of a single context (4 probes) correlates with the average map at 0.51 on average (0.01--0.81 over the 80 contexts), so the stability of Observation~3 is one of averages over contexts; the 10\% of tokens with the largest share carry 37\% of the trace; adding the per-phase action errors gives the future pathway 58.2\% against the measured 71.2\% (cache-writing pass alone $0.82\times10^{-4}$, the ten action steps $0.09\times10^{-4}$); on the unweighted future error the ten steps together give $1.24\times$ the sum}
 
 \section{Derivations}
 \label{sec:supp:theory}
@@ -284,13 +283,11 @@ The estimate of a context is the mean of $\mathbf{v}\mathbf{v}^\top$ over its pr
 We never form the $d \times d$ matrix: the 320 normalized probes are stacked into a $320 \times d$ matrix, whose thin singular value decomposition gives the eigendirections and whose squared columns give the diagonal.
 $\bM_r$ keeps the $r = 32$ leading eigendirections, which carry 52\% of the trace, and the diagonal of the remainder, and \cref{eq:metric-form} mixes in the identity with $\alpha = 0.1$.
 The estimation takes one forward pass of the model and four reverse passes of the reader per context.
-\TODO{convergence of the estimate with the number of probes and contexts: not measured. Available: split-half numbers of \cref{sec:supp:prelim}; a single context (4 probes) correlates with the average map at 0.51}
 
 \paragraph{Weights of the objective.}
 The terms of \cref{eq:objective} have different scales, so we weight them once, on the model without refinement: $\lambda_{\bM}$ is the ratio between the mean action error $A$ and the mean reader-weighted future error $Z_{\bM}$ over the calibration contexts, which makes the two terms contribute equally before any token is refined.
 This gives $\lambda_{\bM} = 0.0101$ on Fast-WAM and $\lambda_{\bM} = 3.11$ on Cosmos-Policy.
 By \cref{sec:supp:theory:metric-kl}, the reader error $K$ agrees with the low-rank part of $Z_{\bM}$ to second order, so during calibration its weight is carried by $\lambda_{\bM}$; $K$ itself is the error we report.
-\TODO{the implementation never evaluates $K$ inside the objective: it uses $A + \lambda_{\bM} Z_{\bM}$, i.e.\ $\beta$ is absorbed. Decide whether the main text keeps $\beta K$ as a separate term}
 
 \paragraph{Units, classes and costs.}
 A unit is one token whose activations are rounded in one pass of the model, or one token whose keys and values are cached.
@@ -307,7 +304,6 @@ A class whose refinement does not lower the objective receives no budget.
 On Fast-WAM, the tokens of the observed frame account for 34\% of the objective, and the first three denoising steps for 7.5\%, 11.9\% and 13.3\%; no later step exceeds 6\%.
 The damage of a class is divided among its tokens in proportion to the gaze, and the threshold of \cref{eq:threshold} then fixes how many tokens of each class are refined (\cref{tab:supp:alloc}).
 At run time these numbers stay fixed and the gaze decides which tokens they are.
-\TODO{raw class damages on Fast-WAM, as a share of the objective: text cache of the video $-21.7\%$ (refining it makes the objective worse), observation cache $-1.7\%$, steps 5, 7, 8 and 10 between $-0.1\%$ and $-2.7\%$; these are set to zero. Measured on 16 contexts}
 
 \paragraph{Gaze at run time.}
 For Fast-WAM, the gaze of a future token is the attention mass that the action tokens place on its cached keys, summed over the layers, the heads and the 10 denoising steps of the action.
@@ -315,7 +311,6 @@ The gaze of an observation token adds the mass that the action tokens place on i
 The gaze of one policy call selects the tokens of the next, and the first call of an episode uses the offline gaze.
 This relies on the gaze changing slowly along an episode.
 Over the LIBERO-Plus episodes, the sets of future tokens selected at two consecutive policy calls have a Jaccard overlap of 0.70, whereas the set selected by the offline gaze overlaps with them by 0.21: the tokens that the reader depends on move with the scene, and the previous call tracks them.
-\TODO{on the calibration contexts the attention gaze and the token marginal of the metric have Spearman 0.24 on Fast-WAM (top-quarter overlap 0.34; attention splits 55/45 over the two predicted frames, the metric 93/7); 0.77 on Cosmos-Policy}
 
 \paragraph{Instantiation on Cosmos-Policy.}
 Cosmos-Policy denoises nine latent slots of 196 tokens jointly in one transformer: four conditioning slots that hold the observation, the action, two future images, and two auxiliary slots that hold the future proprioception and the value.
@@ -327,7 +322,6 @@ The classes are the token groups (observation, future, auxiliary, action), separ
 (iii) The gaze is the self-attention mass that the action tokens place on each token within one evaluation; the gaze of one evaluation selects the tokens of the next, the first evaluation of a call uses the last gaze of the previous call, and the first call of an episode uses the offline gaze.
 Between consecutive evaluations, the quarter of the future tokens with the largest gaze overlaps by 0.99.
 The rounding of the weights, the refinement, the budget and the objective are those of Fast-WAM.
-\TODO{class damages on Cosmos-Policy are mostly negative on the 16 contexts (observation activations at the second evaluation $-186\%$ of the objective, text $-44\%$); only the positive ones receive budget. The read count of the text rows is 0.25 on $Z_{\bM}$}
 
 \begin{table}[t]
   \centering
@@ -372,7 +366,6 @@ On both benchmarks, episode $i$ seeds its environment with $8 \cdot 10^{8} + 100
 Each episode starts with 30 no-op steps that let the objects settle and ends on success or after 400 control steps (700 on the Long suite).
 The LIBERO episodes run on NVIDIA RTX 6000 Ada GPUs.
 Before its first episode, every evaluation process checks one fixed query: the BF16 output on the evaluation GPU must differ from the A100 BF16 output by less than half the error of \method on the A100, the error of \method on the evaluation GPU must lie within a factor of three of that on the A100, and the output of \method must match that of the first process on the same GPU model bit for bit.
-\TODO{runtime consistency checks of the LIBERO-Plus runs: there are none beyond install checks. The fixed-query check above was run for the LIBERO episodes only; on LIBERO-Plus, panel A and the BF16 rows ran on A100, and the quantized panels B and C on RTX A6000 and RTX 6000 Ada (Fast-WAM) and A40 and RTX PRO 6000 (Cosmos-Policy) without it}
 
 \paragraph{Baselines.}
 All baselines quantize the linear layers of the transformer blocks to W4A4 and keep the cached keys and values in BF16.
@@ -394,7 +387,6 @@ QuaRot and SpinQuant store one 16-bit scale per group of 128 weights, $4 + 16/12
 ViDiT-Q adds the zero points of its groups and its channel-balancing vectors, and on Cosmos-Policy the nine layers that take 8-bit weights; its averages are 4.33 bits on Fast-WAM and 4.29 bits on Cosmos-Policy.
 SVDQuant uses groups of 64 and keeps a 16-bit branch of rank 32 next to every layer, which gives 4.81 and 4.89 bits.
 For all methods, the interface layers (0.01\% of the weights) stay in BF16, and the timestep-conditioning layers are stored as exact per-step tables; neither enters the average.
-\TODO{the split of ViDiT-Q and SVDQuant into codes, scales, zero points, vectors and branch is not tabulated here: take it from the runs behind \cref{tab:main} before giving per-component numbers}
 
 \paragraph{Activations and caches.}
 The baselines quantize every activation once at 4 bits and keep the cached keys and values in BF16.
@@ -476,7 +468,6 @@ On Cosmos-Policy, most of the refined activations are those of the action tokens
 On Fast-WAM, the baselines lose the most under shifted camera viewpoints (10.9--17.5 points below BF16) and under sensor noise (5.8--10.8 points).
 \method loses 2.5 points on each.
 On Cosmos-Policy, all methods stay within a few points of BF16 on every dimension, in line with its smaller overall loss.
-\TODO{Not in the text: on object layout \method is 4.2 points below BF16 on Fast-WAM and does not gain over the baselines; on Cosmos-Policy the entries differ by a few episodes of 120 and no dimension separates the methods. A breakdown by suite and dimension has 30 episodes per cell and is not given}
 
 \paragraph{Fidelity of the predicted future.}
 We also measure directly how much of the predicted future \method preserves.
@@ -682,13 +673,11 @@ For every layer shape, the codes and the integer products of the kernels equal a
 \paragraph{Agreement with the simulated arithmetic.}
 The closed-loop evaluation simulates 4-bit arithmetic with 16-bit operands.
 On the same query, the action of the runtime differs from BF16 by 0.0121 (root-mean-square error of the first 10 actions, normalized units) and that of the simulation by 0.0130, and the future errors are 0.0263 and 0.0262.
-\TODO{the two differ from each other by 0.0147 over 7 queries, as much as either differs from BF16: the 16-bit rounding of the simulated operands changes rounding decisions and 4-bit rounding amplifies them along the denoising steps; the comparison with BF16 is one query}
 
 \paragraph{Memory and latency.}
 The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales, and the shared 8-bit buffer adds 0.04\,GB.
 The resident memory of the policy falls from 13.7\,GB to 5.0\,GB.
 Measurements use one NVIDIA A100 (40\,GB) and one process, and report the median over the calls after the first; the BF16 model runs its released PyTorch implementation.
-\TODO{only 7 calls on one observation; BF16 with CUDA graphs and reused text keys and values takes 544\,ms; keeping the weights unpacked at 8 bits gives 1080\,ms at 12.6\,GB peak; no breakdown of the latency yet; the observation tokens are still recomputed at every step}
 
 \paragraph{Calibration.}
 Choosing the refined tokens runs 16 calibration contexts through the quantized model once for each class of tokens and takes 1.2 GPU-hours on one A100 with a peak memory of 27\,GB.

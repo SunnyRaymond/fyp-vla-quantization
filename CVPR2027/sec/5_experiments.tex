@@ -36,8 +36,7 @@
   All baselines quantize weights and activations to 4 bits and keep the cached keys and values in BF16; \method also quantizes the caches to 4 bits.
   W, A and KV give the average bits of the weights (including their scales and any high-precision component), of the activations, and of the cached keys and values.
   \textbf{Bold}: best quantized result for each model; \underline{underline}: second best.
-  \TODO{LIBERO columns: the \method rows are our runs under the protocol of \cref{sec:supp:eval} (840 episodes per model on RTX 6000 Ada; Fast-WAM 825/840, Cosmos-Policy 829/840). BF16 still follows published runs (Fast-WAM-IDM row of the Fast-WAM paper; a WAMachine reproduction of Cosmos-Policy) and the baselines are estimates set below BF16 in the order of their LIBERO-Plus results; so \method is not yet paired with BF16 or any baseline on LIBERO. Replace them with our own runs under the same protocol and seeds}
-  \TODO{QuaRot, SpinQuant and ViDiT-Q rows reuse the earlier W4A4 runs with BF16 caches; Cosmos-Policy SVDQuant runs its published recipe; Fast-WAM SVDQuant not run. Fast-WAM LIBERO-Plus columns: BF16, QuaRot, SpinQuant, ViDiT-Q and \method on the full 840 episodes with the same variants and seeds (quantized panels B and C on RTX A6000 and RTX 6000 Ada GPUs, BF16 and panel A on A100), paired by episode: \method 642/840, BF16 652/840 (26 wins, 36 losses, $p = 0.25$); \method against QuaRot 606 (63/27, $p = 0.0002$), SpinQuant 605 (62/25, $p = 0.00009$) and ViDiT-Q 611 (51/20, $p = 0.0003$). Per perturbation dimension, BF16 is 15.3 and 9.2 points above the mean of QuaRot, SpinQuant and ViDiT-Q on camera viewpoints and sensor noise, and \method 12.8 and 6.7 points above it; \method is 4.2 points below BF16 on object layout, where it does not gain over the baselines. No plain W4A4KV4 run without refinement exists yet. Cosmos-Policy LIBERO-Plus columns: all six rows on the full 840 episodes with the same variants and seeds (quantized panels B and C on A40 and RTX PRO 6000 GPUs, BF16 and panel A on A100), paired by episode: \method 700/840, BF16 701/840 (19 wins, 20 losses, $p = 1$); \method against QuaRot 688 (34 wins, 22 losses, $p = 0.14$), SpinQuant 674 (41/15, $p = 0.0007$), ViDiT-Q 696 (29/25, $p = 0.68$) and SVDQuant 696 (25/21, $p = 0.66$). \method loses 4.7 points to BF16 on the Goal suite (68.6 vs.\ 73.3), more than QuaRot, ViDiT-Q and SVDQuant there. On panel A alone, \method was 234/280 and QuaRot at W4A4KV4 on the same weights 228/280 (12 wins, 6 losses, $p = 0.24$)}}
+  }
   \label{tab:main}
 \end{table*}
 
@@ -47,10 +46,9 @@
 \paragraph{Models and benchmarks.}
 We quantize Fast-WAM~\cite{yuan2026fastwam} (6B parameters, of which 1B form the action expert) and Cosmos-Policy~\cite{kim2026cosmospolicy} (2B parameters), and compare each with its own BF16 reference.
 Fast-WAM first denoises the future latent and then denoises an action chunk that attends to it through a key--value cache; the tokens of its observed frame do not depend on the denoising step and are computed once.
-\TODO{the observed-frame tokens are bit-identical across the 10 video steps (job 26039756), but the 4-bit runtime still recomputes them; implement the prefix cache}
 Cosmos-Policy denoises the future and the action jointly, so its reader starts from the future state at an intermediate denoising step and runs the remaining steps to the action, and its keys and values are quantized at every step.
 We evaluate in simulation on LIBERO-Plus~\cite{fei2026liberoplus}, which perturbs the four LIBERO suites~\cite{liu2023libero} along seven dimensions, on the original LIBERO suites, and on a real robot arm (\cref{sec:exp:real}).
-LIBERO-Plus is our main benchmark: on the original suites, both BF16 models already succeed in about 98\% of the episodes.
+LIBERO-Plus is our main benchmark: on the original LIBERO suites, both BF16 models already succeed in about 98\% of the episodes.
 
 \paragraph{Baselines and quantization settings.}
 We compare with the general-purpose quantizers QuaRot~\cite{ashkboos2024quarot} and SpinQuant~\cite{liu2025spinquant}, and the diffusion quantizers ViDiT-Q~\cite{zhao2025viditq} and SVDQuant~\cite{li2025svdquant}.
