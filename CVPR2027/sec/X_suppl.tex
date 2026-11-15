@@ -376,16 +376,14 @@ The rounding of the weights, the refinement, the budget and the objective are th
 
 \section{Evaluation details}
 \label{sec:supp:eval}
+\paragraph{Calibration and evaluation.}
 Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10 steps, and the robot executes the first 10 actions before replanning.
-Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk before replanning.
-The 80 calibration contexts are observations from episodes of the original LIBERO suites, 20 from each suite, each with one sampling seed.
-Calibration runs on NVIDIA A100 GPUs.
-On LIBERO-Plus, we draw 840 variants, 30 for each suite and perturbation dimension, from the 50 official variants of each, in three disjoint draws of 10 that balance the original task, the perturbation subtype and the difficulty level, and number them $i = 0, \dots, 839$.
-On LIBERO, we run every method on each of the 40 tasks from the official initial states 0--20, 840 episodes in total; with the suites numbered $s = 0, \dots, 3$ in the order Spatial, Object, Goal, Long, episode $i = 210\,s + 21\,t + k$ is task $t$ from initial state $k$.
-On both benchmarks, episode $i$ seeds its environment with $8 \cdot 10^{8} + 1000\,i$, and its policy query $r = 0, 1, \dots$ draws the sampling noise from seed $9 \cdot 10^{8} + 1000\,i + r$, so that every method faces the same episodes and the same noise and episodes are paired across methods.
-Each episode starts with 30 no-op steps that let the objects settle and ends on success or after 400 control steps (700 on the Long suite).
-The LIBERO episodes run on NVIDIA RTX 6000 Ada GPUs.
-Before its first episode, every evaluation process checks one fixed query: the BF16 output on the evaluation GPU must differ from the A100 BF16 output by less than half the error of \method on the A100, the error of \method on the evaluation GPU must lie within a factor of three of that on the A100, and the output of \method must match that of the first process on the same GPU model bit for bit.
+Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk.
+Calibration uses 80 observations from the original LIBERO suites, 20 from each suite, shared by all methods that calibrate.
+On LIBERO-Plus, every method runs the same 840 variants, 30 for each suite and perturbation dimension.
+On LIBERO, every method runs the 40 tasks from 21 official initial states each, 840 episodes in total.
+Initial states, environment seeds and sampling noise are matched across methods, so that episodes are paired, and success rates are averaged over episodes.
+An episode ends on success or after 400 control steps (700 on the Long suite).
 
 \paragraph{Baselines.}
 All baselines quantize the linear layers of the transformer blocks to W4A4 and keep the cached keys and values in BF16.
