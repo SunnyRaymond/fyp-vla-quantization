@@ -19,7 +19,7 @@ This supplementary material is organized as follows.
 This section gives the protocol and the full results of the measurements of \cref{sec:observations}.
 
 \paragraph{Setup.}
-All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action, on the first 16 of the 80 calibration contexts with one sampling seed each; the evaluations of \method in \cref{sec:supp:results,sec:supp:ablation} use held-out contexts instead.
+All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action. 
 The W4A4KV4 model has per-row 4-bit weights fitted by second-order rounding in randomized Hadamard coordinates, per-token symmetric 4-bit activations, and per-head 4-bit cached keys and values.
 Every error is measured against the BF16 model on the same observation, instruction and sampling noise.
 The action error $A$ is the mean squared error over the first 10 actions of the chunk and the six motor dimensions, and the future error $Z$ is taken over the predicted frames.
@@ -311,7 +311,7 @@ The activations of the action tokens are always refined; they are 5.9\% of the a
 
 \paragraph{Read counts and step profile.}
 The read counts of the frozen classes are those of \cref{tab:supp:reads}: 3.1 for the tokens of the observed frame, 2.2 for its cache and 2.1 for the text cache.
-The cache of the predicted future and the text cache of the action expert are written after the future is complete, so they do not change $Z_{\bM}$; measured on the action error, their read counts are 1.1 and 1.2.
+The cache of the predicted future and the text cache of the action expert are written after the future is complete, so they do not change $Z_{\bM}$.
 The damage of a class is the decrease of the objective when the whole class is refined and nothing else changes, measured on 16 calibration contexts with the quantized model; for the future tokens, the damages of the 11 passes form the step profile $\phi_s$.
 A class whose refinement does not lower the objective receives no budget.
 On Fast-WAM, the tokens of the observed frame account for 34\% of the objective, and the first three denoising steps for 7.5\%, 11.9\% and 13.3\%; no later step exceeds 6\%.
@@ -402,8 +402,6 @@ The baselines quantize every activation once at 4 bits and keep the cached keys 
 For \method, a refined unit holds two 4-bit codes, so the average is 4 bits times one plus the share of refined operands.
 The share is taken over the operands of one policy call, where an activation counts once for every matrix product that reads it and a cached entry counts once.
 \cref{tab:supp:bits} gives this share for each class, and \cref{tab:supp:alloc} the number of refined tokens behind it.
-On Fast-WAM, the refined activations split almost evenly between the action tokens, the tokens of the observed frame and the future tokens, and only 33 of the 196 future tokens keep a second code in the cache.
-On Cosmos-Policy, most of the refined activations are those of the action tokens, and the cache takes a larger share: the keys and values of the action tokens are refined at four of the five evaluations.
 
 \begin{table}[t]
   \centering
@@ -447,27 +445,9 @@ On Cosmos-Policy, most of the refined activations are those of the action tokens
     \multicolumn{8}{@{}l}{Text tokens and their cache}      & \multicolumn{4}{r@{}}{0} \\
     \bottomrule
   \end{tabular}
-
-  \vspace{4pt}
-  \setlength{\tabcolsep}{5pt}
-  \begin{tabular}{@{}lccccc@{}}
-    \toprule
-    \multicolumn{6}{@{}l}{\emph{Cosmos-Policy: tokens refined at each evaluation}} \\
-    Class & 1 & 2 & 3 & 4 & 5 \\
-    \midrule
-    Observation, activations (784) & 0   & 0   & 0   & 0  & 1 \\
-    Observation, cache (784)       & 206 & 0   & 0   & 0  & 7 \\
-    Future, activations (392)      & 0   & 0   & 0   & 19 & 36 \\
-    Future, cache (392)            & 0   & 331 & 0   & 24 & 0 \\
-    Auxiliary, activations (392)   & 0   & 238 & 0   & 0  & 0 \\
-    Auxiliary, cache (392)         & 0   & 0   & 287 & 0  & 0 \\
-    Action, cache (196)            & 196 & 196 & 196 & 0  & 196 \\
-    \bottomrule
-  \end{tabular}
-  \caption{Allocation of \method under the 15\% budget.
-  For Fast-WAM, passes 1--10 are the denoising steps of the future and W is the pass that writes the cache.
-  The activations of the action tokens are always refined and are not listed.
-  The number of tokens of each class is given in parentheses.}
+  \caption{Allocation of \method on Fast-WAM under the 15\% budget.
+  Passes 1--10 are the denoising steps of the future and W is the pass that writes the cache.
+  The activations of the action tokens are always refined and are not listed.}
   \label{tab:supp:alloc}
 \end{table}
 
