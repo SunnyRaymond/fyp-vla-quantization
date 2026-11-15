@@ -1,12 +1,15 @@
 """Fig. 4: the three AgileX PiPER tasks, key frames of one full demonstration per task.
 
-python research/paper/figures/fig4_real_tasks.py  ->  CVPR2027/figures/figure4.pdf (+ research/paper/figures/figure4_preview.png)
+python research/paper/figures/fig4_real_tasks.py  ->  two layouts of the same episodes:
+  main: CVPR2027/figures/figure4.pdf, one column wide (3.281 in = \\linewidth), three key frames per task, for the main text;
+  supp: CVPR2027/figures/supp_real_tasks.pdf, 6.875 in wide (= \\textwidth), all six key frames, for the supplementary material.
+Previews go to research/paper/figures/figure4_preview.png and supp_real_tasks_preview.png.
 Needs h5py and PyMuPDF; the raw episodes live in `agilex pepper training data/<task>/data/chunk-000/episode_XXXXXX.hdf5` (30 Hz).
 Key frames are placed at the gripper close/open events of the episode, so every frame marks a stage of the task.
 Each frame is the third-person view; the inset is the wrist view at the same time step (the two views Fast-WAM reads).
 Under every frame a progress bar spans the whole episode: orange where the gripper is closed, the dot at the frame's time,
 the part before the dot drawn darker.
-Canvas is in inches, 6.875 in wide (= \\textwidth), used as figure* with width=\\textwidth.
+Canvas is in inches. The main layout has no key on the first title line; the caption replaces it.
 """
 import argparse
 import json
@@ -23,8 +26,14 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "agilex pepper training data"
-OUT_PDF = ROOT / "CVPR2027" / "figures" / "figure4.pdf"
-OUT_PNG = ROOT / "research" / "paper" / "figures" / "figure4_preview.png"
+FIG_DIR = ROOT / "CVPR2027" / "figures"
+PNG_DIR = ROOT / "research" / "paper" / "figures"
+# layout -> canvas width (in), key frames shown (indices into the six of TASKS), key on the first title line, outputs
+LAYOUTS = {
+    "main": dict(W=3.281, pick=[1, 3, 5], key=False, pdf=FIG_DIR / "figure4.pdf", png=PNG_DIR / "figure4_preview.png"),
+    "supp": dict(W=6.875, pick=[0, 1, 2, 3, 4, 5], key=True, pdf=FIG_DIR / "supp_real_tasks.pdf",
+                 png=PNG_DIR / "supp_real_tasks_preview.png"),
+}
 FPS = 30.0
 
 # ---- tasks ------------------------------------------------------------------
@@ -56,8 +65,6 @@ TASKS = [
 N_PICKS = {"cluster_grasp": 2, "cabinet_bowl": 1, "stackboxes": 2}
 
 # ---- geometry (inches) and style ----------------------------------------------
-W = 6.875
-N = 6
 GAP_F = 0.028                      # between frames
 GAP_ROW = 0.1                      # between task rows
 CROP_H = 213                       # rows kept of the 240-row third-person image (3:2 frames)
@@ -176,7 +183,8 @@ def legend(ax, x1, yc):
     return items
 
 
-def draw(episodes, wrist=True):
+def draw(episodes, W, pick, key=True, wrist=True):
+    N = len(pick)
     fw = (W - (N - 1) * GAP_F) / N
     fh = fw * CROP_H / 320
     rh = HEAD_H + HEAD_GAP + fh + BAR_GAP + BAR_H
@@ -200,12 +208,12 @@ def draw(episodes, wrist=True):
                     va="center")
         ax.text(text_right(ax, t) + 0.08, yc, f"“{task['instr']}”", color=MUTED, fontsize=FS_TEXT,
                 style="italic", ha="left", va="center")
-        if k == 0:
+        if k == 0 and key:
             legend(ax, W, yc)
 
         fy = y0 + HEAD_H + HEAD_GAP
-        for j in range(N):
-            fx = j * (fw + GAP_F)
+        for col, j in enumerate(pick):
+            fx = col * (fw + GAP_F)
             a = d["fixed"][j][task["crop_y0"]:task["crop_y0"] + CROP_H]
             image(ax, photo(a, *TONE_FIXED), fx, fy, fw, fh, R_IMG)
             if wrist:
@@ -239,21 +247,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--eps", type=int, nargs=3, help="episode ids in TASKS order")
     ap.add_argument("--no-wrist", action="store_true")
-    ap.add_argument("--pdf", default=str(OUT_PDF))
-    ap.add_argument("--png", default=str(OUT_PNG))
+    ap.add_argument("--layout", choices=["main", "supp", "both"], default="both")
     args = ap.parse_args()
     eps = args.eps or [t["ep"] for t in TASKS]
     data = [load(t, e) for t, e in zip(TASKS, eps)]
     for t, e, d in zip(TASKS, eps, data):
         assert d["instr"] == t["instr"], (d["instr"], t["instr"])
         print(json.dumps(dict(task=t["key"], ep=e, T=d["T"], segs=d["segs"], frames=d["idx"])))
-    fig = draw(data, wrist=not args.no_wrist)
-    fig.savefig(args.png, dpi=200)
-    tmp = Path(args.pdf).with_suffix(".flate.pdf")
-    fig.savefig(tmp)
-    jpeg_images(tmp, Path(args.pdf))
-    tmp.unlink()
-    print("wrote", args.pdf, args.png)
+    for name in (LAYOUTS if args.layout == "both" else [args.layout]):
+        lay = LAYOUTS[name]
+        fig = draw(data, lay["W"], lay["pick"], key=lay["key"], wrist=not args.no_wrist)
+        fig.savefig(lay["png"], dpi=300 if name == "main" else 200)
+        tmp = lay["pdf"].with_suffix(".flate.pdf")
+        fig.savefig(tmp)
+        jpeg_images(tmp, lay["pdf"])
+        tmp.unlink()
+        plt.close(fig)
+        print("wrote", lay["pdf"], lay["png"])
 
 
 if __name__ == "__main__":

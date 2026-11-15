@@ -1,11 +1,9 @@
 \section{Methodology}
 \label{sec:method}
 
-As illustrated in \cref{fig:method}, \method preserves the predicted future where it is written, stored and read (\cref{alg:laq}).
-It first estimates a reader metric, which measures future error as the reader sees it (\cref{sec:method:metric}), and a read count for every source of rounding error, the number of denoising steps over which one realization of the error is read (\cref{sec:method:count}).
-With these two quantities, the errors of weights, activations and caches enter one objective, whose minimizer is second-order rounding for the weights and a single threshold for activations and caches (\cref{sec:method:alloc}).
-Gaze-guided refinement then gives the tokens above the threshold a second 4-bit pass, and selects them at run time from the attention of the action tokens (\cref{sec:method:refine}).
-\method involves no training, and every weight of the quantized model is stored at 4 bits.
+As illustrated in \cref{fig:method}, \method preserves the predicted future where it is written, stored and read.
+A reader metric and a read count, both estimated offline, place the errors of weights, activations and caches in one objective with a closed-form minimizer, and gaze-guided refinement gives the selected tokens a second 4-bit pass at run time.
+\method involves no training; \cref{alg:laq} (\cref{sec:supp:method}) summarizes it.
 
 \subsection{Reader metric}
 \label{sec:method:metric}
@@ -21,22 +19,17 @@ We define the reader metric as the Gauss--Newton matrix of $K$ averaged over con
   \label{eq:metric}
 \end{equation}
 Here, $Z_{\bM}$ is the second-order change of the reader error caused by the future error $\hat\bz - \bz^\star$.
-It reduces to the uniform future error $Z$ when $\bM = \mathbf{I}$, the natural choice for a model that predicts a future without producing an action.
+It reduces to the uniform future error $Z$ when $\bM = \mathbf{I}$.
 A rounding error outside the reader changes the action only through the predicted future, so one metric prices the errors of every layer, token and denoising step that write the future, and estimating it involves the reader alone.
 
-Forming $\bJ_c$ would require one reverse pass per action coordinate and storing a dense matrix over the latent.
-Instead, we estimate $\bM$ with Rademacher projections~\cite{hutchinson1989trace}: for a Rademacher vector $\boldsymbol{\epsilon}$, the probe $\mathbf{v} = \bJ_c^\top(\bD_c^{1/2}\boldsymbol{\epsilon})$ satisfies $\mathbb{E}[\mathbf{v}\mathbf{v}^\top] = \bJ_c^\top \bD_c \bJ_c$ and costs one reverse pass through the reader.
-We normalize each context's estimate to unit trace, so that no single context dominates, and average over contexts.
-Only the predicted frames enter $\bM$, since the observed frame is fixed by the input.
-We keep the leading $r$ eigendirections of the estimate together with its residual diagonal, which gives $\bM_r$, and mix in the identity:
+We never form $\bJ_c$ and estimate $\bM$ with Rademacher projections~\cite{hutchinson1989trace}: for a Rademacher vector $\boldsymbol{\epsilon}$, the probe $\mathbf{v} = \bJ_c^\top(\bD_c^{1/2}\boldsymbol{\epsilon})$ satisfies $\mathbb{E}[\mathbf{v}\mathbf{v}^\top] = \bJ_c^\top \bD_c \bJ_c$ and costs one reverse pass through the reader.
+We normalize the estimate of each context to unit trace, average over contexts, keep the leading $r$ eigendirections together with the residual diagonal, which gives $\bM_r$, and mix in the identity:
 \begin{equation}
   \bM = (1-\alpha)\,\frac{d}{\tr \bM_r}\,\bM_r + \alpha\,\mathbf{I},
   \label{eq:metric-form}
 \end{equation}
 where $d$ is the latent dimension and $\alpha \in (0, 1)$.
-The diagonal part is stable across contexts (Observation~3), and the identity keeps every part of the future constrained.
-Since $\bM$ depends only on the full-precision model, we estimate it once.
-\cref{sec:supp:method} details the estimator and its stability.
+The diagonal is stable across contexts (Observation~3), the identity keeps every part of the future constrained, and $\bM$ is estimated once, on the full-precision model (\cref{sec:supp:method}).
 
 \subsection{Read count}
 \label{sec:method:count}
@@ -60,10 +53,8 @@ We define the read count as their ratio:
 A frozen error does the damage of a fresh error read $n_u$ times, and we set $n_u = 1$ for fresh sources.
 Per-step sensitivities~\cite{akbari2026qwam,wang2026steerquant} keep only the diagonal of $\bOmega_u$, which corresponds to $n_u = 1$ for every source.
 
-We measure $n_u$ by intervention rather than by differentiating through the sampler.
-We inject an error of fixed energy into $u$, once frozen across the denoising steps and once redrawn at every step, and take the ratio of the resulting $Z_{\bM}$.
+We measure $n_u$ by intervention rather than by differentiating through the sampler: we inject an error of fixed energy into $u$, once frozen across the denoising steps and once redrawn at every step, and take the ratio of the resulting $Z_{\bM}$, which holds at the error level of the 4-bit quantizer and not only to first order.
 Sources of the same kind share one read count (the weights, each cache, the tokens that do not change across steps, and the tokens that are being denoised), so a few dozen forward passes suffice.
-The measurement holds at the error level of the 4-bit quantizer, not only to first order.
 
 \subsection{Joint allocation}
 \label{sec:method:alloc}
@@ -84,8 +75,7 @@ To second order in the rounding errors, $\mathcal{L}$ separates over their sourc
 The first sum runs over the linear layers, with $\Delta\bW_l = \hat\bW_l - \bW_l$ and $\gamma_l$ the sensitivity of $\mathcal{L}$ to the output of layer $l$.
 The second sum runs over the units of activations and caches, a token at a denoising step or a cached token, with sensitivity $\omega_u = \tr\bOmega_u$, error variance $\sigma_u^2$, and $r_u \in \{0, 1\}$ indicating whether unit $u$ is refined (\cref{sec:method:refine}).
 
-For the weights, the term of layer $l$ is a positive multiple of \cref{eq:layer}.
-Its minimizer is the second-order rounding of~\cite{frantar2023gptq}, which we use unchanged; $n_l$ and $\gamma_l$ only set the scale of each layer.
+For the weights, the term of layer $l$ is a positive multiple of the layer-wise reconstruction error of \cref{sec:prelim}, so its minimizer is the second-order rounding of~\cite{frantar2023gptq}, which we use unchanged.
 For activations and caches, refining unit $u$ divides $\sigma_u^2$ by at least 196 (\cref{eq:refine}) at a cost $c_u$: one more row of a 4-bit matrix product for an activation, one more 4-bit code for a cached entry.
 Minimizing \cref{eq:separable} under a budget $\sum_u c_u r_u \le B$ is solved by a threshold on the damage removed per unit cost:
 \begin{equation}
@@ -96,11 +86,8 @@ where $\mu$ is set by $B$.
 One threshold serves activations and caches alike, so precision is traded between the denoising loop and the cache in a single currency.
 \cref{sec:supp:theory} derives the separation and proves that the threshold is optimal.
 
-For the token at position $j$ and denoising step $s$, we factor the sensitivity as $\omega_{s,j} = \phi_s\, g_j$.
-The step profile $\phi_s$ is measured by refining all tokens at step $s$ alone, and $g_j$ is the gaze of \cref{sec:method:refine}.
-The threshold thus orders the sources by how often they are read and how rarely they are written.
+For the token at position $j$ and denoising step $s$, we factor the sensitivity as $\omega_{s,j} = \phi_s\, g_j$, where the step profile $\phi_s$ is measured by refining all tokens at step $s$ alone and $g_j$ is the gaze of \cref{sec:method:refine}.
 Cached tokens and tokens that do not change across steps have large read counts and are written once, so they are refined first; the tokens that are being denoised follow, at the steps and positions where $\phi_s\, g_j$ is largest.
-A selected token is refined wherever it is rounded on its way to the reader, in the activations that write it and in the cache that stores it, so that the precision gained in one place is not lost in the other.
 
 \subsection{Gaze-guided refinement}
 \label{sec:method:refine}
@@ -117,7 +104,7 @@ For the activation $\bx$ of a selected token, we quantize the residual of the fi
   \end{gathered}
   \label{eq:refine}
 \end{equation}
-with $\varsigma_1$ from \cref{eq:quant} and $\varsigma_2 = \max|\bx - \varsigma_1 \mathbf{q}_1| / 7 \le \varsigma_1 / 14$.
+with $\varsigma_1$ the scale of \cref{sec:prelim} and $\varsigma_2 = \max|\bx - \varsigma_1 \mathbf{q}_1| / 7 \le \varsigma_1 / 14$.
 The rounding error is bounded by $\varsigma_1/28$ instead of $\varsigma_1/2$, which lowers its power by a factor of at least 196.
 The layer output becomes $\varsigma_1\, Q_4(\bW)\,\mathbf{q}_1 + \varsigma_2\, Q_4(\bW)\,\mathbf{q}_2$: two 4-bit matrix products, the second over the selected rows only.
 For a selected token in a cache, the second code $\mathbf{q}_2$ is stored next to the first.
@@ -127,23 +114,5 @@ The \emph{gaze} $g_j$ of token $j$ is its share of the reader's sensitivity.
 Offline, it is the trace of the block of $\bM$ that belongs to token $j$.
 At run time the reader provides it for free: the attention that the action tokens pay to token $j$, summed over layers, heads and action denoising steps, is a by-product of generating the action.
 Because consecutive control steps see nearly the same scene, the gaze of one control step selects the tokens that are refined at the next, and the first control step of an episode uses the offline gaze.
-Observation tokens are ranked by the gaze propagated one hop further, $g^{\text{obs}}_i = \sum_j g_j\, a_{j \to i}$, where $a_{j \to i}$ is the attention of future token $j$ on observation token $i$.
-When the future and the action are denoised jointly, the gaze of one denoising step selects the tokens of the next.
+Observation tokens inherit the gaze through the attention of the future tokens, and when the future and the action are denoised jointly, the gaze of one denoising step selects the tokens of the next (\cref{sec:supp:method}).
 The selection therefore follows the reader in the current scene, and the quantities fixed offline ($\bM$, $n_u$, $\phi_s$ and $\mu$) do not depend on the task, so \method needs no recalibration for a new task.
-
-\begin{algorithm}[t]
-  \caption{\method}
-  \label{alg:laq}
-  \small
-  \begin{algorithmic}[1]
-    \Require full-precision WAM $\bW$, calibration contexts $\mathcal{C}$, budget $B$
-    \Statex \textbf{Offline}
-    \State Estimate the reader metric $\bM$ from reader probes on $\mathcal{C}$ \Comment{\cref{sec:method:metric}}
-    \State Measure the read counts $n_u$ and the step profile $\phi_s$ by error injection \Comment{\cref{sec:method:count}}
-    \State Round every $\bW_l$ to 4 bits by second-order rounding; set the threshold $\mu$ from $B$ \Comment{\cref{sec:method:alloc}}
-    \Statex \textbf{At every control step}
-    \State Select the tokens that satisfy \cref{eq:threshold} under the current gaze
-    \State Run the 4-bit model; give the selected tokens a second 4-bit pass in the denoising loop and in the cache \Comment{\cref{sec:method:refine}}
-    \State Update the gaze from the attention of the action tokens
-  \end{algorithmic}
-\end{algorithm}

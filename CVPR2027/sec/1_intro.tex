@@ -12,43 +12,31 @@
 \end{figure}
 
 World action models (WAMs) jointly predict how a scene will evolve and how to act~\cite{yuan2026fastwam,kim2026cosmospolicy,li2026lingbotva,ye2026dreamzero}.
-Trained together with a video generator, they condition their actions on a predicted future and inherit the visual priors of large video backbones, which has made them a strong family of robot policies.
-They also inherit the size of those backbones.
-Fast-WAM~\cite{yuan2026fastwam} has 6B parameters, and its BF16 weights alone occupy 12\,GB, which must share the memory of an onboard computer (\eg, the 16\,GB of an NVIDIA Jetson Orin NX) with the policy's activations and the rest of the robot stack.
-Post-training quantization removes most of this cost without retraining.
-Weights and activations at 4 bits shrink the model and its memory traffic, and a fully 4-bit pipeline also stores the key--value caches of attention at 4 bits (W4A4KV4)~\cite{ashkboos2024quarot,liu2025spinquant}.
+Trained together with a video generator, they condition their actions on a predicted future and inherit the visual priors of large video backbones, and also their size.
+Fast-WAM~\cite{yuan2026fastwam} has 6B parameters, and its BF16 weights alone occupy 12\,GB of the 16\,GB that an onboard computer such as the NVIDIA Jetson Orin NX shares with the rest of the robot stack.
+Post-training quantization removes most of this cost without retraining: a fully 4-bit pipeline stores the weights, the activations and the key--value caches of attention at 4 bits (W4A4KV4)~\cite{ashkboos2024quarot,liu2025spinquant}.
 These savings matter only if the quantized policy still acts reliably in closed loop.
 
-Quantizers developed for language and diffusion models reach 4 bits by smoothing or rotating activation outliers and by second-order weight rounding~\cite{xiao2023smoothquant,ashkboos2024quarot,liu2025spinquant,frantar2023gptq,zhao2025viditq,li2025svdquant}.
-They preserve the output of each layer and treat a WAM as a generic network.
-Recent WAM quantizers account for the task instead.
-QuantWAMs~\cite{zhou2026quantwams} calibrates which channels, layers and denoising steps to protect, Q-WAM~\cite{akbari2026qwam} keeps the activation directions that most affect the final action in a 16-bit low-rank branch, and SteerQuant~\cite{wang2026steerquant} rescales channels and token streams by their impact on the action.
-These methods estimate sensitivity one denoising step at a time, with respect to the final action or the training loss.
-None of them deliberately protects the predicted future on which the action depends, and none addresses the caches through which it is read.
+Quantizers developed for language and diffusion models reach 4 bits by smoothing or rotating activation outliers and by second-order weight rounding~\cite{xiao2023smoothquant,ashkboos2024quarot,liu2025spinquant,frantar2023gptq,zhao2025viditq,li2025svdquant}, but they preserve the output of each layer and treat a WAM as a generic network.
+Recent WAM quantizers account for the task: QuantWAMs~\cite{zhou2026quantwams} calibrates which channels, layers and denoising steps to protect, Q-WAM~\cite{akbari2026qwam} keeps the activation directions that most affect the final action in a 16-bit low-rank branch, and SteerQuant~\cite{wang2026steerquant} rescales channels and token streams by their impact on the action.
+They estimate sensitivity one denoising step at a time, with respect to the final action or the training loss; none of them deliberately protects the predicted future on which the action depends, and none addresses the caches through which it is read.
 
 We find that this omission is costly: existing quantizers fail to preserve the fidelity of the predicted future, and the loss reaches the action.
-We call \emph{reader} the part of a WAM that maps the predicted future to the action.
-A natural question is what a 4-bit WAM still loses once its action pathway is protected.
+We call \emph{reader} the part of a WAM that maps the predicted future to the action, and ask what a 4-bit WAM still loses once its action pathway is protected.
 Three observations on Fast-WAM answer it (\cref{sec:motivation}).
-First, protecting the action is not enough: with the action pathway kept at higher precision, the action error falls by only 16\%, and restoring the predicted future to full precision removes 71.2\% of what remains (\cref{fig:teaser}).
-Second, the future is damaged where it is written, and most by errors that are read many times: an error frozen in a weight, a cache or an unchanging token is read at every denoising step, and it damages the future two to three times more than an error of the same energy that is redrawn at each step.
-Third, the reader depends on a narrow part of the future, stable in location but not in direction: its sensitivity concentrates on about 42 effective directions of a 37{,}632-dimensional latent, and the tokens it depends on agree across contexts (correlation 0.86) while the directions do not (overlap 0.19).
-In closed loop, existing 4-bit quantizers lose 0.6--5.6 percentage points of success relative to BF16 on LIBERO-Plus~\cite{fei2026liberoplus}.
-Preserving a 4-bit WAM therefore requires treating the predicted future, as the reader sees it, as a quantization target in its own right.
+First, protecting the action is not enough: restoring the predicted future to full precision removes 71.2\% of the remaining action error (\cref{fig:teaser}).
+Second, the future is damaged where it is written, and most by errors that are read many times: an error frozen in a weight, a cache or an unchanging token damages the future two to three times more than an error of the same energy that is redrawn at each denoising step.
+Third, the reader depends on a narrow part of the future, stable in location but not in direction: the tokens it depends on agree across contexts while the directions do not.
+A 4-bit WAM must therefore treat the predicted future, as the reader sees it, as a quantization target in its own right.
 
 Building on this diagnosis, we propose \method, a latent-aware quantization framework for W4A4KV4 world action models (\cref{fig:method}).
-\method estimates a \emph{reader metric}, which measures future error by its effect on the action and requires reverse passes through the reader only.
-It assigns every source of rounding error a \emph{read count}, the number of denoising steps over which one realization of the error is read, so that errors frozen in weights and caches are weighted by their accumulated effect.
-With both, the allocation of precision over weights, activations and caches separates and has a closed-form solution: second-order rounding for the weights, and a single threshold that decides which tokens deserve more precision in the denoising loop and in the cache.
+\method estimates a \emph{reader metric}, which measures future error by its effect on the action, and assigns every source of rounding error a \emph{read count}, the number of denoising steps over which one realization of the error is read, so that errors frozen in weights and caches are weighted by their accumulated effect.
+With both, the allocation of precision over weights, activations and caches has a closed-form solution: second-order rounding for the weights, and a single threshold that decides which tokens deserve more precision in the denoising loop and in the cache.
 \emph{Gaze-guided refinement} then gives those tokens a second 4-bit pass, and selects them at run time from the attention of the action tokens.
-Each component answers one of the observations above.
 The quantized model stores every weight at 4 bits, has no high-precision branch, and needs no training and no recalibration for a new task.
-
-We evaluate \method on two WAMs in simulation and on a real AgileX PiPER arm.
-On LIBERO-Plus under W4A4KV4, \method reaches 76.4\% average success on Fast-WAM, within 1.2 points of BF16 (77.6\%) and 3.4 points above the strongest baseline with 16-bit caches, and 83.3\% on Cosmos-Policy (BF16: 83.5\%), while reducing weight memory from 12.0\,GB to 3.2\,GB (\cref{tab:efficiency}).
-On three real-world tasks (two-object pick-and-place, shelf placement and box stacking), it succeeds in \XX/\XX trials, compared with \XX/\XX for QuaRot. In summary, our contributions are threefold:
+In summary, our contributions are threefold:
 \begin{itemize}
-  \item We identify future-latent fidelity as a key quantization target for WAMs. Counterfactual future swaps and error injections show that, once the action pathway is protected, the remaining action error of a 4-bit WAM enters through a degraded predicted future, that this future is damaged most by errors that are written once and read at every denoising step, and that the reader depends on only a narrow, location-stable part of it.
-  \item We propose \method, a latent-aware quantization framework for W4A4KV4 WAMs. A reader metric and a read count place weights, activations and caches in one objective with a closed-form solution, and gaze-guided refinement protects the tokens the reader depends on with a second 4-bit pass, with every weight at 4 bits and no recalibration per task.
-  \item We evaluate \method on two WAMs in simulation and on a real robot arm. With its caches at 4 bits, it achieves the highest average success of all 4-bit methods on LIBERO-Plus and LIBERO for both models, and compresses Fast-WAM by 3.8$\times$; on the real arm, it \XX.
+  \item We identify future-latent fidelity as a key quantization target for WAMs: once the action pathway is protected, the remaining action error of a 4-bit WAM enters through a degraded predicted future, which is damaged most by errors that are written once and read at every denoising step.
+  \item We propose \method, a latent-aware quantization framework for W4A4KV4 WAMs. A reader metric and a read count give the allocation of precision over weights, activations and caches a closed-form solution, and gaze-guided refinement protects the tokens the reader depends on with a second 4-bit pass.
+  \item We evaluate \method on two WAMs in simulation and on a real AgileX PiPER arm. On LIBERO-Plus~\cite{fei2026liberoplus}, it reaches 76.4\% average success on Fast-WAM, within 1.2 points of BF16 and 3.4 points above the strongest baseline with 16-bit caches, and 83.3\% on Cosmos-Policy (BF16: 83.5\%), while compressing the model by 3.8$\times$. On three real-world tasks, it succeeds in \XX/\XX trials, compared with \XX/\XX for QuaRot.
 \end{itemize}
