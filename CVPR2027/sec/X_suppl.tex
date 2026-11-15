@@ -670,10 +670,6 @@ Cached keys and values are rotated over the head dimension, quantized for each t
 The keys and values of the text context are computed at the first denoising step of each loop and reused, and the three phases of a call (future denoising, cache write, action denoising) are replayed as CUDA graphs.
 For every layer shape, the codes and the integer products of the kernels equal a reference implementation exactly.
 
-\paragraph{Agreement with the simulated arithmetic.}
-The closed-loop evaluation simulates 4-bit arithmetic with 16-bit operands.
-On the same query, the action of the runtime differs from BF16 by 0.0121 (root-mean-square error of the first 10 actions, normalized units) and that of the simulation by 0.0130, and the future errors are 0.0263 and 0.0262.
-
 \paragraph{Memory and latency.}
 The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales, and the shared 8-bit buffer adds 0.04\,GB.
 The resident memory of the policy falls from 13.7\,GB to 5.0\,GB.
