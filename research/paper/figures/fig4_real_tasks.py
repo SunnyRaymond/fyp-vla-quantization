@@ -68,10 +68,10 @@ R_IMG = 0.03                       # corner radius of the photos
 INSET_FRAC = 0.31                  # wrist inset width / frame width; bottom-left corner is empty table in all tasks
 TONE_FIXED, TONE_WRIST = (210.0, 0.85), (255.0, 0.88)   # (white point, gamma) per camera, see photo()
 
-INK, MUTED = "#1F2329", "#5F6670"
+INK, MUTED = "#222222", "#6E6E73"
 BADGE = "#2E3A4B"
 TRACK, TRACK_DONE = "#E2E5E9", "#A9B1BB"
-GRIP, GRIP_FUTURE = "#EE7D1F", "#F7C392"
+GRIP, GRIP_FUTURE = "#D86A12", "#EFC3A0"
 FS_TITLE, FS_TEXT, FS_CHIP = 8.5, 7.5, 6.4
 
 plt.rcParams.update({"font.family": "Cambria", "pdf.fonttype": 42, "ps.fonttype": 42})
