@@ -68,7 +68,7 @@ finish() {
 trap finish EXIT
 trap 'exit 143' TERM INT
 
-cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
+cp "$NEW_ROOT"/*.py "$NEW_ROOT"/*.sh "$NEW_ROOT"/*.pbs "$NEW_ROOT"/*.cu "$NEW_ROOT/protocol.json" "$ARTIFACTS/"
 if [[ "$MODEL" == fastwam ]]; then
   for name in "${ENGINE_FILES[@]}"; do
     test -s "$ENGINE_SOURCE/$name" || die "Missing engine dependency: $name"
@@ -118,6 +118,7 @@ elif [[ "$STAGE" == graph ]]; then
   cat "$RESULTS/bench/${PBS_JOBID%%.*}/RESULTS.zh.md"
 elif [[ "$STAGE" == int4 ]]; then
   export FW_CPU_THREADS=$NCPUS
+  nvcc -ptx -arch=sm_80 -O3 "$ARTIFACTS/int4_gemm.cu" -o "$ARTIFACTS/int4_gemm.ptx" || die 'nvcc failed on int4_gemm.cu'
   CUDA_VISIBLE_DEVICES=${GPU_UUIDS[0]} run_python "$ARTIFACTS/int4_bench.py" --protocol "$PROTOCOL"     > "$ARTIFACTS/int4.log" 2>&1 || { tail -c 8000 "$ARTIFACTS/int4.log"; die 'int4_bench.py failed'; }
   grep '^INT4' "$ARTIFACTS/int4.log"
   cat "$RESULTS/bench/${PBS_JOBID%%.*}/RESULTS.zh.md"

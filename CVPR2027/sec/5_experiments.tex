@@ -214,7 +214,7 @@ Keeping the caches of \method in BF16 adds only 0.4 points, so its 4-bit caches 
            & (GB)    & (MB)   & (GB)      & (ms) \\
     \midrule
     BF16                       & 12.0 & 204 & 14.0 & 1475 \\
-    \method                    & 3.2  & 56  & 6.0  & 1151 \\
+    \method                    & 3.2  & 56  & 6.0  & 888 \\
     \bottomrule
   \end{tabular}
   \caption{Cost of Fast-WAM policy call on an NVIDIA A100.
@@ -226,6 +226,6 @@ Keeping the caches of \method in BF16 adds only 0.4 points, so its 4-bit caches 
 \cref{tab:efficiency} reports the cost of \method on Fast-WAM with its weights stored and multiplied as 4-bit codes.
 \method stores every quantized layer at 4.01 bits per weight with no high-precision branch, which compresses the denoiser from 12.0\,GB to 3.2\,GB (3.8$\times$) and reduces the peak GPU memory of the whole policy from 14.0\,GB to 6.0\,GB (2.3$\times$).
 The cached keys and values of one call shrink from 204\,MB to 56\,MB.
-One policy call takes 1151\,ms, 1.28$\times$ faster than the BF16 model (1475\,ms), although every refined token takes a second 4-bit pass.
+One policy call takes 888\,ms, 1.66$\times$ faster than the BF16 model (1475\,ms), although every refined token takes a second 4-bit pass.
 Calibration of \method takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model.
 \cref{sec:supp:cost} describes the runtime.

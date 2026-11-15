@@ -3,6 +3,8 @@
   weights      stay packed at 4 bits (two codes per byte) with one FP32 scale per output row; the dense BF16 copies are
                freed. A GEMM unpacks its weight into one shared INT8 scratch and runs the cuBLASLt INT8 GEMM
                (torch._int_mm, INT32 accumulation, exact). `resident8` keeps the unpacked INT8 weights instead.
+               With int4_cuda.CudaOps the packed weights are multiplied as they are on the INT4 tensor cores, with the
+               dequantization fused into the GEMM (no INT8 buffer, no separate epilogue).
   activations  rotation as two or three small matrix products (Kronecker factors of the Hadamard transforms), then one
                kernel writes the 4-bit codes and the per-token scales. A refined token contributes two rows of codes
                (first pass in place, second pass appended), so the second 4-bit pass is the same GEMM on more rows.
@@ -84,13 +86,26 @@ class Layer:
         self.packed = bank["packed"].contiguous()
         self.rs = bank["scales"].float().reshape(self.N).contiguous()
         self.bias = None if bias is None else bias.detach().float().contiguous()
+        self.twos = False
         self.w8 = self.dense() if resident8 or self.K % 2 else None
         if self.w8 is not None and self.K % 2 == 0 and resident8:
             self.packed = None
 
     def dense(self):
         """INT8 [N, K] codes in [-8, 7] (reference unpack)."""
-        return (q._unpack4(self.packed, self.K).to(torch.int16) - 8).to(torch.int8).contiguous()
+        u = q._unpack4(self.packed, self.K).to(torch.int16)
+        return ((u ^ 8 if self.twos else u) - 8).to(torch.int8).contiguous()
+
+    def to_twos(self):
+        """Offset nibbles (code + 8) -> two's-complement nibbles, the operand format of the INT4 tensor cores."""
+        if not self.twos:
+            self.packed.bitwise_xor_(0x88)
+            self.twos = True
+
+    def to_offset(self):
+        if self.twos:
+            self.packed.bitwise_xor_(0x88)
+            self.twos = False
 
     def bytes(self):
         return sum(t.numel() * t.element_size() for t in (self.packed, self.w8, self.rs, self.bias) if t is not None)
@@ -119,6 +134,9 @@ class TorchOps:
         return (torch.cat((codes.index_copy(0, idx, q1), q2)).to(torch.int8),
                 torch.cat((s.index_copy(0, idx, s1), s2)))
 
+    def operand(self, r, idx):
+        return (*self.quant(r, idx), idx)
+
     def gemm(self, codes, scales, idx, layer, scratch, dtype):
         w = layer.w8 if layer.w8 is not None else layer.dense()
         acc = (codes.double() @ w.double().t()).float()
@@ -145,6 +163,9 @@ class TritonOps:
 
     def quant(self, r, idx):
         return self.k.quant(r, idx, laq.A_CLIP)
+
+    def operand(self, r, idx):
+        return (*self.quant(r, idx), idx)
 
     def gemm(self, codes, scales, idx, layer, scratch, dtype):
         if dtype != torch.bfloat16:
@@ -248,8 +269,7 @@ class Engine:
             idx = st.index(segs, T)
             if idx is not None and idx.numel() == 0:
                 idx = None
-            codes, scales = self.ops.quant(self.xf(name, xf, x.shape[2]).apply(x[0]), idx)
-            operand = (codes, scales, idx)
+            operand = self.ops.operand(self.xf(name, xf, x.shape[2]).apply(x[0]), idx)
             if stream is not None:
                 st.shared = (x, stream, operand)
         self.gemms += 1

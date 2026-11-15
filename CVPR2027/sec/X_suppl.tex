@@ -643,16 +643,16 @@ Refinement raises plain W4A4KV4 from 81.4\% to 83.3\%, and random tokens under t
 \label{sec:supp:cost}
 \paragraph{Runtime.}
 The measurements of \cref{tab:efficiency} use a runtime in which the weights of the 600 quantized layers stay packed at 4 bits, two codes per byte, with one 32-bit scale per output row; no 16-bit copy of them is kept.
-A layer first rotates its input, written as two or three small matrix products over the Kronecker factors of the Hadamard transform, and one kernel writes the 4-bit codes and the scale of every token.
+A layer first rotates its input, written as two or three small matrix products over the Kronecker factors of the Hadamard transform, and one kernel writes the scale of every token and its 4-bit codes, packed like the weights.
 A refined token contributes two rows of codes, its first pass and its second pass, so the second pass is the same integer product on additional rows.
-The product unpacks the weight into an 8-bit buffer shared by all layers and runs an 8-bit integer matrix product with 32-bit accumulation, which is exact, and one kernel scales the result by the token and row scales, adds the second pass and the bias, and writes the 16-bit output.
+The product multiplies the packed 4-bit codes of the input and of the weight directly on the 4-bit integer tensor cores of the GPU with 32-bit accumulation, which is exact, and the same kernel scales the result by the token and row scales, adds the second pass and the bias, and writes the 16-bit output; the weights are never unpacked.
 Cached keys and values are rotated over the head dimension, quantized for each token and head, and rotated back.
 The keys and values of the text context are computed at the first denoising step of each loop and reused, and the three phases of a call (future denoising, cache write, action denoising) are replayed as CUDA graphs.
 For every layer shape, the codes and the integer products of the kernels equal a reference implementation exactly.
 
 \paragraph{Memory and latency.}
-The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales, and the shared 8-bit buffer adds 0.04\,GB.
-The resident memory of the policy falls from 13.7\,GB to 5.0\,GB.
+The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales.
+The resident memory of the policy falls from 13.7\,GB to 4.9\,GB.
 Measurements use one NVIDIA A100 (40\,GB) and one process, and report the median over the calls after the first; the BF16 model runs its released PyTorch implementation.
 
 \paragraph{Calibration.}

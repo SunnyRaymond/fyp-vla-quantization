@@ -65,6 +65,78 @@ def kernel_checks(engine, torch):
     return out
 
 
+def native4_checks(engine, triton_ops, torch):
+    """The INT4 path (plan, quantize, fused GEMM) against the reference arithmetic and against the INT8 kernels, on
+    every layer shape."""
+    import int4
+    st, ref = engine.st, int4.TorchOps()
+    g = torch.Generator(device=st.device).manual_seed(11)
+    out, seen = dict(gemm_rel=0.0, mismatch=0.0, vs_int8_mismatch=0.0, int8_vs_ref_mismatch=0.0, layers=0), set()
+    scratch = torch.empty(max(layer.N * layer.K for layer in engine.layers.values()), dtype=torch.int8, device=st.device)
+    cases = ((40, None), (40, torch.tensor([1, 5, 17, 39], device=st.device)),
+             (196, torch.arange(0, 196, 9, device=st.device)), (32, torch.arange(32, device=st.device)))
+    for name, (xf, n) in engine.pending.items():
+        layer = engine.layers[name]
+        if (layer.N, layer.K, layer.bias is None) in seen:
+            continue
+        seen.add((layer.N, layer.K, layer.bias is None))
+        for T, rows in cases:
+            x = torch.randn(T, n, generator=g, device=st.device) * torch.linspace(0.2, 3, T, device=st.device)[:, None]
+            fast = engine.xf(name, xf, n).apply(x.to(torch.bfloat16))
+            y = engine.ops.gemm(*engine.ops.operand(fast, rows), layer, None, torch.bfloat16)
+            want = ref.gemm(*ref.operand(fast, rows), layer, None, torch.bfloat16)
+            out["gemm_rel"] = max(out["gemm_rel"], float((y.float() - want.float()).abs().max() / want.float().abs().max()))
+            out["mismatch"] = max(out["mismatch"], float((y != want).float().mean()))
+
+            class Old:
+                N, K, w8, packed, rs, bias = layer.N, layer.K, layer.dense(), None, layer.rs, layer.bias
+            y8 = triton_ops.gemm(*triton_ops.operand(fast, rows), Old, scratch, torch.bfloat16)
+            out["vs_int8_mismatch"] = max(out["vs_int8_mismatch"], float((y != y8).float().mean()))
+            out["int8_vs_ref_mismatch"] = max(out["int8_vs_ref_mismatch"], float((y8 != want).float().mean()))
+            del Old, y8
+        out["layers"] += 1
+    del scratch
+    torch.cuda.empty_cache()
+    if out["gemm_rel"] > 1e-2:
+        raise RuntimeError(f"INT4 kernel checks failed: {out}")
+    return out
+
+
+def microbench(engine, triton_ops, torch, reps=200):
+    """Time of one Linear after the rotation, per layer shape: the INT8 path against the INT4 path."""
+    st, g, out, seen = engine.st, torch.Generator(device=engine.st.device).manual_seed(3), [], set()
+    scratch = torch.empty(max(layer.N * layer.K for layer in engine.layers.values()), dtype=torch.int8, device=st.device)
+
+    def clock(fn):
+        for _ in range(20):
+            fn()
+        torch.cuda.synchronize()
+        begin = time.perf_counter()
+        for _ in range(reps):
+            fn()
+        torch.cuda.synchronize()
+        return 1e6 * (time.perf_counter() - begin) / reps
+
+    for layer in engine.layers.values():
+        if (layer.N, layer.K) in seen:
+            continue
+        seen.add((layer.N, layer.K))
+        rows = 196 if layer.name.startswith("video") else 32
+        r = torch.randn(rows, layer.K, generator=g, device=st.device)
+
+        class Old:
+            N, K, w8, packed, rs, bias = layer.N, layer.K, None, (layer.packed ^ 0x88).contiguous(), layer.rs, layer.bias
+        if not layer.twos:
+            raise RuntimeError("microbench expects the INT4 weight format")
+        us8 = clock(lambda: triton_ops.gemm(*triton_ops.operand(r, None), Old, scratch, torch.bfloat16))
+        us4 = clock(lambda: engine.ops.gemm(*engine.ops.operand(r, None), layer, None, torch.bfloat16))
+        out.append(dict(N=layer.N, K=layer.K, rows=rows, int8_us=us8, int4_us=us4))
+        del Old
+    del scratch
+    torch.cuda.empty_cache()
+    return out
+
+
 def main():
     import torch
     import int4
@@ -138,7 +210,7 @@ def main():
     print(f"INT4 installed layers={len(engine.layers)} resident={memory['int4_resident_gib']:.2f}GiB "
           f"(BF16 {memory['bf16_resident_gib']:.2f}GiB) checks={checks}", flush=True)
 
-    def native(name, spec, use_online, label):
+    def native(name, spec, use_online, label, keep=None):
         st.use(spec, online=use_online)
         engine.reset()
         torch.cuda.reset_peak_memory_stats()
@@ -162,10 +234,34 @@ def main():
         del graphs
         st.static = None
         torch.cuda.empty_cache()
+        if keep is not None:
+            keep[name] = graphed
         return row
 
+    # ---- first, in the fresh process: the INT4 tensor-core GEMM with fused dequantization (weights multiplied as
+    # packed, no INT8 buffer)
+    import int4_cuda
+    triton_ops, largest = engine.ops, engine.scratch.numel()
+    engine.ops, engine.scratch = int4_cuda.CudaOps(), None
+    for layer in engine.layers.values():
+        layer.to_twos()
+    torch.cuda.empty_cache()
+    memory["native4_resident_gib"] = torch.cuda.memory_allocated() / GIB
+    int4_outs = {}
     for name, spec, use_online in specs:
-        results[name]["int4"] = native(name, spec, use_online, "packed")
+        results[name]["native4"] = native(name, spec, use_online, "native4", int4_outs)
+    checks4 = native4_checks(engine, triton_ops, torch)
+    micro = microbench(engine, triton_ops, torch)
+    print(f"INT4 native4 resident={memory['native4_resident_gib']:.2f}GiB checks={checks4} micro={micro}", flush=True)
+
+    # ---- the INT8 path: unpack into the shared buffer, cuBLASLt INT8 GEMM, separate epilogue
+    for layer in engine.layers.values():
+        layer.to_offset()
+    engine.ops, engine.scratch = triton_ops, torch.empty(largest, dtype=torch.int8, device=st.device)
+    for name, spec, use_online in specs:
+        outs = {}
+        results[name]["int4"] = native(name, spec, use_online, "packed", outs)
+        results[name]["native4"]["vs_int8"] = errors(int4_outs[name], outs[name])
 
     # ---- the same runtime with the weights left unpacked at 8 bits
     for layer in engine.layers.values():
@@ -181,7 +277,7 @@ def main():
               for k, s, _ in specs}
     summary = dict(protocol=p["protocol"], pbs_jobid=job, arm=arm, gpu=torch.cuda.get_device_name(),
                    torch=torch.__version__, queries=sum(len(g) for g in groups), spec=spec_laq, memory=memory,
-                   kernel_checks=checks, results=results, caches=caches, shapes=dict(st.shapes), blocks=blocks,
+                   kernel_checks=checks, native4_checks=checks4, microbench=micro, results=results, caches=caches, shapes=dict(st.shapes), blocks=blocks,
                    gemms=engine.gemms, startup=check, seconds=time.monotonic() - started)
     save(out / "summary.json", summary)
 
@@ -196,7 +292,8 @@ def main():
     for name in ("laq", "plain"):
         f = results[name]["fake"]
         lines.append(f"| {labels[name]} | 假量化（闭环所用） | {1000 * f['median_s']:.0f} | — | — |")
-        for key, label in (("int4", "整数，权重 4 bit 常驻"), ("resident8", "整数，权重解包成 8 bit 常驻")):
+        for key, label in (("native4", "INT4 GEMM（融合反量化），权重 4 bit 常驻"),
+                           ("int4", "INT8 GEMM，权重 4 bit 常驻（每次解包）"), ("resident8", "INT8 GEMM，权重解包成 8 bit 常驻")):
             r = results[name].get(key)
             if r:
                 lines.append(f"| {labels[name]} | {label} | {1000 * r['eager']['median_s']:.0f} | "
@@ -222,8 +319,18 @@ def main():
                          f"{e['future_nmse']:.5f} / {e['future_nmse_max']:.5f} |")
     lines += ["", f"kernel 对参考算术：旋转最大绝对差 {checks['rotation_max_abs']:.2e}，码不一致比例 {checks['code_mismatch']:.2e}，"
                   f"GEMM 输出最大相对差 {checks['gemm_rel']:.2e}，K/V 最大相对差 {checks['kv_rel']:.2e}（{checks['layers']} 种层形状）。"]
+    lines += ["", "## INT4 GEMM 对 INT8 路径", "",
+              f"- 输出对 INT8 路径（录图，{q} 次查询）：" + "；".join(
+                  f"{labels[n]} motor RMSE 最大 {results[n]['native4']['vs_int8']['motor_rmse_max']:.2e}、"
+                  f"future NMSE 最大 {results[n]['native4']['vs_int8']['future_nmse_max']:.2e}" for n in ("laq", "plain")),
+              f"- 随机输入上 INT4 kernel 对 INT8 kernel：输出不一致比例 {checks4['vs_int8_mismatch']:.2e}；对 PyTorch 参考算术："
+              f"INT4 {checks4['mismatch']:.2e}，INT8 {checks4['int8_vs_ref_mismatch']:.2e}（{checks4['layers']} 种层形状）",
+              f"- INT4 运行时常驻 {memory['native4_resident_gib']:.2f} GiB", "",
+              "| 层形状 N×K | 行数 | INT8 路径：量化+解包+GEMM+输出 (us) | INT4 路径：量化+融合 GEMM (us) |", "|---|---:|---:|---:|"]
+    lines += [f"| {m['N']}×{m['K']} | {m['rows']} | {m['int8_us']:.0f} | {m['int4_us']:.0f} |" for m in micro]
     (out / "RESULTS.zh.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("INT4_DONE " + " ".join(f"{k}:graph={v['int4']['graph']['median_s']:.3f}s" for k, v in results.items()), flush=True)
+    print("INT4_DONE " + " ".join(f"{k}:int8={v['int4']['graph']['median_s']:.3f}s,int4={v['native4']['graph']['median_s']:.3f}s"
+                                  for k, v in results.items()), flush=True)
 
 
 if __name__ == "__main__":

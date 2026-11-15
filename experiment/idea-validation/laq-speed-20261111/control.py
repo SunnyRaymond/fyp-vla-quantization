@@ -28,7 +28,7 @@ P = json.loads((HERE / "protocol.json").read_text(encoding="utf-8"))
 ROOT = P["remote_root"]
 FILES = ("protocol.json", "env_fastwam.sh", "slots.sh", "run.pbs", "cputest.pbs", "qops.py", "methods.py", "laq.py",
          "calib.py", "fastwam_loop.py", "loopcommon.py", "fw_common.py", "sched.py", "analysis.py", "kvsites.py", "graphs.py",
-         "graph_bench.py", "test_laq.py", "test_graph.py", "int4.py", "int4_kernels.py", "int4_bench.py", "test_int4.py")
+         "graph_bench.py", "test_laq.py", "test_graph.py", "int4.py", "int4_kernels.py", "int4_bench.py", "test_int4.py", "int4_cuda.py", "int4_gemm.cu")
 JOBS_PATH = ROOT + "/control/jobs.json"
 HANDLE = re.compile(r"^\d+(?:\[\d*\])?\.[A-Za-z0-9_.-]+$")
 KEYS = {"graph": "graph", "int4": "int4"}
