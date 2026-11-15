@@ -19,7 +19,7 @@ This supplementary material is organized as follows.
 This section gives the protocol and the full results of the measurements of \cref{sec:observations}.
 
 \paragraph{Setup.}
-All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action.
+All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action, on the first 16 of the 80 calibration contexts with one sampling seed each; the evaluations of \method in \cref{sec:supp:results,sec:supp:ablation} use held-out contexts instead.
 The W4A4KV4 model has per-row 4-bit weights fitted by second-order rounding in randomized Hadamard coordinates, per-token symmetric 4-bit activations, and per-head 4-bit cached keys and values.
 Every error is measured against the BF16 model on the same observation, instruction and sampling noise.
 The action error $A$ is the mean squared error over the first 10 actions of the chunk and the six motor dimensions, and the future error $Z$ is taken over the predicted frames.
@@ -210,23 +210,16 @@ where $\mathbf{G}_{uu}$ is the block of $\mathbf{G}$ that belongs to source $u$ 
 \paragraph{Activations and caches.}
 For a unit $u$ with error variance $\sigma_u^2$, the computation of \cref{sec:supp:theory:count}, with the curvature of $\mathcal{L}$ in place of $\bM$, gives $\sigma_u^2\, \tr\bOmega_u$ for a fresh error and $n_u$ times as much for a frozen one.
 With $\omega_u = \tr\bOmega_u$, the term of unit $u$ is $n_u\, \omega_u\, \sigma_u^2$, where $n_u = 1$ for fresh sources.
-Refinement changes only $\sigma_u^2$, which gives the second sum of \cref{eq:separable}.
+Refinement changes only $\sigma_u^2$, which gives the sum of \cref{eq:separable}.
 
 \paragraph{Weights.}
-A weight error $\Delta\bW_l$ changes the output of layer $l$ by $\Delta\bW_l\, \bx$ on every input $\bx$ that the layer reads.
-We make the usual layer-wise approximation that the curvature of $\mathcal{L}$ with respect to this output is isotropic, $\gamma_l\, \mathbf{I}$, with $\gamma_l$ its mean over output coordinates.
-The damage of one read is then $\gamma_l\, \|\Delta\bW_l\, \bx\|^2$, and its expectation over the inputs of the layer, with $\bH_l = \mathbb{E}[\bx\bx^\top]$, is
-\begin{equation}
-  \gamma_l\, \mathbb{E}\big[\|\Delta\bW_l\, \bx\|^2\big] = \gamma_l\, \tr\!\big(\Delta\bW_l\, \bH_l\, \Delta\bW_l^\top\big).
-\end{equation}
-A weight is a frozen source: the same $\Delta\bW_l$ is read at every denoising step, and the cross terms between steps multiply the damage by the read count $n_l$.
-The term of layer $l$ is thus $n_l\, \gamma_l\, \tr(\Delta\bW_l \bH_l \Delta\bW_l^\top)$, the first sum of \cref{eq:separable}.
-Since $n_l\, \gamma_l > 0$ does not depend on $\hat\bW_l$, the minimizer over $\hat\bW_l$ is that of the layer-wise reconstruction error of \cref{sec:prelim}, which is why \method rounds the weights with the second-order rounding of~\cite{frantar2023gptq} unchanged.
+The weights are rounded to 4 bits before any unit is refined, and refinement does not change their errors.
+Their blocks of $\mathbf{G}$ therefore add the same amount to $\mathcal{L}$ for every choice of $r$, the constant $C_{\bW}$ of \cref{eq:separable}.
 
 \subsection{Optimality of the threshold}
 \label{sec:supp:theory:threshold}
 Let $b_u = n_u\, \omega_u\, \big(\sigma_u^2(0) - \sigma_u^2(1)\big) \ge 0$ be the damage that refining unit $u$ removes, and $c_u > 0$ its cost.
-Minimizing the second sum of \cref{eq:separable} under the budget is the 0/1 knapsack problem
+Minimizing the sum of \cref{eq:separable} under the budget is the 0/1 knapsack problem
 \begin{equation}
   \max_{r \in \{0,1\}^N}\; \sum_u b_u\, r_u \quad \text{s.t.} \quad \sum_u c_u\, r_u \le B .
   \label{eq:supp:knapsack}
@@ -400,7 +393,6 @@ This section explains the average bits of \cref{tab:main}.
 \paragraph{Weights.}
 The average covers the quantized linear layers and counts every stored quantity: the codes, the scales and any component kept at higher precision.
 \method stores 4-bit codes and one 32-bit scale per output row, 4.01 bits per weight, and nothing else.
-QuaRot and SpinQuant store one 16-bit scale per group of 128 weights, $4 + 16/128 = 4.13$ bits.
 ViDiT-Q adds the zero points of its groups and its channel-balancing vectors, and on Cosmos-Policy the nine layers that take 8-bit weights; its averages are 4.33 bits on Fast-WAM and 4.29 bits on Cosmos-Policy.
 SVDQuant uses groups of 64 and keeps a 16-bit branch of rank 32 next to every layer, which gives 4.81 and 4.89 bits.
 For all methods, the interface layers (0.01\% of the weights) stay in BF16, and the timestep-conditioning layers, whose inputs depend only on the denoising step, are stored as exact per-step tables; neither enters the average.
@@ -488,9 +480,9 @@ On Cosmos-Policy, all methods stay within a few points of BF16 on every dimensio
 
 \paragraph{Fidelity of the predicted future.}
 We also measure directly how much of the predicted future \method preserves.
-On the 40 held-out contexts of \cref{sec:supp:ablation}, we compare the future predicted by \method and by the same 4-bit weights without refinement with the future predicted by the BF16 model under the same sampling noise.
-Refinement lowers the future error $Z$ from 0.030 to 0.020, a reduction of 33\%, and from 0.011 to 0.007 on the first predicted frame, which carries most of the reader metric.
-Decoded to images on 16 of these contexts, the predicted frames of \method are 1.4\,dB closer to those of BF16 (PSNR of 30.1\,dB against 28.8\,dB).
+On the 80 held-out queries of \cref{sec:supp:ablation} (40 contexts, two sampling seeds each), we compare the future predicted by \method and by the same 4-bit weights without refinement with the future predicted by the BF16 model under the same sampling noise.
+Refinement lowers the future error $Z$ from 0.034 to 0.020, a reduction of 42\%.
+On the first seed of every context, whose futures we also decoded, it lowers the error of the first predicted frame, which carries most of the reader metric, from 0.011 to 0.007, and on 16 of these contexts the decoded frames of \method are 1.4\,dB closer to those of BF16 (PSNR of 30.1\,dB against 28.8\,dB).
 
 \begin{table*}[t]
   \centering

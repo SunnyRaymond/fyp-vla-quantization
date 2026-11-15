@@ -30,13 +30,13 @@ Third, the reader depends on a narrow part of the future, stable in location but
 A 4-bit WAM must therefore treat the predicted future, as the reader sees it, as a quantization target in its own right.
 
 Building on this diagnosis, we propose \method, a latent-aware quantization framework for W4A4KV4 world action models (\cref{fig:method}).
-\method estimates a \emph{reader metric}, which measures future error by its effect on the action, and assigns every source of rounding error a \emph{read count}, the number of denoising steps over which one realization of the error is read, so that errors frozen in weights and caches are weighted by their accumulated effect.
-With both, the allocation of precision over weights, activations and caches has a closed-form solution: second-order rounding for the weights, and a single threshold that decides which tokens deserve more precision in the denoising loop and in the cache.
+\method estimates a \emph{reader metric}, which measures future error by its effect on the action, and assigns every source of rounding error a \emph{read count}, the number of denoising steps over which one realization of the error is read, so that errors frozen in caches and unchanging tokens are weighted by their accumulated effect.
+With both, the allocation of precision over activations and caches has a closed-form solution: a single threshold that decides which tokens deserve more precision in the denoising loop and in the cache.
 \emph{Gaze-guided refinement} then gives those tokens a second 4-bit pass, and selects them at run time from the attention of the action tokens.
 The quantized model stores every weight at 4 bits, has no high-precision branch, and needs no training and no recalibration for a new task.
 In summary, our contributions are threefold:
 \begin{itemize}
   \item We identify future-latent fidelity as a key quantization target for WAMs: once the action pathway is protected, the remaining action error of a 4-bit WAM enters through a degraded predicted future, which is damaged most by errors that are written once and read at every denoising step.
-  \item We propose \method, a latent-aware quantization framework for W4A4KV4 WAMs. A reader metric and a read count give the allocation of precision over weights, activations and caches a closed-form solution, and gaze-guided refinement protects the tokens the reader depends on with a second 4-bit pass.
+  \item We propose \method, a latent-aware quantization framework for W4A4KV4 WAMs. A reader metric and a read count give the allocation of precision over activations and caches a closed-form solution, and gaze-guided refinement protects the tokens the reader depends on with a second 4-bit pass.
   \item We evaluate \method on two WAMs in simulation and on a real AgileX PiPER arm. On LIBERO-Plus~\cite{fei2026liberoplus}, it reaches 76.4\% average success on Fast-WAM, within 1.2 points of BF16 and 3.4 points above the strongest baseline with 16-bit caches, and 83.3\% on Cosmos-Policy (BF16: 83.5\%), while compressing the model by 3.8$\times$. On three real-world tasks, it succeeds in \XX/\XX trials, compared with \XX/\XX for QuaRot.
 \end{itemize}

@@ -5,7 +5,7 @@ Existing 4-bit quantizers for WAMs preserve the generated action, and estimate s
 However, they fail to preserve the fidelity of the predicted future: once the action pathway is protected, the remaining action error enters almost entirely through a degraded future that none of them deliberately protects.
 We propose \method, a latent-aware quantization framework that preserves the predicted future where it is written, stored and read.
 Specifically, we introduce a reader metric, which measures future error by its effect on the action, and a read count, which weights each rounding error by the number of denoising steps that read it.
-Together they give the allocation of precision over weights, activations and caches a closed-form solution.
+Together they give the allocation of precision over activations and caches a closed-form solution.
 We further develop gaze-guided refinement, which gives the tokens the action attends to a second 4-bit pass in the denoising loop and in the cache.
 All weights stay at 4 bits, with no high-precision branch and no per-task recalibration.
 On the LIBERO-Plus benchmark, \method reaches 76.4\% and 83.3\% average success on Fast-WAM and Cosmos-Policy, within 1.2 percentage points of the 16-bit models and 0.4--3.4 points above the strongest baseline with 16-bit caches.

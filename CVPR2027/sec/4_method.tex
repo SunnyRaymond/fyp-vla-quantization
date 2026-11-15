@@ -2,7 +2,7 @@
 \label{sec:method}
 
 As illustrated in \cref{fig:method}, \method preserves the predicted future where it is written, stored and read.
-A reader metric and a read count, both estimated offline, place the errors of weights, activations and caches in one objective with a closed-form minimizer, and gaze-guided refinement gives the selected tokens a second 4-bit pass at run time.
+A reader metric and a read count, both estimated offline, place the errors of activations and caches in one objective with a closed-form minimizer, and gaze-guided refinement gives the selected tokens a second 4-bit pass at run time.
 \method involves no training; \cref{alg:laq} (\cref{sec:supp:method}) summarizes it.
 
 \subsection{Reader metric}
@@ -36,7 +36,7 @@ The diagonal is stable across contexts (Observation~3), the identity keeps every
 
 The read count of an error source is the number of denoising steps over which one realization of its rounding error is read.
 Observation~2 shows that this number changes the damage of an error, and that a sensitivity estimated one step at a time misses it.
-Let $u$ index a source of rounding error: the activation of a token, a cached key or value, or a weight.
+Let $u$ index a source of rounding error: the activation of a token or a cached key or value.
 Let $\be_{u,s}$ be the error that enters at denoising step $s$, and $\bJ_{u,s} = \partial\bz/\partial\be_{u,s}$ its effect on the predicted future.
 To first order, $\hat\bz - \bz^\star = \sum_s \bJ_{u,s}\,\be_{u,s}$, so the future error in the reader metric is governed by the $T \times T$ matrix
 \begin{equation}
@@ -54,7 +54,7 @@ A frozen error does the damage of a fresh error read $n_u$ times, and we set $n_
 Per-step sensitivities~\cite{akbari2026qwam,wang2026steerquant} keep only the diagonal of $\bOmega_u$, which corresponds to $n_u = 1$ for every source.
 
 We measure $n_u$ by intervention rather than by differentiating through the sampler: we inject an error of fixed energy into $u$, once frozen across the denoising steps and once redrawn at every step, and take the ratio of the resulting $Z_{\bM}$, which holds at the error level of the 4-bit quantizer and not only to first order.
-Sources of the same kind share one read count (the weights, each cache, the tokens that do not change across steps, and the tokens that are being denoised), so a few dozen forward passes suffice.
+Sources of the same kind share one read count (each cache, the tokens that do not change across steps, and the tokens that are being denoised), so a few dozen forward passes suffice.
 
 % Main results table (Table 1, discussed in Sec. 5): declared here, in text that is typeset on page 5,
 % so that the float appears at the top of page 6.
@@ -97,7 +97,7 @@ Sources of the same kind share one read count (the weights, each cache, the toke
 \subsection{Joint allocation}
 \label{sec:method:alloc}
 
-Joint allocation decides, under one budget, how the weights are rounded and which tokens receive more precision in the denoising loop and in the cache.
+Joint allocation decides, under one budget, which tokens receive more precision in the denoising loop and in the cache.
 Observation~1 shows that the target must include the predicted future, so \method keeps the quantized model close to the full-precision one in
 \begin{equation}
   \mathcal{L} = \mathbb{E}_c\big[\,A + \lambda_{\bM} Z_{\bM} + \beta K\,\big],
@@ -107,14 +107,13 @@ where the three terms cover the action, the future as the reader sees it, and th
 We fix $\lambda_{\bM}$ and $\beta$ once from the initial magnitudes of the three terms (\cref{sec:supp:method}).
 To second order in the rounding errors, $\mathcal{L}$ separates over their sources:
 \begin{equation}
-  \mathcal{L} \approx \sum_{l} n_l\, \gamma_l\, \tr\!\big(\Delta\bW_l\, \bH_l\, \Delta\bW_l^\top\big) + \sum_{u} n_u\, \omega_u\, \sigma_u^2(r_u).
+  \mathcal{L} \approx C_{\bW} + \sum_{u} n_u\, \omega_u\, \sigma_u^2(r_u),
   \label{eq:separable}
 \end{equation}
-The first sum runs over the linear layers, with $\Delta\bW_l = \hat\bW_l - \bW_l$ and $\gamma_l$ the sensitivity of $\mathcal{L}$ to the output of layer $l$.
-The second sum runs over the units of activations and caches, a token at a denoising step or a cached token, with sensitivity $\omega_u = \tr\bOmega_u$, error variance $\sigma_u^2$, and $r_u \in \{0, 1\}$ indicating whether unit $u$ is refined (\cref{sec:method:refine}).
+where $C_{\bW}$ collects the errors of the 4-bit weights, which refinement does not change.
+The sum runs over the units of activations and caches, a token at a denoising step or a cached token, with sensitivity $\omega_u = \tr\bOmega_u$, error variance $\sigma_u^2$, and $r_u \in \{0, 1\}$ indicating whether unit $u$ is refined (\cref{sec:method:refine}).
 
-For the weights, the term of layer $l$ is a positive multiple of the layer-wise reconstruction error of \cref{sec:prelim}, so its minimizer is the second-order rounding of~\cite{frantar2023gptq}, which we use unchanged.
-For activations and caches, refining unit $u$ divides $\sigma_u^2$ by at least 196 (\cref{eq:refine}) at a cost $c_u$: one more row of a 4-bit matrix product for an activation, one more 4-bit code for a cached entry.
+Refining unit $u$ divides $\sigma_u^2$ by at least 196 (\cref{eq:refine}) at a cost $c_u$: one more row of a 4-bit matrix product for an activation, one more 4-bit code for a cached entry.
 Minimizing \cref{eq:separable} under a budget $\sum_u c_u r_u \le B$ is solved by a threshold on the damage removed per unit cost:
 \begin{equation}
   r_u = 1 \iff \frac{n_u\, \omega_u\, \sigma_u^2}{c_u} \ge \mu
