@@ -12,23 +12,23 @@
   \label{fig:method}
 \end{figure*}
 
-\paragraph{World action models.}
+\noindent\textbf{World action models.}
 World action models train a video generator jointly with an action model and condition actions on a predicted future~\cite{yuan2026fastwam,kim2026cosmospolicy,li2026lingbotva,ye2026dreamzero}, which extends vision-language-action policies~\cite{kim2024openvla,black2024pi0} with the visual priors, and the size, of video backbones.
 
-\paragraph{Post-training quantization.}
+\noindent\textbf{Post-training quantization.}
 Second-order rounding compensates the error of each layer with the inverse Hessian of a layer-wise reconstruction objective~\cite{frantar2022obc,frantar2023gptq}, and activation-aware scaling~\cite{xiao2023smoothquant,lin2024awq} and rotations~\cite{ashkboos2024quarot,liu2025spinquant,chen2026prismquant} remove activation outliers, which brings language models to 4-bit weights, activations and key--value caches.
 Mixed-precision methods allocate bit widths across layers~\cite{wang2019haq,malinovskii2025higgs}, and GuidedQuant weights the layer objective with gradients of the end loss~\cite{kim2025guidedquant}.
 For diffusion and video generators, post-training methods correct errors that accumulate over the denoising loop~\cite{he2023ptqd}, handle timestep-dependent activations~\cite{zhao2025viditq} and absorb outliers into a 16-bit low-rank branch~\cite{li2025svdquant}; quantization-aware training reaches 4 bits and below for these generators~\cite{huang2026qvgen,li2026dsaquant} and for vision-language models~\cite{chen2026grace}.
 Cache quantizers compress the key--value caches of video-language models~\cite{tao2025vidkv,tao2026windowquant} and of video generators and world models~\cite{xi2026qvg,zhao2026quantwm}, down to 2 bits and below.
 These methods preserve layer outputs or generation quality; \method builds on rotation and second-order rounding, and changes what the quantizer preserves: the predicted future as the reader sees it.
 
-\paragraph{Quantization of robot policies and WAMs.}
+\noindent\textbf{Quantization of robot policies and WAMs.}
 QuantVLA and BitVLA compress vision-language-action policies with calibrated scales and 1-bit weights~\cite{zhang2026quantvla,wang2025bitvla}.
 For WAMs, QuantWAMs~\cite{zhou2026quantwams}, Q-WAM~\cite{akbari2026qwam} and SteerQuant~\cite{wang2026steerquant} decide which channels, activation directions, token streams and denoising steps to protect by their impact on the action, and PreDE predicts the task degradation of a quantization configuration from offline action deviations~\cite{xu2026prede}.
 They measure sensitivity to the final action or the training loss, one denoising step at a time.
 \method instead targets the predicted future that the action is read from, counts how often each rounding error is read, and quantizes the caches.
 
-\paragraph{Token-level precision.}
+\noindent\textbf{Token-level precision.}
 Squat keeps the tokens with the highest attention at 8 bits~\cite{shen2024squat}, STaMP concentrates the activation energy in a few tokens that receive higher precision~\cite{federici2026stamp}, SemanticDialect re-quantizes the residual of salient tokens in video diffusion transformers~\cite{jang2026semanticdialect}, and ZipCache assigns cache precision by token saliency~\cite{he2024zipcache}.
 In all of these token-level quantizers, a model's own attention or activation energy decides which tokens matter.
 In a WAM, the predicted future is consumed by a different part of the model, and \method lets this reader decide: tokens are selected by their effect on the action and tracked at run time through the attention of the action tokens.

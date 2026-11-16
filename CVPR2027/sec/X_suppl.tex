@@ -18,14 +18,14 @@ This supplementary material is organized as follows.
 \label{sec:supp:prelim}
 This section gives the protocol and the full results of the measurements of \cref{sec:observations}.
 
-\paragraph{Setup.}
+\noindent\textbf{Setup.}
 All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action. 
 The W4A4KV4 model has per-row 4-bit weights fitted by second-order rounding in randomized Hadamard coordinates, per-token symmetric 4-bit activations, and per-head 4-bit cached keys and values.
 Every error is measured against the BF16 model on the same observation, instruction and sampling noise.
 The action error $A$ is the mean squared error over the first 10 actions of the chunk and the six motor dimensions, and the future error $Z$ is taken over the predicted frames.
 The action pathway is protected by giving the activations of the action tokens a second 4-bit pass on the residual of the first, which lowers their rounding error by more than an order of magnitude.
 
-\paragraph{Future swap.}
+\noindent\textbf{Future swap.}
 The future share $\rho$ of \cref{eq:share} is measured by a swap.
 After the last denoising step of the video, the future predicted by the quantized model is replaced by the future that the BF16 model predicts for the same context and sampling noise.
 The quantized reader, \ie the pass that writes the video cache and the 10 denoising steps of the action, then runs unchanged.
@@ -51,7 +51,7 @@ Without the protection of the action pathway, the same swap removes 58.8\% of th
   \label{tab:supp:swap}
 \end{table}
 
-\paragraph{Error injection.}
+\noindent\textbf{Error injection.}
 To isolate the effect of the number of reads, the weights are kept in BF16 and an error is injected into one source at a time.
 The injected error is the 4-bit rounding error of that source multiplied by random signs, so that it has the energy of the rounding error.
 The signs are either drawn once and kept over the denoising steps (frozen) or drawn again at every read (redrawn).
@@ -75,7 +75,7 @@ The damage is the future error weighted by the reader metric, $Z_{\bM}$ (\cref{e
   \label{tab:supp:reads}
 \end{table}
 
-\paragraph{Accumulation over the denoising steps.}
+\noindent\textbf{Accumulation over the denoising steps.}
 A policy call has 21 phases: the 10 denoising steps of the video, the pass that writes the video cache, and the 10 denoising steps of the action.
 We run one phase at W4A4KV4 and all others in BF16, and compare the sum of the errors of the 10 video steps taken one at a time with the error when the 10 steps are quantized together (\cref{tab:supp:steps}).
 Together, the 10 steps cause 2.50$\times$ the reader-weighted future error of the sum, and 1.54$\times$ its action error.
@@ -108,7 +108,7 @@ The first three denoising steps carry 70\% of the sum.
   \label{tab:supp:steps}
 \end{table}
 
-\paragraph{Reader metric.}
+\noindent\textbf{Reader metric.}
 The effective rank of $\bM$ is $\tr(\bM)^2 / \tr(\bM^2)$.
 The stability of the locations is the correlation between the diagonals of $\bM$ estimated on two disjoint halves of the calibration contexts (0.86); on the tokens of the first predicted frame, the maps of the two halves correlate at 0.84.
 The overlap between two eigenspaces is $\|\mathbf{E}_1^\top \mathbf{E}_2\|_F^2 / r$, where $\mathbf{E}_1$ and $\mathbf{E}_2$ hold the $r = 32$ leading eigenvectors estimated on the two halves; it is 1 for identical subspaces.
@@ -122,7 +122,7 @@ Throughout, $\Delta\bz = \hat\bz - \bz^\star$ is the error of the predicted futu
 
 \subsection{Reader metric and reader error}
 \label{sec:supp:theory:metric-kl}
-\paragraph{The reader metric is the Hessian of the reader error.}
+\noindent\textbf{The reader metric is the Hessian of the reader error.}
 For a context $c$, write the reader error of \cref{eq:reader-kl} as a function of the future, $K_c(\bz) = k\big(R(\bo_c, \ell_c, \bz)\big)$ with $k(\ba) = \mathrm{KL}\big(\pi(\ba^\star_c)\,\|\,\pi(\ba)\big)$.
 A KL divergence is non-negative and vanishes when its two arguments coincide, so $k$ has a minimum at $\ba^\star_c$: $k(\ba^\star_c) = 0$ and $\nabla k(\ba^\star_c) = \mathbf{0}$.
 The chain rule gives
@@ -139,14 +139,14 @@ Hence
   \label{eq:supp:k2}
 \end{equation}
 
-\paragraph{One metric for every error outside the reader.}
+\noindent\textbf{One metric for every error outside the reader.}
 Consider a rounding error that enters outside the reader, at any layer, token or denoising step of the computation that writes the future.
 The reader itself is unchanged, so the action it produces differs from the full-precision action only because its input differs, by $\Delta\bz$.
 By \cref{eq:supp:k2}, the damage of such an error is a quadratic form of $\Delta\bz$ in the matrix $\bJ_c^\top \bD_c \bJ_c$, whatever its origin.
 Averaging over contexts, each normalized to unit trace, and replacing the per-context matrix by the average $\bM$ of \cref{eq:metric} gives the reader-weighted future error $Z_{\bM}$.
 This replacement is what makes the metric reusable: \cref{sec:supp:prelim} shows that the diagonal of $\bM$ is stable across contexts.
 
-\paragraph{Relation between the terms of the objective.}
+\noindent\textbf{Relation between the terms of the objective.}
 With the form of \cref{eq:metric-form}, the reader-weighted future error splits as
 \begin{equation}
   Z_{\bM} = (1-\alpha)\,\frac{d}{\tr\bM_r}\, Z_{\bM_r} + \alpha\, Z ,
@@ -165,7 +165,7 @@ To first order $\Delta\bz = \sum_s \bJ_{u,s}\,\be_{u,s}$, so the expected damage
   \label{eq:supp:damage}
 \end{equation}
 
-\paragraph{Fresh and frozen errors.}
+\noindent\textbf{Fresh and frozen errors.}
 For a fresh error, the realizations of different steps are uncorrelated, $\mathbb{E}[\be_{u,s}\be_{u,s'}^\top] = \sigma_u^2\, \delta_{ss'}\, \mathbf{I}$, and only the terms with $s = s'$ remain:
 \begin{equation}
   \mathbb{E}\big[\Delta\bz^\top \bM\, \Delta\bz\big] = \sigma_u^2 \sum_s \bOmega_u(s, s) = \sigma_u^2\, \tr\bOmega_u .
@@ -177,7 +177,7 @@ For a frozen error, $\be_{u,s} = \be_u$ at every step, so $\mathbb{E}[\be_{u,s}\
 with $\bOmega_u$ as in \cref{eq:kernel}.
 The read count $n_u$ of \cref{eq:count} is the ratio of the two.
 
-\paragraph{Bounds.}
+\noindent\textbf{Bounds.}
 $\bOmega_u$ is symmetric because $\bM$ is, and it is positive semidefinite: for any $\mathbf{v} \in \mathbb{R}^T$,
 \begin{equation}
   \mathbf{v}^\top \bOmega_u\, \mathbf{v} = \mathbb{E}\,\Big\| \bM^{1/2} \sum_s v_s\, \bJ_{u,s} \Big\|_F^2 \;\ge\; 0 .
@@ -189,7 +189,7 @@ Its largest eigenvalue is therefore at most its trace, and
 which gives $n_u \in [0, T]$.
 The upper bound is attained when $\bM^{1/2}\bJ_{u,s}$ is the same at every step, \ie when the effects of the $T$ reads add coherently; $n_u = 1$ when the effects of different steps are orthogonal in the reader metric, which is the case that a per-step sensitivity assumes; and $n_u < 1$ when they partly cancel.
 
-\paragraph{Measurement by intervention.}
+\noindent\textbf{Measurement by intervention.}
 Multiplying a rounding error by random signs keeps the magnitude of each of its entries, hence its energy, and makes it zero-mean.
 Keeping one sign pattern over the denoising steps realizes the frozen case and redrawing it at every read the fresh case, so the ratio of the two measured $Z_{\bM}$ estimates $n_u$ without differentiating through the sampler, and at the error level of the 4-bit quantizer rather than to first order.
 
@@ -207,12 +207,12 @@ Since the errors of different sources are uncorrelated and zero-mean, the expect
 \end{equation}
 where $\mathbf{G}_{uu}$ is the block of $\mathbf{G}$ that belongs to source $u$ over all the steps at which it is read.
 
-\paragraph{Activations and caches.}
+\noindent\textbf{Activations and caches.}
 For a unit $u$ with error variance $\sigma_u^2$, the computation of \cref{sec:supp:theory:count}, with the curvature of $\mathcal{L}$ in place of $\bM$, gives $\sigma_u^2\, \tr\bOmega_u$ for a fresh error and $n_u$ times as much for a frozen one.
 With $\omega_u = \tr\bOmega_u$, the term of unit $u$ is $n_u\, \omega_u\, \sigma_u^2$, where $n_u = 1$ for fresh sources.
 Refinement changes only $\sigma_u^2$, which gives the sum of \cref{eq:separable}.
 
-\paragraph{Weights.}
+\noindent\textbf{Weights.}
 The weights are rounded to 4 bits before any unit is refined, and refinement does not change their errors.
 Their blocks of $\mathbf{G}$ therefore add the same amount to $\mathcal{L}$ for every choice of $r$, the constant $C_{\bW}$ of \cref{eq:separable}.
 
@@ -226,11 +226,11 @@ Minimizing the sum of \cref{eq:separable} under the budget is the 0/1 knapsack p
 \end{equation}
 Since refinement divides $\sigma_u^2$ by at least 196 (\cref{sec:supp:theory:refine}), $b_u$ lies between $\tfrac{195}{196}$ and $1$ times $n_u\, \omega_u\, \sigma_u^2(0)$, so ranking the units by $b_u / c_u$ and by the ratio of \cref{eq:threshold} differ by less than 0.6\%.
 
-\paragraph{Proposition.}
+\noindent\textbf{Proposition.}
 For any $\mu \ge 0$, let $r^\mu_u = 1$ if $b_u / c_u \ge \mu$ and $r^\mu_u = 0$ otherwise, and let $B(\mu) = \sum_u c_u\, r^\mu_u$ be the budget it spends.
 Then $r^\mu$ solves \cref{eq:supp:knapsack} for $B = B(\mu)$.
 
-\paragraph{Proof.}
+\noindent\textbf{Proof.}
 By construction, $r^\mu$ maximizes $(b_u - \mu\, c_u)\, r_u$ for every unit separately, hence it maximizes $\sum_u (b_u - \mu\, c_u)\, r_u$ over $\{0,1\}^N$.
 For any $r$ with $\sum_u c_u\, r_u \le B(\mu)$,
 \begin{align}
@@ -241,7 +241,7 @@ For any $r$ with $\sum_u c_u\, r_u \le B(\mu)$,
 which proves the claim.
 This is the generalized Lagrange multiplier argument of Everett.
 
-\paragraph{General budgets.}
+\noindent\textbf{General budgets.}
 For a budget $B$ that no threshold spends exactly, sort the units by decreasing $b_u / c_u$ and refine them in this order until the next unit no longer fits.
 Filling the remaining budget with a fraction of that unit solves the continuous relaxation of \cref{eq:supp:knapsack}, whose value bounds that of the 0/1 problem from above.
 The threshold solution therefore removes at least the optimal damage minus the damage removed by one unit, $\max_u b_u$.
@@ -282,12 +282,12 @@ This section gives the settings behind each of its steps; \cref{tab:supp:hparams
   \end{algorithmic}
 \end{algorithm}
 
-\paragraph{Reader error.}
+\noindent\textbf{Reader error.}
 The soft histogram $\pi$ of \cref{eq:reader-kl} standardizes each of the six motor coordinates of the first 10 actions by its mean and standard deviation over the BF16 actions on the 80 calibration contexts, with the standard deviation floored at 0.02.
 It then assigns the coordinate to 16 bins, whose 15 interior edges are evenly spaced in $[-3.5, 3.5]$, under Gaussian noise of standard deviation 0.375.
 $K$ is the mean over these 60 coordinates of the KL divergence between the bin probabilities of the BF16 action and those of the action read from the quantized future.
 
-\paragraph{Estimating the reader metric.}
+\noindent\textbf{Estimating the reader metric.}
 The metric is estimated on the BF16 model alone, on the 80 calibration contexts with four Rademacher probes each.
 For every context, the BF16 model first predicts the future $\bz^\star_c$; the reader then runs from this future with the sampling noise of the context, and one reverse pass through the reader per probe gives $\mathbf{v} = \bJ_c^\top(\bD_c^{1/2}\boldsymbol{\epsilon})$.
 Forming $\bJ_c$ itself would take one reverse pass per action coordinate and a dense matrix over the latent.
@@ -297,19 +297,19 @@ We never form the $d \times d$ matrix: the 320 normalized probes are stacked int
 $\bM_r$ keeps the $r = 32$ leading eigendirections, which carry 52\% of the trace, and the diagonal of the remainder, and \cref{eq:metric-form} mixes in the identity with $\alpha = 0.1$.
 The estimation takes one forward pass of the model and four reverse passes of the reader per context.
 
-\paragraph{Weights of the objective.}
+\noindent\textbf{Weights of the objective.}
 The terms of \cref{eq:objective} have different scales, so we weight them once, on the model without refinement: $\lambda_{\bM}$ is the ratio between the mean action error $A$ and the mean reader-weighted future error $Z_{\bM}$ over the calibration contexts, which makes the two terms contribute equally before any token is refined.
 This gives $\lambda_{\bM} = 0.0101$ on Fast-WAM and $\lambda_{\bM} = 3.11$ on Cosmos-Policy.
 By \cref{sec:supp:theory:metric-kl}, the reader error $K$ agrees with the low-rank part of $Z_{\bM}$ to second order, so during calibration its weight is carried by $\lambda_{\bM}$; $K$ itself is the error we report.
 
-\paragraph{Units, classes and costs.}
+\noindent\textbf{Units, classes and costs.}
 A unit is one token whose activations are rounded in one pass of the model, or one token whose keys and values are cached.
 Refining an activation unit adds one row to every 4-bit matrix product that reads the token in that pass, and refining a cached unit stores a second 4-bit code for each of its keys and values.
 Both costs are counted in the same unit, the number of additional 4-bit operands, and the budget $B$ is 15\% of the 4-bit operands of the activations and caches of one policy call.
 Units are grouped into classes that share a read count: on Fast-WAM, the text tokens, the tokens of the observed frame, the cache of the observed frame, the cache of the predicted future, and the future tokens of each of the 10 denoising steps and of the pass that writes the cache.
 The activations of the action tokens are always refined; they are 5.9\% of the activation operands on Fast-WAM.
 
-\paragraph{Read counts and step profile.}
+\noindent\textbf{Read counts and step profile.}
 The read counts of the frozen classes are those of \cref{tab:supp:reads}: 3.1 for the tokens of the observed frame, 2.2 for its cache and 2.1 for the text cache.
 The cache of the predicted future and the text cache of the action expert are written after the future is complete, so they do not change $Z_{\bM}$.
 The damage of a class is the decrease of the objective when the whole class is refined and nothing else changes, measured on 16 calibration contexts with the quantized model; for the future tokens, the damages of the 11 passes form the step profile $\phi_s$.
@@ -318,14 +318,14 @@ On Fast-WAM, the tokens of the observed frame account for 34\% of the objective,
 The damage of a class is divided among its tokens in proportion to the gaze, and the threshold of \cref{eq:threshold} then fixes how many tokens of each class are refined (\cref{tab:supp:alloc}).
 At run time these numbers stay fixed and the gaze decides which tokens they are.
 
-\paragraph{Gaze at run time.}
+\noindent\textbf{Gaze at run time.}
 For Fast-WAM, the gaze of a future token is the attention mass that the action tokens place on its cached keys, summed over the layers, the heads and the 10 denoising steps of the action.
 The gaze of an observation token adds the mass that the action tokens place on it directly to the mass propagated through the future tokens, $\sum_j g_j\, a_{j \to i}$, where $a_{j \to i}$ is taken from the pass that writes the cache.
 The gaze of one policy call selects the tokens of the next, and the first call of an episode uses the offline gaze.
 This relies on the gaze changing slowly along an episode.
 Over the LIBERO-Plus episodes, the sets of future tokens selected at two consecutive policy calls have a Jaccard overlap of 0.70, whereas the set selected by the offline gaze overlaps with them by 0.21: the tokens that the reader depends on move with the scene, and the previous call tracks them.
 
-\paragraph{Instantiation on Cosmos-Policy.}
+\noindent\textbf{Instantiation on Cosmos-Policy.}
 Cosmos-Policy denoises nine latent slots of 196 tokens jointly in one transformer: four conditioning slots that hold the observation, the action, two future images, and two auxiliary slots that hold the future proprioception and the value.
 One policy call evaluates the denoiser five times.
 Three points differ from Fast-WAM.
@@ -369,7 +369,7 @@ The rounding of the weights, the refinement, the budget and the objective are th
 
 \section{Evaluation details}
 \label{sec:supp:eval}
-\paragraph{Calibration and evaluation.}
+\noindent\textbf{Calibration and evaluation.}
 Fast-WAM denoises the future latent in 10 steps and a 32-step action chunk in 10 steps, and the robot executes the first 10 actions before replanning.
 Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot executes the full 16-step action chunk.
 Calibration uses 80 observations from the original LIBERO suites, 20 from each suite, shared by all methods that calibrate.
@@ -378,7 +378,7 @@ On LIBERO, every method runs the 40 tasks from 21 official initial states each, 
 Initial states, environment seeds and sampling noise are matched across methods, so that episodes are paired, and success rates are averaged over episodes.
 An episode ends on success or after 400 control steps (700 on the Long suite).
 
-\paragraph{Baselines.}
+\noindent\textbf{Baselines.}
 All baselines quantize the linear layers of the transformer blocks to W4A4 and keep the cached keys and values in BF16.
 QuaRot and SpinQuant rotate the input of every linear layer by block rotations of size 128 and fold them into its weights.
 QuaRot uses fixed randomized Hadamard blocks; SpinQuant,
@@ -390,14 +390,14 @@ SVDQuant follows DeepCompressor: a per-layer search of the smoothing exponents, 
 \label{sec:supp:bits}
 This section explains the average bits of \cref{tab:main}.
 
-\paragraph{Weights.}
+\noindent\textbf{Weights.}
 The average covers the quantized linear layers and counts every stored quantity: the codes, the scales and any component kept at higher precision.
 \method stores 4-bit codes and one 32-bit scale per output row, 4.01 bits per weight, and nothing else.
 ViDiT-Q adds the zero points of its groups and its channel-balancing vectors, and on Cosmos-Policy the nine layers that take 8-bit weights; its averages are 4.33 bits on Fast-WAM and 4.29 bits on Cosmos-Policy.
 SVDQuant uses groups of 64 and keeps a 16-bit branch of rank 32 next to every layer, which gives 4.81 and 4.89 bits.
 For all methods, the interface layers (0.01\% of the weights) stay in BF16, and the timestep-conditioning layers, whose inputs depend only on the denoising step, are stored as exact per-step tables; neither enters the average.
 
-\paragraph{Activations and caches.}
+\noindent\textbf{Activations and caches.}
 The baselines quantize every activation once at 4 bits and keep the cached keys and values in BF16.
 For \method, a refined unit holds two 4-bit codes, so the average is 4 bits times one plus the share of refined operands.
 The share is taken over the operands of one policy call, where an activation counts once for every matrix product that reads it and a cached entry counts once.
@@ -458,7 +458,7 @@ On Fast-WAM, the baselines lose the most under shifted camera viewpoints (10.9--
 \method loses 2.5 points on each.
 On Cosmos-Policy, all methods stay within a few points of BF16 on every dimension, in line with its smaller overall loss.
 
-\paragraph{Fidelity of the predicted future.}
+\noindent\textbf{Fidelity of the predicted future.}
 We also measure directly how much of the predicted future \method preserves.
 On the 80 held-out queries of \cref{sec:supp:ablation} (40 contexts, two sampling seeds each), we compare the future predicted by \method and by the same 4-bit weights without refinement with the future predicted by the BF16 model under the same sampling noise.
 Refinement lowers the future error $Z$ from 0.034 to 0.020, a reduction of 42\%.
@@ -499,7 +499,7 @@ On the first seed of every context, whose futures we also decoded, it lowers the
 \section{Additional ablations}
 \label{sec:supp:ablation}
 
-\paragraph{Protocol.}
+\noindent\textbf{Protocol.}
 All variants of \cref{tab:ablation} share the 4-bit weights, the quantizers and the calibration records of \method and differ only in the tokens that receive the second pass.
 \emph{None} is plain W4A4KV4, and \emph{Observation tokens} refines only the tokens of the observed frame.
 In the second and third blocks of the table, the pipeline, the budget and the refinement are those of \method, and only the score that ranks the tokens changes.
@@ -535,7 +535,7 @@ The closed-loop rows run on the LIBERO-Plus episodes of \cref{tab:main}, so that
   \label{tab:supp:criteria}
 \end{table}
 
-\paragraph{Selection criteria.}
+\noindent\textbf{Selection criteria.}
 \cref{tab:supp:criteria} compares all selection criteria under the budget of \method.
 Activation energy~\cite{federici2026stamp} and the self-attention of the video model~\cite{shen2024squat,jang2026semanticdialect} rank the tokens by how salient they are for generating the video, and \emph{All tokens, last steps} refines every future token at the last denoising steps that the budget covers.
 The three remove at most 47\% of the reader error that the gaze removes: the tokens that matter for generating the video are not the ones the reader depends on.
@@ -563,7 +563,7 @@ The three remove at most 47\% of the reader error that the gaze removes: the tok
   \label{tab:supp:budget}
 \end{table}
 
-\paragraph{Budget.}
+\noindent\textbf{Budget.}
 \cref{tab:supp:budget} varies the budget from 7.5\% to 100\% of the 4-bit operands of a policy call.
 At every budget below 100\%, where the two coincide, \method has lower errors than random selection, and \method at 10\% matches random selection at 15\%.
 At 15\%, the budget of \cref{tab:main}, \method already obtains 68\% of the reduction in action error and 67\% of the reduction in reader error that a second pass on every operand brings over plain W4A4KV4 (\cref{tab:ablation}).
@@ -598,11 +598,11 @@ At 15\%, the budget of \cref{tab:main}, \method already obtains 68\% of the redu
   \label{tab:supp:metric}
 \end{table}
 
-\paragraph{Hyperparameters of the reader metric.}
+\noindent\textbf{Hyperparameters of the reader metric.}
 \cref{tab:supp:metric} varies the rank $r$, the identity weight $\alpha$ and the number of probes per context.
 The errors change by at most 6\% over $r$ from 8 to 128, $\alpha$ from 0.01 to 0.5 and 1 to 16 probes, so \method is not sensitive to these choices.
 
-\paragraph{Second pass.}
+\noindent\textbf{Second pass.}
 Quantizing the selected tokens once at 8 bits instead of twice at 4 bits gives an action error of 2.06 and a reader error of 0.80, compared with 2.10 and 0.82 for \method: the second 4-bit pass matches an 8-bit activation while every matrix product stays at 4 bits.
 
 \begin{table}[t]
@@ -625,13 +625,13 @@ Quantizing the selected tokens once at 8 bits instead of twice at 4 bits gives a
   \label{tab:supp:cosmos}
 \end{table}
 
-\paragraph{Cosmos-Policy.}
+\noindent\textbf{Cosmos-Policy.}
 \cref{tab:supp:cosmos} repeats the core ablation on Cosmos-Policy, where the future and the action are denoised jointly and the gaze of one denoising step selects the tokens of the next.
 Refinement raises plain W4A4KV4 from 81.4\% to 83.3\%, and random tokens under the same budget recover only 0.5 of these 1.9 points.
 
 \section{Computational cost}
 \label{sec:supp:cost}
-\paragraph{Runtime.}
+\noindent\textbf{Runtime.}
 The measurements of \cref{tab:efficiency} use a runtime in which the weights of the 600 quantized layers stay packed at 4 bits, two codes per byte, with one 32-bit scale per output row; no 16-bit copy of them is kept.
 A layer first rotates its input, written as two or three small matrix products over the Kronecker factors of the Hadamard transform, and one kernel writes the scale of every token and its 4-bit codes, packed like the weights.
 A refined token contributes two rows of codes, its first pass and its second pass, so the second pass is the same integer product on additional rows.
@@ -658,13 +658,13 @@ For every layer shape, the codes and the integer products of the kernels equal a
   \label{tab:efficiency}
 \end{table}
 
-\paragraph{Memory and latency.}
+\noindent\textbf{Memory and latency.}
 \cref{tab:efficiency} collects the measurements of \cref{sec:exp:efficiency}.
 The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales.
 The resident memory of the policy falls from 13.7\,GB to 4.9\,GB.
 Measurements use one NVIDIA A100 (40\,GB) and one process, with the text embedding of the instruction computed once, and report the median over the calls after the first; the BF16 model runs its released PyTorch implementation.
 
-\paragraph{Calibration.}
+\noindent\textbf{Calibration.}
 Choosing the refined tokens runs 16 calibration contexts through the quantized model once for each class of tokens and takes 1.2 GPU-hours on one A100 with a peak memory of 27\,GB.
 
 % Gaze maps of Sec. J: declared here, one page earlier, so that the figure tops the page on which Sec. J starts
@@ -680,25 +680,25 @@ Choosing the refined tokens runs 16 calibration contexts through the quantized m
 \section{Real-world experiments}
 \label{sec:supp:real}
 
-\paragraph{Tasks.}
+\noindent\textbf{Tasks.}
 \cref{fig:real} shows one demonstration of each task.
 Two-object pick-and-place has three other objects on the table as distractors; this long-horizon task tests whether the quantized model completes a multi-step sequence and picks the named objects.
 Shelf placement is a precise insertion under the top board of the shelf that the third-person camera only partly sees, so the final placement relies on the wrist view.
 In box stacking, each box must land on the small top face of the one below, which tests placement precision.
 
-\paragraph{Data.}
+\noindent\textbf{Data.}
 Each demonstration records a third-person and a wrist RGB camera (Intel RealSense, $320\times240$) and the joint state of the arm at 30\,Hz.
 We collect 80 demonstrations for pick-and-place (11.7\,s on average), 75 for shelf placement (7.7\,s) and 80 for box stacking (11.6\,s), with one language instruction per task: ``place the red apple and green cube to the box'', ``place the bowl to the second floor'' and ``pile the boxes''.
 We subsample the demonstrations to 10\,Hz, so that a chunk of 32 actions spans 3.2\,s.
 Each demonstration is read at the three possible offsets of the subsampling, which gives 705 training sequences that together cover every recorded frame.
 The action is the joint target of the next 10\,Hz step, relative to the current joints for the six arm joints and absolute for the gripper; the two views are resized to $224 \times 224$ and placed side by side, as in the LIBERO model.
 
-\paragraph{Fine-tuning.}
+\noindent\textbf{Fine-tuning.}
 We fine-tune one BF16 model on the three tasks jointly, starting from a Fast-WAM LIBERO checkpoint.
 Training runs for 6{,}000 steps with a batch size of 32 and a learning rate of $10^{-4}$ with cosine decay, and takes 8.5 hours on four NVIDIA A100 GPUs.
 All demonstrations are used for training.
 
-\paragraph{Quantization.}
+\noindent\textbf{Quantization.}
 We apply to the fine-tuned model the pipeline of the simulation experiments, with the same network, rotations, budget and refinement.
 The 80 calibration contexts are frames of the demonstrations, 27, 27 and 26 from the three tasks, and the reader metric is re-estimated on them with four probes each; the allocation uses 16 of them.
 The metric is as concentrated as in simulation: its effective rank is 27.4, the first predicted frame carries 94\% of its trace, and its diagonal correlates at 0.96 across two halves of the contexts.
@@ -706,7 +706,7 @@ The allocation differs from that of the LIBERO model.
 It refines 66 of the 98 observation tokens and all 98 entries of the observation cache, and places most of the refined future tokens at the first denoising step (84 of 196), which gives 4.58 bits for the activations and 4.94 bits for the caches.
 The allocation thus adapts to the model at hand, with no setting changed by hand.
 
-\paragraph{Trial protocol.}
+\noindent\textbf{Trial protocol.}
 Every method runs 20 trials per task, two from each of 10 initial placements marked on the table, and the order of the methods is randomized at every placement.
 A pick-and-place trial succeeds when both named objects rest inside the box within 60\,s, and its first stage when the apple does.
 A shelf trial succeeds when the bowl stands on the second floor of the shelf after the gripper has released it, within 45\,s.
