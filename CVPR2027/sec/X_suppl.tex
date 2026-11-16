@@ -600,6 +600,15 @@ Refinement raises plain W4A4KV4 from 81.4\% to 83.3\%, and random tokens under t
 \noindent\textbf{Runtime.}
 The measurements of \cref{tab:efficiency} use a runtime in which the weights of the 600 quantized layers stay packed at 4 bits, two codes per byte, with one 32-bit scale per output row; no 16-bit copy of them is kept.
 A layer first rotates its input, written as two or three small matrix products over the Kronecker factors of the Hadamard transform, and one kernel writes the scale of every token and its 4-bit codes, packed like the weights.
+% Gaze maps of Sec. J: declared inside this paragraph, on the page before Sec. J, so that the figure tops the page
+% on which Sec. J starts instead of standing alone on a last page.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/supp_gaze_maps.pdf}
+  \caption{Reader metric of single contexts on Fast-WAM, two from each LIBERO suite.
+  Each panel shows the third-person view (left) and the wrist view (right) of the first predicted frame; the color of a token is its share of the trace of the metric estimated on that context alone, normalized within the panel, with the color scale of \cref{fig:obs:gaze}.}
+  \label{fig:supp:gaze}
+\end{figure*}
 A refined token contributes two rows of codes, its first pass and its second pass, so the second pass is the same integer product on additional rows.
 The product multiplies the packed 4-bit codes of the input and of the weight directly on the 4-bit integer tensor cores of the GPU with 32-bit accumulation, which is exact, and the same kernel scales the result by the token and row scales, adds the second pass and the bias, and writes the 16-bit output; the weights are never unpacked.
 Cached keys and values are rotated over the head dimension, quantized for each token and head, and rotated back.
@@ -632,16 +641,6 @@ Measurements use one NVIDIA A100 (40\,GB) and one process, with the text embeddi
 
 \noindent\textbf{Calibration.}
 Choosing the refined tokens runs 16 calibration contexts through the quantized model once for each class of tokens and takes 1.2 GPU-hours on one A100 with a peak memory of 27\,GB.
-
-% Gaze maps of Sec. J: declared here, one page earlier, so that the figure tops the page on which Sec. J starts
-% instead of standing alone on a last page.
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/supp_gaze_maps.pdf}
-  \caption{Reader metric of single contexts on Fast-WAM, two from each LIBERO suite.
-  Each panel shows the third-person view (left) and the wrist view (right) of the first predicted frame; the color of a token is its share of the trace of the metric estimated on that context alone, normalized within the panel, with the color scale of \cref{fig:obs:gaze}.}
-  \label{fig:supp:gaze}
-\end{figure*}
 
 \section{Real-world experiments}
 \label{sec:supp:real}
