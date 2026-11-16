@@ -19,7 +19,7 @@ These savings matter only if the quantized policy still acts reliably in closed 
 
 Quantizers developed for language and diffusion models reach 4 bits by smoothing or rotating activation outliers and by second-order weight rounding~\cite{xiao2023smoothquant,ashkboos2024quarot,liu2025spinquant,frantar2023gptq,zhao2025viditq,li2025svdquant}, but they preserve the output of each layer and treat a WAM as a generic network.
 Recent WAM quantizers account for the task: QuantWAMs~\cite{zhou2026quantwams} calibrates which channels, layers and denoising steps to protect, Q-WAM~\cite{akbari2026qwam} keeps the activation directions that most affect the final action in a 16-bit low-rank branch, and SteerQuant~\cite{wang2026steerquant} rescales channels and token streams by their impact on the action.
-They estimate sensitivity one denoising step at a time, with respect to the final action or the training loss; none of them deliberately protects the predicted future on which the action depends, and none addresses the caches through which it is read.
+They estimate sensitivity one denoising step at a time, with respect to the final action or the training loss; none of them deliberately protects the predicted future on which the action depends, and none addresses the caches through which it is read. \yawli{Did you compare with those methods in experimental results?}
 
 We find that this omission is costly: existing quantizers fail to preserve the fidelity of the predicted future, and the loss reaches the action.
 We call \emph{reader} the part of a WAM that maps the predicted future to the action, and ask what a 4-bit WAM still loses once its action pathway is protected.
