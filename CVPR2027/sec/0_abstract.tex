@@ -2,12 +2,13 @@
 World action models (WAMs) predict how a scene will evolve and condition their actions on this predicted future.
 Deploying them on a robot's onboard computer calls for 4-bit weights, activations and key--value caches (W4A4KV4).
 Existing 4-bit quantizers for WAMs preserve the generated action, and estimate sensitivity one denoising step at a time.
-However, they fail to preserve the fidelity of the predicted future: once the action pathway is protected, the remaining action error enters almost entirely through a degraded future that none of them deliberately protects.
+However, they fail to preserve the fidelity of the predicted future: once the action pathway is protected, the remaining action error enters mostly through a degraded future that none of them deliberately protects.
 We propose \method, a latent-aware quantization framework that preserves the predicted future where it is written, stored and read.
 Specifically, we introduce a reader metric, which measures future error by its effect on the action, and a read count, which weights each rounding error by the number of denoising steps that read it.
 Together they give the allocation of precision over activations and caches a closed-form solution.
 We further develop gaze-guided refinement, which gives the tokens the action attends to a second 4-bit pass in the denoising loop and in the cache.
 All weights stay at 4 bits, with no high-precision branch and no per-task recalibration.
 On the LIBERO-Plus benchmark, \method reaches 76.4\% and 83.3\% average success on Fast-WAM and Cosmos-Policy, within 1.2 percentage points of the 16-bit models and all above the baselines with 16-bit caches.
+On a real AgileX PiPER arm, it reaches 47.0\% average success over three tasks, against 52.0\% for the 16-bit model and 17.0\% for QuaRot.
 It compresses the model by 3.8$\times$, reduces the peak GPU memory of the whole policy by 2.3$\times$, and runs 1.66$\times$ faster than the 16-bit model.
 \end{abstract}
