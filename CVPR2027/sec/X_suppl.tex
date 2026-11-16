@@ -653,7 +653,7 @@ In box stacking, each box must land on the small top face of the one below, whic
 
 \noindent\textbf{Data.}
 Each demonstration records a third-person and a wrist RGB camera (Intel RealSense, $320\times240$) and the joint state of the arm at 30\,Hz.
-We collect 80 demonstrations for pick-and-place (11.7\,s on average), 75 for shelf placement (7.7\,s) and 80 for box stacking (11.6\,s), with one language instruction per task: ``place the red apple and green cube to the box'', ``place the bowl to the second floor'' and ``pile the boxes''.
+We collect 80 demonstrations for pick-and-place (11.7\,s on average), 75 for shelf placement (7.7\,s) and 80 for box stacking (11.6\,s), with one language instruction per task: ``place the red apple then green cube to the box'', ``place the bowl to the second floor'' and ``pile the boxes''.
 We subsample the demonstrations to 10\,Hz, so that a chunk of 32 actions spans 3.2\,s.
 Each demonstration is read at the three possible offsets of the subsampling, which gives 705 training sequences that together cover every recorded frame.
 The action is the joint target of the next 10\,Hz step, relative to the current joints for the six arm joints and absolute for the gripper; the two views are resized to $224 \times 224$ and placed side by side, as in the LIBERO model.
@@ -673,7 +673,7 @@ The allocation thus adapts to the model at hand, with no setting changed by hand
 
 \noindent\textbf{Trial protocol.}
 Every method runs 25 trials per task from initial placements marked on the table, and the order of the methods is randomized at every placement.
-A pick-and-place trial succeeds when both named objects rest inside the box within 60\,s, and its first stage when the apple does.
+A pick-and-place trial succeeds when both named objects rest inside the box within 60\,s, and its first stage when the apple does; the average of \cref{tab:real} counts the two stages as separate tasks.
 A shelf trial succeeds when the bowl stands on the second floor of the shelf after the gripper has released it, within 45\,s.
 A stacking trial succeeds when both boxes stay stacked for 3\,s after the last release, within 60\,s.
 A trial also ends when an object leaves the workspace.

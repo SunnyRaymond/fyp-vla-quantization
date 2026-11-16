@@ -41,7 +41,8 @@ FPS = 30.0
 TASKS = [
     dict(
         key="cluster_grasp", ep=73, name="Pick-and-place",
-        instr="place the red apple and green cube to the box",
+        instr="place the red apple and green cube to the box",      # as stored in the episodes
+        shown="place the red apple then green cube to the box",     # as printed in the figure
         crop_y0=12,
         labels=["Start", "Grasp apple", "Apple in box", "Grasp cube", "Cube in box", "Done"],
         keys=lambda s, T: [0, s[0][0] + 2, s[0][1], s[1][0] + 2, s[1][1], T - 1],
@@ -206,7 +207,7 @@ def draw(episodes, W, pick, key=True, wrist=True):
                 va="center", zorder=3)
         t = ax.text(b + 0.06, yc, task["name"], color=INK, fontsize=FS_TITLE, fontweight="bold", ha="left",
                     va="center")
-        ax.text(text_right(ax, t) + 0.08, yc, f"“{task['instr']}”", color=MUTED, fontsize=FS_TEXT,
+        ax.text(text_right(ax, t) + 0.08, yc, f"“{task.get('shown', task['instr'])}”", color=MUTED, fontsize=FS_TEXT,
                 style="italic", ha="left", va="center")
         if k == 0 and key:
             legend(ax, W, yc)
