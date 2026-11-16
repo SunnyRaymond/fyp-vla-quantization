@@ -46,6 +46,28 @@ the fraction of the action error that disappears when the quantized reader is gi
 We quantize Fast-WAM~\cite{yuan2026fastwam} to W4A4KV4 with rotation and second-order rounding~\cite{ashkboos2024quarot,frantar2023gptq}, protect the action pathway by keeping the activations of the action tokens at higher precision, and measure $A$, $Z$ and $\rho$ on LIBERO contexts.
 We also inject errors of equal energy that are either frozen across the denoising steps or redrawn at every step (protocol and per-step results in \cref{sec:supp:prelim}).
 
+% Fig. 3: research/paper/figures/fig3_observations.py writes figures/figure3_a.pdf and figures/figure3_b.pdf.
+% Panel (a), the frozen-to-redrawn ratios of Observation 2, is not used: its numbers are in tab:obs:reads.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.92\linewidth]{figures/figure3_b.pdf}
+  \caption{The reader depends on a narrow part of the future: share of the reader metric $\bM$ carried by each token of the first predicted frame of Fast-WAM, averaged over 80 contexts and shown over the frame of one of them.}
+  \label{fig:obs:gaze}
+\end{figure}
+
+\noindent\textbf{Observation 1: Protecting the action is not enough.}
+Sensitivities measured on the final action concentrate on the action pathway~\cite{akbari2026qwam}, which suggests protecting this pathway first.
+Doing so removes only 16\% of the action error, and the future error does not change at all (\cref{tab:obs:swap}).
+Restoring the predicted future to full precision removes 71.2\% of the remaining action error (\cref{fig:teaser}).
+This implies that the quantization target must include the predicted future itself, not only the action.
+
+\noindent\textbf{Observation 2: The future is damaged where it is written, and most by errors that are read many times.}
+Raising the precision of the reader leaves the future error exactly unchanged, so the future can only be preserved in the computation that writes it.
+Within this computation, rounding errors differ in how often they are read: the tokens of the observed frame keep the same rounding error at every denoising step, cached keys and values are written once and read at every step, and a weight is read by every token at every step.
+An injected error of fixed energy damages the future 3.1$\times$, 2.2$\times$ and 2.1$\times$ more in the observation tokens, the observation cache and the text cache when it is frozen across the denoising steps than when it is redrawn at each step (\cref{tab:obs:reads}), because its effects on successive steps add up.
+A sensitivity estimated one step at a time misses this accumulation: quantizing the ten video denoising steps together damages the part of the future that the reader depends on 2.50$\times$ more than the sum of the ten steps quantized one at a time (\cref{tab:obs:reads}, bottom).
+This implies that an error should be weighted by how many times it is read, not only by where it occurs.
+
 \begin{table}[t]
   \centering
   \small
@@ -85,28 +107,6 @@ We also inject errors of equal energy that are either frozen across the denoisin
   Bottom: the 10 video denoising steps quantized together, against the sum of the 10 steps quantized one at a time.}
   \label{tab:obs:reads}
 \end{table}
-
-% Fig. 3: research/paper/figures/fig3_observations.py writes figures/figure3_a.pdf and figures/figure3_b.pdf.
-% Panel (a), the frozen-to-redrawn ratios of Observation 2, is not used: its numbers are in tab:obs:reads.
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.92\linewidth]{figures/figure3_b.pdf}
-  \caption{The reader depends on a narrow part of the future: share of the reader metric $\bM$ carried by each token of the first predicted frame of Fast-WAM, averaged over 80 contexts and shown over the frame of one of them.}
-  \label{fig:obs:gaze}
-\end{figure}
-
-\noindent\textbf{Observation 1: Protecting the action is not enough.}
-Sensitivities measured on the final action concentrate on the action pathway~\cite{akbari2026qwam}, which suggests protecting this pathway first.
-Doing so removes only 16\% of the action error, and the future error does not change at all (\cref{tab:obs:swap}).
-Restoring the predicted future to full precision removes 71.2\% of the remaining action error (\cref{fig:teaser}).
-This implies that the quantization target must include the predicted future itself, not only the action.
-
-\noindent\textbf{Observation 2: The future is damaged where it is written, and most by errors that are read many times.}
-Raising the precision of the reader leaves the future error exactly unchanged, so the future can only be preserved in the computation that writes it.
-Within this computation, rounding errors differ in how often they are read: the tokens of the observed frame keep the same rounding error at every denoising step, cached keys and values are written once and read at every step, and a weight is read by every token at every step.
-An injected error of fixed energy damages the future 3.1$\times$, 2.2$\times$ and 2.1$\times$ more in the observation tokens, the observation cache and the text cache when it is frozen across the denoising steps than when it is redrawn at each step (\cref{tab:obs:reads}), because its effects on successive steps add up.
-A sensitivity estimated one step at a time misses this accumulation: quantizing the ten video denoising steps together damages the part of the future that the reader depends on 2.50$\times$ more than the sum of the ten steps quantized one at a time (\cref{tab:obs:reads}, bottom).
-This implies that an error should be weighted by how many times it is read, not only by where it occurs.
 
 \noindent\textbf{Observation 3: The reader depends on a narrow part of the future, stable in location but not in direction.}
 We linearize the reader at the full-precision future and compute its Gauss--Newton metric $\bM$ (\cref{sec:method:metric}).
