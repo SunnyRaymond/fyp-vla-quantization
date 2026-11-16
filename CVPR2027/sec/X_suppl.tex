@@ -8,7 +8,7 @@
 \renewcommand{\theHsection}{supp.\Alph{section}}
 
 This supplementary material is organized as follows.
-\cref{sec:supp:prelim} gives the protocol and the full results of the preliminary analysis.
+\cref{sec:supp:prelim} gives the protocol and the per-step results of the preliminary analysis.
 \cref{sec:supp:theory} derives the reader metric, the read count, the separable objective, the optimality of the threshold and the error bound of the second pass.
 \cref{sec:supp:method} details how \method is calibrated and how it is instantiated on the two models.
 \cref{sec:supp:eval} describes the evaluation protocol and the baselines, and \cref{sec:supp:bits} accounts for the precision of every method.
@@ -16,7 +16,7 @@ This supplementary material is organized as follows.
 
 \section{Preliminary analysis}
 \label{sec:supp:prelim}
-This section gives the protocol and the full results of the measurements of \cref{sec:observations}.
+This section gives the protocol of the measurements of \cref{sec:observations} and their per-step results.
 
 \noindent\textbf{Setup.}
 All measurements use Fast-WAM with 10 denoising steps for the predicted future and 10 for the action. 
@@ -29,51 +29,17 @@ The action pathway is protected by giving the activations of the action tokens a
 The future share $\rho$ of \cref{eq:share} is measured by a swap.
 After the last denoising step of the video, the future predicted by the quantized model is replaced by the future that the BF16 model predicts for the same context and sampling noise.
 The quantized reader, \ie the pass that writes the video cache and the 10 denoising steps of the action, then runs unchanged.
-\cref{tab:supp:swap} lists the three models.
+\cref{tab:obs:swap} lists the three models.
 Protecting the action pathway removes 16\% of the action error and leaves the future error unchanged.
 Restoring the future removes 71.2\% of the remaining action error (95\% bootstrap interval over contexts: 62.1--78.8\%), and the action error falls on every context.
 Without the protection of the action pathway, the same swap removes 58.8\% of the action error.
-
-\begin{table}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{5pt}
-  \begin{tabular}{@{}lcc@{}}
-    \toprule
-    Model & $A$ ($\times 10^{-4}$) $\downarrow$ & $Z$ $\downarrow$ \\
-    \midrule
-    W4A4KV4                           & 3.53 & 0.0188 \\
-    \quad + protected action pathway  & 2.96 & 0.0188 \\
-    \quad + full-precision future     & 0.85 & 0 \\
-    \bottomrule
-  \end{tabular}
-  \caption{Future swap on Fast-WAM. In the last row the quantized reader reads the future predicted by the BF16 model.}
-  \label{tab:supp:swap}
-\end{table}
 
 \noindent\textbf{Error injection.}
 To isolate the effect of the number of reads, the weights are kept in BF16 and an error is injected into one source at a time.
 The injected error is the 4-bit rounding error of that source multiplied by random signs, so that it has the energy of the rounding error.
 The signs are either drawn once and kept over the denoising steps (frozen) or drawn again at every read (redrawn).
 The damage is the future error weighted by the reader metric, $Z_{\bM}$ (\cref{eq:metric-form}).
-\cref{tab:supp:reads} reports the two cases and their ratio for three sources.
-
-\begin{table}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{5pt}
-  \begin{tabular}{@{}lccc@{}}
-    \toprule
-    Source & Frozen & Redrawn & Ratio \\
-    \midrule
-    Observation tokens          & 11.56 & 3.68 & 3.1$\times$ \\
-    Cache of the observed frame & 3.29  & 1.49 & 2.2$\times$ \\
-    Cache of the text           & 0.48  & 0.23 & 2.1$\times$ \\
-    \bottomrule
-  \end{tabular}
-  \caption{Reader-weighted future error $Z_{\bM}$ ($\times 10^{-3}$) caused by an injected error of fixed energy whose realization is kept over the denoising steps (frozen) or redrawn at every read.}
-  \label{tab:supp:reads}
-\end{table}
+\cref{tab:obs:reads} reports the two cases and their ratio for three sources.
 
 \noindent\textbf{Accumulation over the denoising steps.}
 A policy call has 21 phases: the 10 denoising steps of the video, the pass that writes the video cache, and the 10 denoising steps of the action.
@@ -310,7 +276,7 @@ Units are grouped into classes that share a read count: on Fast-WAM, the text to
 The activations of the action tokens are always refined; they are 5.9\% of the activation operands on Fast-WAM.
 
 \noindent\textbf{Read counts and step profile.}
-The read counts of the frozen classes are those of \cref{tab:supp:reads}: 3.1 for the tokens of the observed frame, 2.2 for its cache and 2.1 for the text cache.
+The read counts of the frozen classes are those of \cref{tab:obs:reads}: 3.1 for the tokens of the observed frame, 2.2 for its cache and 2.1 for the text cache.
 The cache of the predicted future and the text cache of the action expert are written after the future is complete, so they do not change $Z_{\bM}$.
 The damage of a class is the decrease of the objective when the whole class is refined and nothing else changes, measured on 16 calibration contexts with the quantized model; for the future tokens, the damages of the 11 passes form the step profile $\phi_s$.
 A class whose refinement does not lower the objective receives no budget.
