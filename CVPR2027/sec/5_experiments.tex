@@ -51,7 +51,7 @@ On the Goal suite, where every baseline loses 1.5 points or more, \method keeps 
 We deploy Fast-WAM on an AgileX PiPER arm (6 degrees of freedom and a parallel gripper).
 We fine-tune it on teleoperation data collected with LeRobot~\cite{cadene2024lerobot} from a third-person and a wrist camera, with 75 to 80 demonstrations per task.
 We quantize the fine-tuned BF16 model to W4A4KV4 with calibration contexts drawn from the demonstrations and re-estimate the reader metric on it.
-We compare BF16, QuaRot with the settings of \cref{tab:main} and \method with 25 trials per task and method on the same marked initial placements.
+We compare BF16, QuaRot with the settings of \cref{tab:main} and \method with 25 trials per task and method on the same set of marked initial object placements on the table.
 
 \noindent\textbf{Tasks.}
 \cref{fig:real} shows the three tasks: \emph{two-object pick-and-place}, which puts a red apple and then a green cube into a box among three distractors; \emph{shelf placement}, which places a bowl on the second floor of a shelf; and \emph{box stacking}, which stacks a white box on a black base and then a brown box on the white one.
@@ -82,7 +82,7 @@ We compare BF16, QuaRot with the settings of \cref{tab:main} and \method with 25
 \method reaches 47.0\% average success, against 17.0\% for QuaRot and 52.0\% for BF16.
 On pick-and-place, it places the apple in 15 of 25 trials and both objects in 4, against 4 and 2 for QuaRot.
 On shelf placement and box stacking, it stays within two trials of BF16 (13 and 15 against 15 and 16), while QuaRot succeeds in 3 and 8.
-The closed-loop gains of \method under 4-bit quantization thus carry over to a physical robot.
+The closed-loop gains of \method under 4-bit quantization thus carry over from simulation to a physical robot arm.
 
 \subsection{Ablation study}
 \label{sec:exp:ablation}
@@ -170,4 +170,4 @@ Keeping the caches of \method in BF16 adds only 0.4 points, so its 4-bit caches 
 With 4.01 bits per weight and no high-precision branch, \method compresses the denoiser from 12.0\,GB to 3.2\,GB (3.8$\times$) and reduces the peak GPU memory of the whole policy from 14.0\,GB to 6.0\,GB (2.3$\times$).
 The cached keys and values of one call shrink from 204\,MB to 56\,MB (3.6$\times$).
 One policy call takes 888\,ms from observation to action chunk, 1.66$\times$ faster than the BF16 model (1475\,ms): the runtime multiplies the packed 4-bit codes directly on the integer tensor cores of the GPU, and the second pass of a refined token is the same integer product on additional rows.
-Calibration takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model.
+Calibration takes 1.2 GPU-hours with a peak memory of 27\,GB, since it only runs forward passes of the quantized model on 16 calibration contexts.

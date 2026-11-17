@@ -59,14 +59,14 @@ We also inject errors of equal energy that are either frozen across the denoisin
 Sensitivities measured on the final action concentrate on the action pathway~\cite{akbari2026qwam}, which suggests protecting this pathway first.
 Doing so removes only 16\% of the action error, and the future error does not change at all (\cref{tab:obs:swap}).
 Restoring the predicted future to full precision removes 71.2\% of the remaining action error (\cref{fig:teaser}).
-This implies that the quantization target must include the predicted future itself, not only the action.
+This implies that the quantization target must include the predicted future itself, rather than only the generated action.
 
 \noindent\textbf{Observation 2: The future is damaged where it is written, and most by errors that are read many times.}
 Raising the precision of the reader leaves the future error exactly unchanged, so the future can only be preserved in the computation that writes it.
 Within this computation, rounding errors differ in how often they are read: the tokens of the observed frame keep the same rounding error at every denoising step, cached keys and values are written once and read at every step, and a weight is read by every token at every step.
 An injected error of fixed energy damages the future 3.1$\times$, 2.2$\times$ and 2.1$\times$ more in the observation tokens, the observation cache and the text cache when it is frozen across the denoising steps than when it is redrawn at each step (\cref{tab:obs:reads}), because its effects on successive steps add up.
 A sensitivity estimated one step at a time misses this accumulation: quantizing the ten video denoising steps together damages the part of the future that the reader depends on 2.50$\times$ more than the sum of the ten steps quantized one at a time (\cref{tab:obs:reads}, bottom).
-This implies that an error should be weighted by how many times it is read, not only by where it occurs.
+This implies that an error should be weighted by how many times it is read, not only by the layer and step where it occurs.
 
 \begin{table}[t]
   \centering
