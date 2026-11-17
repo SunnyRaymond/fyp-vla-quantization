@@ -12,7 +12,7 @@ This supplementary material is organized as follows.
 \cref{sec:supp:theory} derives the reader metric, the read count, the separable objective, the optimality of the threshold and the error bound of the second pass.
 \cref{sec:supp:method} details how \method is calibrated and how it is instantiated on the two models.
 \cref{sec:supp:eval} describes the evaluation protocol and the baselines, and \cref{sec:supp:bits} accounts for the precision of every method.
-\cref{sec:supp:results,sec:supp:ablation} report additional results and ablations, \cref{sec:supp:cost} the runtime and its cost, \cref{sec:supp:real} the real-world experiments, and \cref{sec:supp:vis} further visualizations.
+\cref{sec:supp:results,sec:supp:ablation} report additional results and ablations, \cref{sec:supp:cost} the runtime and its cost, \cref{sec:supp:real} the real-world experiments, \cref{sec:supp:vis} further visualizations, and \cref{sec:limitations} the limitations of \method and future work.
 
 \section{Preliminary analysis}
 \label{sec:supp:prelim}
@@ -341,7 +341,6 @@ Cosmos-Policy runs its official sampler with 5 denoising steps, and the robot ex
 Calibration uses 80 observations from the original LIBERO suites, 20 from each suite, shared by all methods that calibrate.
 On LIBERO-Plus, every method runs the same 840 variants, 30 for each suite and perturbation dimension.
 On LIBERO, every method runs the 40 tasks from 21 official initial states each, 840 episodes in total.
-Initial states, environment seeds and sampling noise are matched across methods, so that episodes are paired, and success rates are averaged over episodes.
 An episode ends on success or after 400 control steps (700 on the Long suite).
 
 \noindent\textbf{Baselines.}
@@ -600,8 +599,8 @@ Refinement raises plain W4A4KV4 from 81.4\% to 83.3\%, and random tokens under t
 \noindent\textbf{Runtime.}
 The measurements of \cref{tab:efficiency} use a runtime in which the weights of the 600 quantized layers stay packed at 4 bits, two codes per byte, with one 32-bit scale per output row; no 16-bit copy of them is kept.
 A layer first rotates its input, written as two or three small matrix products over the Kronecker factors of the Hadamard transform, and one kernel writes the scale of every token and its 4-bit codes, packed like the weights.
-% Gaze maps of Sec. J: declared inside this paragraph, on the page before Sec. J, so that the figure tops the page
-% on which Sec. J starts instead of standing alone on a last page.
+% Gaze maps of Sec. J: declared inside this paragraph, so that the figure tops the page before Sec. J
+% instead of standing alone on a last page.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/supp_gaze_maps.pdf}
@@ -615,26 +614,8 @@ Cached keys and values are rotated over the head dimension, quantized for each t
 The keys and values of the text context are computed at the first denoising step of each loop and reused, and the three phases of a call (future denoising, cache write, action denoising) are replayed as CUDA graphs.
 For every layer shape, the codes and the integer products of the kernels equal a reference implementation exactly.
 
-\begin{table}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{@{}lcccc@{}}
-    \toprule
-    Method & Weights & Caches & Peak mem. & Latency \\
-           & (GB)    & (MB)   & (GB)      & (ms) \\
-    \midrule
-    BF16                       & 12.0 & 204 & 14.0 & 1475 \\
-    \method                    & 3.2  & 56  & 6.0  & 888 \\
-    \bottomrule
-  \end{tabular}
-  \caption{Cost of one Fast-WAM policy call on an NVIDIA A100.
-  Weights cover the whole denoiser, caches are the keys and values of one call, peak memory covers the whole policy with the text embedding of the instruction computed once, and latency is measured end to end from observation to action chunk.}
-  \label{tab:efficiency}
-\end{table}
-
 \noindent\textbf{Memory and latency.}
-\cref{tab:efficiency} collects the measurements of \cref{sec:exp:efficiency}.
+This paragraph details the measurements of \cref{tab:efficiency}.
 The quantized layers hold 11.83\,GB of the 12.04\,GB of the denoiser in BF16 and 2.97\,GB as 4-bit codes with their scales.
 The resident memory of the policy falls from 13.7\,GB to 4.9\,GB.
 Measurements use one NVIDIA A100 (40\,GB) and one process, with the text embedding of the instruction computed once, and report the median over the calls after the first; the BF16 model runs its released PyTorch implementation.
@@ -681,3 +662,10 @@ In the third-person view, the metric follows the arm and the gripper as they mov
 The background, the distractor objects and most of the table carry almost none of it.
 This is the pattern behind Observation~3: the locations that the reader depends on are few and tied to the robot, so a selection that follows them at run time protects them in every scene.
 
+\section{Limitations and Future Work}
+\label{sec:limitations}
+
+Our evaluation covers two WAMs; architectures that reuse their caches across control steps would further test how broadly the read count can guide quantization.
+The gaze is carried from one control step to the next, so scenes that change abruptly may call for faster tracking.
+Our real-world experiments cover three tasks on a single arm and our efficiency measurements a single data-center GPU. Expanding to more tasks, robot platforms and embedded onboard computers would broaden LAQ's impact.
+LAQ also points to two primitives that current accelerators lack: matrix units that give a few selected tokens a second low-bit pass natively, and fused attention units that also emit the attention mass each key receives. Hardware that supports them would make reader-aware precision a first-class operation.
